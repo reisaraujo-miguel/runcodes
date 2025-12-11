@@ -1,17 +1,18 @@
 import "@/App.css";
 
-import { Navbar } from "./components/Navbar";
+import { Outlet } from "react-router";
+
 import { Footer } from "@/components/Footer";
 import { ThemeProvider } from "@/components/theme-provider";
 
-import { Home } from "./pages/Home";
+import { Navbar } from "./components/Navbar";
 
 export default function App() {
   return (
-    <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+    <ThemeProvider>
       <Navbar />
       <main>
-        <Home />
+        <Outlet />
       </main>
       <Footer />
     </ThemeProvider>

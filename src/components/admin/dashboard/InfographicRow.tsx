@@ -1,16 +1,17 @@
-import { Infographic } from "./Infographic";
 import {
+  Cpu,
+  Gauge,
+  HardDrive,
   LayoutList,
   Terminal,
   Users,
-  Cpu,
-  HardDrive,
-  Gauge,
 } from "lucide-react";
+
+import { Infographic } from "./Infographic";
 
 export function InfographicRow() {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 m-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 m-4 justify-evenly">
       <Infographic
         icon={<LayoutList size={50} />}
         label="Entregas em Fila"

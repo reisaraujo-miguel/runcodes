@@ -1,7 +1,6 @@
 import * as React from "react";
 
 import { ChevronsUpDown } from "lucide-react";
-import { Button } from "./ui/button";
 
 import {
   Card,
@@ -10,12 +9,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+
+import { Button } from "./ui/button";
 
 interface CollapsibleSectionProps {
   label: string;

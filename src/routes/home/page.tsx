@@ -1,9 +1,8 @@
 import { CollapsibleSection } from "@/components/CollapsibleSection";
-import { InfographicRow } from "@/components/InfographicRow";
+
 export function Home() {
   return (
     <div>
-      <InfographicRow></InfographicRow>
       <CollapsibleSection label="Admin Info"></CollapsibleSection>
       <CollapsibleSection label="Estatísticas"></CollapsibleSection>
       <CollapsibleSection label="Próximas Entregas"></CollapsibleSection>

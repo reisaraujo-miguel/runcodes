@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { useMemo, useCallback } from "react";
+import { useCallback, useMemo } from "react";
 
-import { ThemeProviderContext, type Theme } from "../lib/theme";
+import { type Theme, ThemeProviderContext } from "../lib/theme";
 
 interface ThemeProviderProps {
   children: React.ReactNode;
@@ -12,10 +12,13 @@ interface ThemeProviderProps {
 export function ThemeProvider({
   children,
   defaultTheme = "system",
-  storageKey = "vite-ui-theme",
+  storageKey = "ui-theme",
   ...props
 }: ThemeProviderProps) {
-  const [theme, setTheme] = useState<Theme>(() => defaultTheme);
+  const [theme, setTheme] = useState<Theme>(() => {
+    const storedTheme = localStorage.getItem(storageKey) as Theme | null;
+    return storedTheme || defaultTheme;
+  });
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -35,7 +38,6 @@ export function ThemeProvider({
     root.classList.add(theme);
   }, [theme]);
 
-  // Memoize the setTheme function so it doesn't change between renders
   const setThemeCallback = useCallback(
     (theme: Theme) => {
       localStorage.setItem(storageKey, theme);
@@ -44,7 +46,6 @@ export function ThemeProvider({
     [storageKey],
   );
 
-  // Memoize the entire value object
   const value = useMemo(
     () => ({
       theme,

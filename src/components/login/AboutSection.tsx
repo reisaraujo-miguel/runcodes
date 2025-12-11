@@ -1,14 +1,15 @@
 import { useState } from "react";
+
 import { TermsModal } from "./TermsModal";
 
 export function AboutSection() {
-  const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
+  const [isTermsModalOpen, setTermsModalOpen] = useState(false);
 
   const openTermsModal = () => {
-    setIsTermsModalOpen(true);
+    setTermsModalOpen(true);
   };
   const closeTermsModal = () => {
-    setIsTermsModalOpen(false);
+    setTermsModalOpen(false);
   };
 
   return (

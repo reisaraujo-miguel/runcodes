@@ -1,0 +1,24 @@
+{
+  "importOrder": [
+    "(.*\\.(css|scss|less|sass))$",
+    "^react",
+    "^react-router",
+    "^react-dom",
+    "^@radix-ui/",
+    "^lucide-react",
+    "^clsx",
+    "^tailwind-merge",
+    "^class-variance-authority",
+    "^@/components/ui/(.*)$",
+    "^@/components/(.*)$",
+    "^@/hooks/(.*)$",
+    "^@/lib/(.*)$",
+    "^@/assets/(.*)$",
+    "^\\.\\./",
+    "^\\./"
+  ],
+  "importOrderSeparation": true,
+  "importOrderSortSpecifiers": true,
+  "importOrderCaseInsensitive": true,
+  "plugins": ["@trivago/prettier-plugin-sort-imports"]
+}

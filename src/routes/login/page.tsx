@@ -1,10 +1,10 @@
-import { LoginCard } from "../components/LoginCard";
-import { AboutSection } from "../components/AboutSection";
-import { ModeToggle } from "../components/mode-toggle";
-import { useTheme } from "../lib/theme";
-
 import Logo from "@/assets/runcodes-logo/logo.png";
 import LogoBlue from "@/assets/runcodes-logo/logoblue.png";
+
+import { AboutSection } from "../../components/login/AboutSection";
+import { LoginCard } from "../../components/login/LoginCard";
+import { ThemeToggle } from "../../components/theme-toggle";
+import { useTheme } from "../../lib/theme";
 
 export function LoginPage() {
   const { theme } = useTheme();
@@ -27,7 +27,7 @@ export function LoginPage() {
               className="h-10"
             />
             <div className="flex items-center">
-              <ModeToggle />
+              <ThemeToggle />
             </div>
           </div>
           <div className="relative z-20 mt-auto">
@@ -49,7 +49,7 @@ export function LoginPage() {
             alt="RunCodes Logo"
             className="h-10"
           />
-          <ModeToggle />
+          <ThemeToggle />
         </div>
 
         {/* Mobile: Login Card */}

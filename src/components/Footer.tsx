@@ -1,4 +1,5 @@
 import Github from "@/assets/svg-icons/github.svg?react";
+
 import { Button } from "./ui/button";
 
 export function Footer() {
