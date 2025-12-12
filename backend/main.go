@@ -1,3 +1,21 @@
+/*  _______                                           _______
+ * |       \                                         |       \
+ * | $$$$$$$\ __    __  _______    _______   ______  | $$$$$$$\  ______    _______
+ * | $$__| $$|  \  |  \|       \  /       \ /      \ | $$  | $$ /      \  /       \
+ * | $$    $$| $$  | $$| $$$$$$$\|  $$$$$$$|  $$$$$$\| $$  | $$|  $$$$$$\|  $$$$$$$
+ * | $$$$$$$\| $$  | $$| $$  | $$| $$      | $$  | $$| $$  | $$| $$    $$ \$$    \
+ * | $$  | $$| $$__/ $$| $$  | $$| $$_____ | $$__/ $$| $$__/ $$| $$$$$$$$ _\$$$$$$\
+ * | $$  | $$ \$$    $$| $$  | $$ \$$     \ \$$    $$| $$    $$ \$$     \|       $$
+ *  \$$   \$$  \$$$$$$  \$$   \$$  \$$$$$$$  \$$$$$$  \$$$$$$$   \$$$$$$$ \$$$$$$$
+ *
+ * "Theory is when you know something but it doesn't work. Practice is when something
+ *  works but you don't know why. At RunCodes we combine theory and practice: Nothing
+ *  works and we don't know why."
+ *
+ *  -- Some Wise Developer
+ *
+ */
+
 package main
 
 import (
