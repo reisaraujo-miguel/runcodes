@@ -4,7 +4,7 @@ Thank you for considering contributing to our project! Here's how you can help:
 
 ## Reporting Bugs or Suggesting Enhancements
 
-- Please use the [GitHub Issues](https://github.com/reisaraujo-miguel/runcodes-react/issues) page to report bugs or suggest new features.
+- Please use the [GitHub Issues](https://github.com/reisaraujo-miguel/runcodes/issues) page to report bugs or suggest new features.
 
 ## Making Code Changes
 
