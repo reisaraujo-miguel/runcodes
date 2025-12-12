@@ -3,11 +3,12 @@ import { z } from "zod";
 
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import axios from "axios";
+
 
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -17,7 +18,6 @@ import {
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Input } from "../ui/input";
-import { Label } from "../ui/label";
 
 interface NewClassModalProps {
   isOpen: boolean;
@@ -25,9 +25,11 @@ interface NewClassModalProps {
 }
 
 const formSchema = z.object({
-  className: z.string().min(1, "O nome da turma é obrigatório"),
-  availableUntil: z.string().optional(),
+  Name: z.string().min(1, "O nome da turma é obrigatório"),
+  EndDate: z.string().optional(),
 });
+
+const API_BASE_URL = import.meta.env.VITE_API_ENDPOINT;
 
 export function NewClassModal({ isOpen, onClose }: NewClassModalProps) {
   if (!isOpen) return null;
@@ -37,13 +39,24 @@ export function NewClassModal({ isOpen, onClose }: NewClassModalProps) {
   const form = useForm({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      className: "",
-      availableUntil: "",
+      Name: "",
+      EndDate: "",
     },
   });
 
-  const onSubmit = (data: z.infer<typeof formSchema>) => {
-    console.log("Creating class with data:", data);
+  const onSubmit = async (data: z.infer<typeof formSchema>) => {
+    try {
+      const response = await axios.post(`${API_BASE_URL}/api/offerings/create`, {
+        name: data.Name,
+        end_date: data.EndDate,
+      });
+      if (response.data.success) {
+        console.log("Turma criada com sucesso!");
+      }
+    } catch (error) {
+      console.error("Erro ao criar a turma:", error);
+      return;
+    }
     setSubmitted(true);
   };
 
@@ -75,7 +88,7 @@ export function NewClassModal({ isOpen, onClose }: NewClassModalProps) {
               >
                 <FormField
                   control={form.control}
-                  name="className"
+                  name="Name"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Nome da Turma</FormLabel>
@@ -91,7 +104,7 @@ export function NewClassModal({ isOpen, onClose }: NewClassModalProps) {
                 />
                 <FormField
                   control={form.control}
-                  name="availableUntil"
+                  name="EndDate"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Disponível até</FormLabel>
