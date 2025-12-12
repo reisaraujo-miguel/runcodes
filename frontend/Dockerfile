@@ -3,11 +3,12 @@ FROM oven/bun:slim AS builder
 WORKDIR /app
 
 COPY . .
+RUN bun install --frozen-lockfile && bun run build
 
-RUN bun install && bun run build
+FROM caddy:alpine AS dist
 
-FROM builder AS dist
+COPY --from=builder /app/dist /usr/share/caddy
 
-EXPOSE 4173
+COPY Caddyfile /etc/caddy/Caddyfile
 
-CMD ["bun", "run", "preview", "--host"]
+EXPOSE 80

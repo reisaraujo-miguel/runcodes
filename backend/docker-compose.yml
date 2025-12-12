@@ -4,14 +4,14 @@ services:
     build: .
     restart: unless-stopped
     networks:
-      - runcodes-net
+      - runcodes-network
     environment:
       TZ: "America/Sao_Paulo"
       RUNCODES_API_PORT: "8443"
       RUNCODES_DB_HOST: "database"
       RUNCODES_DB_PORT: "5432"
       RUNCODES_DB_USER: "runcodes"
-      RUNCODES_DB_PASSWORD: "asdasd33"
+      RUNCODES_DB_PASSWORD: "secret_password"
       RUNCODES_DB_NAME: "runcodes"
 
   # PostgreSQL Database
@@ -24,11 +24,12 @@ services:
     volumes:
       - runcodes-db-vol:/var/lib/postgresql/data
     networks:
-      - runcodes-net
+      - runcodes-network
 
 
 networks:
-  runcodes-net:
+  runcodes-network:
+    driver: bridge
 
 volumes:
   runcodes-db-vol:

@@ -5,7 +5,7 @@ This project houses the future new and improved RunCodes frontend.
 ## The Stack
 
 - **Frontend Framework**: React
-- **Build Tool**: Vite with SWC compiler
+- **Build Tool**: Vite with Rolldown
 - **Styling**: Tailwind CSS
 - **Language**: TypeScript
 - **Package Manager**: Bun
