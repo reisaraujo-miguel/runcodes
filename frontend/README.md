@@ -56,12 +56,12 @@ bun run lint
 
 ## License
 
-For information on the license of this project, please see our [license file](LICENSE).
+For information on the license of this project, please see our [license file](../LICENSE).
 
 ## Contributors
 
-For information of the contributors of this project, please see our [contributors file](CONTRIBUTORS.md).
+For information of the contributors of this project, please see our [contributors file](../CONTRIBUTORS.md).
 
 ## Contributing
 
-For information on contributing to this project, please see our [contribution guidelines](CONTRIBUTING.md).
+For information on contributing to this project, please see our [contribution guidelines](../CONTRIBUTING.md).
