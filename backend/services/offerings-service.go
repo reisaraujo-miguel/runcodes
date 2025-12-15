@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math/rand"
+	"strings"
 
 	"runcodes/errors"
 	"runcodes/models"
@@ -59,19 +60,24 @@ func (s *OfferingService) CreateOffering(req *models.CreateOfferingRequest) (*mo
 		return nil, "", err
 	}
 
-	req.Email = validation.SanitizeEmail(req.Email)
-	req.Name = validation.SanitizeString(req.Name)
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	req.Name = strings.TrimSpace(req.Name)
+	req.EndDate = strings.TrimSpace(req.EndDate)
 
 	enrollmentCode, err := s.generateEnrollmentCode()
 	if err != nil {
 		return nil, "", err
 	}
 
-	// course_id, year, term are set to 0 because these fields are being deprecated
+	//
 	var newOfferingID string
+
+	///////////////////////////////////////////////////////////////////////////////////////////
+	// LEGACY: course_id, year, term are set to 0 because these fields are being deprecated. //
+	// Will be removed when we migrate the database to a new version and schema.             //
+	///////////////////////////////////////////////////////////////////////////////////////////
 	err = s.db.QueryRow(
-		`INSERT INTO offerings (course_id, year, term, classroom, end_date, enrollment_code)
-		 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+		`INSERT INTO offerings (course_id, year, term, classroom, end_date, enrollment_code) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
 		0, 0, 0, req.Name, req.EndDate, enrollmentCode,
 	).Scan(&newOfferingID)
 	if err != nil {
@@ -86,9 +92,10 @@ func (s *OfferingService) CreateOffering(req *models.CreateOfferingRequest) (*mo
 	}
 
 	offering := &models.Offering{
-		ID:      newOfferingID,
-		Name:    req.Name,
-		EndDate: req.EndDate,
+		ID:             newOfferingID,
+		Name:           req.Name,
+		EndDate:        req.EndDate,
+		EnrollmentCode: enrollmentCode,
 	}
 
 	return offering, token, nil

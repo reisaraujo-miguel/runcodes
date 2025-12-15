@@ -7,16 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/microcosm-cc/bluemonday"
-
 	"runcodes/errors"
 )
-
-var sanitizer *bluemonday.Policy
-
-func init() {
-	sanitizer = bluemonday.StrictPolicy()
-}
 
 func ValidateEmail(email string) error {
 	if email == "" {
@@ -110,19 +102,6 @@ func ValidatePassword(password string) error {
 	}
 
 	return nil
-}
-
-// SanitizeString removes potentially dangerous characters from a string
-func SanitizeString(input string) string {
-	input = sanitizer.Sanitize(input)
-	input = strings.TrimSpace(input)
-	return input
-}
-
-func SanitizeEmail(email string) string {
-	email = strings.ToLower(strings.TrimSpace(email))
-	email = SanitizeString(email)
-	return email
 }
 
 func ValidateCreateOfferingRequest(email, name, endDate string) error {

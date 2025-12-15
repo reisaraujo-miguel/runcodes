@@ -6,7 +6,7 @@ COPY . .
 RUN go mod download && \
 CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
 
-FROM alpine:3.23 AS runner 
+FROM alpine:3.23 AS runner
 
 WORKDIR /app/
 
