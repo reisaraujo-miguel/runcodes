@@ -12,8 +12,8 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     networks:
-      - runcodes-network 
-  
+      - runcodes-network
+
   backend:
     build: ./backend/
     restart: unless-stopped
@@ -56,7 +56,7 @@ services:
 
   # Local SMTP server for intercepting e-mails
   smtp4dev:
-    image: rnwood/smtp4dev
+    image: rnwood/smtp4dev:v3.12
     restart: unless-stopped
     ports:
       - "8081:80"
@@ -81,7 +81,7 @@ services:
   ###########
 
   seaweed:
-    image: chrislusf/seaweedfs
+    image: chrislusf/seaweedfs:4.03
     ports:
       - 8333:8333
     environment:
