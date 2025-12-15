@@ -5,34 +5,75 @@
 
 version: 2
 updates:
-  # Enable version updates for npm
-  - package-ecosystem: "npm"
-    # Look for `package.json` and `lock` files in the `root` directory
-    directory: "/"
-    # Check for updates once a week
+  # --- FRONTEND DEPENDENCIES ---
+  - package-ecosystem: "bun"
+    directory: "/frontend/"
     schedule:
       interval: "weekly"
-    # Group all npm updates together
-    groups:
-      npm-dependencies:
+    groups: # Group all npm updates together
+      bun-dependencies:
         patterns:
           - "*"
-    # Set reviewers for pull requests
-    reviewers:
-      - "reisaraujo-miguel"
-    # Add labels to pull requests
     labels:
+      - "bun"
       - "dependencies"
       - "dependabot"
-    # Allow up to 10 open pull requests for npm
     open-pull-requests-limit: 10
-    # Commit message preferences
     commit-message:
-      # Prefix all commit messages with "chore(deps):"
-      prefix: "chore(deps)"
-      # Include scope for dependencies
-      prefix-development: "chore(dev-deps)"
-    # Ignore major version updates for now
+      prefix: "chore(frontend/deps)"
+      prefix-development: "chore(frontend/dev-deps)"
+    ignore: # Ignore major version updates for now
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # --- BACKEND DEPENDENCIES ---
+  - package-ecosystem: "gomod"
+    directory: "/backend/"
+    schedule:
+      interval: "weekly"
+    groups:
+      go-dependencies:
+        patterns:
+          - "*"
+    labels:
+      - "go"
+      - "dependencies"
+      - "dependabot"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(backend/deps)"
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+
+  # --- DOCKER IMAGES ---
+  - package-ecosystem: "docker"
+    directories: ["/backend/", "/frontend/"]
+    schedule:
+      interval: "weekly"
+    groups:
+      docker-images:
+        patterns:
+         - "*"
+    labels:
+      - "docker"
+      - "dependabot"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(docker)"
+
+  # --- DOCKER COMPOSE SCRIPTS ---
+  - package-ecosystem: "docker-compose"
+    directories: ["*"]
+    schedule:
+      interval: "weekly"
+    groups:
+      docker-images:
+        patterns:
+         - "*"
+    labels:
+      - "docker-compose"
+      - "dependabot"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(docker-compose)"
