@@ -67,7 +67,7 @@ services:
 
   # Redis for cache & session management
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     restart: unless-stopped
     environment:
       TZ: "America/Sao_Paulo"
