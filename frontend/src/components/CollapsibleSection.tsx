@@ -2,7 +2,7 @@ import * as React from "react";
 
 import { ChevronsUpDown } from "lucide-react";
 
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardAction,

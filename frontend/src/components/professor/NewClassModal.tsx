@@ -3,7 +3,7 @@ import axios from "axios";
 import { z } from "zod";
 
 import { useState } from "react";
-import { type SubmitHandler, useForm } from "react-hook-form";
+import { useForm } from "react-hook-form";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

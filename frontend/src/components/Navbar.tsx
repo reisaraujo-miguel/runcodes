@@ -3,7 +3,7 @@ import { NavLink } from "react-router";
 
 import { CircleUserRound } from "lucide-react";
 
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
