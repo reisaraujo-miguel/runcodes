@@ -5,28 +5,21 @@ import { z } from "zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
-import { Button } from "@/components/ui/button";
+import { NavLink } from "react-router";
+
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 
-interface NewClassModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-}
-
 const formSchema = z.object({
-  Name: z
-    .string()
-    .min(1, "O nome da turma é obrigatório AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+  Name: z.string().min(1, "O nome da turma é obrigatório"),
   EndDate: z.string().optional(),
 });
 
 const API_BASE_URL = import.meta.env.VITE_API_ENDPOINT;
 
-export function NewClassModal({ isOpen, onClose }: NewClassModalProps) {
-  if (!isOpen) return null;
-
+export function NewClassModal() {
   const [wasSubmitted, setSubmitted] = useState(false);
 
   const form = useForm({
@@ -74,7 +67,12 @@ export function NewClassModal({ isOpen, onClose }: NewClassModalProps) {
                 Turma criada com sucesso!
               </div>
               <div className="flex justify-end pt-4">
-                <Button onClick={onClose}>Fechar</Button>
+                <NavLink
+                  to="/professor"
+                  className={buttonVariants({ variant: "default" })}
+                >
+                  Fechar
+                </NavLink>
               </div>
             </div>
           )}
@@ -102,9 +100,12 @@ export function NewClassModal({ isOpen, onClose }: NewClassModalProps) {
 
                 <Field>
                   <div className="flex justify-end pt-4">
-                    <Button onClick={onClose} variant="destructive">
+                    <NavLink
+                      to="/professor"
+                      className={buttonVariants({ variant: "destructive" })}
+                    >
                       Fechar
-                    </Button>
+                    </NavLink>
                     <Button className="ml-2" type="submit" variant="default">
                       Criar Turma
                     </Button>

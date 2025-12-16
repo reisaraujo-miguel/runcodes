@@ -36,6 +36,24 @@ const router = createBrowserRouter([
           },
         ],
       },
+      {
+        path: "/professor",
+        lazy: async () => {
+          const { ProfessorTools } =
+            await import("./routes/professor/layout.tsx");
+          return { Component: ProfessorTools };
+        },
+        children: [
+          {
+            path: "newclass",
+            lazy: async () => {
+              const { NewClassModal } =
+                await import("./components/professor/NewClassModal.tsx");
+              return { Component: NewClassModal };
+            },
+          },
+        ],
+      },
     ],
   },
 ]);

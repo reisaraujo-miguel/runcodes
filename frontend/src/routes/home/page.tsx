@@ -13,9 +13,8 @@ export function Home() {
         <CollapsibleSection label="Próximas Entregas"></CollapsibleSection>
         <CollapsibleSection label="Minhas Disciplinas"></CollapsibleSection>
         <CollapsibleSection label="Nova Matrícula"></CollapsibleSection>
-
-        <Footer />
       </main>
+      <Footer />
     </div>
   );
 }

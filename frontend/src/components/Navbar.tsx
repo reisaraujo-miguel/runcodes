@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { NavLink } from "react-router";
 
 import { CircleUserRound } from "lucide-react";
@@ -16,8 +15,6 @@ import { ThemeToggle } from "@/components/theme-toggle";
 
 import Logo from "@/assets/runcodes-logo/logo.png";
 
-import { NewClassModal } from "./professor/NewClassModal";
-
 const USER_ROLES = {
   Student: "student",
   Teacher: "teacher",
@@ -28,16 +25,6 @@ type UserRole = (typeof USER_ROLES)[keyof typeof USER_ROLES];
 
 export function Navbar() {
   let role: UserRole = USER_ROLES.Admin; // This should be dynamically set based on the logged-in user
-
-  const [isNewClassModalOpen, setNewClassModalOpen] = useState(false);
-
-  const openNewClassModal = () => {
-    setNewClassModalOpen(true);
-  };
-
-  const closeNewClassModal = () => {
-    setNewClassModalOpen(false);
-  };
 
   return (
     <div>
@@ -57,34 +44,24 @@ export function Navbar() {
                 <DropdownMenuTrigger
                   className={buttonVariants({ variant: "ghost", size: "lg" })}
                 >
-                  <CircleUserRound />
-                  test@usp.br
+                  <div className="flex items-center h-full gap-2 text-white">
+                    <CircleUserRound />
+                    test@usp.br
+                  </div>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-56">
-                  <DropDownMenu
-                    role={role}
-                    openNewClassModal={openNewClassModal}
-                  />
+                  <DropDownMenu role={role} />
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
           </div>
         </div>
       </nav>
-      <NewClassModal
-        isOpen={isNewClassModalOpen}
-        onClose={closeNewClassModal}
-      />
     </div>
   );
 }
 
-interface DropDownMenuProps {
-  role: UserRole;
-  openNewClassModal: () => void;
-}
-
-function DropDownMenu(props: DropDownMenuProps) {
+function DropDownMenu(props: { role: UserRole }) {
   return (
     <div>
       <div>
@@ -100,15 +77,17 @@ function DropDownMenu(props: DropDownMenuProps) {
         <DropdownMenuSeparator />
         {(props.role === USER_ROLES.Teacher || USER_ROLES.Admin) && (
           <>
-            <DropdownMenuItem
-              onClick={props.openNewClassModal}
-              style={{
-                cursor: "pointer",
-                color: "inherit",
-                textDecoration: "none",
-              }}
-            >
-              Criar Nova Turma
+            <DropdownMenuItem>
+              <NavLink
+                to="/professor/newclass"
+                style={{
+                  cursor: "pointer",
+                  color: "inherit",
+                  textDecoration: "none",
+                }}
+              >
+                Criar Nova Turma
+              </NavLink>
             </DropdownMenuItem>
             <DropdownMenuItem
               style={{
