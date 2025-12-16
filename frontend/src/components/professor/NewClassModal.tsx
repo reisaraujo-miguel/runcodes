@@ -1,22 +1,13 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import axios from "axios";
 import { z } from "zod";
 
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import axios from "axios";
-
-
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
 
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { Field, FieldGroup, FieldLabel } from "../ui/field";
 import { Input } from "../ui/input";
 
 interface NewClassModalProps {
@@ -46,10 +37,13 @@ export function NewClassModal({ isOpen, onClose }: NewClassModalProps) {
 
   const onSubmit = async (data: z.infer<typeof formSchema>) => {
     try {
-      const response = await axios.post(`${API_BASE_URL}/api/offerings/create`, {
-        name: data.Name,
-        end_date: data.EndDate,
-      });
+      const response = await axios.post(
+        `${API_BASE_URL}/api/offerings/create`,
+        {
+          name: data.Name,
+          end_date: data.EndDate,
+        },
+      );
       if (response.data.success) {
         console.log("Turma criada com sucesso!");
       }
@@ -81,50 +75,34 @@ export function NewClassModal({ isOpen, onClose }: NewClassModalProps) {
             </div>
           )}
           {!wasSubmitted && (
-            <Form {...form}>
-              <form
-                onSubmit={form.handleSubmit(onSubmit)}
-                className="space-y-4"
-              >
-                <FormField
-                  control={form.control}
-                  name="Name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Nome da Turma</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Digite o nome da turma"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="EndDate"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Disponível até</FormLabel>
-                      <FormControl>
-                        <Input type="date" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <div className="flex justify-end pt-4">
-                  <Button onClick={onClose} variant="destructive">
-                    Fechar
-                  </Button>
-                  <Button className="ml-2" type="submit" variant="default">
-                    Criar Turma
-                  </Button>
-                </div>
-              </form>
-            </Form>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="Name">Nome da Turma</FieldLabel>
+                  <Input
+                    id="Name"
+                    placeholder="Digite o nome da turma"
+                    required
+                  />
+                </Field>
+
+                <Field>
+                  <FieldLabel htmlFor="Date">Disponível até</FieldLabel>
+                  <Input id="Date" type="date" required />
+                </Field>
+
+                <Field>
+                  <div className="flex justify-end pt-4">
+                    <Button onClick={onClose} variant="destructive">
+                      Fechar
+                    </Button>
+                    <Button className="ml-2" type="submit" variant="default">
+                      Criar Turma
+                    </Button>
+                  </div>
+                </Field>
+              </FieldGroup>
+            </form>
           )}
         </CardContent>
       </Card>

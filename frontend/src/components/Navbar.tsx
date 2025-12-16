@@ -57,7 +57,7 @@ export function Navbar() {
                 <DropdownMenuTrigger asChild>
                   <Button className="text-white" variant="ghost" size="lg">
                     <CircleUserRound />
-                    test@usp.br rop{" "}
+                    test@usp.br
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-56">
@@ -101,7 +101,7 @@ function DropDownMenu(props: DropDownMenuProps) {
         {(props.role === USER_ROLES.Teacher || USER_ROLES.Admin) && (
           <>
             <DropdownMenuItem
-              onSelect={props.openNewClassModal}
+              onClick={props.openNewClassModal}
               style={{
                 cursor: "pointer",
                 color: "inherit",

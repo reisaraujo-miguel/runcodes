@@ -14,7 +14,7 @@ export function Infographic({
   value = 0,
 }: InfographicProps) {
   return (
-    <Card className="aspect-2/1 max-w-50 min-w-30 p-2 content-contain gap-2 place-content-center">
+    <Card className="aspect-5/3 max-w-50 min-w-30 p-2 content-contain gap-2 place-content-center">
       <div className="flex justify-end">
         <h1 className="text-[0.65rem]"> {label} </h1>
       </div>
