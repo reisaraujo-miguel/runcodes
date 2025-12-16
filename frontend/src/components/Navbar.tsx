@@ -3,7 +3,7 @@ import { NavLink } from "react-router";
 
 import { CircleUserRound } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,11 +54,11 @@ export function Navbar() {
           <div className="flex h-full">
             <div className="flex items-center px-2">
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button className="text-white" variant="ghost" size="lg">
-                    <CircleUserRound />
-                    test@usp.br
-                  </Button>
+                <DropdownMenuTrigger
+                  className={buttonVariants({ variant: "ghost", size: "lg" })}
+                >
+                  <CircleUserRound />
+                  test@usp.br
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-56">
                   <DropDownMenu

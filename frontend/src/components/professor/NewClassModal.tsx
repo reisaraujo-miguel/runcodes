@@ -3,12 +3,12 @@ import axios from "axios";
 import { z } from "zod";
 
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { type SubmitHandler, useForm } from "react-hook-form";
 
-import { Button } from "../ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
-import { Field, FieldGroup, FieldLabel } from "../ui/field";
-import { Input } from "../ui/input";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 
 interface NewClassModalProps {
   isOpen: boolean;
@@ -16,7 +16,9 @@ interface NewClassModalProps {
 }
 
 const formSchema = z.object({
-  Name: z.string().min(1, "O nome da turma é obrigatório"),
+  Name: z
+    .string()
+    .min(1, "O nome da turma é obrigatório AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
   EndDate: z.string().optional(),
 });
 
@@ -46,12 +48,14 @@ export function NewClassModal({ isOpen, onClose }: NewClassModalProps) {
       );
       if (response.data.success) {
         console.log("Turma criada com sucesso!");
+        setSubmitted(true);
+      } else {
+        console.error("Erro ao criar a turma:", response.data.message);
       }
     } catch (error) {
       console.error("Erro ao criar a turma:", error);
       return;
     }
-    setSubmitted(true);
   };
 
   return (
@@ -82,13 +86,18 @@ export function NewClassModal({ isOpen, onClose }: NewClassModalProps) {
                   <Input
                     id="Name"
                     placeholder="Digite o nome da turma"
+                    {...form.register("Name")}
                     required
                   />
                 </Field>
 
                 <Field>
-                  <FieldLabel htmlFor="Date">Disponível até</FieldLabel>
-                  <Input id="Date" type="date" required />
+                  <FieldLabel htmlFor="EndDate">Disponível até</FieldLabel>
+                  <Input
+                    id="EndDate"
+                    type="date"
+                    {...form.register("EndDate")}
+                  />
                 </Field>
 
                 <Field>

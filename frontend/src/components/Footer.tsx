@@ -16,7 +16,6 @@ export function Footer() {
             variant="ghost"
             size="sm"
             className="text-muted-foreground hover:text-foreground"
-            asChild
           >
             <a
               href="https://github.com/reisaraujo-miguel/runcodes-react"

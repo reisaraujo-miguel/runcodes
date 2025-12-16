@@ -2,6 +2,7 @@ import * as React from "react";
 
 import { ChevronsUpDown } from "lucide-react";
 
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardAction,
@@ -14,8 +15,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-
-import { Button } from "./ui/button";
 
 interface CollapsibleSectionProps {
   label: string;
@@ -33,10 +32,10 @@ export function CollapsibleSection({
         <CardHeader className="border-b p-2 [.border-b]:pb-2">
           <CardTitle className="row-span-2 self-center">{label}</CardTitle>
           <CardAction>
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-8">
-                <ChevronsUpDown />
-              </Button>
+            <CollapsibleTrigger
+              className={buttonVariants({ variant: "ghost", size: "icon" })}
+            >
+              <ChevronsUpDown />
             </CollapsibleTrigger>
           </CardAction>
         </CardHeader>
