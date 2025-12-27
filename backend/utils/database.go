@@ -1,3 +1,4 @@
+// Package utils provides utility functions and configurations for the application.
 package utils
 
 import (
@@ -7,10 +8,10 @@ import (
 	"os"
 	"time"
 
-	"runcodes/errors"
-
 	_ "github.com/lib/pq"
 )
+
+var DB *sql.DB
 
 func configureEnv() map[string]string {
 	envFields := []string{
@@ -26,7 +27,7 @@ func configureEnv() map[string]string {
 	for _, field := range envFields {
 		value := os.Getenv(field)
 		if value == "" {
-			errors.LogFatalError("databse.go", "configureEnv", fmt.Sprintf("%s environment variable is not set", field), nil)
+			log.Fatalf("%s environment variable is not set", field)
 		}
 		env[field] = value
 	}
@@ -34,7 +35,7 @@ func configureEnv() map[string]string {
 	return env
 }
 
-func InitDB() *sql.DB {
+func InitDB() {
 	env := configureEnv()
 
 	connectionString := fmt.Sprintf(
@@ -43,22 +44,19 @@ func InitDB() *sql.DB {
 	)
 
 	var err error
-	var db *sql.DB
 
-	db, err = sql.Open("postgres", connectionString)
+	DB, err = sql.Open("postgres", connectionString)
 	if err != nil {
-		errors.LogFatalError("database.go", "InitDB", "Failed to open database connection", err)
+		log.Fatalf("Failed to open database connection: %s\n", err)
 	}
 
-	if err = db.Ping(); err != nil {
-		errors.LogFatalError("database.go", "InitDB", "Failed to ping database", err)
+	if err = DB.Ping(); err != nil {
+		log.Fatalf("Failed to ping database: %s\n", err)
 	}
 
 	log.Println("Connected to the database successfully")
 
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(25)
-	db.SetConnMaxLifetime(5 * time.Minute)
-
-	return db
+	DB.SetMaxOpenConns(25)
+	DB.SetMaxIdleConns(25)
+	DB.SetConnMaxLifetime(5 * time.Minute)
 }
