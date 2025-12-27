@@ -19,6 +19,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
@@ -48,10 +49,14 @@ func main() {
 
 	apiPort := os.Getenv("RUNCODES_API_PORT")
 	if apiPort == "" {
-		log.Fatalf("RUNCODES_API_PORT environment variable is not set\n")
+		utils.Logger.Error("RUNCODES_API_PORT environment variable is not set\n")
+		return
 	}
 
-	utils.InitDB()
+	err = utils.InitDB()
+	if err != nil {
+		return
+	}
 
 	r := chi.NewRouter()
 	r.Use(traceid.Middleware)
@@ -105,6 +110,9 @@ func main() {
 	r.Post("/api/offerings/create", handlers.CreateOffering)
 	r.Get("/api/offerings", handlers.GetOfferings)
 
-	log.Printf("Server is running on port %s\n", apiPort)
-	http.ListenAndServe(apiPort, r)
+	utils.Logger.Info(fmt.Sprintf("Server is running on port %s\n", apiPort))
+	if err := http.ListenAndServe(fmt.Sprintf("localhost:%s", apiPort), r); err != nil {
+		utils.Logger.Error("Failed to start server", slog.String("error", err.Error()))
+		return
+	}
 }
