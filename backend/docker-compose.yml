@@ -1,8 +1,9 @@
 services:
-  # PHP Application Itself
   backend:
     build: .
     restart: unless-stopped
+    ports:
+      - "8443:8443"
     networks:
       - runcodes-network
     environment:
@@ -11,7 +12,7 @@ services:
       RUNCODES_DB_HOST: "database"
       RUNCODES_DB_PORT: "5432"
       RUNCODES_DB_USER: "runcodes"
-      RUNCODES_DB_PASSWORD: "secret_password"
+      RUNCODES_DB_PASSWORD: "asdasd33"
       RUNCODES_DB_NAME: "runcodes"
 
   # PostgreSQL Database
@@ -25,7 +26,6 @@ services:
       - runcodes-db-vol:/var/lib/postgresql/data
     networks:
       - runcodes-network
-
 
 networks:
   runcodes-network:
