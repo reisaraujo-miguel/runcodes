@@ -17,6 +17,8 @@ services:
   backend:
     build: ./backend/
     restart: unless-stopped
+    ports:
+      - "8443:8443"
     networks:
       - runcodes-network
     environment:
