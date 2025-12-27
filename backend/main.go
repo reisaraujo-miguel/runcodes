@@ -20,15 +20,20 @@ package main
 
 import (
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
-	"runcodes/errors"
 	"runcodes/handlers"
-	"runcodes/middleware"
 	"runcodes/utils"
 
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
+	"github.com/go-chi/httplog/v3"
+	"github.com/go-chi/oauth"
+	"github.com/go-chi/traceid"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
@@ -36,27 +41,70 @@ import (
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		errors.LogError("main.go", "main", "No .env file found, using environment variables", err)
+		log.Printf("No .env file found, using environment variables %s\n", err)
 	}
+
+	utils.SetupLogger()
 
 	apiPort := os.Getenv("RUNCODES_API_PORT")
 	if apiPort == "" {
-		errors.LogFatalError("main.go", "main", "RUNCODES_API_PORT environment variable is not set", nil)
+		log.Fatalf("RUNCODES_API_PORT environment variable is not set\n")
 	}
 
-	db := utils.InitDB()
-	defer db.Close()
+	utils.InitDB()
 
-	r := mux.NewRouter()
+	r := chi.NewRouter()
+	r.Use(traceid.Middleware)
 
-	// Routes
-	protected := r.PathPrefix("/api").Subrouter()
-	protected.Use(middleware.AuthMiddleware)
-	protected.HandleFunc("/api/offerings/create", handlers.CreateOffering(db)).Methods("POST")
-	protected.HandleFunc("/api/offerings", handlers.GetOfferings(db)).Methods("GET")
+	r.Use(httplog.RequestLogger(utils.Logger, &httplog.Options{
+		Level:              slog.LevelInfo,
+		Schema:             utils.LogFormat,
+		RecoverPanics:      true,
+		LogRequestHeaders:  []string{"Origin"},
+		LogResponseHeaders: []string{},
+		// Log all requests with invalid payload as curl command.
+		LogExtraAttrs: func(req *http.Request, reqBody string, respStatus int) []slog.Attr {
+			if respStatus == 400 || respStatus == 422 {
+				req.Header.Del("Authorization")
+				return []slog.Attr{slog.String("curl", httplog.CURL(req, reqBody))}
+			}
+			return nil
+		},
+	}))
 
-	handler := middleware.CORSMiddleware(r)
+	// Set request log attribute from within middleware.
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+
+			httplog.SetAttrs(ctx, slog.String("user", "user1"))
+
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
+
+	r.Use(middleware.Recoverer)
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{"*"},
+		AllowedMethods:   []string{"GET", "PUT", "POST", "DELETE", "HEAD", "OPTION"},
+		AllowedHeaders:   []string{"User-Agent", "Content-Type", "Accept", "Accept-Encoding", "Accept-Language", "Cache-Control", "Connection", "DNT", "Host", "Origin", "Pragma", "Referer"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: true,
+		MaxAge:           300,
+	}))
+
+	s := oauth.NewBearerServer(
+		"mySecretKey-10101",
+		time.Second*120,
+		nil,
+		nil)
+
+	r.Post("/token", s.UserCredentials)
+	r.Post("/auth", s.ClientCredentials)
+
+	r.Post("/api/offerings/create", handlers.CreateOffering)
+	r.Get("/api/offerings", handlers.GetOfferings)
 
 	log.Printf("Server is running on port %s\n", apiPort)
-	errors.LogFatalError("main.go", "main", "Server stopped unexpectedly", http.ListenAndServe(apiPort, handler))
+	http.ListenAndServe(apiPort, r)
 }
