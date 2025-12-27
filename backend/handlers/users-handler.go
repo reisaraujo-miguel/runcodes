@@ -1,22 +1,21 @@
 package handlers
 
 import (
-	"database/sql"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
-	"runcodes/errors"
 	"runcodes/models"
+	"runcodes/utils"
 )
 
-func loginUser(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+func loginUser(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	w.Header().Set("Content-Type", "application/json")
 
-		var req models.LoginRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			errors.WriteError(w, errors.ErrInvalidRequest)
-			return
-		}
+	var req models.LoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.Logger.ErrorContext(ctx, "Failed to decode login request", slog.String("error", err.Error()))
+		return
 	}
 }
