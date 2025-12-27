@@ -4,7 +4,7 @@ package utils
 import (
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"time"
 
@@ -27,7 +27,8 @@ func configureEnv() map[string]string {
 	for _, field := range envFields {
 		value := os.Getenv(field)
 		if value == "" {
-			log.Fatalf("%s environment variable is not set", field)
+			Logger.Error(fmt.Sprintf("%s environment variable is not set", field))
+			return nil
 		}
 		env[field] = value
 	}
@@ -35,7 +36,7 @@ func configureEnv() map[string]string {
 	return env
 }
 
-func InitDB() {
+func InitDB() error {
 	env := configureEnv()
 
 	connectionString := fmt.Sprintf(
@@ -47,16 +48,19 @@ func InitDB() {
 
 	DB, err = sql.Open("postgres", connectionString)
 	if err != nil {
-		log.Fatalf("Failed to open database connection: %s\n", err)
+		Logger.Error("Failed to open database connection", slog.String("error", err.Error()))
+		return err
 	}
 
 	if err = DB.Ping(); err != nil {
-		log.Fatalf("Failed to ping database: %s\n", err)
+		Logger.Error("Failed to ping database", slog.String("error", err.Error()))
+		return err
 	}
 
-	log.Println("Connected to the database successfully")
+	Logger.Info("Connected to the database successfully")
 
 	DB.SetMaxOpenConns(25)
 	DB.SetMaxIdleConns(25)
 	DB.SetConnMaxLifetime(5 * time.Minute)
+	return nil
 }
