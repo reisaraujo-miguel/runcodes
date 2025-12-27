@@ -2,22 +2,21 @@
 package validation
 
 import (
+	"errors"
 	"net/mail"
 	"regexp"
 	"strings"
 	"time"
-
-	"runcodes/errors"
 )
 
 func ValidateEmail(email string) error {
 	if email == "" {
-		return errors.NewAppError(errors.ErrValidation.Code, "Email is required", nil)
+		return errors.New("email is required")
 	}
 
 	_, err := mail.ParseAddress(email)
 	if err != nil {
-		return errors.NewAppError(errors.ErrValidation.Code, "Invalid email format", err)
+		return err
 	}
 
 	return nil
@@ -25,17 +24,17 @@ func ValidateEmail(email string) error {
 
 func ValidateName(name string, fieldName string) error {
 	if name == "" {
-		return errors.NewAppError(errors.ErrValidation.Code, fieldName+" is required", nil)
+		return errors.New("name is required")
 	}
 
 	if len(name) > 100 {
-		return errors.NewAppError(errors.ErrValidation.Code, fieldName+" must be less than 100 characters", nil)
+		return errors.New("name must be less than 100 characters")
 	}
 
 	// Check for potentially dangerous characters
 	dangerousChars := regexp.MustCompile(`[<>{}]`)
 	if dangerousChars.MatchString(name) {
-		return errors.NewAppError(errors.ErrValidation.Code, fieldName+" contains invalid characters: '<', '>', '{' or '}'", nil)
+		return errors.New("name contains invalid characters: '<', '>', '{' or '}'")
 	}
 
 	return nil
@@ -48,7 +47,7 @@ func ValidateDate(dateStr string, fieldName string) error {
 
 	_, err := time.Parse("2006-01-02", dateStr)
 	if err != nil {
-		return errors.NewAppError(errors.ErrValidation.Code, fieldName+" must be in YYYY-MM-DD format", err)
+		return err
 	}
 
 	return nil
@@ -56,11 +55,11 @@ func ValidateDate(dateStr string, fieldName string) error {
 
 func ValidatePassword(password string) error {
 	if password == "" {
-		return errors.NewAppError(errors.ErrValidation.Code, "Password is required", nil)
+		return errors.New("password is required")
 	}
 
 	if len(password) < 8 {
-		return errors.NewAppError(errors.ErrValidation.Code, "Password must be at least 8 characters long", nil)
+		return errors.New("password must be at least 8 characters long")
 	}
 
 	var (
@@ -86,19 +85,19 @@ func ValidatePassword(password string) error {
 	}
 
 	if !hasUpper {
-		return errors.NewAppError(errors.ErrValidation.Code, "Password must contain at least one uppercase letter", nil)
+		return errors.New("password must contain at least one uppercase letter")
 	}
 
 	if !hasLower {
-		return errors.NewAppError(errors.ErrValidation.Code, "Password must contain at least one lowercase letter", nil)
+		return errors.New("password must contain at least one lowercase letter")
 	}
 
 	if !hasDigit {
-		return errors.NewAppError(errors.ErrValidation.Code, "Password must contain at least one digit", nil)
+		return errors.New("password must contain at least one digit")
 	}
 
 	if !hasSpecial {
-		return errors.NewAppError(errors.ErrValidation.Code, "Password must contain at least one special character", nil)
+		return errors.New("password must contain at least one special character")
 	}
 
 	return nil
