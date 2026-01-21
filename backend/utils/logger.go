@@ -16,11 +16,11 @@ var (
 )
 
 func SetupLogger() {
-	isLocalhost := os.Getenv("HOST") == "localhost"
-	LogFormat = httplog.SchemaECS.Concise(isLocalhost)
+	isDevelopmentEnv := os.Getenv("HOST") == "development"
+	LogFormat = httplog.SchemaECS.Concise(isDevelopmentEnv)
 
-	Logger = slog.New(logHandler(isLocalhost, &slog.HandlerOptions{
-		AddSource:   !isLocalhost,
+	Logger = slog.New(logHandler(isDevelopmentEnv, &slog.HandlerOptions{
+		AddSource:   !isDevelopmentEnv,
 		ReplaceAttr: LogFormat.ReplaceAttr,
 	}))
 
@@ -29,8 +29,8 @@ func SetupLogger() {
 	slog.SetLogLoggerLevel(slog.LevelError)
 }
 
-func logHandler(isLocalhost bool, handlerOpts *slog.HandlerOptions) slog.Handler {
-	if isLocalhost {
+func logHandler(isDevelopmentEnv bool, handlerOpts *slog.HandlerOptions) slog.Handler {
+	if isDevelopmentEnv {
 		// Pretty logs for localhost development.
 		return devslog.NewHandler(os.Stdout, &devslog.Options{
 			SortKeys:           true,
