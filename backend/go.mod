@@ -10,7 +10,7 @@ require (
 	github.com/go-chi/traceid v0.3.0
 	github.com/golang-cz/devslog v0.0.15
 	github.com/joho/godotenv v1.5.1
-	github.com/lib/pq v1.10.9
+	github.com/lib/pq v1.11.0
 )
 
 require (
