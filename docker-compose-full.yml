@@ -58,7 +58,7 @@ services:
 
   # Local SMTP server for intercepting e-mails
   smtp4dev:
-    image: rnwood/smtp4dev:v3.12
+    image: rnwood/smtp4dev:v3.14
     restart: unless-stopped
     ports:
       - "8081:80"
@@ -83,7 +83,7 @@ services:
   ###########
 
   seaweed:
-    image: chrislusf/seaweedfs:4.05
+    image: chrislusf/seaweedfs:4.09
     ports:
       - 8333:8333
     environment:
