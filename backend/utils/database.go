@@ -14,7 +14,7 @@ import (
 
 var DB *sql.DB
 
-func configureEnv() (error, map[string]string) {
+func configureEnv() (map[string]string, error) {
 	envFields := []string{
 		"RUNCODES_DB_HOST",
 		"RUNCODES_DB_PORT",
@@ -29,22 +29,22 @@ func configureEnv() (error, map[string]string) {
 		value := os.Getenv(field)
 		if value == "" {
 			err := fmt.Sprintf("%s environment variable is not set", field)
-			Logger.Error(err)
-			return errors.New(err), nil
+			slog.Error(err)
+			return nil, errors.New(err)
 		}
 		env[field] = value
 	}
 
-	return nil, env
+	return env, nil
 }
 
-// Configures and connects to the database using the values defined on the .env file or environment variables.
+// InitDB configures and connects to the database using values from the .env file or environment variables.
 //
 // The database can be accessed through the utils.DB variable.
 func InitDB() error {
-	err, env := configureEnv()
+	env, err := configureEnv()
 	if err != nil {
-		Logger.Error("Failed to retrieve environment variables for database connection")
+		slog.Error("Failed to retrieve environment variables for database connection")
 		return err
 	}
 
@@ -55,16 +55,16 @@ func InitDB() error {
 
 	DB, err = sql.Open("postgres", connectionString)
 	if err != nil {
-		Logger.Error("Failed to open database connection", slog.String("error", err.Error()))
+		slog.Error("Failed to open database connection", slog.String("error", err.Error()))
 		return err
 	}
 
 	if err = DB.Ping(); err != nil {
-		Logger.Error("Failed to ping database", slog.String("error", err.Error()))
+		slog.Error("Failed to ping database", slog.String("error", err.Error()))
 		return err
 	}
 
-	Logger.Info("Connected to the database successfully")
+	slog.Info("Connected to the database successfully")
 
 	DB.SetMaxOpenConns(25)
 	DB.SetMaxIdleConns(25)

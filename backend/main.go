@@ -20,7 +20,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -35,20 +34,20 @@ import (
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Printf("No .env file found, using environment variables %s\n", err)
+		slog.Info("No .env file found, using environment variables %s\n", err)
 	}
 
 	utils.SetupLogger()
 
 	apiPort := os.Getenv("RUNCODES_API_PORT")
 	if apiPort == "" {
-		utils.Logger.Error("RUNCODES_API_PORT environment variable is not set\n")
+		slog.Error("RUNCODES_API_PORT environment variable is not set\n")
 		return
 	}
 
 	err = utils.InitDB()
 	if err != nil {
-		utils.Logger.Error("Failed to initialize database.")
+		slog.Error("Failed to initialize database.")
 		return
 	}
 
@@ -56,9 +55,9 @@ func main() {
 	configureMiddleware(r)
 	createRoutes(r)
 
-	utils.Logger.Info(fmt.Sprintf("Server is running on port %s\n", apiPort))
+	slog.Info(fmt.Sprintf("Server is running on port %s\n", apiPort))
 	if err := http.ListenAndServe(fmt.Sprintf("localhost:%s", apiPort), r); err != nil {
-		utils.Logger.Error("Server failed", slog.String("error", err.Error()))
+		slog.Error("Server failed", slog.String("error", err.Error()))
 		return
 	}
 }

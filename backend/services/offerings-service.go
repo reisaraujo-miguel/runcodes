@@ -76,7 +76,7 @@ func CreateOffering(req *models.CreateOfferingRequest, ctx context.Context) *mod
 		0, 0, 0, req.Name, req.EndDate, enrollmentCode,
 	).Scan(&newOfferingID)
 	if err != nil {
-		utils.Logger.ErrorContext(ctx, "Database error creating offering", slog.String("error", err.Error()))
+		slog.ErrorContext(ctx, "Database error creating offering", slog.String("error", err.Error()))
 		return nil
 	}
 
@@ -93,7 +93,7 @@ func CreateOffering(req *models.CreateOfferingRequest, ctx context.Context) *mod
 func GetOfferings(ctx context.Context) []models.Offering {
 	rows, err := utils.DB.Query("SELECT id, name, end_date FROM offerings")
 	if err != nil {
-		utils.Logger.ErrorContext(ctx, "Database error fetching offerings", slog.String("error", err.Error()))
+		slog.ErrorContext(ctx, "Database error fetching offerings", slog.String("error", err.Error()))
 		return nil
 	}
 	defer rows.Close()
@@ -102,14 +102,14 @@ func GetOfferings(ctx context.Context) []models.Offering {
 	for rows.Next() {
 		var offering models.Offering
 		if err := rows.Scan(&offering.ID, &offering.Name, &offering.EndDate); err != nil {
-			utils.Logger.ErrorContext(ctx, "Row scanning error", slog.String("error", err.Error()))
+			slog.ErrorContext(ctx, "Row scanning error", slog.String("error", err.Error()))
 			continue
 		}
 		offerings = append(offerings, offering)
 	}
 
 	if err := rows.Err(); err != nil {
-		utils.Logger.ErrorContext(ctx, "Row iteration error", slog.String("error", err.Error()))
+		slog.ErrorContext(ctx, "Row iteration error", slog.String("error", err.Error()))
 		return nil
 	}
 
@@ -123,11 +123,11 @@ func GetOfferingByID(id string, ctx context.Context) *models.Offering {
 		Scan(&offering.ID, &offering.Name, &offering.EndDate)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			utils.Logger.ErrorContext(ctx, fmt.Sprintf("Offering with ID %s not found", id), slog.String("error", err.Error()))
+			slog.ErrorContext(ctx, fmt.Sprintf("Offering with ID %s not found", id), slog.String("error", err.Error()))
 			return nil
 		}
 
-		utils.Logger.ErrorContext(ctx, "Database error fetching offering", slog.String("error", err.Error()))
+		slog.ErrorContext(ctx, "Database error fetching offering", slog.String("error", err.Error()))
 		return nil
 	}
 

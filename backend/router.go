@@ -16,30 +16,31 @@ import (
 	"github.com/go-chi/traceid"
 )
 
-func createRoutes(router *chi.Mux) {
-	s := oauth.NewBearerServer(
-		"mySecretKey-10101",
-		time.Second*120,
-		nil,
-		nil)
+var auth *oauth.BearerServer = oauth.NewBearerServer(
+	"mySecretKey-10101",
+	time.Second*120,
+	nil,
+	nil)
 
-	router.Post("/token", s.UserCredentials)
-	router.Post("/auth", s.ClientCredentials)
+func createRoutes(router *chi.Mux) {
+	router.Post("/token", auth.UserCredentials)
+	router.Post("/auth", auth.ClientCredentials)
 
 	router.Post("/api/offerings/create", handlers.CreateOffering)
 	router.Get("/api/offerings", handlers.GetOfferings)
 }
 
-// Configures traceid, RequestLogger, Recoverer and cors.handler
+// configureMiddleware configures traceid, RequestLogger, Recoverer and cors.handler
 func configureMiddleware(router *chi.Mux) {
 	router.Use(traceid.Middleware)
 
 	router.Use(httplog.RequestLogger(utils.Logger, &httplog.Options{
 		Level:              slog.LevelInfo,
 		Schema:             utils.LogFormat,
-		RecoverPanics:      true,
 		LogRequestHeaders:  []string{"Origin"},
 		LogResponseHeaders: []string{},
+		LogRequestBody:     isDebugHeaderSet,
+		LogResponseBody:    isDebugHeaderSet,
 		// Log all requests with invalid payload as curl command.
 		LogExtraAttrs: func(req *http.Request, reqBody string, respStatus int) []slog.Attr {
 			if respStatus == 400 || respStatus == 422 {
@@ -50,24 +51,18 @@ func configureMiddleware(router *chi.Mux) {
 		},
 	}))
 
-	// Set request log attribute from within middleware.
-	router.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := r.Context()
-
-			httplog.SetAttrs(ctx, slog.String("user", "user1"))
-
-			next.ServeHTTP(w, r.WithContext(ctx))
-		})
-	})
-
 	router.Use(middleware.Recoverer)
+
 	router.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"*"},
-		AllowedMethods:   []string{"GET", "PUT", "POST", "DELETE", "HEAD", "OPTION"},
-		AllowedHeaders:   []string{"User-Agent", "Content-Type", "Accept", "Accept-Encoding", "Accept-Language", "Cache-Control", "Connection", "DNT", "Host", "Origin", "Pragma", "Referer"},
+		AllowedMethods:   []string{"GET", "PUT", "POST", "DELETE", "HEAD", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		ExposedHeaders:   []string{"Link"},
-		AllowCredentials: true,
+		AllowCredentials: false,
 		MaxAge:           300,
 	}))
+}
+
+func isDebugHeaderSet(r *http.Request) bool {
+	return r.Header.Get("Debug") == "reveal-body-logs"
 }

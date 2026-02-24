@@ -8,7 +8,6 @@ import (
 
 	"runcodes/models"
 	"runcodes/services"
-	"runcodes/utils"
 )
 
 func CreateOffering(w http.ResponseWriter, r *http.Request) {
@@ -17,7 +16,7 @@ func CreateOffering(w http.ResponseWriter, r *http.Request) {
 	var req models.CreateOfferingRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		utils.Logger.ErrorContext(ctx, "Failed to decode offering creation request", slog.String("error", err.Error()))
+		slog.ErrorContext(ctx, "Failed to decode offering creation request", slog.String("error", err.Error()))
 		return
 	}
 
@@ -65,5 +64,5 @@ func GetOfferingByID(w http.ResponseWriter, r *http.Request) {
 	// Extract offering ID from URL parameters
 	// This would typically use gorilla/mux or similar router
 	// For now, we'll implement this when the router supports it
-	utils.Logger.ErrorContext(ctx, "GetOfferingByID not implemented")
+	slog.ErrorContext(ctx, "GetOfferingByID not implemented")
 }
