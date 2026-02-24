@@ -15,6 +15,9 @@ var (
 	LogFormat *httplog.Schema
 )
 
+// Uses go-chi/httplog and go-chi/traceid as middleware for structured HTTP logging
+//
+// For dev environments (if the env HOST=="development"), uses golang-cz/devslog for pretty printing logs
 func SetupLogger() {
 	isDevelopmentEnv := os.Getenv("HOST") == "development"
 	LogFormat = httplog.SchemaECS.Concise(isDevelopmentEnv)

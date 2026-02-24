@@ -3,6 +3,7 @@ package utils
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -13,7 +14,7 @@ import (
 
 var DB *sql.DB
 
-func configureEnv() map[string]string {
+func configureEnv() (error, map[string]string) {
 	envFields := []string{
 		"RUNCODES_DB_HOST",
 		"RUNCODES_DB_PORT",
@@ -27,24 +28,30 @@ func configureEnv() map[string]string {
 	for _, field := range envFields {
 		value := os.Getenv(field)
 		if value == "" {
-			Logger.Error(fmt.Sprintf("%s environment variable is not set", field))
-			return nil
+			err := fmt.Sprintf("%s environment variable is not set", field)
+			Logger.Error(err)
+			return errors.New(err), nil
 		}
 		env[field] = value
 	}
 
-	return env
+	return nil, env
 }
 
+// Configures and connects to the database using the values defined on the .env file or environment variables.
+//
+// The database can be accessed through the utils.DB variable.
 func InitDB() error {
-	env := configureEnv()
+	err, env := configureEnv()
+	if err != nil {
+		Logger.Error("Failed to retrieve environment variables for database connection")
+		return err
+	}
 
 	connectionString := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		env["RUNCODES_DB_HOST"], env["RUNCODES_DB_PORT"], env["RUNCODES_DB_USER"], env["RUNCODES_DB_PASSWORD"], env["RUNCODES_DB_NAME"],
 	)
-
-	var err error
 
 	DB, err = sql.Open("postgres", connectionString)
 	if err != nil {
