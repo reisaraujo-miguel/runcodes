@@ -34,20 +34,20 @@ import (
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		slog.Info("No .env file found, using environment variables %s\n", err)
+		slog.Info("No .env file found, using environment variables", slog.String("error", err.Error()))
 	}
 
 	utils.SetupLogger()
 
 	apiPort := os.Getenv("RUNCODES_API_PORT")
 	if apiPort == "" {
-		slog.Error("RUNCODES_API_PORT environment variable is not set\n")
+		slog.Error("RUNCODES_API_PORT environment variable is not set")
 		return
 	}
 
 	err = utils.InitDB()
 	if err != nil {
-		slog.Error("Failed to initialize database.")
+		slog.Error("Failed to initialize database")
 		return
 	}
 

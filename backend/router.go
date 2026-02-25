@@ -3,6 +3,7 @@ package main
 import (
 	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"runcodes/handlers"
@@ -17,7 +18,7 @@ import (
 )
 
 var auth *oauth.BearerServer = oauth.NewBearerServer(
-	"mySecretKey-10101",
+	os.Getenv("RUNCODES_OAUTH_SECRET"),
 	time.Second*120,
 	nil,
 	nil)
