@@ -41,17 +41,17 @@ func main() {
 	apiPort := os.Getenv("RUNCODES_API_PORT")
 	if apiPort == "" {
 		slog.Error("RUNCODES_API_PORT environment variable is not set")
-		return
+		os.Exit(1)
 	}
 
 	if err := utils.InitDB(); err != nil {
 		slog.Error("Failed to initialize database")
-		return
+		os.Exit(1)
 	}
 
 	if err := utils.SetupJWT(); err != nil {
 		slog.Error("Failed to setup JWT", slog.String("error", err.Error()))
-		return
+		os.Exit(1)
 	}
 
 	r := chi.NewRouter()
@@ -59,8 +59,8 @@ func main() {
 	createRoutes(r)
 
 	slog.Info("Server is running", slog.String("port", apiPort))
-	if err := http.ListenAndServe(fmt.Sprintf("localhost:%s", apiPort), r); err != nil {
+	if err := http.ListenAndServe(fmt.Sprintf(":%s", apiPort), r); err != nil {
 		slog.Error("Server failed", slog.String("error", err.Error()))
-		return
+		os.Exit(1)
 	}
 }

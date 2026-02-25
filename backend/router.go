@@ -41,11 +41,14 @@ func configureMiddleware(router *chi.Mux) {
 		LogResponseBody:    isDebugHeaderSet,
 		// Log all requests with invalid payload as curl command.
 		LogExtraAttrs: func(req *http.Request, reqBody string, respStatus int) []slog.Attr {
-			if respStatus == 400 || respStatus == 422 {
-				sanitized := req.Clone(req.Context())
-				sanitized.Header.Del("Authorization")
-				return []slog.Attr{slog.String("curl", httplog.CURL(sanitized, reqBody))}
+			if !isDebugHeaderSet(req) ||
+				(respStatus != http.StatusBadRequest && respStatus != http.StatusUnprocessableEntity) {
+				return nil
 			}
+			sanitized := req.Clone(req.Context())
+			sanitized.Header.Del("Authorization")
+			return []slog.Attr{slog.String("curl", httplog.CURL(sanitized, reqBody))}
+
 			return nil
 		},
 	}))
