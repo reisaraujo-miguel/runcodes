@@ -32,8 +32,7 @@ import (
 )
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
+	if err := godotenv.Load(); err != nil {
 		slog.Info("No .env file found, using environment variables", slog.String("error", err.Error()))
 	}
 
@@ -45,13 +44,15 @@ func main() {
 		return
 	}
 
-	err = utils.InitDB()
-	if err != nil {
+	if err := utils.InitDB(); err != nil {
 		slog.Error("Failed to initialize database")
 		return
 	}
 
-	utils.SetupJWT()
+	if err := utils.SetupJWT(); err != nil {
+		slog.Error("Failed to setup JWT", slog.String("error", err.Error()))
+		return
+	}
 
 	r := chi.NewRouter()
 	configureMiddleware(r)

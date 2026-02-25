@@ -3,6 +3,7 @@ package main
 import (
 	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"runcodes/handlers"
@@ -22,8 +23,8 @@ func createRoutes(router *chi.Mux) {
 		r.Use(jwtauth.Verifier(utils.TokenAuth))
 		r.Use(jwtauth.Authenticator(utils.TokenAuth))
 
-		router.Post("/api/offerings/create", handlers.CreateOffering)
-		router.Get("/api/offerings", handlers.GetOfferings)
+		r.Post("/api/offerings/create", handlers.CreateOffering)
+		r.Get("/api/offerings", handlers.GetOfferings)
 	})
 }
 
@@ -65,5 +66,5 @@ func configureMiddleware(router *chi.Mux) {
 
 // isDebugHeaderSet returns if the debug header is set on the request
 func isDebugHeaderSet(r *http.Request) bool {
-	return r.Header.Get("Debug") == "reveal-body-logs"
+	return os.Getenv("HOST") != "production" && r.Header.Get("Debug") == "reveal-body-logs"
 }

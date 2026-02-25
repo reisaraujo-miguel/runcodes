@@ -2,6 +2,7 @@
 package utils
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"time"
@@ -14,13 +15,16 @@ var TokenAuth *jwtauth.JWTAuth
 
 // SetupJWT reads the JWT secret from the environment and creates a new jwtauth
 // that can be accessed via the utils.TokenAuth variable
-func SetupJWT() {
+func SetupJWT() error {
 	secret := os.Getenv("RUNCODES_JWT_SECRET")
 
 	if secret == "" {
-		slog.Error("RUNCODES_JWT_SECRET is not set")
-		os.Exit(1)
+		err := fmt.Errorf("RUNCODES_JWT_SECRET is not set")
+		slog.Error(err.Error())
+		return err
 	}
 
 	TokenAuth = jwtauth.New("HS256", secret, nil, jwt.WithAcceptableSkew(30*time.Second))
+
+	return nil
 }
