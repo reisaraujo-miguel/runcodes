@@ -51,11 +51,13 @@ func main() {
 		return
 	}
 
+	utils.SetupJWT()
+
 	r := chi.NewRouter()
 	configureMiddleware(r)
 	createRoutes(r)
 
-	slog.Info(fmt.Sprintf("Server is running on port %s\n", apiPort))
+	slog.Info("Server is running", slog.String("port", apiPort))
 	if err := http.ListenAndServe(fmt.Sprintf("localhost:%s", apiPort), r); err != nil {
 		slog.Error("Server failed", slog.String("error", err.Error()))
 		return

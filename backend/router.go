@@ -3,7 +3,6 @@ package main
 import (
 	"log/slog"
 	"net/http"
-	"os"
 	"time"
 
 	"runcodes/handlers"
@@ -13,22 +12,19 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/go-chi/httplog/v3"
-	"github.com/go-chi/oauth"
+	"github.com/go-chi/httprate"
+	"github.com/go-chi/jwtauth/v5"
 	"github.com/go-chi/traceid"
 )
 
-var auth *oauth.BearerServer = oauth.NewBearerServer(
-	os.Getenv("RUNCODES_OAUTH_SECRET"),
-	time.Second*120,
-	nil,
-	nil)
-
 func createRoutes(router *chi.Mux) {
-	router.Post("/token", auth.UserCredentials)
-	router.Post("/auth", auth.ClientCredentials)
+	router.Group(func(r chi.Router) {
+		r.Use(jwtauth.Verifier(utils.TokenAuth))
+		r.Use(jwtauth.Authenticator(utils.TokenAuth))
 
-	router.Post("/api/offerings/create", handlers.CreateOffering)
-	router.Get("/api/offerings", handlers.GetOfferings)
+		router.Post("/api/offerings/create", handlers.CreateOffering)
+		router.Get("/api/offerings", handlers.GetOfferings)
+	})
 }
 
 // configureMiddleware configures traceid, RequestLogger, Recoverer and cors.handler
@@ -45,8 +41,9 @@ func configureMiddleware(router *chi.Mux) {
 		// Log all requests with invalid payload as curl command.
 		LogExtraAttrs: func(req *http.Request, reqBody string, respStatus int) []slog.Attr {
 			if respStatus == 400 || respStatus == 422 {
-				req.Header.Del("Authorization")
-				return []slog.Attr{slog.String("curl", httplog.CURL(req, reqBody))}
+				sanitized := req.Clone(req.Context())
+				sanitized.Header.Del("Authorization")
+				return []slog.Attr{slog.String("curl", httplog.CURL(sanitized, reqBody))}
 			}
 			return nil
 		},
@@ -62,8 +59,11 @@ func configureMiddleware(router *chi.Mux) {
 		AllowCredentials: false,
 		MaxAge:           300,
 	}))
+
+	router.Use(httprate.LimitByIP(100, 1*time.Minute))
 }
 
+// isDebugHeaderSet returns if the debug header is set on the request
 func isDebugHeaderSet(r *http.Request) bool {
 	return r.Header.Get("Debug") == "reveal-body-logs"
 }
