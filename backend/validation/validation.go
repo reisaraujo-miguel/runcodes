@@ -3,6 +3,7 @@ package validation
 
 import (
 	"errors"
+	"fmt"
 	"net/mail"
 	"regexp"
 	"strings"
@@ -105,15 +106,15 @@ func ValidatePassword(password string) error {
 
 func ValidateCreateOfferingRequest(email, name, endDate string) error {
 	if err := ValidateEmail(email); err != nil {
-		return err
+		return fmt.Errorf("invalid email error: %s", err)
 	}
 
 	if err := ValidateName(name, "Offering name"); err != nil {
-		return err
+		return fmt.Errorf("invalid name error: %s", err)
 	}
 
 	if err := ValidateDate(endDate, "End date"); err != nil {
-		return err
+		return fmt.Errorf("invalid date error: %s", err)
 	}
 
 	return nil

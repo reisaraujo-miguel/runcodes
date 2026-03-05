@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"runcodes/models"
-	"runcodes/utils"
 )
 
 func loginUser(w http.ResponseWriter, r *http.Request) {
@@ -15,7 +14,7 @@ func loginUser(w http.ResponseWriter, r *http.Request) {
 
 	var req models.LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		utils.Logger.ErrorContext(ctx, "Failed to decode login request", slog.String("error", err.Error()))
+		slog.ErrorContext(ctx, "Failed to decode login request", slog.String("error", err.Error()))
 		return
 	}
 }
