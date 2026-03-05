@@ -28,7 +28,9 @@ func createRoutes(router *chi.Mux) {
 	})
 }
 
-// configureMiddleware configures traceid, RequestLogger, Recoverer and cors.handler
+/*
+configureMiddleware configures traceid, RequestLogger, Recoverer and cors.handler
+*/
 func configureMiddleware(router *chi.Mux) {
 	router.Use(traceid.Middleware)
 
@@ -48,8 +50,6 @@ func configureMiddleware(router *chi.Mux) {
 			sanitized := req.Clone(req.Context())
 			sanitized.Header.Del("Authorization")
 			return []slog.Attr{slog.String("curl", httplog.CURL(sanitized, reqBody))}
-
-			return nil
 		},
 	}))
 

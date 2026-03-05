@@ -38,9 +38,11 @@ func configureEnv() (map[string]string, error) {
 	return env, nil
 }
 
-// InitDB configures and connects to the database using values from the .env file or environment variables.
-//
-// The database can be accessed through the utils.DB variable.
+/*
+InitDB configures and connects to the database using values from the .env file or environment variables.
+
+The database can be accessed through the utils.DB variable.
+*/
 func InitDB() error {
 	env, err := configureEnv()
 	if err != nil {

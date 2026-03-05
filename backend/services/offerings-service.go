@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"net/http"
 	"strings"
 
 	"runcodes/models"
@@ -15,15 +16,21 @@ import (
 	"runcodes/validation"
 )
 
+/*
+enrollmentCodeExists checks in the database if a given enrollment code ia already being used.
+*/
 func enrollmentCodeExists(code string) (bool, error) {
 	var exists bool
 	err := utils.DB.QueryRow("SELECT EXISTS(SELECT 1 FROM offerings WHERE enrollment_code=$1)", code).Scan(&exists)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("Error scanning row: %s", err)
 	}
 	return exists, nil
 }
 
+/*
+generateEnrollmentCode generates a random 4 characters alphanumeric enrollment code
+*/
 func generateEnrollmentCode() (string, error) {
 	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	const maxAttempts = 100
@@ -51,9 +58,17 @@ func generateEnrollmentCode() (string, error) {
 	return "", err
 }
 
-func CreateOffering(req *models.CreateOfferingRequest, ctx context.Context) *models.Offering {
+/*
+CreateOffering creates a new offering using the models.Offering model.
+It either returns a nil offering and a http error status code or returns a valid offering and http.StatusCreated.
+
+HTTP status is returned using the models.HTTPStatus struct.
+*/
+func CreateOffering(req *models.CreateOfferingRequest, ctx context.Context) (*models.Offering, models.HTTPStatus) {
 	if err := validation.ValidateCreateOfferingRequest(req.Email, req.Name, req.EndDate); err != nil {
-		return nil
+		msg := "Error validating offering creation"
+		slog.ErrorContext(ctx, msg, slog.String("Error", err.Error()))
+		return nil, models.HTTPStatus{StatusCode: http.StatusBadRequest, Msg: msg}
 	}
 
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
@@ -62,7 +77,9 @@ func CreateOffering(req *models.CreateOfferingRequest, ctx context.Context) *mod
 
 	enrollmentCode, err := generateEnrollmentCode()
 	if err != nil {
-		return nil
+		msg := "Error generating enrollment code"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		return nil, models.HTTPStatus{StatusCode: http.StatusInternalServerError, Msg: msg}
 	}
 
 	var newOfferingID string
@@ -76,8 +93,9 @@ func CreateOffering(req *models.CreateOfferingRequest, ctx context.Context) *mod
 		0, 0, 0, req.Name, req.EndDate, enrollmentCode,
 	).Scan(&newOfferingID)
 	if err != nil {
-		slog.ErrorContext(ctx, "Database error creating offering", slog.String("error", err.Error()))
-		return nil
+		msg := "Database error creating offering"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		return nil, models.HTTPStatus{StatusCode: http.StatusInternalServerError, Msg: msg}
 	}
 
 	offering := &models.Offering{
@@ -87,14 +105,18 @@ func CreateOffering(req *models.CreateOfferingRequest, ctx context.Context) *mod
 		EnrollmentCode: enrollmentCode,
 	}
 
-	return offering
+	return offering, models.HTTPStatus{StatusCode: http.StatusCreated, Msg: "Offering created"}
 }
 
-func GetOfferings(ctx context.Context) []models.Offering {
+/*
+GetOfferings returns the fields "id", "name", and "end_date" for every available offering.
+*/
+func GetOfferings(ctx context.Context) ([]models.Offering, models.HTTPStatus) {
 	rows, err := utils.DB.Query("SELECT id, name, end_date FROM offerings")
 	if err != nil {
-		slog.ErrorContext(ctx, "Database error fetching offerings", slog.String("error", err.Error()))
-		return nil
+		msg := "Database error fetching offerings"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		return nil, models.HTTPStatus{StatusCode: http.StatusInternalServerError, Msg: msg}
 	}
 	defer rows.Close()
 
@@ -109,27 +131,32 @@ func GetOfferings(ctx context.Context) []models.Offering {
 	}
 
 	if err := rows.Err(); err != nil {
-		slog.ErrorContext(ctx, "Row iteration error", slog.String("error", err.Error()))
-		return nil
+		msg := "Row iteration error"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		return nil, models.HTTPStatus{StatusCode: http.StatusInternalServerError, Msg: msg}
 	}
 
-	return offerings
+	return offerings, models.HTTPStatus{StatusCode: http.StatusOK, Msg: "offerings gathered"}
 }
 
-func GetOfferingByID(id string, ctx context.Context) *models.Offering {
+/*
+GetOfferingByID returns the "name" and "end_date" of a specific offering delimited by the offering id key
+*/
+func GetOfferingByID(id string, ctx context.Context) (*models.Offering, models.HTTPStatus) {
 	var offering models.Offering
 
 	err := utils.DB.QueryRow("SELECT id, name, end_date FROM offerings WHERE id = $1", id).
 		Scan(&offering.ID, &offering.Name, &offering.EndDate)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			slog.ErrorContext(ctx, fmt.Sprintf("Offering with ID %s not found", id), slog.String("error", err.Error()))
-			return nil
+			msg := fmt.Sprintf("Offering with ID %s not found", id)
+			slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+			return nil, models.HTTPStatus{StatusCode: http.StatusNotFound, Msg: msg}
 		}
-
-		slog.ErrorContext(ctx, "Database error fetching offering", slog.String("error", err.Error()))
-		return nil
+		msg := "Database error fetching offering"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		return nil, models.HTTPStatus{StatusCode: http.StatusInternalServerError, Msg: msg}
 	}
 
-	return &offering
+	return &offering, models.HTTPStatus{StatusCode: http.StatusFound, Msg: "offering found"}
 }
