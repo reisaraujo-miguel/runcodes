@@ -58,7 +58,7 @@ services:
 
   # Local SMTP server for intercepting e-mails
   smtp4dev:
-    image: rnwood/smtp4dev:v3.14
+    image: rnwood/smtp4dev:v3.15
     restart: unless-stopped
     ports:
       - "8081:80"
