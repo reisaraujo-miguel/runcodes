@@ -86,7 +86,7 @@ services:
   ###########
 
   seaweed:
-    image: chrislusf/seaweedfs:4.13
+    image: chrislusf/seaweedfs:4.17
     ports:
       - 8333:8333
     environment:
