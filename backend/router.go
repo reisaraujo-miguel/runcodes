@@ -19,6 +19,20 @@ import (
 )
 
 func createRoutes(router *chi.Mux) {
+	// debug routes
+
+	if os.Getenv(debugModeEnv) == "true" {
+		router.Group(func(r chi.Router) {
+			r.Get("/debugAuth", handlers.GenerateDebugToken)
+		})
+	}
+
+	// public routes
+	router.Group(func(r chi.Router) {
+		// r.Get("/auth", handlers.GenerateToken)
+	})
+
+	// protected routes
 	router.Group(func(r chi.Router) {
 		r.Use(jwtauth.Verifier(utils.TokenAuth))
 		r.Use(jwtauth.Authenticator(utils.TokenAuth))
@@ -28,9 +42,7 @@ func createRoutes(router *chi.Mux) {
 	})
 }
 
-/*
-configureMiddleware configures traceid, RequestLogger, Recoverer and cors.handler
-*/
+// configureMiddleware configures traceid, RequestLogger, Recoverer and cors.handler
 func configureMiddleware(router *chi.Mux) {
 	router.Use(traceid.Middleware)
 
@@ -69,5 +81,5 @@ func configureMiddleware(router *chi.Mux) {
 
 // isDebugHeaderSet returns if the debug header is set on the request
 func isDebugHeaderSet(r *http.Request) bool {
-	return os.Getenv("HOST") != "production" && r.Header.Get("Debug") == "reveal-body-logs"
+	return os.Getenv(debugModeEnv) == "true" && r.Header.Get("Debug") == "reveal-body-logs"
 }

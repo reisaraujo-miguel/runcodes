@@ -19,6 +19,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -31,7 +32,16 @@ import (
 	_ "github.com/lib/pq"
 )
 
+const debugModeEnv string = "DEBUG_MODE"
+
 func main() {
+	debugMode := flag.Bool("debug", false, "Sets the server to development mode")
+	flag.Parse()
+
+	if *debugMode {
+		os.Setenv(debugModeEnv, "true")
+	}
+
 	if err := godotenv.Load(); err != nil {
 		slog.Info("No .env file found, using environment variables", slog.String("error", err.Error()))
 	}
@@ -58,7 +68,11 @@ func main() {
 	configureMiddleware(r)
 	createRoutes(r)
 
-	slog.Info("Server is running", slog.String("port", apiPort))
+	if os.Getenv(debugModeEnv) == "true" {
+		slog.Info("Server is running in debug mode", slog.String("port", apiPort))
+	} else {
+		slog.Info("Server is running", slog.String("port", apiPort))
+	}
 	if err := http.ListenAndServe(fmt.Sprintf(":%s", apiPort), r); err != nil {
 		slog.Error("Server failed", slog.String("error", err.Error()))
 		os.Exit(1)

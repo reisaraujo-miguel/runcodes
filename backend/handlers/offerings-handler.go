@@ -8,6 +8,7 @@ import (
 
 	"runcodes/models"
 	"runcodes/services"
+	"runcodes/utils"
 )
 
 /*
@@ -19,49 +20,21 @@ func CreateOffering(w http.ResponseWriter, r *http.Request) {
 	var req models.CreateOfferingRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		slog.ErrorContext(ctx, "Failed to decode offering creation request", slog.String("error", err.Error()))
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		response := models.Response{
-			Success: false,
-			Message: "Failed to decode offering creation request",
-			Data: map[string]any{
-				"error": err.Error(),
-			},
-		}
-
+		msg := "Failed to decode offering creation request"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		utils.WriteResponse(w, http.StatusBadRequest, false, msg, nil)
 		return
 	}
 
-	offering, httpStatus := services.CreateOffering(&req, ctx)
-
-	if offering == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(httpStatus.StatusCode)
-		response := models.Response{
-			Success: false,
-			Message: "Failed to decode offering creation request",
-			Data: map[string]any{
-				"error": httpStatus.Msg,
-			},
-		}
+	offering, httpStatus, err := services.CreateOffering(&req, ctx)
+	if err != nil {
+		msg := "Failed to create offering"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		utils.WriteResponse(w, httpStatus.StatusCode, false, msg, httpStatus.Msg)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(httpStatus.StatusCode)
-
-	response := models.Response{
-		Success: true,
-		Message: httpStatus.Msg,
-		Data: map[string]any{
-			"offering":        offering,
-			"enrollment_code": offering.ID,
-		},
-	}
-
-	json.NewEncoder(w).Encode(response)
+	utils.WriteResponse(w, httpStatus.StatusCode, true, httpStatus.Msg, offering)
 }
 
 /*
@@ -70,29 +43,16 @@ GetOfferings handles querying for all existing offerings.
 func GetOfferings(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	offerings, httpStatus := services.GetOfferings(ctx)
-	if offerings == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(httpStatus.StatusCode)
-		response := models.Response{
-			Success: false,
-			Message: "Failed to decode offering creation request",
-			Data: map[string]any{
-				"error": httpStatus.Msg,
-			},
-		}
+	offerings, httpStatus, err := services.GetOfferings(ctx)
+	if err != nil {
+		msg := "Failed to retrieve offerings"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		utils.WriteResponse(w, httpStatus.StatusCode, false, msg, httpStatus.Msg)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(httpStatus.StatusCode)
-	response := models.Response{
-		Success: true,
-		Message: "Offerings retrieved successfully",
-		Data:    offerings,
-	}
-
-	json.NewEncoder(w).Encode(response)
+	msg := "Offerings retrieved successfully"
+	utils.WriteResponse(w, httpStatus.StatusCode, true, msg, offerings)
 }
 
 /*
