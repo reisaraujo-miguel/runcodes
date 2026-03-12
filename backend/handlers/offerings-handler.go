@@ -45,9 +45,11 @@ func GetOfferings(w http.ResponseWriter, r *http.Request) {
 
 	offerings, httpStatus, err := services.GetOfferings(ctx)
 	if err != nil {
-		msg := "Failed to decode offering creation request"
+		msg := "Failed to retrieve offerings"
 		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
 		utils.WriteResponse(w, httpStatus.StatusCode, false, msg, httpStatus.Msg)
+		return
+	}
 		return
 	}
 
