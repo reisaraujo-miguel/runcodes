@@ -14,10 +14,6 @@ updates:
       bun-dependencies:
         patterns:
           - "*"
-    labels:
-      - "bun"
-      - "dependencies"
-      - "dependabot"
     open-pull-requests-limit: 10
     commit-message:
       prefix: "chore(frontend/deps)"
@@ -35,10 +31,6 @@ updates:
       go-dependencies:
         patterns:
           - "*"
-    labels:
-      - "go"
-      - "dependencies"
-      - "dependabot"
     open-pull-requests-limit: 10
     commit-message:
       prefix: "chore(backend/deps)"
@@ -54,10 +46,7 @@ updates:
     groups:
       docker-images:
         patterns:
-         - "*"
-    labels:
-      - "docker"
-      - "dependabot"
+          - "*"
     open-pull-requests-limit: 10
     commit-message:
       prefix: "chore(docker)"
@@ -70,10 +59,7 @@ updates:
     groups:
       docker-images:
         patterns:
-         - "*"
-    labels:
-      - "docker-compose"
-      - "dependabot"
+          - "*"
     open-pull-requests-limit: 10
     commit-message:
       prefix: "chore(docker-compose)"
