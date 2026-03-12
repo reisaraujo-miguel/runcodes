@@ -15,13 +15,15 @@ var (
 	LogFormat *httplog.Schema
 )
 
+const debugModeEnv string = "DEBUG_MODE"
+
 /*
 SetupLogger uses go-chi/httplog and go-chi/traceid as middleware for structured HTTP logging
 
 For dev environments (if the env HOST=="development"), uses golang-cz/devslog for pretty printing logs
 */
 func SetupLogger() {
-	isDevelopmentEnv := os.Getenv("HOST") == "development"
+	isDevelopmentEnv := os.Getenv(debugModeEnv) == "true"
 	LogFormat = httplog.SchemaECS.Concise(isDevelopmentEnv)
 
 	Logger = slog.New(logHandler(isDevelopmentEnv, &slog.HandlerOptions{

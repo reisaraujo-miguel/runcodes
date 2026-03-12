@@ -21,7 +21,7 @@ services:
     restart: unless-stopped
     environment:
       TZ: "America/Sao_Paulo"
-      POSTGRES_PASSWORD: secret_password
+      POSTGRES_PASSWORD: asdasd33
     volumes:
       - runcodes-db-vol:/var/lib/postgresql/data
     networks:

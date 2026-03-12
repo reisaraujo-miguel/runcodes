@@ -18,9 +18,12 @@ import (
 	"github.com/go-chi/traceid"
 )
 
+const debugModeEnv string = "DEBUG_MODE"
+
 func createRoutes(router *chi.Mux) {
 	// debug routes
-	if os.Getenv("HOST") == "development" {
+
+	if os.Getenv(debugModeEnv) == "true" {
 		router.Group(func(r chi.Router) {
 			r.Get("/debugAuth", handlers.GenerateDebugToken)
 		})
@@ -80,5 +83,5 @@ func configureMiddleware(router *chi.Mux) {
 
 // isDebugHeaderSet returns if the debug header is set on the request
 func isDebugHeaderSet(r *http.Request) bool {
-	return os.Getenv("HOST") == "development" && r.Header.Get("Debug") == "reveal-body-logs"
+	return os.Getenv(debugModeEnv) == "true" && r.Header.Get("Debug") == "reveal-body-logs"
 }

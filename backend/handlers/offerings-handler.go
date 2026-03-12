@@ -50,8 +50,6 @@ func GetOfferings(w http.ResponseWriter, r *http.Request) {
 		utils.WriteResponse(w, httpStatus.StatusCode, false, msg, httpStatus.Msg)
 		return
 	}
-		return
-	}
 
 	msg := "Offerings retrieved successfully"
 	utils.WriteResponse(w, httpStatus.StatusCode, true, msg, offerings)
