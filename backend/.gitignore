@@ -1,3 +1,4 @@
 runcodes
 main
 dist/
+.env
