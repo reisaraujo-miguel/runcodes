@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net/http"
 	"strings"
+	"time"
 
 	"runcodes/models"
 	"runcodes/utils"
@@ -84,13 +85,16 @@ func CreateOffering(req *models.CreateOfferingRequest, ctx context.Context) (*mo
 
 	var newOfferingID string
 
-	///////////////////////////////////////////////////////////////////////////////////////////
-	// LEGACY: course_id, year, term are set to 0 because these fields are being deprecated. //
-	// Will be removed when we migrate the database to a new version and schema.             //
-	///////////////////////////////////////////////////////////////////////////////////////////
+	year := time.Now().Year()
+
+	term := 1
+	if time.Now().Year() > 6 {
+		term = 2
+	}
+
 	err = utils.DB.QueryRow(
 		`INSERT INTO offerings (course_id, year, term, classroom, end_date, enrollment_code) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-		1, 0, 0, req.Name, req.EndDate, enrollmentCode,
+		1, year, term, req.Name, req.EndDate, enrollmentCode,
 	).Scan(&newOfferingID)
 	if err != nil {
 		msg := "Database error creating offering"

@@ -32,12 +32,14 @@ import (
 	_ "github.com/lib/pq"
 )
 
+const debugModeEnv string = "DEBUG_MODE"
+
 func main() {
 	debugMode := flag.Bool("debug", false, "Sets the server to development mode")
 	flag.Parse()
 
 	if *debugMode {
-		os.Setenv("DEBUG_MODE", "true")
+		os.Setenv(debugModeEnv, "true")
 	}
 
 	if err := godotenv.Load(); err != nil {
@@ -66,7 +68,7 @@ func main() {
 	configureMiddleware(r)
 	createRoutes(r)
 
-	if *debugMode {
+	if os.Getenv(debugModeEnv) == "true" {
 		slog.Info("Server is running in debug mode", slog.String("port", apiPort))
 	} else {
 		slog.Info("Server is running", slog.String("port", apiPort))

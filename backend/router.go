@@ -18,8 +18,6 @@ import (
 	"github.com/go-chi/traceid"
 )
 
-const debugModeEnv string = "DEBUG_MODE"
-
 func createRoutes(router *chi.Mux) {
 	// debug routes
 

@@ -8,11 +8,12 @@ services:
       - runcodes-network
     environment:
       TZ: "America/Sao_Paulo"
+      RUNCODES_JWT_SECRET: "${RUNCODES_JWT_SECRET:-mySecretKey-10101}"
       RUNCODES_API_PORT: "8443"
       RUNCODES_DB_HOST: "database"
       RUNCODES_DB_PORT: "5432"
       RUNCODES_DB_USER: "runcodes"
-      RUNCODES_DB_PASSWORD: "asdasd33"
+      RUNCODES_DB_PASSWORD: "${POSTGRES_PASSWORD:-asdasd33}"
       RUNCODES_DB_NAME: "runcodes"
 
   # PostgreSQL Database
@@ -21,7 +22,7 @@ services:
     restart: unless-stopped
     environment:
       TZ: "America/Sao_Paulo"
-      POSTGRES_PASSWORD: asdasd33
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-asdasd33}"
     volumes:
       - runcodes-db-vol:/var/lib/postgresql/data
     networks:
