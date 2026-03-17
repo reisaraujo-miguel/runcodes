@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"strings"
 	"time"
@@ -40,7 +40,7 @@ func generateEnrollmentCode() (string, error) {
 		result := make([]byte, 4)
 
 		for i := range result {
-			result[i] = charset[rand.Intn(len(charset))]
+			result[i] = charset[rand.IntN(len(charset))]
 		}
 
 		code := string(result)
