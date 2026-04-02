@@ -1,4 +1,4 @@
-package utils
+package handlers
 
 import (
 	"encoding/json"
@@ -10,12 +10,11 @@ import (
 /*
 WriteResponse encodes a models.Response and writes using the provided http.ResponseWriter
 */
-func WriteResponse(w http.ResponseWriter, httpStatus int, success bool, msg string, data any) {
+func WriteResponse(w http.ResponseWriter, httpStatus int, msg string, data any) {
 	w.Header().Set("Content-Type", "application/json")
 
 	w.WriteHeader(httpStatus)
 	response := models.Response{
-		Success: success,
 		Message: msg,
 		Data:    data,
 	}

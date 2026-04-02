@@ -1,5 +1,4 @@
-// Package utils provides utility functions and configurations for the application.
-package utils
+package services
 
 import (
 	"database/sql"
@@ -44,8 +43,9 @@ InitDB configures and connects to the database using values from the .env file o
 The database can be accessed through the utils.DB variable.
 */
 func InitDB() error {
-	env, err := configureEnv()
-	if err != nil {
+	var env map[string]string
+	var err error
+	if env, err = configureEnv(); err != nil {
 		slog.Error("Failed to retrieve environment variables for database connection")
 		return err
 	}
@@ -55,13 +55,12 @@ func InitDB() error {
 		env["RUNCODES_DB_HOST"], env["RUNCODES_DB_PORT"], env["RUNCODES_DB_USER"], env["RUNCODES_DB_PASSWORD"], env["RUNCODES_DB_NAME"],
 	)
 
-	DB, err = sql.Open("postgres", connectionString)
-	if err != nil {
+	if DB, err = sql.Open("postgres", connectionString); err != nil {
 		slog.Error("Failed to open database connection", slog.String("error", err.Error()))
 		return err
 	}
 
-	if err = DB.Ping(); err != nil {
+	if err := DB.Ping(); err != nil {
 		slog.Error("Failed to ping database", slog.String("error", err.Error()))
 		return err
 	}

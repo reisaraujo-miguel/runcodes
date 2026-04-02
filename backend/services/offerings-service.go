@@ -5,34 +5,62 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"log/slog"
 	"math/rand/v2"
-	"net/http"
-	"strings"
 	"time"
 
 	"runcodes/models"
-	"runcodes/utils"
-	"runcodes/validation"
 )
 
 /*
-enrollmentCodeExists checks in the database if a given enrollment code ia already being used.
+CreateOffering creates a new offering using on the platform.
 */
-func enrollmentCodeExists(code string) (bool, error) {
-	var exists bool
-	err := utils.DB.QueryRow("SELECT EXISTS(SELECT 1 FROM offerings WHERE enrollment_code=$1)", code).Scan(&exists)
-	if err != nil {
-		return false, fmt.Errorf("Error scanning row: %s", err)
+func CreateOffering(ctx context.Context, req *models.CreateOfferingRequest) error {
+	var enrollmentCode string
+	var err error
+	if enrollmentCode, err = generateEnrollmentCode(ctx); err != nil {
+		msg := "error generating enrollment code"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		return errors.New(msg)
 	}
-	return exists, nil
+
+	year := time.Now().Year()
+	term := 1
+	if time.Now().Year() > 6 {
+		term = 2
+	}
+
+	var tx *sql.Tx
+	if tx, err = DB.BeginTx(ctx, nil); err != nil {
+		msg := "error initializing the transaction"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		return errors.New(msg)
+	}
+
+	defer tx.Rollback()
+
+	if _, err = tx.ExecContext(ctx,
+		"INSERT INTO offerings (course_id, year, term, classroom, end_date, enrollment_code) VALUES ($1, $2, $3, $4, $5, $6)",
+		1, year, term, req.Name, req.EndDate, enrollmentCode,
+	); err != nil {
+		msg := "database error creating offering"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		return errors.New(msg)
+	}
+
+	if err := tx.Commit(); err != nil {
+		msg := "error during database transaction"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		return errors.New(msg)
+	}
+
+	return nil
 }
 
 /*
 generateEnrollmentCode generates a random 4 characters alphanumeric enrollment code
 */
-func generateEnrollmentCode() (string, error) {
+func generateEnrollmentCode(ctx context.Context) (string, error) {
 	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	const maxAttempts = 100
 
@@ -45,124 +73,52 @@ func generateEnrollmentCode() (string, error) {
 
 		code := string(result)
 
-		exists, err := enrollmentCodeExists(code)
-		if err != nil {
-			return "", err
-		}
-		if !exists {
+		if exists, err := enrollmentCodeExists(ctx, code); err != nil {
+			msg := "error while checking if a new enrollment code is valid"
+			slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+			return "", errors.New(msg)
+		} else if !exists {
 			return code, nil
 		}
 	}
 
-	err := errors.New("failed to generate unique enrollment code after maximum attempts")
+	msg := "failed to generate unique enrollment code after maximum attempts"
+	slog.ErrorContext(ctx, msg)
 
-	return "", err
+	return "", errors.New(msg)
 }
 
 /*
-CreateOffering creates a new offering using the models.Offering model.
-It either returns a nil offering and a http error status code or returns a valid offering and http.StatusCreated.
-
-HTTP status is returned using the models.HTTPStatus struct.
+enrollmentCodeExists checks in the database if a given enrollment code is already being used.
+It *can* return an error if the database check fails
 */
-func CreateOffering(req *models.CreateOfferingRequest, ctx context.Context) (*models.Offering, models.HTTPStatus, error) {
-	if err := validation.ValidateCreateOfferingRequest(req.Email, req.Name, req.EndDate); err != nil {
-		msg := "Error validating offering creation"
-		slog.ErrorContext(ctx, msg, slog.String("Error", err.Error()))
-		return nil, models.HTTPStatus{StatusCode: http.StatusBadRequest, Msg: msg}, err
-	}
-
-	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
-	req.Name = strings.TrimSpace(req.Name)
-	req.EndDate = strings.TrimSpace(req.EndDate)
-
-	enrollmentCode, err := generateEnrollmentCode()
-	if err != nil {
-		msg := "Error generating enrollment code"
+func enrollmentCodeExists(ctx context.Context, code string) (bool, error) {
+	var tx *sql.Tx
+	var err error
+	if tx, err = DB.BeginTx(ctx, nil); err != nil {
+		msg := "error initializing the transaction"
 		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return nil, models.HTTPStatus{StatusCode: http.StatusInternalServerError, Msg: msg}, err
+		return false, errors.New(msg)
 	}
 
-	var newOfferingID string
+	defer tx.Rollback()
 
-	year := time.Now().Year()
+	var id int
+	rows := DB.QueryRowContext(ctx, "SELECT id FROM offerings WHERE enrollment_code = $1", code).Scan(&id)
 
-	term := 1
-	if time.Now().Year() > 6 {
-		term = 2
-	}
-
-	err = utils.DB.QueryRow(
-		`INSERT INTO offerings (course_id, year, term, classroom, end_date, enrollment_code) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-		1, year, term, req.Name, req.EndDate, enrollmentCode,
-	).Scan(&newOfferingID)
-	if err != nil {
-		msg := "Database error creating offering"
+	if err := tx.Commit(); err != nil {
+		msg := "error during database transaction"
 		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return nil, models.HTTPStatus{StatusCode: http.StatusInternalServerError, Msg: msg}, err
+		return false, errors.New(msg)
 	}
 
-	offering := &models.Offering{
-		ID:             newOfferingID,
-		Name:           req.Name,
-		EndDate:        req.EndDate,
-		EnrollmentCode: enrollmentCode,
+	if rows == sql.ErrNoRows {
+		return false, nil // enrollment code does not exists
+	} else if rows != nil {
+		msg := "error querying enrolment code"
+		slog.ErrorContext(ctx, msg, slog.String("error", rows.Error()))
+		return false, errors.New(msg)
 	}
 
-	return offering, models.HTTPStatus{StatusCode: http.StatusCreated, Msg: "Offering created"}, nil
-}
-
-/*
-GetOfferings returns the fields "id", "name", and "end_date" for every available offering.
-*/
-func GetOfferings(ctx context.Context) ([]models.Offering, models.HTTPStatus, error) {
-	rows, err := utils.DB.Query("SELECT id, name, end_date FROM offerings")
-	if err != nil {
-		msg := "Database error fetching offerings"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return nil, models.HTTPStatus{StatusCode: http.StatusInternalServerError, Msg: msg}, err
-	}
-	defer rows.Close()
-
-	var offerings []models.Offering
-	for rows.Next() {
-		var offering models.Offering
-		if err := rows.Scan(&offering.ID, &offering.Name, &offering.EndDate); err != nil {
-			slog.ErrorContext(ctx, "Row scanning error", slog.String("error", err.Error()))
-			continue
-		}
-		offerings = append(offerings, offering)
-	}
-
-	if err := rows.Err(); err != nil {
-		msg := "Row iteration error"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return nil, models.HTTPStatus{StatusCode: http.StatusInternalServerError, Msg: msg}, err
-	}
-
-	return offerings, models.HTTPStatus{StatusCode: http.StatusOK, Msg: "offerings gathered"}, nil
-}
-
-/*
-GetOfferingByID returns the "name" and "end_date" of a specific offering delimited by the offering id key
-*/
-func GetOfferingByID(id string, ctx context.Context) (*models.Offering, models.HTTPStatus, error) {
-	var offering models.Offering
-
-	err := utils.DB.QueryRow("SELECT id, name, end_date FROM offerings WHERE id = $1", id).
-		Scan(&offering.ID, &offering.Name, &offering.EndDate)
-	if err != nil {
-		switch {
-		case err == sql.ErrNoRows:
-			msg := fmt.Sprintf("Offering with ID %s not found", id)
-			slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-			return nil, models.HTTPStatus{StatusCode: http.StatusNotFound, Msg: msg}, err
-		default:
-			msg := "Database error fetching offering"
-			slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-			return nil, models.HTTPStatus{StatusCode: http.StatusInternalServerError, Msg: msg}, err
-		}
-	}
-
-	return &offering, models.HTTPStatus{StatusCode: http.StatusFound, Msg: "offering found"}, nil
+	return true, nil // enrollment code does exists
 }

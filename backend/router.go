@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"runcodes/handlers"
-	"runcodes/utils"
+	"runcodes/validation"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -19,26 +19,17 @@ import (
 )
 
 func createRoutes(router *chi.Mux) {
-	// debug routes
-
-	if os.Getenv(debugModeEnv) == "true" {
-		router.Group(func(r chi.Router) {
-			r.Get("/debugAuth", handlers.GenerateDebugToken)
-		})
-	}
-
 	// public routes
 	router.Group(func(r chi.Router) {
-		// r.Get("/auth", handlers.GenerateToken)
+		r.Post("/api/v1/user/signin", handlers.SignIn)
 	})
 
 	// protected routes
 	router.Group(func(r chi.Router) {
-		r.Use(jwtauth.Verifier(utils.TokenAuth))
-		r.Use(jwtauth.Authenticator(utils.TokenAuth))
+		r.Use(jwtauth.Verifier(validation.TokenAuth))
+		r.Use(jwtauth.Authenticator(validation.TokenAuth))
 
-		r.Post("/api/offerings/create", handlers.CreateOffering)
-		r.Get("/api/offerings", handlers.GetOfferings)
+		r.Post("/api/v1/offerings/create", handlers.CreateOffering)
 	})
 }
 
@@ -46,9 +37,9 @@ func createRoutes(router *chi.Mux) {
 func configureMiddleware(router *chi.Mux) {
 	router.Use(traceid.Middleware)
 
-	router.Use(httplog.RequestLogger(utils.Logger, &httplog.Options{
+	router.Use(httplog.RequestLogger(Logger, &httplog.Options{
 		Level:              slog.LevelInfo,
-		Schema:             utils.LogFormat,
+		Schema:             LogFormat,
 		LogRequestHeaders:  []string{"Origin"},
 		LogResponseHeaders: []string{},
 		LogRequestBody:     isDebugHeaderSet,

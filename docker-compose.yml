@@ -31,6 +31,20 @@ services:
       RUNCODES_DB_PASSWORD: "${RUNCODES_DB_PASSWORD:-asdasd33}"
       RUNCODES_DB_NAME: "runcodes"
 
+  # PostgreSQL Database
+  database:
+    build: ./database/
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      TZ: "America/Sao_Paulo"
+      POSTGRES_PASSWORD: "${RUNCODES_DB_PASSWORD:-asdasd33}"
+    volumes:
+      - runcodes-db-vol:/var/lib/postgresql/data
+    networks:
+      - runcodes-network
+
   # Compiler Engine
   rcc:
     image: ghcr.io/runcodes-icmc/compiler-engine:latest
@@ -42,20 +56,6 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./exec:/exec
-    networks:
-      - runcodes-network
-
-  # PostgreSQL Database
-  database:
-    image: ghcr.io/runcodes-icmc/database:latest-development
-    restart: unless-stopped
-    ports:
-      - "5432:5432"
-    environment:
-      TZ: "America/Sao_Paulo"
-      POSTGRES_PASSWORD: "${RUNCODES_DB_PASSWORD:-asdasd33}"
-    volumes:
-      - runcodes-db-vol:/var/lib/postgresql/data
     networks:
       - runcodes-network
 
