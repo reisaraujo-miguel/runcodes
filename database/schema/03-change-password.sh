@@ -1,12 +1,11 @@
 #!/bin/bash
-set -e
+set -eu
 
-if [ -z "${RUNCODES_PASSWORD}" ]; then
-	echo "ERROR: RUNCODES_PASSWORD environment variable is not set." >&2
-	echo "       Set it before starting the database container." >&2
-	exit 1
-fi
+"${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
 
-psql -v ON_ERROR_STOP=1 -v rc_password="$RUNCODES_PASSWORD" --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-'EOSQL'
-	    ALTER USER runcodes WITH ENCRYPTED PASSWORD :'rc_password';
-EOSQL
+psql -v ON_ERROR_STOP=1 \
+	--username "$POSTGRES_USER" \
+	--dbname "$POSTGRES_DB" \
+	--set rc_password="$POSTGRES_PASSWORD" <<-'EOSQL'
+		ALTER ROLE runcodes WITH ENCRYPTED PASSWORD :'rc_password';
+	EOSQL
