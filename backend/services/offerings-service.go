@@ -7,27 +7,31 @@ import (
 	"errors"
 	"log/slog"
 	"math/rand/v2"
-	"time"
 
 	"runcodes/models"
+
+	"github.com/go-chi/jwtauth/v5"
 )
 
 /*
-CreateOffering creates a new offering using on the platform.
+CreateOffering creates a new offering on the platform.
 */
 func CreateOffering(ctx context.Context, req *models.CreateOfferingRequest) error {
-	var enrollmentCode string
+	var claims map[string]any
 	var err error
-	if enrollmentCode, err = generateEnrollmentCode(ctx); err != nil {
-		msg := "error generating enrollment code"
+	if _, claims, err = jwtauth.FromContext(ctx); err != nil {
+		msg := "failed to authenticate"
 		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
 		return errors.New(msg)
 	}
 
-	year := time.Now().Year()
-	term := 1
-	if time.Now().Year() > 6 {
-		term = 2
+	OwnerID := claims["user_id"]
+
+	var enrollmentCode string
+	if enrollmentCode, err = generateEnrollmentCode(ctx); err != nil {
+		msg := "error generating enrollment code"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		return errors.New(msg)
 	}
 
 	var tx *sql.Tx
@@ -40,8 +44,8 @@ func CreateOffering(ctx context.Context, req *models.CreateOfferingRequest) erro
 	defer tx.Rollback()
 
 	if _, err = tx.ExecContext(ctx,
-		"INSERT INTO offerings (course_id, year, term, classroom, end_date, enrollment_code) VALUES ($1, $2, $3, $4, $5, $6)",
-		1, year, term, req.Name, req.EndDate, enrollmentCode,
+		"INSERT INTO offerings (name, owner_id, end_date, enrollment_code, description) VALUES ($1, $2, $3, $4, $5)",
+		req.Name, OwnerID, req.EndDate, enrollmentCode, req.Description,
 	); err != nil {
 		msg := "database error creating offering"
 		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
