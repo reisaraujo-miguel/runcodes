@@ -1,5 +1,4 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import axios from "axios";
 import { z } from "zod";
 
 import { useState } from "react";
@@ -15,6 +14,12 @@ import { Input } from "@/components/ui/input";
 const formSchema = z.object({
   Name: z.string().min(1, "O nome da turma é obrigatório"),
   EndDate: z.string().optional(),
+  Description: z.string().optional(),
+});
+
+const apiErrorSchema = z.object({
+  error_type: z.string(),
+  error_msg: z.string(),
 });
 
 const API_BASE_URL = import.meta.env.VITE_API_ENDPOINT;
@@ -27,23 +32,31 @@ export function NewClassModal() {
     defaultValues: {
       Name: "",
       EndDate: "",
+      Description: "",
     },
   });
 
   const onSubmit = async (data: z.infer<typeof formSchema>) => {
     try {
-      const response = await axios.post(
-        `${API_BASE_URL}/api/offerings/create`,
-        {
+      const response = await fetch(`${API_BASE_URL}/api/v1/offerings/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           name: data.Name,
           end_date: data.EndDate,
-        },
-      );
-      if (response.data.success) {
+          description: data.Description,
+        }),
+      });
+      if (response.ok) {
         console.log("Turma criada com sucesso!");
         setSubmitted(true);
       } else {
-        console.error("Erro ao criar a turma:", response.data.message);
+        const rawData = await response.json();
+        const parsed = apiErrorSchema.safeParse(rawData);
+        const message = parsed.success
+          ? parsed.data.error_msg
+          : "Erro desconhecido";
+        console.error("Erro ao criar a turma:", message);
       }
     } catch (error) {
       console.error("Erro ao criar a turma:", error);
