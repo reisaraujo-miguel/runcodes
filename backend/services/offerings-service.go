@@ -97,30 +97,14 @@ enrollmentCodeExists checks in the database if a given enrollment code is alread
 It *can* return an error if the database check fails
 */
 func enrollmentCodeExists(ctx context.Context, code string) (bool, error) {
-	var tx *sql.Tx
-	var err error
-	if tx, err = DB.BeginTx(ctx, nil); err != nil {
-		msg := "error initializing the transaction"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return false, errors.New(msg)
-	}
-
-	defer tx.Rollback()
-
 	var id int
-	rows := DB.QueryRowContext(ctx, "SELECT id FROM offerings WHERE enrollment_code = $1", code).Scan(&id)
+	err := DB.QueryRowContext(ctx, "SELECT id FROM offerings WHERE enrollment_code = $1", code).Scan(&id)
 
-	if err := tx.Commit(); err != nil {
-		msg := "error during database transaction"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return false, errors.New(msg)
-	}
-
-	if rows == sql.ErrNoRows {
+	if err == sql.ErrNoRows {
 		return false, nil // enrollment code does not exists
-	} else if rows != nil {
+	} else if err != nil {
 		msg := "error querying enrolment code"
-		slog.ErrorContext(ctx, msg, slog.String("error", rows.Error()))
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
 		return false, errors.New(msg)
 	}
 

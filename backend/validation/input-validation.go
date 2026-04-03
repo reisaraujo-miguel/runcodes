@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/mail"
-	"strconv"
 	"strings"
 	"time"
 
@@ -26,34 +25,18 @@ func ValidateEmail(ctx context.Context, email string) (bool, error) {
 		return false, errors.New(msg)
 	}
 
-	var tx *sql.Tx
-	var err error
-	if tx, err = services.DB.BeginTx(ctx, nil); err != nil {
-		msg := "error initializing the transaction"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return false, errors.New(msg)
-	}
-
-	defer tx.Rollback()
-
 	var id int
-	rows := tx.QueryRowContext(ctx,
+	err := services.DB.QueryRowContext(ctx,
 		`SELECT id FROM users WHERE email = $1`,
 		email,
 	).Scan(&id)
 
-	if err := tx.Commit(); err != nil {
-		msg := "error during database transaction"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return false, errors.New(msg)
-	}
-
-	if rows == sql.ErrNoRows {
+	if err == sql.ErrNoRows {
 		// email does not exists, so it is okay to use it
 		return false, nil
-	} else if rows != nil {
+	} else if err != nil {
 		msg := "database error validating email"
-		slog.ErrorContext(ctx, msg, slog.String("error", rows.Error()))
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
 		return false, errors.New(msg)
 	}
 
@@ -70,7 +53,7 @@ func ValidateRequiredString(name string, maxSize int) error {
 	}
 
 	if len(name) > maxSize {
-		return fmt.Errorf("input must be smaller than %s characters", strconv.Itoa(maxSize))
+		return fmt.Errorf("input must be smaller than %d characters", maxSize)
 	}
 
 	return nil
