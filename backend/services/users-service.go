@@ -11,6 +11,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+/*
+SignIn creates a new user on the database
+*/
 func SignIn(ctx context.Context, req *models.SignInRequest) error {
 	var password string
 	var err error
@@ -47,11 +50,13 @@ func SignIn(ctx context.Context, req *models.SignInRequest) error {
 	return nil
 }
 
+/*
+hashPassword takes a password and returns a hashed password
+*/
 func hashPassword(password string) (string, error) {
-	// Cost factor: 12 is a good default (higher = slower = more secure)
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 12)
-	if err != nil {
+	if bytes, err := bcrypt.GenerateFromPassword([]byte(password), 12); err != nil {
 		return "", err
+	} else {
+		return string(bytes), nil
 	}
-	return string(bytes), nil
 }
