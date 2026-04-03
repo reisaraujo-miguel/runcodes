@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"runcodes/models"
 	"runcodes/services"
@@ -17,16 +18,6 @@ CreateOffering handles new offering creations.
 */
 func CreateOffering(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-
-	/* do later
-	_, claims, err := jwtauth.FromContext(ctx)
-	if err != nil {
-		msg := "Failed to authenticate"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		WriteResponse(w, http.StatusBadRequest, false, msg, err.Error())
-		return
-	}
-	*/
 
 	var req models.CreateOfferingRequest
 
@@ -40,10 +31,23 @@ func CreateOffering(w http.ResponseWriter, r *http.Request) {
 	req.Name = strings.TrimSpace(req.Name)
 	req.EndDate = strings.TrimSpace(req.EndDate)
 
-	if err := validation.CreateOfferingValidation(&req, ctx); err != nil {
-		msg := "error on request validation"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		WriteResponse(w, http.StatusBadRequest, msg, err.Error())
+	if err := validation.ValidateRequiredString(req.Name, 100); err != nil {
+		msg := "invalid name"
+		slog.ErrorContext(ctx, msg, slog.String("Error", err.Error()))
+		WriteResponse(w, http.StatusBadRequest, msg, map[string]string{"error_type": "name", "error_msg": err.Error()})
+		return
+	}
+
+	if date, err := validation.ValidateDate(ctx, req.EndDate); err != nil {
+		msg := "invalid date"
+		slog.ErrorContext(ctx, msg, slog.String("Error", err.Error()))
+		WriteResponse(w, http.StatusBadRequest, msg, map[string]string{"error_type": "date", "error_msg": err.Error()})
+		return
+	} else if date.Before(time.Now()) {
+		msg := "end date can't be before the creation date"
+		slog.ErrorContext(ctx, "invalid date", slog.String("Error", msg))
+		WriteResponse(w, http.StatusBadRequest, msg, map[string]string{"error_type": "date", "error_msg": "end before creation"})
+		return
 	}
 
 	if err := services.CreateOffering(ctx, &req); err != nil {
