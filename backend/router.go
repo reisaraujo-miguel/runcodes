@@ -21,7 +21,7 @@ import (
 func createRoutes(router *chi.Mux) {
 	// public routes
 	router.Group(func(r chi.Router) {
-		r.Post("/api/v1/user/signin", handlers.SignIn)
+		r.Post("/api/v1/user/signup", handlers.SignUp)
 	})
 
 	// protected routes
