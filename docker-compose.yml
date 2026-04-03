@@ -23,12 +23,12 @@ services:
       - runcodes-network
     environment:
       TZ: "America/Sao_Paulo"
-      RUNCODES_JWT_SECRET: "${RUNCODES_JWT_SECRET:-Sup@s3cr3t_Pa$$-10101}"
+      RUNCODES_JWT_SECRET: "${RUNCODES_JWT_SECRET:?RUNCODES_JWT_SECRET must be set}"
       RUNCODES_API_PORT: "8443"
       RUNCODES_DB_HOST: "database"
       RUNCODES_DB_PORT: "5432"
       RUNCODES_DB_USER: "runcodes"
-      RUNCODES_DB_PASSWORD: "${RUNCODES_DB_PASSWORD:-R$unC-Od3s00}"
+      RUNCODES_DB_PASSWORD: "${RUNCODES_DB_PASSWORD:?RUNCODES_DB_PASSWORD must be set}"
       RUNCODES_DB_NAME: "runcodes"
 
   # PostgreSQL Database
@@ -36,11 +36,10 @@ services:
     build: ./database/
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     environment:
       TZ: "America/Sao_Paulo"
-      POSTGRES_PASSWORD: "${RUNCODES_DB_PASSWORD:-R$unC-Od3s00}"
-      RUNCODES_PASSWORD: "${RUNCODES_DB_PASSWORD:-R$unC-Od3s00}"
+      POSTGRES_PASSWORD: "${RUNCODES_DB_PASSWORD:?RUNCODES_DB_PASSWORD must be set}"
     volumes:
       - runcodes-db-vol:/var/lib/postgresql/data
     networks:

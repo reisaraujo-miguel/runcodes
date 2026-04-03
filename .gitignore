@@ -24,3 +24,8 @@ exec
 *.njsproj
 *.sln
 *.sw?
+
+runcodes
+main
+dist/
+.env
