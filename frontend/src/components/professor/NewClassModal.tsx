@@ -53,7 +53,7 @@ export function NewClassModal() {
       } else {
         const rawData = await response.json();
         const parsed = apiErrorSchema.safeParse(rawData);
-        const message = parsed.success
+        const message: string = parsed.success
           ? parsed.data.error_msg
           : "Erro desconhecido";
         console.error("Erro ao criar a turma:", message);
