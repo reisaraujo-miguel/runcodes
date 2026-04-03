@@ -12,9 +12,9 @@ import (
 )
 
 /*
-SignIn creates a new user on the database
+SignUp creates a new user on the database
 */
-func SignIn(ctx context.Context, req *models.SignInRequest) error {
+func SignUp(ctx context.Context, req *models.SignUpRequest) error {
 	var password string
 	var err error
 	if password, err = hashPassword(req.Password); err != nil {

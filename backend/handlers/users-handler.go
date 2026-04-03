@@ -11,10 +11,10 @@ import (
 	"runcodes/validation"
 )
 
-func SignIn(w http.ResponseWriter, r *http.Request) {
+func SignUp(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	var req models.SignInRequest
+	var req models.SignUpRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		msg := "Invalid sign in request"
 		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
@@ -24,8 +24,6 @@ func SignIn(w http.ResponseWriter, r *http.Request) {
 
 	req.UserName = strings.TrimSpace(req.UserName)
 	req.Email = strings.TrimSpace(req.Email)
-	req.Password = strings.TrimSpace(req.Password)
-	req.PasswordConfirmation = strings.TrimSpace(req.PasswordConfirmation)
 
 	if err := validation.ValidateRequiredString(req.UserName, 100); err != nil {
 		msg := "Invalid user name"
