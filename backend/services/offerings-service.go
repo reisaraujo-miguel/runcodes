@@ -25,7 +25,18 @@ func CreateOffering(ctx context.Context, req *models.CreateOfferingRequest) erro
 		return errors.New(msg)
 	}
 
-	OwnerID := claims["user_id"]
+	ownerIDRaw, ok := claims["user_id"]
+	if !ok {
+		msg := "missing user_id claim"
+		slog.ErrorContext(ctx, msg)
+		return errors.New(msg)
+	}
+	ownerID, ok := ownerIDRaw.(float64)
+	if !ok {
+		msg := "invalid user_id claim type"
+		slog.ErrorContext(ctx, msg)
+		return errors.New(msg)
+	}
 
 	var enrollmentCode string
 	if enrollmentCode, err = generateEnrollmentCode(ctx); err != nil {
@@ -45,7 +56,7 @@ func CreateOffering(ctx context.Context, req *models.CreateOfferingRequest) erro
 
 	if _, err = tx.ExecContext(ctx,
 		"INSERT INTO offerings (name, owner_id, end_date, enrollment_code, description) VALUES ($1, $2, $3, $4, $5)",
-		req.Name, OwnerID, req.EndDate, enrollmentCode, req.Description,
+		req.Name, int(ownerID), req.EndDate, enrollmentCode, req.Description,
 	); err != nil {
 		msg := "database error creating offering"
 		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
@@ -103,7 +114,7 @@ func enrollmentCodeExists(ctx context.Context, code string) (bool, error) {
 	if err == sql.ErrNoRows {
 		return false, nil // enrollment code does not exists
 	} else if err != nil {
-		msg := "error querying enrolment code"
+		msg := "error querying enrollment code"
 		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
 		return false, errors.New(msg)
 	}

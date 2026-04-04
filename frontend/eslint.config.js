@@ -22,7 +22,6 @@ export default defineConfig([
       reactX.configs["recommended-typescript"],
       reactDom.configs.recommended,
     ],
-    files: ["**/*.{ts,tsx}"],
     languageOptions: {
       parserOptions: {
         project: ["./tsconfig.node.json", "./tsconfig.app.json"],

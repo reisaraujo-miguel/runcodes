@@ -53,11 +53,26 @@ services:
       TZ: "America/Sao_Paulo"
       RUNCODES_COMPILER_EXEC_DIR: /exec
       RUNCODES_COMPILER_EXEC_DIR_REMOTE: ${PWD}/exec
+      DOCKER_HOST: tcp://docker-dind:2375
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - ./exec:/exec
     networks:
       - runcodes-network
+    depends_on:
+      - docker-dind
+
+  # Docker-in-Docker for isolated container operations
+  docker-dind:
+    image: docker:dind
+    restart: unless-stopped
+    privileged: true
+    environment:
+      TZ: "America/Sao_Paulo"
+      DOCKER_TLS_CERTDIR: ""  # Disable TLS for simplicity in internal network
+    networks:
+      - runcodes-network
+    volumes:
+      - docker-dind-vol:/var/lib/docker
 
   # Local SMTP server for intercepting e-mails
   smtp4dev:
@@ -107,3 +122,4 @@ volumes:
   runcodes-db-vol:
   runcodes-redis-vol:
   runcodes-seaweed-vol:
+  docker-dind-vol:

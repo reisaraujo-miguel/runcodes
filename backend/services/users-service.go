@@ -51,6 +51,27 @@ func SignUp(ctx context.Context, req *models.SignUpRequest) error {
 }
 
 /*
+CheckEmailExistence returns if there is an user registered with the given email
+*/
+func CheckEmailExistence(ctx context.Context, email string) (bool, error) {
+	var id int
+	err := DB.QueryRowContext(ctx,
+		`SELECT id FROM users WHERE email = $1`,
+		email,
+	).Scan(&id)
+
+	if err == sql.ErrNoRows {
+		return false, nil
+	} else if err != nil {
+		msg := "database error validating email"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		return false, errors.New(msg)
+	}
+
+	return true, errors.New("email is already in use")
+}
+
+/*
 hashPassword takes a password and returns a hashed password
 */
 func hashPassword(password string) (string, error) {

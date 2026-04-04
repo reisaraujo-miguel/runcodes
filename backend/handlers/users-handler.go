@@ -16,9 +16,9 @@ func SignUp(w http.ResponseWriter, r *http.Request) {
 
 	var req models.SignUpRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		msg := "Invalid sign in request"
+		msg := "Invalid sign up request"
 		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		WriteResponse(w, http.StatusBadRequest, msg, nil)
+		WriteResponse(w, http.StatusBadRequest, msg, models.Error{Message: msg})
 		return
 	}
 
@@ -28,39 +28,48 @@ func SignUp(w http.ResponseWriter, r *http.Request) {
 	if err := validation.ValidateRequiredString(req.UserName, 100); err != nil {
 		msg := "Invalid user name"
 		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		WriteResponse(w, http.StatusBadRequest, msg, map[string]string{"error_type": "user_name", "error_msg": err.Error()})
+		WriteResponse(w, http.StatusBadRequest, msg, models.Error{Message: err.Error()})
 		return
 	}
 
-	if emailExists, err := validation.ValidateEmail(ctx, req.Email); err != nil {
+	if err := validation.ValidateEmailFormat(ctx, req.Email); err != nil {
 		msg := "Invalid email"
 		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		WriteResponse(w, http.StatusBadRequest, msg, models.Error{Message: err.Error()})
+		return
+	}
+
+	if emailExists, err := services.CheckEmailExistence(ctx, req.Email); err != nil {
+		var msg string
 		if emailExists {
-			WriteResponse(w, http.StatusConflict, msg, map[string]string{"error_type": "email", "error_msg": err.Error()})
+			msg = "email already exists"
+			WriteResponse(w, http.StatusConflict, msg, models.Error{Message: err.Error()})
 		} else {
-			WriteResponse(w, http.StatusBadRequest, msg, map[string]string{"error_type": "email", "error_msg": err.Error()})
+			msg = "database error validating email"
+			WriteResponse(w, http.StatusInternalServerError, msg, models.Error{Message: err.Error()})
 		}
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
 		return
 	}
 
 	if req.Password != req.PasswordConfirmation {
 		msg := "passwords don't match"
 		slog.ErrorContext(ctx, msg)
-		WriteResponse(w, http.StatusBadRequest, msg, map[string]string{"error_type": "password", "error_msg": msg})
+		WriteResponse(w, http.StatusBadRequest, msg, models.Error{Message: msg})
 		return
 	}
 
 	if err := validation.ValidatePassword(req.Password); err != nil {
 		msg := "invalid password"
 		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		WriteResponse(w, http.StatusBadRequest, msg, map[string]string{"error_type": "password", "error_msg": err.Error()})
+		WriteResponse(w, http.StatusBadRequest, msg, models.Error{Message: err.Error()})
 		return
 	}
 
-	if err := services.SignIn(ctx, &req); err != nil {
+	if err := services.SignUp(ctx, &req); err != nil {
 		msg := "error registering new user"
 		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		WriteResponse(w, http.StatusInternalServerError, msg, nil)
+		WriteResponse(w, http.StatusInternalServerError, msg, models.Error{Message: err.Error()})
 		return
 	}
 

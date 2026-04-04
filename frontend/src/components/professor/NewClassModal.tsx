@@ -40,7 +40,10 @@ export function NewClassModal() {
     try {
       const response = await fetch(`${API_BASE_URL}/api/v1/offerings/create`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          //"Authorization": `Bearer ${getAuthToken()}`,  //TODO: Implement token retrieval
+        },
         body: JSON.stringify({
           name: data.Name,
           end_date: data.EndDate,
@@ -108,6 +111,15 @@ export function NewClassModal() {
                     id="EndDate"
                     type="date"
                     {...form.register("EndDate")}
+                  />
+                </Field>
+
+                <Field>
+                  <FieldLabel htmlFor="Description">Descrição</FieldLabel>
+                  <Input
+                    id="Description"
+                    placeholder="Digite uma descrição (opcional)"
+                    {...form.register("Description")}
                   />
                 </Field>
 

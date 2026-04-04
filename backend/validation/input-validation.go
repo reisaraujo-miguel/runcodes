@@ -3,44 +3,27 @@ package validation
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/mail"
 	"strings"
 	"time"
-
-	"runcodes/services"
+	"unicode/utf8"
 )
 
-func ValidateEmail(ctx context.Context, email string) (bool, error) {
+func ValidateEmailFormat(ctx context.Context, email string) error {
 	if email == "" {
-		return false, errors.New("email is required")
+		return errors.New("email is required")
 	}
 
 	if _, err := mail.ParseAddress(email); err != nil {
 		msg := "error parsing email address"
 		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return false, errors.New(msg)
+		return errors.New(msg)
 	}
 
-	var id int
-	err := services.DB.QueryRowContext(ctx,
-		`SELECT id FROM users WHERE email = $1`,
-		email,
-	).Scan(&id)
-
-	if err == sql.ErrNoRows {
-		// email does not exists, so it is okay to use it
-		return false, nil
-	} else if err != nil {
-		msg := "database error validating email"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return false, errors.New(msg)
-	}
-
-	return true, errors.New("email already in use")
+	return nil
 }
 
 /*
@@ -52,7 +35,7 @@ func ValidateRequiredString(name string, maxSize int) error {
 		return errors.New("input is required")
 	}
 
-	if len(name) > maxSize {
+	if utf8.RuneCountInString(name) > maxSize {
 		return fmt.Errorf("input must be smaller than %d characters", maxSize)
 	}
 

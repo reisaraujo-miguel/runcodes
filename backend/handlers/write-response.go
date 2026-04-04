@@ -7,6 +7,16 @@ import (
 	"runcodes/models"
 )
 
+const (
+	InvalidPasswordErr = iota
+	InvalidUserNameErr
+	InvalidEmailErr
+	PasswordsDontMatchErr
+	EmailAlreadyExistsErr
+	ServerErr
+	InvalidRequestErr
+)
+
 /*
 WriteResponse encodes a models.Response and writes using the provided http.ResponseWriter
 */
