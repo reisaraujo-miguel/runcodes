@@ -49,7 +49,7 @@ func ValidateDate(ctx context.Context, dateStr string) (*time.Time, error) {
 
 	var date time.Time
 	var err error
-	if date, err = time.Parse("2006-01-02", dateStr); err != nil {
+	if date, err = time.Parse(time.RFC3339Nano, dateStr); err != nil {
 		msg := "error parsing date string"
 		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
 		return nil, errors.New(msg)

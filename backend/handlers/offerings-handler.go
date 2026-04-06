@@ -43,7 +43,7 @@ func CreateOffering(w http.ResponseWriter, r *http.Request) {
 		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
 		WriteResponse(w, http.StatusBadRequest, msg, models.Error{Message: err.Error()})
 		return
-	} else if date.Before(time.Now().Truncate(24 * time.Hour)) {
+	} else if date.Before(time.Now()) {
 		msg := "end date cannot be in the past"
 		slog.ErrorContext(ctx, "invalid date", slog.String("error", msg))
 		WriteResponse(w, http.StatusBadRequest, msg, models.Error{Message: msg})
