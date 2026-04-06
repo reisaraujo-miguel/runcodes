@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"errors"
 	"log/slog"
-	"math/rand/v2"
 
 	"runcodes/models"
 
@@ -38,13 +37,6 @@ func CreateOffering(ctx context.Context, req *models.CreateOfferingRequest) erro
 		return errors.New(msg)
 	}
 
-	var enrollmentCode string
-	if enrollmentCode, err = generateEnrollmentCode(ctx); err != nil {
-		msg := "error generating enrollment code"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return errors.New(msg)
-	}
-
 	var tx *sql.Tx
 	if tx, err = DB.BeginTx(ctx, nil); err != nil {
 		msg := "error initializing the transaction"
@@ -54,11 +46,27 @@ func CreateOffering(ctx context.Context, req *models.CreateOfferingRequest) erro
 
 	defer tx.Rollback()
 
-	if _, err = tx.ExecContext(ctx,
-		"INSERT INTO offerings (name, owner_id, end_date, enrollment_code, description) VALUES ($1, $2, $3, $4, $5)",
-		req.Name, int(ownerID), req.EndDate, enrollmentCode, req.Description,
+	var res sql.Result
+	if res, err = tx.ExecContext(ctx,
+		"INSERT INTO offerings (name, owner_id, end_date description) VALUES ($1, $2, $3, $4, $5)",
+		req.Name, int(ownerID), req.EndDate, req.Description,
 	); err != nil {
 		msg := "database error creating offering"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		return errors.New(msg)
+	}
+
+	var id int64
+	if id, err = res.LastInsertId(); err != nil {
+		msg := "error retrieving offering id"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		return errors.New(msg)
+	}
+
+	enrollmentCode := IDToCode(id)
+
+	if _, err = tx.ExecContext(ctx, "UPDATE offerings SET enrollment_code = $1 WHERE id = $2", enrollmentCode, id); err != nil {
+		msg := "database error updating enrollment_code"
 		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
 		return errors.New(msg)
 	}
@@ -72,52 +80,44 @@ func CreateOffering(ctx context.Context, req *models.CreateOfferingRequest) erro
 	return nil
 }
 
+const (
+	alphabet string = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	base     int64  = int64(len(alphabet))      // 36
+	space    int64  = base * base * base * base // 36^4 = 1,679,616
+	prime    int64  = 1_276_043                 // Coprime with space (36^4 = 2^8 * 3^8, so any prime ≠ 2,3 works)
+)
+
 /*
-generateEnrollmentCode generates a random 4 characters alphanumeric enrollment code
+encode converts a non-negative integer "n" into a fixed-width 4-character
+string using the constant "alphabet". It is the inverse of the base-36
+positional notation, right-padded with the zero character ('A').
+
+n must be in [0, space). Behaviour is undefined outside this range.
 */
-func generateEnrollmentCode(ctx context.Context) (string, error) {
-	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	const maxAttempts = 100
-
-	for range maxAttempts {
-		result := make([]byte, 4)
-
-		for i := range result {
-			result[i] = charset[rand.IntN(len(charset))]
-		}
-
-		code := string(result)
-
-		if exists, err := enrollmentCodeExists(ctx, code); err != nil {
-			msg := "error while checking if a new enrollment code is valid"
-			slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-			return "", errors.New(msg)
-		} else if !exists {
-			return code, nil
-		}
+func encode(n int64) string {
+	digits := make([]byte, 4)
+	for i := 3; i >= 0; i-- {
+		digits[i] = alphabet[n%base]
+		n /= base
 	}
-
-	msg := "failed to generate unique enrollment code after maximum attempts"
-	slog.ErrorContext(ctx, msg)
-
-	return "", errors.New(msg)
+	return string(digits)
 }
 
 /*
-enrollmentCodeExists checks in the database if a given enrollment code is already being used.
-It *can* return an error if the database check fails
+IDToCode converts a unique offering ID into a 4-character enrollment code.
+
+The mapping is deterministic and collision-free: distinct IDs always produce
+distinct codes. This is achieved through a multiplicative permutation —
+multiplying by a prime coprime with the code space produces a bijection
+over [0, space), so no uniqueness check against the database is needed.
+
+The resulting codes appear non-sequential, making it harder for students to
+guess or enumerate codes for other class offerings.
+
+id must be in [0, 1,679,615]. If your dataset may exceed this range,
+increase the code length or expand the alphabet before deploying.
 */
-func enrollmentCodeExists(ctx context.Context, code string) (bool, error) {
-	var id int
-	err := DB.QueryRowContext(ctx, "SELECT id FROM offerings WHERE enrollment_code = $1", code).Scan(&id)
-
-	if err == sql.ErrNoRows {
-		return false, nil // enrollment code does not exists
-	} else if err != nil {
-		msg := "error querying enrollment code"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return false, errors.New(msg)
-	}
-
-	return true, nil // enrollment code does exists
+func IDToCode(id int64) string {
+	scrambled := (id * prime) % space
+	return encode(scrambled)
 }
