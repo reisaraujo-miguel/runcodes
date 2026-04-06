@@ -36,7 +36,7 @@ func SignUp(ctx context.Context, req *models.SignUpRequest) error {
 		"INSERT INTO users (name, email, password_hash) VALUES ($1, $2, $3)",
 		req.UserName, req.Email, password,
 	); err != nil {
-		msg := "database error creating offering"
+		msg := "database error registering user"
 		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
 		return errors.New(msg)
 	}
@@ -68,7 +68,7 @@ func CheckEmailExistence(ctx context.Context, email string) (bool, error) {
 		return false, errors.New(msg)
 	}
 
-	return true, errors.New("email is already in use")
+	return true, nil // email exists
 }
 
 /*
