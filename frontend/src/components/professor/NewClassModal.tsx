@@ -18,7 +18,6 @@ const formSchema = z.object({
 });
 
 const apiErrorSchema = z.object({
-  error_type: z.string(),
   error_msg: z.string(),
 });
 
