@@ -58,6 +58,7 @@ services:
       - ./exec:/exec
     networks:
       - runcodes-network
+      - dind-network
     depends_on:
       - docker-dind
 
@@ -68,9 +69,9 @@ services:
     privileged: true
     environment:
       TZ: "America/Sao_Paulo"
-      DOCKER_TLS_CERTDIR: ""  # Disable TLS for simplicity in internal network
+      DOCKER_TLS_CERTDIR: "" # Disable TLS for simplicity in internal network
     networks:
-      - runcodes-network
+      - dind-network
     volumes:
       - docker-dind-vol:/var/lib/docker
 
@@ -114,6 +115,8 @@ services:
 
 networks:
   runcodes-network:
+    driver: bridge
+  dind-network:
     driver: bridge
 
 volumes:
