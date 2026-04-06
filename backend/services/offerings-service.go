@@ -46,19 +46,12 @@ func CreateOffering(ctx context.Context, req *models.CreateOfferingRequest) erro
 
 	defer tx.Rollback()
 
-	var res sql.Result
-	if res, err = tx.ExecContext(ctx,
-		"INSERT INTO offerings (name, owner_id, end_date description) VALUES ($1, $2, $3, $4, $5)",
-		req.Name, int(ownerID), req.EndDate, req.Description,
-	); err != nil {
-		msg := "database error creating offering"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return errors.New(msg)
-	}
-
 	var id int64
-	if id, err = res.LastInsertId(); err != nil {
-		msg := "error retrieving offering id"
+	if err = tx.QueryRowContext(ctx,
+		"INSERT INTO offerings (name, owner_id, end_date, description) VALUES ($1, $2, $3, $4) RETURNING id",
+		req.Name, int(ownerID), req.EndDate, req.Description,
+	).Scan(&id); err != nil {
+		msg := "database error creating offering"
 		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
 		return errors.New(msg)
 	}

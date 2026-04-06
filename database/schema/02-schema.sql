@@ -62,7 +62,7 @@ CREATE TABLE offerings (
   name varchar(100) NOT NULL,
   owner_id int REFERENCES users (id) ON DELETE CASCADE,
   end_date TIMESTAMP WITH TIME ZONE NOT NULL,
-  enrollment_code varchar(4) UNIQUE NOT NULL,
+  enrollment_code varchar(4) UNIQUE,
   description text,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
