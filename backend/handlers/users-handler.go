@@ -39,17 +39,19 @@ func SignUp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if emailExists, err := services.CheckEmailExistence(ctx, req.Email); err != nil {
-		var msg string
-		if emailExists {
-			msg = "email already exists"
-			WriteResponse(w, http.StatusConflict, msg, models.Error{Message: err.Error()})
-		} else {
-			msg = "database error validating email"
-			WriteResponse(w, http.StatusInternalServerError, msg, models.Error{Message: err.Error()})
-		}
+	var emailExists bool
+	var err error
+	if emailExists, err = services.CheckEmailExistence(ctx, req.Email); err != nil {
+		msg := "database error validating email"
 		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		WriteResponse(w, http.StatusInternalServerError, msg, models.Error{Message: err.Error()})
 		return
+	}
+
+	if emailExists {
+		msg := "email already exists"
+		slog.ErrorContext(ctx, msg)
+		WriteResponse(w, http.StatusConflict, msg, models.Error{Message: msg})
 	}
 
 	if req.Password != req.PasswordConfirmation {
