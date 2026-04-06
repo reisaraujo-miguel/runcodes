@@ -1,5 +1,4 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import axios from "axios";
 import { z } from "zod";
 
 import { useState } from "react";
@@ -15,6 +14,11 @@ import { Input } from "@/components/ui/input";
 const formSchema = z.object({
   Name: z.string().min(1, "O nome da turma é obrigatório"),
   EndDate: z.string().optional(),
+  Description: z.string().optional(),
+});
+
+const apiErrorSchema = z.object({
+  error_msg: z.string(),
 });
 
 const API_BASE_URL = import.meta.env.VITE_API_ENDPOINT;
@@ -27,23 +31,39 @@ export function NewClassModal() {
     defaultValues: {
       Name: "",
       EndDate: "",
+      Description: "",
     },
   });
 
   const onSubmit = async (data: z.infer<typeof formSchema>) => {
     try {
-      const response = await axios.post(
-        `${API_BASE_URL}/api/offerings/create`,
-        {
+      const response = await fetch(`${API_BASE_URL}/api/v1/offerings/create`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          //"Authorization": `Bearer ${getAuthToken()}`,  //TODO: Implement token retrieval
+        },
+        body: JSON.stringify({
           name: data.Name,
           end_date: data.EndDate,
-        },
-      );
-      if (response.data.success) {
+          description: data.Description,
+        }),
+      });
+      if (response.ok) {
         console.log("Turma criada com sucesso!");
         setSubmitted(true);
       } else {
-        console.error("Erro ao criar a turma:", response.data.message);
+        let message = "Erro desconhecido";
+        try {
+          const rawData = await response.json();
+          const parsed = apiErrorSchema.safeParse(rawData);
+          if (parsed.success) {
+            message = parsed.data.error_msg;
+          }
+        } catch {
+          // Non-JSON response, use default message
+        }
+        console.error("Erro ao criar a turma:", message);
       }
     } catch (error) {
       console.error("Erro ao criar a turma:", error);
@@ -95,6 +115,15 @@ export function NewClassModal() {
                     id="EndDate"
                     type="date"
                     {...form.register("EndDate")}
+                  />
+                </Field>
+
+                <Field>
+                  <FieldLabel htmlFor="Description">Descrição</FieldLabel>
+                  <Input
+                    id="Description"
+                    placeholder="Digite uma descrição (opcional)"
+                    {...form.register("Description")}
                   />
                 </Field>
 

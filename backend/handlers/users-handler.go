@@ -4,17 +4,89 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"runcodes/models"
+	"runcodes/services"
+	"runcodes/validation"
 )
 
-func loginUser(w http.ResponseWriter, r *http.Request) {
+func SignUp(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req models.SignUpRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		msg := "Invalid sign up request"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		WriteResponse(w, http.StatusBadRequest, msg, models.Error{Message: msg})
+		return
+	}
+
+	req.UserName = strings.TrimSpace(req.UserName)
+	req.Email = strings.TrimSpace(req.Email)
+
+	if err := validation.ValidateRequiredString(req.UserName, 100); err != nil {
+		msg := "Invalid user name"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		WriteResponse(w, http.StatusBadRequest, msg, models.Error{Message: err.Error()})
+		return
+	}
+
+	if err := validation.ValidateEmailFormat(ctx, req.Email); err != nil {
+		msg := "Invalid email"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		WriteResponse(w, http.StatusBadRequest, msg, models.Error{Message: err.Error()})
+		return
+	}
+
+	var emailExists bool
+	var err error
+	if emailExists, err = services.CheckEmailExistence(ctx, req.Email); err != nil {
+		msg := "database error validating email"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		WriteResponse(w, http.StatusInternalServerError, msg, models.Error{Message: err.Error()})
+		return
+	}
+
+	if emailExists {
+		msg := "email already exists"
+		slog.ErrorContext(ctx, msg)
+		WriteResponse(w, http.StatusConflict, msg, models.Error{Message: msg})
+	}
+
+	if req.Password != req.PasswordConfirmation {
+		msg := "passwords don't match"
+		slog.ErrorContext(ctx, msg)
+		WriteResponse(w, http.StatusBadRequest, msg, models.Error{Message: msg})
+		return
+	}
+
+	if err := validation.ValidatePassword(req.Password); err != nil {
+		msg := "invalid password"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		WriteResponse(w, http.StatusBadRequest, msg, models.Error{Message: err.Error()})
+		return
+	}
+
+	if err := services.SignUp(ctx, &req); err != nil {
+		msg := "error registering new user"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		WriteResponse(w, http.StatusInternalServerError, msg, models.Error{Message: err.Error()})
+		return
+	}
+
+	WriteResponse(w, http.StatusCreated, "new user created", nil)
+}
+
+func LogIn(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	w.Header().Set("Content-Type", "application/json")
 
-	var req models.LoginRequest
+	var req models.LogInRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		slog.ErrorContext(ctx, "Failed to decode login request", slog.String("error", err.Error()))
+		msg := "Invalid login request"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		WriteResponse(w, http.StatusBadRequest, msg, nil)
 		return
 	}
 }

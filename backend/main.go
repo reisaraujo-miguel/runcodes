@@ -25,7 +25,8 @@ import (
 	"net/http"
 	"os"
 
-	"runcodes/utils"
+	"runcodes/services"
+	"runcodes/validation"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/joho/godotenv"
@@ -46,20 +47,20 @@ func main() {
 		slog.Info("No .env file found, using environment variables", slog.String("error", err.Error()))
 	}
 
-	utils.SetupLogger()
+	SetupLogger()
 
-	apiPort := os.Getenv("RUNCODES_API_PORT")
-	if apiPort == "" {
+	var apiPort string
+	if apiPort = os.Getenv("RUNCODES_API_PORT"); apiPort == "" {
 		slog.Error("RUNCODES_API_PORT environment variable is not set")
 		os.Exit(1)
 	}
 
-	if err := utils.InitDB(); err != nil {
+	if err := services.InitDB(); err != nil {
 		slog.Error("Failed to initialize database")
 		os.Exit(1)
 	}
 
-	if err := utils.SetupJWT(); err != nil {
+	if err := validation.SetupJWT(); err != nil {
 		slog.Error("Failed to setup JWT", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
@@ -73,6 +74,7 @@ func main() {
 	} else {
 		slog.Info("Server is running", slog.String("port", apiPort))
 	}
+
 	if err := http.ListenAndServe(fmt.Sprintf(":%s", apiPort), r); err != nil {
 		slog.Error("Server failed", slog.String("error", err.Error()))
 		os.Exit(1)

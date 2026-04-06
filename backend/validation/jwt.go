@@ -1,5 +1,4 @@
-// Package utils provides utility functions for JWT token generation and validation.
-package utils
+package validation
 
 import (
 	"fmt"

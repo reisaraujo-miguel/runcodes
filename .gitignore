@@ -12,6 +12,8 @@ dist
 dist-ssr
 *.local
 
+exec
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -22,3 +24,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+runcodes
+main
+dist/
+.env

@@ -2,13 +2,10 @@
 package models
 
 type Response struct {
-	Success bool   `json:"success"`
-	Token   string `json:"token,omitempty"`
 	Message string `json:"message"`
 	Data    any    `json:"data,omitempty"`
 }
 
-type HTTPStatus struct {
-	StatusCode int
-	Msg        string
+type Error struct {
+	Message string `json:"error_msg"`
 }

@@ -23,13 +23,27 @@ services:
       - runcodes-network
     environment:
       TZ: "America/Sao_Paulo"
-      RUNCODES_JWT_SECRET: "${RUNCODES_JWT_SECRET:-mySecretKey-10101}"
+      RUNCODES_JWT_SECRET: "${RUNCODES_JWT_SECRET:?RUNCODES_JWT_SECRET must be set}"
       RUNCODES_API_PORT: "8443"
       RUNCODES_DB_HOST: "database"
       RUNCODES_DB_PORT: "5432"
       RUNCODES_DB_USER: "runcodes"
-      RUNCODES_DB_PASSWORD: "${RUNCODES_DB_PASSWORD:-asdasd33}"
+      RUNCODES_DB_PASSWORD: "${RUNCODES_DB_PASSWORD:?RUNCODES_DB_PASSWORD must be set}"
       RUNCODES_DB_NAME: "runcodes"
+
+  # PostgreSQL Database
+  database:
+    build: ./database/
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      TZ: "America/Sao_Paulo"
+      POSTGRES_PASSWORD: "${RUNCODES_DB_PASSWORD:?RUNCODES_DB_PASSWORD must be set}"
+    volumes:
+      - runcodes-db-vol:/var/lib/postgresql/data
+    networks:
+      - runcodes-network
 
   # Compiler Engine
   rcc:
@@ -39,25 +53,27 @@ services:
       TZ: "America/Sao_Paulo"
       RUNCODES_COMPILER_EXEC_DIR: /exec
       RUNCODES_COMPILER_EXEC_DIR_REMOTE: ${PWD}/exec
+      DOCKER_HOST: tcp://docker-dind:2375
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - ./exec:/exec
     networks:
       - runcodes-network
+      - dind-network
+    depends_on:
+      - docker-dind
 
-  # PostgreSQL Database
-  database:
-    image: ghcr.io/runcodes-icmc/database:latest-development
+  # Docker-in-Docker for isolated container operations
+  docker-dind:
+    image: docker:dind
     restart: unless-stopped
-    ports:
-      - "5432:5432"
+    privileged: true
     environment:
       TZ: "America/Sao_Paulo"
-      POSTGRES_PASSWORD: "${RUNCODES_DB_PASSWORD:-asdasd33}"
-    volumes:
-      - runcodes-db-vol:/var/lib/postgresql/data
+      DOCKER_TLS_CERTDIR: "" # Disable TLS for simplicity in internal network
     networks:
-      - runcodes-network
+      - dind-network
+    volumes:
+      - docker-dind-vol:/var/lib/docker
 
   # Local SMTP server for intercepting e-mails
   smtp4dev:
@@ -100,6 +116,8 @@ services:
 networks:
   runcodes-network:
     driver: bridge
+  dind-network:
+    driver: bridge
 
 volumes:
   caddy_data:
@@ -107,3 +125,4 @@ volumes:
   runcodes-db-vol:
   runcodes-redis-vol:
   runcodes-seaweed-vol:
+  docker-dind-vol:

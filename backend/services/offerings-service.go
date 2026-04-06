@@ -5,164 +5,112 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"log/slog"
-	"math/rand"
-	"net/http"
-	"strings"
-	"time"
 
 	"runcodes/models"
-	"runcodes/utils"
-	"runcodes/validation"
+
+	"github.com/go-chi/jwtauth/v5"
 )
 
 /*
-enrollmentCodeExists checks in the database if a given enrollment code ia already being used.
+CreateOffering creates a new offering on the platform.
 */
-func enrollmentCodeExists(code string) (bool, error) {
-	var exists bool
-	err := utils.DB.QueryRow("SELECT EXISTS(SELECT 1 FROM offerings WHERE enrollment_code=$1)", code).Scan(&exists)
-	if err != nil {
-		return false, fmt.Errorf("Error scanning row: %s", err)
+func CreateOffering(ctx context.Context, req *models.CreateOfferingRequest) error {
+	var claims map[string]any
+	var err error
+	if _, claims, err = jwtauth.FromContext(ctx); err != nil {
+		msg := "failed to authenticate"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		return errors.New(msg)
 	}
-	return exists, nil
+
+	ownerIDRaw, ok := claims["user_id"]
+	if !ok {
+		msg := "missing user_id claim"
+		slog.ErrorContext(ctx, msg)
+		return errors.New(msg)
+	}
+	ownerID, ok := ownerIDRaw.(float64)
+	if !ok {
+		msg := "invalid user_id claim type"
+		slog.ErrorContext(ctx, msg)
+		return errors.New(msg)
+	}
+
+	var tx *sql.Tx
+	if tx, err = DB.BeginTx(ctx, nil); err != nil {
+		msg := "error initializing the transaction"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		return errors.New(msg)
+	}
+
+	defer tx.Rollback()
+
+	var id int64
+	if err = tx.QueryRowContext(ctx,
+		"INSERT INTO offerings (name, owner_id, end_date, description) VALUES ($1, $2, $3, $4) RETURNING id",
+		req.Name, int(ownerID), req.EndDate, req.Description,
+	).Scan(&id); err != nil {
+		msg := "database error creating offering"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		return errors.New(msg)
+	}
+
+	enrollmentCode := IDToCode(id)
+
+	if _, err = tx.ExecContext(ctx, "UPDATE offerings SET enrollment_code = $1 WHERE id = $2", enrollmentCode, id); err != nil {
+		msg := "database error updating enrollment_code"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		return errors.New(msg)
+	}
+
+	if err := tx.Commit(); err != nil {
+		msg := "error during database transaction"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		return errors.New(msg)
+	}
+
+	return nil
+}
+
+const (
+	alphabet string = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	base     int64  = int64(len(alphabet))      // 36
+	space    int64  = base * base * base * base // 36^4 = 1,679,616
+	prime    int64  = 1_276_043                 // Coprime with space (36^4 = 2^8 * 3^8, so any prime ≠ 2,3 works)
+)
+
+/*
+encode converts a non-negative integer "n" into a fixed-width 4-character
+string using the constant "alphabet". It is the inverse of the base-36
+positional notation, right-padded with the zero character ('A').
+
+n must be in [0, space). Behaviour is undefined outside this range.
+*/
+func encode(n int64) string {
+	digits := make([]byte, 4)
+	for i := 3; i >= 0; i-- {
+		digits[i] = alphabet[n%base]
+		n /= base
+	}
+	return string(digits)
 }
 
 /*
-generateEnrollmentCode generates a random 4 characters alphanumeric enrollment code
+IDToCode converts a unique offering ID into a 4-character enrollment code.
+
+The mapping is deterministic and collision-free: distinct IDs always produce
+distinct codes. This is achieved through a multiplicative permutation —
+multiplying by a prime coprime with the code space produces a bijection
+over [0, space), so no uniqueness check against the database is needed.
+
+The resulting codes appear non-sequential, making it harder for students to
+guess or enumerate codes for other class offerings.
+
+id must be in [0, 1,679,615]. If your dataset may exceed this range,
+increase the code length or expand the alphabet before deploying.
 */
-func generateEnrollmentCode() (string, error) {
-	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	const maxAttempts = 100
-
-	for range maxAttempts {
-		result := make([]byte, 4)
-
-		for i := range result {
-			result[i] = charset[rand.Intn(len(charset))]
-		}
-
-		code := string(result)
-
-		exists, err := enrollmentCodeExists(code)
-		if err != nil {
-			return "", err
-		}
-		if !exists {
-			return code, nil
-		}
-	}
-
-	err := errors.New("failed to generate unique enrollment code after maximum attempts")
-
-	return "", err
-}
-
-/*
-CreateOffering creates a new offering using the models.Offering model.
-It either returns a nil offering and a http error status code or returns a valid offering and http.StatusCreated.
-
-HTTP status is returned using the models.HTTPStatus struct.
-*/
-func CreateOffering(req *models.CreateOfferingRequest, ctx context.Context) (*models.Offering, models.HTTPStatus, error) {
-	if err := validation.ValidateCreateOfferingRequest(req.Email, req.Name, req.EndDate); err != nil {
-		msg := "Error validating offering creation"
-		slog.ErrorContext(ctx, msg, slog.String("Error", err.Error()))
-		return nil, models.HTTPStatus{StatusCode: http.StatusBadRequest, Msg: msg}, err
-	}
-
-	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
-	req.Name = strings.TrimSpace(req.Name)
-	req.EndDate = strings.TrimSpace(req.EndDate)
-
-	enrollmentCode, err := generateEnrollmentCode()
-	if err != nil {
-		msg := "Error generating enrollment code"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return nil, models.HTTPStatus{StatusCode: http.StatusInternalServerError, Msg: msg}, err
-	}
-
-	var newOfferingID string
-
-	year := time.Now().Year()
-
-	term := 1
-	if time.Now().Year() > 6 {
-		term = 2
-	}
-
-	err = utils.DB.QueryRow(
-		`INSERT INTO offerings (course_id, year, term, classroom, end_date, enrollment_code) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-		1, year, term, req.Name, req.EndDate, enrollmentCode,
-	).Scan(&newOfferingID)
-	if err != nil {
-		msg := "Database error creating offering"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return nil, models.HTTPStatus{StatusCode: http.StatusInternalServerError, Msg: msg}, err
-	}
-
-	offering := &models.Offering{
-		ID:             newOfferingID,
-		Name:           req.Name,
-		EndDate:        req.EndDate,
-		EnrollmentCode: enrollmentCode,
-	}
-
-	return offering, models.HTTPStatus{StatusCode: http.StatusCreated, Msg: "Offering created"}, nil
-}
-
-/*
-GetOfferings returns the fields "id", "name", and "end_date" for every available offering.
-*/
-func GetOfferings(ctx context.Context) ([]models.Offering, models.HTTPStatus, error) {
-	rows, err := utils.DB.Query("SELECT id, name, end_date FROM offerings")
-	if err != nil {
-		msg := "Database error fetching offerings"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return nil, models.HTTPStatus{StatusCode: http.StatusInternalServerError, Msg: msg}, err
-	}
-	defer rows.Close()
-
-	var offerings []models.Offering
-	for rows.Next() {
-		var offering models.Offering
-		if err := rows.Scan(&offering.ID, &offering.Name, &offering.EndDate); err != nil {
-			slog.ErrorContext(ctx, "Row scanning error", slog.String("error", err.Error()))
-			continue
-		}
-		offerings = append(offerings, offering)
-	}
-
-	if err := rows.Err(); err != nil {
-		msg := "Row iteration error"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return nil, models.HTTPStatus{StatusCode: http.StatusInternalServerError, Msg: msg}, err
-	}
-
-	return offerings, models.HTTPStatus{StatusCode: http.StatusOK, Msg: "offerings gathered"}, nil
-}
-
-/*
-GetOfferingByID returns the "name" and "end_date" of a specific offering delimited by the offering id key
-*/
-func GetOfferingByID(id string, ctx context.Context) (*models.Offering, models.HTTPStatus, error) {
-	var offering models.Offering
-
-	err := utils.DB.QueryRow("SELECT id, name, end_date FROM offerings WHERE id = $1", id).
-		Scan(&offering.ID, &offering.Name, &offering.EndDate)
-	if err != nil {
-		switch {
-		case err == sql.ErrNoRows:
-			msg := fmt.Sprintf("Offering with ID %s not found", id)
-			slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-			return nil, models.HTTPStatus{StatusCode: http.StatusNotFound, Msg: msg}, err
-		default:
-			msg := "Database error fetching offering"
-			slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-			return nil, models.HTTPStatus{StatusCode: http.StatusInternalServerError, Msg: msg}, err
-		}
-	}
-
-	return &offering, models.HTTPStatus{StatusCode: http.StatusFound, Msg: "offering found"}, nil
+func IDToCode(id int64) string {
+	scrambled := (id * prime) % space
+	return encode(scrambled)
 }

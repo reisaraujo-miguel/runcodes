@@ -1,4 +1,4 @@
-package utils
+package main
 
 import (
 	"log/slog"
@@ -14,8 +14,6 @@ var (
 	Logger    *slog.Logger
 	LogFormat *httplog.Schema
 )
-
-const debugModeEnv string = "DEBUG_MODE"
 
 /*
 SetupLogger uses go-chi/httplog and go-chi/traceid as middleware for structured HTTP logging

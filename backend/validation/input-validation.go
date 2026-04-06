@@ -1,57 +1,61 @@
-// Package validation provides input validation and sanitization utilities.
+// Package validation provides input validation, sanitization utilities and JWT validation.
 package validation
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/mail"
-	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
-func ValidateEmail(email string) error {
+func ValidateEmailFormat(ctx context.Context, email string) error {
 	if email == "" {
 		return errors.New("email is required")
 	}
 
-	_, err := mail.ParseAddress(email)
-	if err != nil {
-		return err
+	if _, err := mail.ParseAddress(email); err != nil {
+		msg := "error parsing email address"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		return errors.New(msg)
 	}
 
 	return nil
 }
 
-func ValidateName(name string, fieldName string) error {
+/*
+ValidateRequiredString validates if the string exists (is not an empty string) and is not
+bigger than the allowed max_size, returning an error if it does not meets the criteria
+*/
+func ValidateRequiredString(name string, maxSize int) error {
 	if name == "" {
-		return errors.New("name is required")
+		return errors.New("input is required")
 	}
 
-	if len(name) > 100 {
-		return errors.New("name must be less than 100 characters")
-	}
-
-	// Check for potentially dangerous characters
-	dangerousChars := regexp.MustCompile(`[<>{}]`)
-	if dangerousChars.MatchString(name) {
-		return errors.New("name contains invalid characters: '<', '>', '{' or '}'")
+	if utf8.RuneCountInString(name) > maxSize {
+		return fmt.Errorf("input must be smaller than %d characters", maxSize)
 	}
 
 	return nil
 }
 
-func ValidateDate(dateStr string, fieldName string) error {
+func ValidateDate(ctx context.Context, dateStr string) (*time.Time, error) {
 	if dateStr == "" {
-		return nil
+		return nil, errors.New("date is required")
 	}
 
-	_, err := time.Parse("2006-01-02", dateStr)
-	if err != nil {
-		return err
+	var date time.Time
+	var err error
+	if date, err = time.Parse(time.RFC3339Nano, dateStr); err != nil {
+		msg := "error parsing date string"
+		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
+		return nil, errors.New(msg)
 	}
 
-	return nil
+	return &date, nil
 }
 
 func ValidatePassword(password string) error {
@@ -99,22 +103,6 @@ func ValidatePassword(password string) error {
 
 	if !hasSpecial {
 		return errors.New("password must contain at least one special character")
-	}
-
-	return nil
-}
-
-func ValidateCreateOfferingRequest(email, name, endDate string) error {
-	if err := ValidateEmail(email); err != nil {
-		return fmt.Errorf("invalid email error: %s", err)
-	}
-
-	if err := ValidateName(name, "Offering name"); err != nil {
-		return fmt.Errorf("invalid name error: %s", err)
-	}
-
-	if err := ValidateDate(endDate, "End date"); err != nil {
-		return fmt.Errorf("invalid date error: %s", err)
 	}
 
 	return nil
