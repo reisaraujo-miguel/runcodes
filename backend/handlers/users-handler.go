@@ -73,7 +73,7 @@ func SignUp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	WriteResponse(w, http.StatusOK, "new user created", nil)
+	WriteResponse(w, http.StatusCreated, "new user created", nil)
 }
 
 func LogIn(w http.ResponseWriter, r *http.Request) {
