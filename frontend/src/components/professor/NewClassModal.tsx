@@ -53,11 +53,16 @@ export function NewClassModal() {
         console.log("Turma criada com sucesso!");
         setSubmitted(true);
       } else {
-        const rawData = await response.json();
-        const parsed = apiErrorSchema.safeParse(rawData);
-        const message: string = parsed.success
-          ? parsed.data.error_msg
-          : "Erro desconhecido";
+        let message = "Erro desconhecido";
+        try {
+          const rawData = await response.json();
+          const parsed = apiErrorSchema.safeParse(rawData);
+          if (parsed.success) {
+            message = parsed.data.error_msg;
+          }
+        } catch {
+          // Non-JSON response, use default message
+        }
         console.error("Erro ao criar a turma:", message);
       }
     } catch (error) {
