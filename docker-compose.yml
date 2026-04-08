@@ -39,7 +39,10 @@ services:
       - "127.0.0.1:5432:5432"
     environment:
       TZ: "America/Sao_Paulo"
+      POSTGRES_USER: runcodes
+      POSTGRES_DB: runcodes
       POSTGRES_PASSWORD: "${RUNCODES_DB_PASSWORD:?RUNCODES_DB_PASSWORD must be set}"
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=en_US.utf8 --lc-ctype=en_US.utf8"
     volumes:
       - runcodes-db-vol:/var/lib/postgresql/data
     networks:

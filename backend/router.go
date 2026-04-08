@@ -22,6 +22,7 @@ func createRoutes(router *chi.Mux) {
 	// public routes
 	router.Group(func(r chi.Router) {
 		r.Post("/api/v1/user/signup", handlers.SignUp)
+		r.Post("/api/v1/user/login", handlers.LogIn)
 	})
 
 	// protected routes

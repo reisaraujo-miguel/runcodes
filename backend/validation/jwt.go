@@ -14,7 +14,7 @@ var TokenAuth *jwtauth.JWTAuth
 
 /*
 SetupJWT reads the JWT secret from the environment and creates a new jwtauth
-that can be accessed via the utils.TokenAuth variable
+that can be accessed via the validation.TokenAuth variable
 */
 func SetupJWT() error {
 	secret := []byte(os.Getenv("RUNCODES_JWT_SECRET"))

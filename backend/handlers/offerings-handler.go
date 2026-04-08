@@ -11,6 +11,8 @@ import (
 	"runcodes/models"
 	"runcodes/services"
 	"runcodes/validation"
+
+	"github.com/go-chi/jwtauth/v5"
 )
 
 /*
@@ -24,7 +26,15 @@ func CreateOffering(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		msg := "Invalid offering creation request"
 		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		WriteResponse(w, http.StatusBadRequest, msg, models.Error{Message: msg})
+		WriteResponse(w, http.StatusBadRequest, models.Error{Message: msg})
+		return
+	}
+
+	var claims map[string]any
+	var err error
+	if _, claims, err = jwtauth.FromContext(ctx); err != nil {
+		slog.ErrorContext(ctx, "error retrieving claims from context", slog.String("error", err.Error()))
+		WriteResponse(w, http.StatusInternalServerError, nil)
 		return
 	}
 
@@ -32,30 +42,38 @@ func CreateOffering(w http.ResponseWriter, r *http.Request) {
 	req.EndDate = strings.TrimSpace(req.EndDate)
 
 	if err := validation.ValidateRequiredString(req.Name, 100); err != nil {
-		msg := "invalid name"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		WriteResponse(w, http.StatusBadRequest, msg, models.Error{Message: err.Error()})
+		slog.InfoContext(ctx,
+			"user tried to create an offering with an invalid name",
+			slog.Any("user_claims", claims),
+		)
+		WriteResponse(w, http.StatusBadRequest, models.Error{Message: err.Error()})
 		return
 	}
 
 	if date, err := validation.ValidateDate(ctx, req.EndDate); err != nil {
-		msg := "invalid date"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		WriteResponse(w, http.StatusBadRequest, msg, models.Error{Message: err.Error()})
+		slog.ErrorContext(ctx, "user tried to create and offering with an invalid end date",
+			slog.Any("user_claims", claims),
+		)
+		WriteResponse(w, http.StatusBadRequest, models.Error{Message: err.Error()})
 		return
 	} else if date.Before(time.Now()) {
-		msg := "end date cannot be in the past"
-		slog.ErrorContext(ctx, "invalid date", slog.String("error", msg))
-		WriteResponse(w, http.StatusBadRequest, msg, models.Error{Message: msg})
+		slog.ErrorContext(ctx, "user tried to create and offering with an invalid end date",
+			slog.Any("user_claims", claims),
+		)
+		WriteResponse(w, http.StatusBadRequest, models.Error{Message: "end date cannot be in the past"})
 		return
 	}
 
-	if err := services.CreateOffering(ctx, &req); err != nil {
-		msg := "Failed to create offering"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		WriteResponse(w, http.StatusInternalServerError, msg, models.Error{Message: err.Error()})
+	if err := services.CreateOffering(ctx, &req, claims); err != nil {
+		slog.ErrorContext(ctx,
+			"Failed to create offering",
+			slog.String("error", err.Error()),
+			slog.Any("user_claims", claims),
+			slog.Any("offering_request", req),
+		)
+		WriteResponse(w, http.StatusInternalServerError, nil)
 		return
 	}
 
-	WriteResponse(w, http.StatusCreated, "new offering created", nil)
+	WriteResponse(w, http.StatusCreated, nil)
 }

@@ -4,44 +4,24 @@ package services
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"log/slog"
 
 	"runcodes/models"
-
-	"github.com/go-chi/jwtauth/v5"
 )
 
 /*
 CreateOffering creates a new offering on the platform.
 */
-func CreateOffering(ctx context.Context, req *models.CreateOfferingRequest) error {
-	var claims map[string]any
-	var err error
-	if _, claims, err = jwtauth.FromContext(ctx); err != nil {
-		msg := "failed to authenticate"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return errors.New(msg)
-	}
-
-	ownerIDRaw, ok := claims["user_id"]
-	if !ok {
-		msg := "missing user_id claim"
-		slog.ErrorContext(ctx, msg)
-		return errors.New(msg)
-	}
-	ownerID, ok := ownerIDRaw.(float64)
-	if !ok {
-		msg := "invalid user_id claim type"
-		slog.ErrorContext(ctx, msg)
-		return errors.New(msg)
-	}
-
+func CreateOffering(ctx context.Context, req *models.CreateOfferingRequest, claims map[string]any) error {
 	var tx *sql.Tx
+	var err error
 	if tx, err = DB.BeginTx(ctx, nil); err != nil {
-		msg := "error initializing the transaction"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return errors.New(msg)
+		slog.ErrorContext(ctx,
+			"error initializing database transaction",
+			slog.String("error", err.Error()),
+			slog.Any("user_claims", claims),
+		)
+		return ErrServer
 	}
 
 	defer tx.Rollback()
@@ -49,25 +29,36 @@ func CreateOffering(ctx context.Context, req *models.CreateOfferingRequest) erro
 	var id int64
 	if err = tx.QueryRowContext(ctx,
 		"INSERT INTO offerings (name, owner_id, end_date, description) VALUES ($1, $2, $3, $4) RETURNING id",
-		req.Name, int(ownerID), req.EndDate, req.Description,
+		req.Name, int(claims["id"].(float64)), req.EndDate, req.Description,
 	).Scan(&id); err != nil {
-		msg := "database error creating offering"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return errors.New(msg)
+		slog.ErrorContext(ctx,
+			"error inserting new offering on the database",
+			slog.String("error", err.Error()),
+			slog.Any("user_claims", claims),
+		)
+		return ErrServer
 	}
 
 	enrollmentCode := IDToCode(id)
 
 	if _, err = tx.ExecContext(ctx, "UPDATE offerings SET enrollment_code = $1 WHERE id = $2", enrollmentCode, id); err != nil {
-		msg := "database error updating enrollment_code"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return errors.New(msg)
+		slog.ErrorContext(ctx,
+			"error updating offering enrollment_code",
+			slog.String("error", err.Error()),
+			slog.Any("user_claims", claims),
+			slog.Int64("offering_id", id),
+			slog.String("enrollment_code", enrollmentCode),
+		)
+		return ErrServer
 	}
 
 	if err := tx.Commit(); err != nil {
-		msg := "error during database transaction"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return errors.New(msg)
+		slog.ErrorContext(ctx,
+			"error committing database transaction",
+			slog.String("error", err.Error()),
+			slog.Any("user_claims", claims),
+		)
+		return ErrServer
 	}
 
 	return nil
