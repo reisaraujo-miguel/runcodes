@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -43,7 +44,7 @@ func SignUp(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	if err = services.CheckEmailExistence(ctx, req.Email); err != nil {
-		if err == services.ErrEmailExists {
+		if errors.Is(err, services.ErrEmailExists) {
 			slog.InfoContext(ctx,
 				"someone tried to register an email that is already in use",
 			)
@@ -110,8 +111,9 @@ func LogIn(w http.ResponseWriter, r *http.Request) {
 	var claims map[string]any
 	var err error
 	if claims, err = services.LogIn(ctx, &req); err != nil {
-		switch err {
-		case services.ErrUserNotFound, services.ErrInvalidPassword:
+		switch {
+		case errors.Is(err, services.ErrUserNotFound),
+			errors.Is(err, services.ErrInvalidPassword):
 			slog.InfoContext(ctx,
 				"someone tried to login with invalid credentials",
 			)
