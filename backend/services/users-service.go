@@ -9,6 +9,8 @@ import (
 	"runcodes/models"
 
 	"github.com/go-chi/jwtauth/v5"
+	"github.com/lib/pq"
+	"github.com/lib/pq/pqerror"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -41,6 +43,11 @@ func SignUp(ctx context.Context, req *models.SignUpRequest) error {
 		"INSERT INTO users (name, email, password_hash) VALUES ($1, $2, $3)",
 		req.Name, req.Email, password,
 	); err != nil {
+		if pgErr, ok := err.(*pq.Error); ok {
+			if pgErr.Code == pqerror.UniqueViolation {
+				return ErrEmailExists
+			}
+		}
 		slog.ErrorContext(ctx,
 			"database error inserting new user",
 			slog.String("error", err.Error()),
