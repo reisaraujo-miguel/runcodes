@@ -8,6 +8,7 @@ import (
 
 	"runcodes/models"
 
+	"github.com/go-chi/jwtauth/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -93,15 +94,16 @@ func LogIn(ctx context.Context, req *models.LogInRequest) (map[string]any, error
 		"id":    id,
 		"name":  name,
 		"email": req.Email,
-		"exp":   time.Now().Add(30 * time.Minute),
-		"iat":   time.Now(),
 	}
+
+	jwtauth.SetIssuedAt(claims, time.Now())
+	jwtauth.SetExpiryIn(claims, 30*time.Minute)
 
 	return claims, nil
 }
 
 /*
-CheckEmailExistence returns if there is an user registered with the given email
+CheckEmailExistence checks if the given email is already in use
 */
 func CheckEmailExistence(ctx context.Context, email string) error {
 	var id int
