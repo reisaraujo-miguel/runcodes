@@ -49,8 +49,8 @@ func SignUp(w http.ResponseWriter, r *http.Request) {
 		} else {
 			slog.ErrorContext(ctx, "error while checking email", slog.String("error", err.Error()))
 			WriteResponse(w, http.StatusInternalServerError, models.Error{Message: err.Error()})
-			return
 		}
+		return
 	}
 
 	if req.Password != req.PasswordConfirmation {
@@ -100,22 +100,28 @@ func LogIn(w http.ResponseWriter, r *http.Request) {
 	var claims map[string]any
 	var err error
 	if claims, err = services.LogIn(ctx, &req); err != nil {
-		if err == services.ErrUserNotFound {
+		switch err {
+		case services.ErrUserNotFound:
 			slog.InfoContext(ctx,
 				"someone tried to login with an invalid user",
 				slog.String("user_email", req.Email),
 			)
 			WriteResponse(w, http.StatusNotFound, models.Error{Message: err.Error()})
-			return
-		} else {
+		case services.ErrInvalidPassword:
+			slog.InfoContext(ctx,
+				"someone tried to login with an invalid user password",
+				slog.String("user_email", req.Email),
+			)
+			WriteResponse(w, http.StatusUnauthorized, models.Error{Message: err.Error()})
+		default:
 			slog.ErrorContext(ctx,
 				"error logging in user",
 				slog.String("error", err.Error()),
 				slog.String("user_email", req.Email),
 			)
 			WriteResponse(w, http.StatusInternalServerError, models.Error{Message: err.Error()})
-			return
 		}
+		return
 	}
 
 	var tokenString string
@@ -136,7 +142,8 @@ func LogIn(w http.ResponseWriter, r *http.Request) {
 		Secure:   os.Getenv(debugModeEnv) != "true", // HTTPS only (disable in local dev)
 		SameSite: http.SameSiteStrictMode,
 		Path:     "/",
-		MaxAge:   int(30 * time.Minute),
+		MaxAge:   int((30 * time.Minute).Seconds()),
+		Expires:  time.Now().Add(30 * time.Minute),
 	})
 
 	WriteResponse(w, http.StatusOK, nil)
