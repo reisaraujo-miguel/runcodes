@@ -1,5 +1,3 @@
-ALTER SCHEMA public OWNER TO runcodes;
-
 SET ROLE TO runcodes;
 
 CREATE TABLE exercises (

@@ -1,10 +1,9 @@
-// Package validation provides input validation, sanitization utilities and JWT validation.
+// Package validation provides input validation, sanitization utilities
+// and JWT validation.
 package validation
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"log/slog"
 	"net/mail"
 	"strings"
@@ -14,29 +13,32 @@ import (
 
 func ValidateEmailFormat(ctx context.Context, email string) error {
 	if email == "" {
-		return errors.New("email is required")
+		return ErrRequiredField
 	}
 
 	if _, err := mail.ParseAddress(email); err != nil {
-		msg := "error parsing email address"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return errors.New(msg)
+		slog.ErrorContext(ctx,
+			"error parsing email address",
+			slog.String("error", err.Error()),
+		)
+		return ErrParsingField
 	}
 
 	return nil
 }
 
 /*
-ValidateRequiredString validates if the string exists (is not an empty string) and is not
-bigger than the allowed max_size, returning an error if it does not meets the criteria
+ValidateRequiredString validates if the string exists (is not an empty string)
+and is not bigger than the allowed max_size, returning an error if it does not
+meet the criteria
 */
 func ValidateRequiredString(name string, maxSize int) error {
 	if name == "" {
-		return errors.New("input is required")
+		return ErrRequiredField
 	}
 
 	if utf8.RuneCountInString(name) > maxSize {
-		return fmt.Errorf("input must be smaller than %d characters", maxSize)
+		return ErrInputTooLong
 	}
 
 	return nil
@@ -44,15 +46,17 @@ func ValidateRequiredString(name string, maxSize int) error {
 
 func ValidateDate(ctx context.Context, dateStr string) (*time.Time, error) {
 	if dateStr == "" {
-		return nil, errors.New("date is required")
+		return nil, ErrRequiredField
 	}
 
 	var date time.Time
 	var err error
 	if date, err = time.Parse(time.RFC3339Nano, dateStr); err != nil {
-		msg := "error parsing date string"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return nil, errors.New(msg)
+		slog.ErrorContext(ctx,
+			"error parsing date",
+			slog.String("error", err.Error()),
+		)
+		return nil, ErrParsingField
 	}
 
 	return &date, nil
@@ -60,11 +64,11 @@ func ValidateDate(ctx context.Context, dateStr string) (*time.Time, error) {
 
 func ValidatePassword(password string) error {
 	if password == "" {
-		return errors.New("password is required")
+		return ErrRequiredField
 	}
 
 	if len(password) < 8 {
-		return errors.New("password must be at least 8 characters long")
+		return ErrInputTooShort
 	}
 
 	var (
@@ -90,19 +94,19 @@ func ValidatePassword(password string) error {
 	}
 
 	if !hasUpper {
-		return errors.New("password must contain at least one uppercase letter")
+		return ErrMustContainUppercase
 	}
 
 	if !hasLower {
-		return errors.New("password must contain at least one lowercase letter")
+		return ErrMustContainLowercase
 	}
 
 	if !hasDigit {
-		return errors.New("password must contain at least one digit")
+		return ErrMustContainDigit
 	}
 
 	if !hasSpecial {
-		return errors.New("password must contain at least one special character")
+		return ErrMustContainSpecialCharacter
 	}
 
 	return nil

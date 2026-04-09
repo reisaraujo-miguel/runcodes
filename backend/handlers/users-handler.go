@@ -2,91 +2,159 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
+	"time"
 
 	"runcodes/models"
 	"runcodes/services"
 	"runcodes/validation"
 )
 
+const debugModeEnv string = "DEBUG_MODE"
+
 func SignUp(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	var req models.SignUpRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		msg := "Invalid sign up request"
+		msg := "invalid sign up request"
 		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		WriteResponse(w, http.StatusBadRequest, msg, models.Error{Message: msg})
+		WriteResponse(w, http.StatusBadRequest, models.Error{Message: msg})
 		return
 	}
 
-	req.UserName = strings.TrimSpace(req.UserName)
+	req.Name = strings.TrimSpace(req.Name)
 	req.Email = strings.TrimSpace(req.Email)
 
-	if err := validation.ValidateRequiredString(req.UserName, 100); err != nil {
-		msg := "Invalid user name"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		WriteResponse(w, http.StatusBadRequest, msg, models.Error{Message: err.Error()})
+	if err := validation.ValidateRequiredString(req.Name, 100); err != nil {
+		slog.InfoContext(ctx, "someone tried to register with an invalid user name")
+		WriteResponse(w, http.StatusBadRequest, models.Error{Message: err.Error()})
 		return
 	}
 
 	if err := validation.ValidateEmailFormat(ctx, req.Email); err != nil {
-		msg := "Invalid email"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		WriteResponse(w, http.StatusBadRequest, msg, models.Error{Message: err.Error()})
+		slog.InfoContext(ctx, "someone tried to register with an invalid email")
+		WriteResponse(w, http.StatusBadRequest, models.Error{Message: err.Error()})
 		return
 	}
 
-	var emailExists bool
 	var err error
-	if emailExists, err = services.CheckEmailExistence(ctx, req.Email); err != nil {
-		msg := "database error validating email"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		WriteResponse(w, http.StatusInternalServerError, msg, models.Error{Message: err.Error()})
+	if err = services.CheckEmailExistence(ctx, req.Email); err != nil {
+		if errors.Is(err, services.ErrEmailExists) {
+			slog.InfoContext(ctx,
+				"someone tried to register an email that is already in use",
+			)
+			WriteResponse(w, http.StatusConflict,
+				models.Error{Message: services.ErrEmailExists.Error()},
+			)
+		} else {
+			slog.ErrorContext(ctx,
+				"error while checking email",
+				slog.String("error", err.Error()),
+			)
+			WriteResponse(w, http.StatusInternalServerError,
+				models.Error{Message: services.ErrServer.Error()},
+			)
+		}
 		return
-	}
-
-	if emailExists {
-		msg := "email already exists"
-		slog.ErrorContext(ctx, msg)
-		WriteResponse(w, http.StatusConflict, msg, models.Error{Message: msg})
 	}
 
 	if req.Password != req.PasswordConfirmation {
-		msg := "passwords don't match"
-		slog.ErrorContext(ctx, msg)
-		WriteResponse(w, http.StatusBadRequest, msg, models.Error{Message: msg})
+		slog.InfoContext(ctx, "someone tried to register with different passwords")
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "passwords don't match"},
+		)
 		return
 	}
 
 	if err := validation.ValidatePassword(req.Password); err != nil {
-		msg := "invalid password"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		WriteResponse(w, http.StatusBadRequest, msg, models.Error{Message: err.Error()})
+		slog.InfoContext(ctx, "someone tried to register with an invalid password")
+		WriteResponse(w, http.StatusBadRequest, models.Error{Message: err.Error()})
 		return
 	}
 
 	if err := services.SignUp(ctx, &req); err != nil {
-		msg := "error registering new user"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		WriteResponse(w, http.StatusInternalServerError, msg, models.Error{Message: err.Error()})
+		slog.ErrorContext(ctx,
+			"error registering new user",
+			slog.String("error", err.Error()),
+		)
+		WriteResponse(w, http.StatusInternalServerError,
+			models.Error{Message: services.ErrServer.Error()},
+		)
 		return
 	}
 
-	WriteResponse(w, http.StatusCreated, "new user created", nil)
+	WriteResponse(w, http.StatusCreated, nil)
 }
 
 func LogIn(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	w.Header().Set("Content-Type", "application/json")
 
 	var req models.LogInRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		msg := "Invalid login request"
 		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		WriteResponse(w, http.StatusBadRequest, msg, nil)
+		WriteResponse(w, http.StatusBadRequest, models.Error{Message: msg})
 		return
 	}
+
+	req.Email = strings.TrimSpace(req.Email)
+
+	if err := validation.ValidateEmailFormat(ctx, req.Email); err != nil {
+		slog.InfoContext(ctx, "someone tried to login with an invalid email")
+		WriteResponse(w, http.StatusBadRequest, models.Error{Message: err.Error()})
+		return
+	}
+
+	var claims map[string]any
+	var err error
+	if claims, err = services.LogIn(ctx, &req); err != nil {
+		switch {
+		case errors.Is(err, services.ErrInvalidCredentials):
+			slog.InfoContext(ctx,
+				"someone tried to login with invalid credentials",
+			)
+			WriteResponse(w, http.StatusUnauthorized,
+				models.Error{Message: services.ErrInvalidCredentials.Error()},
+			)
+		default:
+			slog.ErrorContext(ctx,
+				"error logging in user",
+				slog.String("error", err.Error()),
+			)
+			WriteResponse(w, http.StatusInternalServerError,
+				models.Error{Message: services.ErrServer.Error()},
+			)
+		}
+		return
+	}
+
+	var tokenString string
+	if _, tokenString, err = validation.TokenAuth.Encode(claims); err != nil {
+		slog.ErrorContext(ctx,
+			"error generating signed token string",
+			slog.String("error", err.Error()),
+		)
+		WriteResponse(w, http.StatusInternalServerError,
+			models.Error{Message: services.ErrServer.Error()},
+		)
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "jwt",
+		Value:    tokenString,
+		HttpOnly: true,                              // JS cannot access it
+		Secure:   os.Getenv(debugModeEnv) != "true", // HTTPS only (disabled in local dev)
+		SameSite: http.SameSiteStrictMode,
+		Path:     "/",
+		MaxAge:   int((30 * time.Minute).Seconds()),
+		Expires:  time.Now().Add(30 * time.Minute),
+	})
+
+	WriteResponse(w, http.StatusOK, nil)
 }

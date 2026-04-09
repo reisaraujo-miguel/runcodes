@@ -1,7 +1,7 @@
 #!/bin/bash
 set -eu
 
-"${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
+POSTGRES_PASSWORD="${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
 
 psql -v ON_ERROR_STOP=1 \
 	--username "$POSTGRES_USER" \

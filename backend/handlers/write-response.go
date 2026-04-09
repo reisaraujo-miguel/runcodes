@@ -2,32 +2,19 @@ package handlers
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
-
-	"runcodes/models"
-)
-
-const (
-	InvalidPasswordErr = iota
-	InvalidUserNameErr
-	InvalidEmailErr
-	PasswordsDontMatchErr
-	EmailAlreadyExistsErr
-	ServerErr
-	InvalidRequestErr
 )
 
 /*
-WriteResponse encodes a models.Response and writes using the provided http.ResponseWriter
+WriteResponse encodes a http response and writes it
 */
-func WriteResponse(w http.ResponseWriter, httpStatus int, msg string, data any) {
+func WriteResponse(w http.ResponseWriter, httpStatus int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 
 	w.WriteHeader(httpStatus)
-	response := models.Response{
-		Message: msg,
-		Data:    data,
-	}
 
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		slog.Error("failed to encode response", "error", err)
+	}
 }

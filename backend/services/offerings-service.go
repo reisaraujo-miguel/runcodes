@@ -4,70 +4,83 @@ package services
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"log/slog"
 
 	"runcodes/models"
-
-	"github.com/go-chi/jwtauth/v5"
 )
 
 /*
 CreateOffering creates a new offering on the platform.
 */
-func CreateOffering(ctx context.Context, req *models.CreateOfferingRequest) error {
-	var claims map[string]any
-	var err error
-	if _, claims, err = jwtauth.FromContext(ctx); err != nil {
-		msg := "failed to authenticate"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return errors.New(msg)
-	}
-
-	ownerIDRaw, ok := claims["user_id"]
+func CreateOffering(
+	ctx context.Context, req *models.CreateOfferingRequest, claims map[string]any,
+) error {
+	ownerIDRaw, ok := claims["id"]
 	if !ok {
-		msg := "missing user_id claim"
-		slog.ErrorContext(ctx, msg)
-		return errors.New(msg)
+		slog.ErrorContext(ctx, "missing user id claim")
+		return ErrServer
 	}
-	ownerID, ok := ownerIDRaw.(float64)
+	ownerIDFloat, ok := ownerIDRaw.(float64)
 	if !ok {
-		msg := "invalid user_id claim type"
-		slog.ErrorContext(ctx, msg)
-		return errors.New(msg)
+		slog.ErrorContext(ctx,
+			"invalid user id claim type",
+			slog.Any("claim_id", ownerIDRaw),
+		)
+		return ErrServer
 	}
 
 	var tx *sql.Tx
+	var err error
 	if tx, err = DB.BeginTx(ctx, nil); err != nil {
-		msg := "error initializing the transaction"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return errors.New(msg)
+		slog.ErrorContext(ctx,
+			"error initializing database transaction",
+			slog.String("error", err.Error()),
+			slog.Any("user_id", claims["id"]),
+		)
+		return ErrServer
 	}
 
 	defer tx.Rollback()
 
 	var id int64
 	if err = tx.QueryRowContext(ctx,
-		"INSERT INTO offerings (name, owner_id, end_date, description) VALUES ($1, $2, $3, $4) RETURNING id",
-		req.Name, int(ownerID), req.EndDate, req.Description,
+		`
+		INSERT INTO offerings (name, owner_id, end_date, description)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id
+		`, req.Name, int(ownerIDFloat), req.EndDate, req.Description,
 	).Scan(&id); err != nil {
-		msg := "database error creating offering"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return errors.New(msg)
+		slog.ErrorContext(ctx,
+			"error inserting new offering on the database",
+			slog.String("error", err.Error()),
+			slog.Any("user_id", claims["id"]),
+		)
+		return ErrServer
 	}
 
 	enrollmentCode := IDToCode(id)
 
-	if _, err = tx.ExecContext(ctx, "UPDATE offerings SET enrollment_code = $1 WHERE id = $2", enrollmentCode, id); err != nil {
-		msg := "database error updating enrollment_code"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return errors.New(msg)
+	if _, err = tx.ExecContext(ctx,
+		"UPDATE offerings SET enrollment_code = $1 WHERE id = $2",
+		enrollmentCode, id,
+	); err != nil {
+		slog.ErrorContext(ctx,
+			"error updating offering enrollment_code",
+			slog.String("error", err.Error()),
+			slog.Any("user_id", claims["id"]),
+			slog.Int64("offering_id", id),
+			slog.String("enrollment_code", enrollmentCode),
+		)
+		return ErrServer
 	}
 
 	if err := tx.Commit(); err != nil {
-		msg := "error during database transaction"
-		slog.ErrorContext(ctx, msg, slog.String("error", err.Error()))
-		return errors.New(msg)
+		slog.ErrorContext(ctx,
+			"error committing database transaction",
+			slog.String("error", err.Error()),
+			slog.Any("user_id", claims["id"]),
+		)
+		return ErrServer
 	}
 
 	return nil
@@ -77,7 +90,7 @@ const (
 	alphabet string = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	base     int64  = int64(len(alphabet))      // 36
 	space    int64  = base * base * base * base // 36^4 = 1,679,616
-	prime    int64  = 1_276_043                 // Coprime with space (36^4 = 2^8 * 3^8, so any prime ≠ 2,3 works)
+	prime    int64  = 1_276_043                 // Coprime with space (36^4 = 2^8 * 3^8, any prime ≠ 2,3 works)
 )
 
 /*
