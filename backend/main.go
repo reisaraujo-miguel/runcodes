@@ -44,7 +44,10 @@ func main() {
 	}
 
 	if err := godotenv.Load(); err != nil {
-		slog.Info("No .env file found, using environment variables", slog.String("error", err.Error()))
+		slog.Info(
+			"No .env file found, using environment variables",
+			slog.String("error", err.Error()),
+		)
 	}
 
 	SetupLogger()

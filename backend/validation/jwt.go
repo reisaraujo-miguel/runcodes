@@ -25,7 +25,9 @@ func SetupJWT() error {
 		return err
 	}
 
-	TokenAuth = jwtauth.New("HS256", secret, nil, jwt.WithAcceptableSkew(30*time.Second))
+	TokenAuth = jwtauth.New("HS256",
+		secret, nil, jwt.WithAcceptableSkew(30*time.Second),
+	)
 
 	return nil
 }

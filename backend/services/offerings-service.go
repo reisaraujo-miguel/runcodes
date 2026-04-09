@@ -12,7 +12,9 @@ import (
 /*
 CreateOffering creates a new offering on the platform.
 */
-func CreateOffering(ctx context.Context, req *models.CreateOfferingRequest, claims map[string]any) error {
+func CreateOffering(
+	ctx context.Context, req *models.CreateOfferingRequest, claims map[string]any,
+) error {
 	ownerIDRaw, ok := claims["id"]
 	if !ok {
 		slog.ErrorContext(ctx, "missing user id claim")
@@ -20,7 +22,10 @@ func CreateOffering(ctx context.Context, req *models.CreateOfferingRequest, clai
 	}
 	ownerIDFloat, ok := ownerIDRaw.(float64)
 	if !ok {
-		slog.ErrorContext(ctx, "invalid user id claim type", slog.Any("claim_id", ownerIDRaw))
+		slog.ErrorContext(ctx,
+			"invalid user id claim type",
+			slog.Any("claim_id", ownerIDRaw),
+		)
 		return ErrServer
 	}
 
@@ -30,7 +35,7 @@ func CreateOffering(ctx context.Context, req *models.CreateOfferingRequest, clai
 		slog.ErrorContext(ctx,
 			"error initializing database transaction",
 			slog.String("error", err.Error()),
-			slog.Any("user_name", claims["name"]), slog.Any("user_email", claims["email"]),
+			slog.Any("user_id", claims["id"]),
 		)
 		return ErrServer
 	}
@@ -39,24 +44,30 @@ func CreateOffering(ctx context.Context, req *models.CreateOfferingRequest, clai
 
 	var id int64
 	if err = tx.QueryRowContext(ctx,
-		"INSERT INTO offerings (name, owner_id, end_date, description) VALUES ($1, $2, $3, $4) RETURNING id",
-		req.Name, int(ownerIDFloat), req.EndDate, req.Description,
+		`
+		INSERT INTO offerings (name, owner_id, end_date, description)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id
+		`, req.Name, int(ownerIDFloat), req.EndDate, req.Description,
 	).Scan(&id); err != nil {
 		slog.ErrorContext(ctx,
 			"error inserting new offering on the database",
 			slog.String("error", err.Error()),
-			slog.Any("user_name", claims["name"]), slog.Any("user_email", claims["email"]),
+			slog.Any("user_id", claims["id"]),
 		)
 		return ErrServer
 	}
 
 	enrollmentCode := IDToCode(id)
 
-	if _, err = tx.ExecContext(ctx, "UPDATE offerings SET enrollment_code = $1 WHERE id = $2", enrollmentCode, id); err != nil {
+	if _, err = tx.ExecContext(ctx,
+		"UPDATE offerings SET enrollment_code = $1 WHERE id = $2",
+		enrollmentCode, id,
+	); err != nil {
 		slog.ErrorContext(ctx,
 			"error updating offering enrollment_code",
 			slog.String("error", err.Error()),
-			slog.Any("user_name", claims["name"]), slog.Any("user_email", claims["email"]),
+			slog.Any("user_id", claims["id"]),
 			slog.Int64("offering_id", id),
 			slog.String("enrollment_code", enrollmentCode),
 		)
@@ -67,7 +78,7 @@ func CreateOffering(ctx context.Context, req *models.CreateOfferingRequest, clai
 		slog.ErrorContext(ctx,
 			"error committing database transaction",
 			slog.String("error", err.Error()),
-			slog.Any("user_name", claims["name"]), slog.Any("user_email", claims["email"]),
+			slog.Any("user_id", claims["id"]),
 		)
 		return ErrServer
 	}
@@ -79,7 +90,7 @@ const (
 	alphabet string = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	base     int64  = int64(len(alphabet))      // 36
 	space    int64  = base * base * base * base // 36^4 = 1,679,616
-	prime    int64  = 1_276_043                 // Coprime with space (36^4 = 2^8 * 3^8, so any prime ≠ 2,3 works)
+	prime    int64  = 1_276_043                 // Coprime with space (36^4 = 2^8 * 3^8, any prime ≠ 2,3 works)
 )
 
 /*

@@ -1,4 +1,5 @@
-// Package validation provides input validation, sanitization utilities and JWT validation.
+// Package validation provides input validation, sanitization utilities
+// and JWT validation.
 package validation
 
 import (
@@ -16,7 +17,10 @@ func ValidateEmailFormat(ctx context.Context, email string) error {
 	}
 
 	if _, err := mail.ParseAddress(email); err != nil {
-		slog.ErrorContext(ctx, "error parsing email address", slog.String("error", err.Error()))
+		slog.ErrorContext(ctx,
+			"error parsing email address",
+			slog.String("error", err.Error()),
+		)
 		return ErrParsingField
 	}
 
@@ -24,8 +28,9 @@ func ValidateEmailFormat(ctx context.Context, email string) error {
 }
 
 /*
-ValidateRequiredString validates if the string exists (is not an empty string) and is not
-bigger than the allowed max_size, returning an error if it does not meets the criteria
+ValidateRequiredString validates if the string exists (is not an empty string)
+and is not bigger than the allowed max_size, returning an error if it does not
+meets the criteria
 */
 func ValidateRequiredString(name string, maxSize int) error {
 	if name == "" {
@@ -47,7 +52,10 @@ func ValidateDate(ctx context.Context, dateStr string) (*time.Time, error) {
 	var date time.Time
 	var err error
 	if date, err = time.Parse(time.RFC3339Nano, dateStr); err != nil {
-		slog.ErrorContext(ctx, "error parsing date", slog.String("error", err.Error()))
+		slog.ErrorContext(ctx,
+			"error parsing date",
+			slog.String("error", err.Error()),
+		)
 		return nil, ErrParsingField
 	}
 

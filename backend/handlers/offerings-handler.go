@@ -33,7 +33,9 @@ func CreateOffering(w http.ResponseWriter, r *http.Request) {
 	var claims map[string]any
 	var err error
 	if _, claims, err = jwtauth.FromContext(ctx); err != nil {
-		slog.ErrorContext(ctx, "error retrieving claims from context", slog.String("error", err.Error()))
+		slog.ErrorContext(ctx,
+			"error retrieving claims from context",
+			slog.String("error", err.Error()))
 		WriteResponse(w, http.StatusInternalServerError, nil)
 		return
 	}
@@ -44,23 +46,27 @@ func CreateOffering(w http.ResponseWriter, r *http.Request) {
 	if err := validation.ValidateRequiredString(req.Name, 100); err != nil {
 		slog.InfoContext(ctx,
 			"user tried to create an offering with an invalid name",
-			slog.Any("user_name", claims["name"]), slog.Any("user_email", claims["email"]),
+			slog.Any("user_id", claims["id"]),
 		)
 		WriteResponse(w, http.StatusBadRequest, models.Error{Message: err.Error()})
 		return
 	}
 
 	if date, err := validation.ValidateDate(ctx, req.EndDate); err != nil {
-		slog.InfoContext(ctx, "user tried to create and offering with an invalid end date",
-			slog.Any("user_name", claims["name"]), slog.Any("user_email", claims["email"]),
+		slog.InfoContext(ctx,
+			"user tried to create and offering with an invalid end date",
+			slog.Any("user_id", claims["id"]),
 		)
 		WriteResponse(w, http.StatusBadRequest, models.Error{Message: err.Error()})
 		return
 	} else if date.Before(time.Now()) {
-		slog.InfoContext(ctx, "user tried to create an offering with an invalid end date",
-			slog.Any("user_name", claims["name"]), slog.Any("user_email", claims["email"]),
+		slog.InfoContext(ctx,
+			"user tried to create an offering with an invalid end date",
+			slog.Any("user_id", claims["id"]),
 		)
-		WriteResponse(w, http.StatusBadRequest, models.Error{Message: "end date cannot be in the past"})
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "end date cannot be in the past"},
+		)
 		return
 	}
 
@@ -68,9 +74,7 @@ func CreateOffering(w http.ResponseWriter, r *http.Request) {
 		slog.ErrorContext(ctx,
 			"Failed to create offering",
 			slog.String("error", err.Error()),
-			slog.Any("user_name", claims["name"]),
-			slog.Any("user_email", claims["email"]),
-			slog.Any("offering_name", req.Name),
+			slog.Any("user_id", claims["id"]),
 		)
 		WriteResponse(w, http.StatusInternalServerError, nil)
 		return

@@ -44,18 +44,27 @@ func SignUp(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if err = services.CheckEmailExistence(ctx, req.Email); err != nil {
 		if err == services.ErrEmailExists {
-			slog.InfoContext(ctx, "someone tried to register an email that is already in use")
+			slog.InfoContext(ctx,
+				"someone tried to register an email that is already in use",
+			)
 			WriteResponse(w, http.StatusConflict, models.Error{Message: err.Error()})
 		} else {
-			slog.ErrorContext(ctx, "error while checking email", slog.String("error", err.Error()))
-			WriteResponse(w, http.StatusInternalServerError, models.Error{Message: err.Error()})
+			slog.ErrorContext(ctx,
+				"error while checking email",
+				slog.String("error", err.Error()),
+			)
+			WriteResponse(w, http.StatusInternalServerError,
+				models.Error{Message: err.Error()},
+			)
 		}
 		return
 	}
 
 	if req.Password != req.PasswordConfirmation {
 		slog.InfoContext(ctx, "someone tried to register with different passwords")
-		WriteResponse(w, http.StatusBadRequest, models.Error{Message: "passwords don't match"})
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "passwords don't match"},
+		)
 		return
 	}
 
@@ -71,7 +80,9 @@ func SignUp(w http.ResponseWriter, r *http.Request) {
 			slog.String("error", err.Error()),
 			slog.String("user_email", req.Email),
 		)
-		WriteResponse(w, http.StatusInternalServerError, models.Error{Message: err.Error()})
+		WriteResponse(w, http.StatusInternalServerError,
+			models.Error{Message: err.Error()},
+		)
 		return
 	}
 
@@ -104,16 +115,18 @@ func LogIn(w http.ResponseWriter, r *http.Request) {
 		case services.ErrUserNotFound, services.ErrInvalidPassword:
 			slog.InfoContext(ctx,
 				"someone tried to login with invalid credentials",
-				slog.String("user_email", req.Email),
 			)
-			WriteResponse(w, http.StatusUnauthorized, models.Error{Message: "invalid credentials"})
+			WriteResponse(w, http.StatusUnauthorized,
+				models.Error{Message: "invalid credentials"},
+			)
 		default:
 			slog.ErrorContext(ctx,
 				"error logging in user",
 				slog.String("error", err.Error()),
-				slog.String("user_email", req.Email),
 			)
-			WriteResponse(w, http.StatusInternalServerError, models.Error{Message: err.Error()})
+			WriteResponse(w, http.StatusInternalServerError,
+				models.Error{Message: err.Error()},
+			)
 		}
 		return
 	}
@@ -124,7 +137,9 @@ func LogIn(w http.ResponseWriter, r *http.Request) {
 			"error generating signed token string",
 			slog.String("error", err.Error()),
 		)
-		WriteResponse(w, http.StatusInternalServerError, models.Error{Message: "internal server error, try again later"})
+		WriteResponse(w, http.StatusInternalServerError,
+			models.Error{Message: "internal server error, try again later"},
+		)
 		return
 	}
 
@@ -132,7 +147,7 @@ func LogIn(w http.ResponseWriter, r *http.Request) {
 		Name:     "jwt",
 		Value:    tokenString,
 		HttpOnly: true,                              // JS cannot access it
-		Secure:   os.Getenv(debugModeEnv) != "true", // HTTPS only (disable in local dev)
+		Secure:   os.Getenv(debugModeEnv) != "true", // HTTPS only (disabled in local dev)
 		SameSite: http.SameSiteStrictMode,
 		Path:     "/",
 		MaxAge:   int((30 * time.Minute).Seconds()),

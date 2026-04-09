@@ -34,7 +34,9 @@ func createRoutes(router *chi.Mux) {
 	})
 }
 
-// configureMiddleware configures traceid, RequestLogger, Recoverer and cors.handler
+/*
+configureMiddleware configures traceid, RequestLogger, Recoverer and cors.handler
+*/
 func configureMiddleware(router *chi.Mux) {
 	router.Use(traceid.Middleware)
 
@@ -46,9 +48,12 @@ func configureMiddleware(router *chi.Mux) {
 		LogRequestBody:     isDebugHeaderSet,
 		LogResponseBody:    isDebugHeaderSet,
 		// Log all requests with invalid payload as curl command.
-		LogExtraAttrs: func(req *http.Request, reqBody string, respStatus int) []slog.Attr {
+		LogExtraAttrs: func(
+			req *http.Request, reqBody string, respStatus int,
+		) []slog.Attr {
 			if !isDebugHeaderSet(req) ||
-				(respStatus != http.StatusBadRequest && respStatus != http.StatusUnprocessableEntity) {
+				(respStatus != http.StatusBadRequest &&
+					respStatus != http.StatusUnprocessableEntity) {
 				return nil
 			}
 			sanitized := req.Clone(req.Context())
