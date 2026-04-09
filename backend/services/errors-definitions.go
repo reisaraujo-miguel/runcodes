@@ -3,8 +3,7 @@ package services
 import "errors"
 
 var (
-	ErrEmailExists     = errors.New("email is already registered")
-	ErrServer          = errors.New("internal server error, try again later")
-	ErrUserNotFound    = errors.New("user not found")
-	ErrInvalidPassword = errors.New("invalid password")
+	ErrEmailExists        = errors.New("email is already in use")
+	ErrServer             = errors.New("internal server error, try again later")
+	ErrInvalidCredentials = errors.New("invalid credentials")
 )

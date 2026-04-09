@@ -48,14 +48,16 @@ func SignUp(w http.ResponseWriter, r *http.Request) {
 			slog.InfoContext(ctx,
 				"someone tried to register an email that is already in use",
 			)
-			WriteResponse(w, http.StatusConflict, models.Error{Message: err.Error()})
+			WriteResponse(w, http.StatusConflict,
+				models.Error{Message: services.ErrEmailExists.Error()},
+			)
 		} else {
 			slog.ErrorContext(ctx,
 				"error while checking email",
 				slog.String("error", err.Error()),
 			)
 			WriteResponse(w, http.StatusInternalServerError,
-				models.Error{Message: err.Error()},
+				models.Error{Message: services.ErrServer.Error()},
 			)
 		}
 		return
@@ -81,7 +83,7 @@ func SignUp(w http.ResponseWriter, r *http.Request) {
 			slog.String("error", err.Error()),
 		)
 		WriteResponse(w, http.StatusInternalServerError,
-			models.Error{Message: err.Error()},
+			models.Error{Message: services.ErrServer.Error()},
 		)
 		return
 	}
@@ -112,13 +114,12 @@ func LogIn(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if claims, err = services.LogIn(ctx, &req); err != nil {
 		switch {
-		case errors.Is(err, services.ErrUserNotFound),
-			errors.Is(err, services.ErrInvalidPassword):
+		case errors.Is(err, services.ErrInvalidCredentials):
 			slog.InfoContext(ctx,
 				"someone tried to login with invalid credentials",
 			)
 			WriteResponse(w, http.StatusUnauthorized,
-				models.Error{Message: "invalid credentials"},
+				models.Error{Message: services.ErrInvalidCredentials.Error()},
 			)
 		default:
 			slog.ErrorContext(ctx,
@@ -126,7 +127,7 @@ func LogIn(w http.ResponseWriter, r *http.Request) {
 				slog.String("error", err.Error()),
 			)
 			WriteResponse(w, http.StatusInternalServerError,
-				models.Error{Message: err.Error()},
+				models.Error{Message: services.ErrServer.Error()},
 			)
 		}
 		return
@@ -139,7 +140,7 @@ func LogIn(w http.ResponseWriter, r *http.Request) {
 			slog.String("error", err.Error()),
 		)
 		WriteResponse(w, http.StatusInternalServerError,
-			models.Error{Message: "internal server error, try again later"},
+			models.Error{Message: services.ErrServer.Error()},
 		)
 		return
 	}

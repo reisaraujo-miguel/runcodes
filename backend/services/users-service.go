@@ -69,7 +69,7 @@ func LogIn(ctx context.Context, req *models.LogInRequest) (map[string]any, error
 			slog.InfoContext(ctx,
 				"someone tried to login as an user that does not exist",
 			)
-			return nil, ErrUserNotFound
+			return nil, ErrInvalidCredentials
 		} else {
 			slog.ErrorContext(ctx,
 				"error querying database",
@@ -86,7 +86,7 @@ func LogIn(ctx context.Context, req *models.LogInRequest) (map[string]any, error
 			"provided password doesn't match with database",
 			slog.String("error", err.Error()),
 		)
-		return nil, ErrInvalidPassword
+		return nil, ErrInvalidCredentials
 	}
 
 	claims := map[string]any{

@@ -76,7 +76,9 @@ func CreateOffering(w http.ResponseWriter, r *http.Request) {
 			slog.String("error", err.Error()),
 			slog.Any("user_id", claims["id"]),
 		)
-		WriteResponse(w, http.StatusInternalServerError, nil)
+		WriteResponse(w, http.StatusInternalServerError,
+			models.Error{Message: services.ErrServer.Error()},
+		)
 		return
 	}
 
