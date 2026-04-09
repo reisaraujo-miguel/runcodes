@@ -78,7 +78,6 @@ func SignUp(w http.ResponseWriter, r *http.Request) {
 		slog.ErrorContext(ctx,
 			"error registering new user",
 			slog.String("error", err.Error()),
-			slog.String("user_email", req.Email),
 		)
 		WriteResponse(w, http.StatusInternalServerError,
 			models.Error{Message: err.Error()},
