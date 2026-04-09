@@ -51,13 +51,13 @@ func CreateOffering(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if date, err := validation.ValidateDate(ctx, req.EndDate); err != nil {
-		slog.ErrorContext(ctx, "user tried to create and offering with an invalid end date",
+		slog.InfoContext(ctx, "user tried to create and offering with an invalid end date",
 			slog.Any("user_name", claims["name"]), slog.Any("user_email", claims["email"]),
 		)
 		WriteResponse(w, http.StatusBadRequest, models.Error{Message: err.Error()})
 		return
 	} else if date.Before(time.Now()) {
-		slog.ErrorContext(ctx, "user tried to create and offering with an invalid end date",
+		slog.InfoContext(ctx, "user tried to create an offering with an invalid end date",
 			slog.Any("user_name", claims["name"]), slog.Any("user_email", claims["email"]),
 		)
 		WriteResponse(w, http.StatusBadRequest, models.Error{Message: "end date cannot be in the past"})

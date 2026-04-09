@@ -103,7 +103,7 @@ func LogIn(w http.ResponseWriter, r *http.Request) {
 		switch err {
 		case services.ErrUserNotFound, services.ErrInvalidPassword:
 			slog.InfoContext(ctx,
-				"someone tried to login with an invalid credentials",
+				"someone tried to login with invalid credentials",
 				slog.String("user_email", req.Email),
 			)
 			WriteResponse(w, http.StatusUnauthorized, models.Error{Message: "invalid credentials"})
