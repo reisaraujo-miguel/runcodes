@@ -13,13 +13,24 @@ import (
 CreateOffering creates a new offering on the platform.
 */
 func CreateOffering(ctx context.Context, req *models.CreateOfferingRequest, claims map[string]any) error {
+	ownerIDRaw, ok := claims["id"]
+	if !ok {
+		slog.ErrorContext(ctx, "missing user id claim")
+		return ErrServer
+	}
+	ownerIDFloat, ok := ownerIDRaw.(float64)
+	if !ok {
+		slog.ErrorContext(ctx, "invalid user id claim type", slog.Any("claim_id", ownerIDRaw))
+		return ErrServer
+	}
+
 	var tx *sql.Tx
 	var err error
 	if tx, err = DB.BeginTx(ctx, nil); err != nil {
 		slog.ErrorContext(ctx,
 			"error initializing database transaction",
 			slog.String("error", err.Error()),
-			slog.Any("user_claims", claims),
+			slog.Any("user_name", claims["name"]), slog.Any("user_email", claims["email"]),
 		)
 		return ErrServer
 	}
@@ -29,12 +40,12 @@ func CreateOffering(ctx context.Context, req *models.CreateOfferingRequest, clai
 	var id int64
 	if err = tx.QueryRowContext(ctx,
 		"INSERT INTO offerings (name, owner_id, end_date, description) VALUES ($1, $2, $3, $4) RETURNING id",
-		req.Name, int(claims["id"].(float64)), req.EndDate, req.Description,
+		req.Name, int(ownerIDFloat), req.EndDate, req.Description,
 	).Scan(&id); err != nil {
 		slog.ErrorContext(ctx,
 			"error inserting new offering on the database",
 			slog.String("error", err.Error()),
-			slog.Any("user_claims", claims),
+			slog.Any("user_name", claims["name"]), slog.Any("user_email", claims["email"]),
 		)
 		return ErrServer
 	}
@@ -45,7 +56,7 @@ func CreateOffering(ctx context.Context, req *models.CreateOfferingRequest, clai
 		slog.ErrorContext(ctx,
 			"error updating offering enrollment_code",
 			slog.String("error", err.Error()),
-			slog.Any("user_claims", claims),
+			slog.Any("user_name", claims["name"]), slog.Any("user_email", claims["email"]),
 			slog.Int64("offering_id", id),
 			slog.String("enrollment_code", enrollmentCode),
 		)
@@ -56,7 +67,7 @@ func CreateOffering(ctx context.Context, req *models.CreateOfferingRequest, clai
 		slog.ErrorContext(ctx,
 			"error committing database transaction",
 			slog.String("error", err.Error()),
-			slog.Any("user_claims", claims),
+			slog.Any("user_name", claims["name"]), slog.Any("user_email", claims["email"]),
 		)
 		return ErrServer
 	}
