@@ -36,7 +36,7 @@ func CreateOffering(w http.ResponseWriter, r *http.Request) {
 		slog.ErrorContext(ctx,
 			"error retrieving claims from context",
 			slog.String("error", err.Error()))
-		WriteResponse(w, http.StatusInternalServerError, nil)
+		WriteResponse(w, http.StatusUnauthorized, nil)
 		return
 	}
 
