@@ -123,7 +123,6 @@ func LogIn(w http.ResponseWriter, r *http.Request) {
 		slog.ErrorContext(ctx,
 			"error generating signed token string",
 			slog.String("error", err.Error()),
-			slog.Any("claims", claims),
 		)
 		WriteResponse(w, http.StatusInternalServerError, models.Error{Message: "internal server error, try again later"})
 		return
