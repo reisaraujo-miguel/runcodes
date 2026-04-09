@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -90,11 +91,18 @@ func LogIn(ctx context.Context, req *models.LogInRequest) (map[string]any, error
 	if err := bcrypt.CompareHashAndPassword(
 		[]byte(passwordHash), []byte(req.Password),
 	); err != nil {
-		slog.InfoContext(ctx,
-			"provided password doesn't match with database",
+		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
+			slog.InfoContext(ctx,
+				"provided password doesn't match with database",
+				slog.String("error", err.Error()),
+			)
+			return nil, ErrInvalidCredentials
+		}
+		slog.ErrorContext(ctx,
+			"error comparing hash and password",
 			slog.String("error", err.Error()),
 		)
-		return nil, ErrInvalidCredentials
+		return nil, ErrServer
 	}
 
 	claims := map[string]any{
