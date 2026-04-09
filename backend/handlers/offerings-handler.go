@@ -54,7 +54,7 @@ func CreateOffering(w http.ResponseWriter, r *http.Request) {
 
 	if date, err := validation.ValidateDate(ctx, req.EndDate); err != nil {
 		slog.InfoContext(ctx,
-			"user tried to create and offering with an invalid end date",
+			"user tried to create an offering with an invalid end date",
 			slog.Any("user_id", claims["id"]),
 		)
 		WriteResponse(w, http.StatusBadRequest, models.Error{Message: err.Error()})
