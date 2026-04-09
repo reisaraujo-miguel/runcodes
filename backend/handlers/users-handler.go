@@ -101,18 +101,12 @@ func LogIn(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if claims, err = services.LogIn(ctx, &req); err != nil {
 		switch err {
-		case services.ErrUserNotFound:
+		case services.ErrUserNotFound, services.ErrInvalidPassword:
 			slog.InfoContext(ctx,
-				"someone tried to login with an invalid user",
+				"someone tried to login with an invalid credentials",
 				slog.String("user_email", req.Email),
 			)
-			WriteResponse(w, http.StatusNotFound, models.Error{Message: err.Error()})
-		case services.ErrInvalidPassword:
-			slog.InfoContext(ctx,
-				"someone tried to login with an invalid user password",
-				slog.String("user_email", req.Email),
-			)
-			WriteResponse(w, http.StatusUnauthorized, models.Error{Message: err.Error()})
+			WriteResponse(w, http.StatusUnauthorized, models.Error{Message: "invalid credentials"})
 		default:
 			slog.ErrorContext(ctx,
 				"error logging in user",
