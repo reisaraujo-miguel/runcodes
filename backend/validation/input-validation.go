@@ -30,7 +30,7 @@ func ValidateEmailFormat(ctx context.Context, email string) error {
 /*
 ValidateRequiredString validates if the string exists (is not an empty string)
 and is not bigger than the allowed max_size, returning an error if it does not
-meets the criteria
+meet the criteria
 */
 func ValidateRequiredString(name string, maxSize int) error {
 	if name == "" {
