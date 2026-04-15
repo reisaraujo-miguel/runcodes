@@ -21,10 +21,10 @@ const apiErrorSchema = z.object({
   error_msg: z.string(),
 });
 
-const API_BASE_URL = import.meta.env.VITE_API_ENDPOINT;
+const API_BASE_URL = import.meta.env.VITE_API_ENDPOINT as string;
 
 export function NewClassModal() {
-  const [wasSubmitted, setSubmitted] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   const form = useForm({
     resolver: zodResolver(formSchema),
@@ -41,8 +41,8 @@ export function NewClassModal() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          //"Authorization": `Bearer ${getAuthToken()}`,  //TODO: Implement token retrieval
         },
+        credentials: "include",
         body: JSON.stringify({
           name: data.Name,
           end_date: data.EndDate,
@@ -55,8 +55,7 @@ export function NewClassModal() {
       } else {
         let message = "Erro desconhecido";
         try {
-          const rawData = await response.json();
-          const parsed = apiErrorSchema.safeParse(rawData);
+          const parsed = apiErrorSchema.safeParse(await response.json());
           if (parsed.success) {
             message = parsed.data.error_msg;
           }
@@ -78,7 +77,7 @@ export function NewClassModal() {
           <CardTitle className="text-2xl">Criar Nova Turma</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 pt-4">
-          {wasSubmitted && (
+          {submitted && (
             <div>
               <div
                 className="p-4 mb-4 text-sm text-green-700 bg-green-100 rounded-lg"
@@ -96,8 +95,11 @@ export function NewClassModal() {
               </div>
             </div>
           )}
-          {!wasSubmitted && (
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          {!submitted && (
+            <form
+              onSubmit={void form.handleSubmit(onSubmit)}
+              className="space-y-4"
+            >
               <FieldGroup>
                 <Field>
                   <FieldLabel htmlFor="Name">Nome da Turma</FieldLabel>

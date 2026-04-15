@@ -1,22 +1,5 @@
-import { createContext, use } from "react";
+export let globalIsDark = true;
 
-export type Theme = "dark" | "light" | "system";
-
-export interface ThemeProviderState {
-  theme: Theme;
-  setTheme: (theme: Theme) => void;
+export function setGlobalIsDark(value: boolean) {
+  globalIsDark = value;
 }
-
-export const initialState: ThemeProviderState = {
-  theme: "system",
-  setTheme: () => null,
-};
-
-export const ThemeProviderContext =
-  createContext<ThemeProviderState>(initialState);
-
-export const useTheme = () => {
-  const context = use(ThemeProviderContext);
-
-  return context;
-};

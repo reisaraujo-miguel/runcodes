@@ -35,7 +35,9 @@ export function AdminSidebar() {
               color: "inherit",
               textDecoration: "none",
             }}
-            onClick={() => handleItemClick(ItemType.Dashboard)}
+            onClick={() => {
+              handleItemClick(ItemType.Dashboard);
+            }}
           >
             Dashboard
           </Button>
@@ -48,7 +50,9 @@ export function AdminSidebar() {
               color: "inherit",
               textDecoration: "none",
             }}
-            onClick={() => handleItemClick(ItemType.Turmas)}
+            onClick={() => {
+              handleItemClick(ItemType.Turmas);
+            }}
           >
             Turmas Cadastradas
           </Button>
@@ -64,7 +68,9 @@ export function AdminSidebar() {
               color: "inherit",
               textDecoration: "none",
             }}
-            onClick={() => handleItemClick(ItemType.SystemLogs)}
+            onClick={() => {
+              handleItemClick(ItemType.SystemLogs);
+            }}
           >
             System Logs
           </Button>
@@ -78,7 +84,9 @@ export function AdminSidebar() {
               color: "inherit",
               textDecoration: "none",
             }}
-            onClick={() => handleItemClick(ItemType.Settings)}
+            onClick={() => {
+              handleItemClick(ItemType.Settings);
+            }}
           >
             Settings
           </Button>
