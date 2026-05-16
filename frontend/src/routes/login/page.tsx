@@ -3,7 +3,7 @@ import LogoBlue from "@/assets/runcodes-logo/logoblue.png";
 
 import { AboutSection } from "../../components/login/AboutSection";
 import { LoginCard } from "../../components/login/LoginCard";
-import { ThemeToggle } from "../../components/theme-toggle";
+import { ThemeToggle } from "../../components/ThemeToggle";
 import { globalIsDark } from "../../lib/theme";
 
 export function Login() {

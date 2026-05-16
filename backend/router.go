@@ -29,6 +29,7 @@ func createRoutes(router *chi.Mux) {
 	router.Group(func(r chi.Router) {
 		r.Use(jwtauth.Verifier(validation.TokenAuth))
 		r.Use(jwtauth.Authenticator(validation.TokenAuth))
+
 		r.Get("/api/v1/auth", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusAccepted)
