@@ -1,6 +1,10 @@
 import { useState } from "react";
 
+import DOMPurify from "dompurify";
+
 import { TermsModal } from "./TermsModal";
+
+const CONTACT_INFO_HTML = import.meta.env.VITE_CONTACT_INFO_HTML as string;
 
 export function AboutSection() {
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
@@ -29,7 +33,10 @@ export function AboutSection() {
         <div className="pt-4">
           <p className="text-sm text-muted-foreground">
             Ao navegar no RunCodes você concorda com os{" "}
-            <a onClick={openTermsModal} className="cursor-pointer">
+            <a
+              onClick={openTermsModal}
+              className="cursor-pointer text-foreground"
+            >
               termos de uso
             </a>
             .
@@ -37,11 +44,12 @@ export function AboutSection() {
         </div>
 
         <div className="pt-4">
-          <p className="text-sm text-muted-foreground">
-            Note que o RunCodes ICMC não é um serviço mantido pelo STI, logo, em
-            caso de problemas com a plataforma, entre em contato com{" "}
-            <a href="mailto:runcodes@icmc.usp.br">runcodes@icmc.usp.br</a>
-          </p>
+          <p
+            className="text-sm text-muted-foreground [&_a]:text-foreground"
+            dangerouslySetInnerHTML={{
+              __html: DOMPurify.sanitize(CONTACT_INFO_HTML),
+            }}
+          />
         </div>
       </div>
 
