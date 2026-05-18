@@ -10,18 +10,13 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { createOffering } from "@/lib/api/offerings";
 
 const formSchema = z.object({
   Name: z.string().min(1, "O nome da turma é obrigatório"),
   EndDate: z.string().optional(),
   Description: z.string().optional(),
 });
-
-const apiErrorSchema = z.object({
-  error_msg: z.string(),
-});
-
-const API_BASE_URL = import.meta.env.VITE_API_ENDPOINT as string;
 
 export function NewClassModal() {
   const [submitted, setSubmitted] = useState(false);
@@ -37,36 +32,17 @@ export function NewClassModal() {
 
   const onSubmit = async (data: z.infer<typeof formSchema>) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/offerings/create`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          name: data.Name,
-          end_date: data.EndDate,
-          description: data.Description,
-        }),
+      await createOffering({
+        name: data.Name,
+        end_date: data.EndDate,
+        description: data.Description,
       });
-      if (response.ok) {
-        console.log("Turma criada com sucesso!");
-        setSubmitted(true);
-      } else {
-        let message = "Erro desconhecido";
-        try {
-          const parsed = apiErrorSchema.safeParse(await response.json());
-          if (parsed.success) {
-            message = parsed.data.error_msg;
-          }
-        } catch {
-          // Non-JSON response, use default message
-        }
-        console.error("Erro ao criar a turma:", message);
-      }
+      setSubmitted(true);
     } catch (error) {
-      console.error("Erro ao criar a turma:", error);
-      return;
+      console.error(
+        "Erro ao criar a turma:",
+        error instanceof Error ? error.message : error,
+      );
     }
   };
 

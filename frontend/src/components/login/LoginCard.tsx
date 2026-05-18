@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { login } from "@/lib/api/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -20,12 +21,6 @@ const formSchema = z.object({
   Email: z.string().min(1, "email é obrigatório"),
   Password: z.string().min(8, "senha é obrigatória"),
 });
-
-const apiErrorSchema = z.object({
-  error_msg: z.string(),
-});
-
-const API_BASE_URL = import.meta.env.VITE_API_ENDPOINT as string;
 
 export function LoginCard() {
   const [isLogged, setIsLogged] = useState(false);
@@ -40,34 +35,10 @@ export function LoginCard() {
 
   const onSubmit = async (data: z.infer<typeof formSchema>) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/user/login`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          email: data.Email,
-          password: data.Password,
-        }),
-      });
-      if (response.ok) {
-        setIsLogged(true);
-      } else {
-        let message = "Erro desconhecido";
-        try {
-          const parsed = apiErrorSchema.safeParse(await response.json());
-          if (parsed.success) {
-            message = parsed.data.error_msg;
-          }
-        } catch {
-          // Non-JSON response, use default message
-        }
-        console.error("Erro ao logar:", message);
-      }
+      await login({ email: data.Email, password: data.Password });
+      setIsLogged(true);
     } catch (error) {
       console.error("Erro ao logar:", error);
-      return;
     }
   };
 

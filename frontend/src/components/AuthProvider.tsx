@@ -2,33 +2,17 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 
 import { AuthContext } from "@/hooks/use-auth";
-
-const API_BASE_URL = import.meta.env.VITE_API_ENDPOINT as string;
+import { checkAuth } from "@/lib/api/auth";
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const checkAuth = async () => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/auth`, {
-        credentials: "include",
-      });
-
-      if (res.ok) {
-        setIsAuthenticated(true);
-      } else {
-        setIsAuthenticated(false);
-      }
-    } catch {
-      setIsAuthenticated(false);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    void checkAuth();
+    checkAuth()
+      .then(() => setIsAuthenticated(true))
+      .catch(() => setIsAuthenticated(false))
+      .finally(() => setLoading(false));
   }, []);
 
   const auth = useMemo(() => isAuthenticated, [isAuthenticated]);
