@@ -8,7 +8,7 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default defineConfig([
-  globalIgnores(["dist"]),
+  globalIgnores(["dist", "src/components/ui"]),
   {
     files: ["**/*.{ts,tsx}"],
     extends: [
@@ -24,7 +24,7 @@ export default defineConfig([
     ],
     languageOptions: {
       parserOptions: {
-        project: ["./tsconfig.node.json", "./tsconfig.app.json"],
+        project: ["./tsconfig.json", "./tsconfig.node.json"],
         tsconfigRootDir: import.meta.dirname,
       },
       ecmaVersion: 2020,

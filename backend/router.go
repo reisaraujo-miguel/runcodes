@@ -30,6 +30,10 @@ func createRoutes(router *chi.Mux) {
 		r.Use(jwtauth.Verifier(validation.TokenAuth))
 		r.Use(jwtauth.Authenticator(validation.TokenAuth))
 
+		r.Get("/api/v1/auth", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusAccepted)
+		})
+
 		r.Post("/api/v1/offerings/create", handlers.CreateOffering)
 	})
 }

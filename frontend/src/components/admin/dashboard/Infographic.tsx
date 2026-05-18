@@ -8,11 +8,7 @@ interface InfographicProps {
   value: number;
 }
 
-export function Infographic({
-  icon,
-  label = "Label",
-  value = 0,
-}: InfographicProps) {
+export function Infographic({ icon, label, value }: InfographicProps) {
   return (
     <Card className="aspect-5/3 max-w-50 min-w-30 p-2 content-contain gap-2 place-content-center">
       <div className="flex justify-end">

@@ -3,18 +3,10 @@ import LogoBlue from "@/assets/runcodes-logo/logoblue.png";
 
 import { AboutSection } from "../../components/login/AboutSection";
 import { LoginCard } from "../../components/login/LoginCard";
-import { ThemeToggle } from "../../components/theme-toggle";
-import { useTheme } from "../../lib/theme";
+import { ThemeToggle } from "../../components/ThemeToggle";
+import { globalIsDark } from "../../lib/theme";
 
-export function LoginPage() {
-  const { theme } = useTheme();
-
-  // Determine if we're in dark mode based on the current theme
-  const isDarkTheme =
-    theme === "dark" ||
-    (theme === "system" &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches);
-
+export function Login() {
   return (
     <div className="min-h-screen bg-background">
       <div className="relative min-h-screen flex flex-col lg:grid lg:max-w-none lg:grid-cols-2 lg:px-0">
@@ -22,7 +14,7 @@ export function LoginPage() {
         <div className="relative hidden h-full flex-col bg-muted p-10 lg:flex dark:border-r">
           <div className="relative z-20 flex items-center text-lg font-medium">
             <img
-              src={isDarkTheme ? Logo : LogoBlue}
+              src={globalIsDark ? Logo : LogoBlue}
               alt="RunCodes Logo"
               className="h-10"
             />
@@ -45,7 +37,7 @@ export function LoginPage() {
         {/* Mobile: Logo and Theme Toggle */}
         <div className="lg:hidden flex items-center justify-between p-6">
           <img
-            src={isDarkTheme ? Logo : LogoBlue}
+            src={globalIsDark ? Logo : LogoBlue}
             alt="RunCodes Logo"
             className="h-10"
           />
