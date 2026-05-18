@@ -24,7 +24,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setIsAuthenticated(false);
     } finally {
       setLoading(false);
-      console.log("hello");
     }
   };
 

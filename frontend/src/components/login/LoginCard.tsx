@@ -45,6 +45,7 @@ export function LoginCard() {
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include",
         body: JSON.stringify({
           email: data.Email,
           password: data.Password,
@@ -71,7 +72,7 @@ export function LoginCard() {
   };
 
   if (isLogged) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/" replace />;
   }
 
   return (
