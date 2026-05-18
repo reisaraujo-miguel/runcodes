@@ -3,10 +3,15 @@ import LogoBlue from "@/assets/runcodes-logo/logoblue.png";
 
 import { AboutSection } from "../../components/login/AboutSection";
 import { LoginCard } from "../../components/login/LoginCard";
+import { SignInCard } from "../../components/login/SignInCard";
 import { ThemeToggle } from "../../components/ThemeToggle";
 import { globalIsDark } from "../../lib/theme";
+import { useSearchParams } from "react-router";
 
-export function Login() {
+export function AuthPage() {
+  const [searchParams] = useSearchParams();
+  const isSignUp = searchParams.get("mode") === "signup";
+
   return (
     <div className="min-h-screen bg-background">
       <div className="relative min-h-screen flex flex-col lg:grid lg:max-w-none lg:grid-cols-2 lg:px-0">
@@ -27,10 +32,10 @@ export function Login() {
           </div>
         </div>
 
-        {/* Desktop: Right Side (Login Card) */}
+        {/* Desktop: Right Side (Card) */}
         <div className="hidden lg:flex items-center justify-center p-8 lg:p-0">
           <div className="mx-auto flex w-full flex-col items-center justify-center space-y-6 sm:w-[350px]">
-            <LoginCard />
+            {isSignUp ? <SignInCard /> : <LoginCard />}
           </div>
         </div>
 
@@ -44,10 +49,10 @@ export function Login() {
           <ThemeToggle />
         </div>
 
-        {/* Mobile: Login Card */}
+        {/* Mobile: Card */}
         <div className="flex flex-1 items-center justify-center p-8 lg:hidden">
           <div className="mx-auto flex w-full flex-col items-center justify-center space-y-6 sm:w-[350px]">
-            <LoginCard />
+            {isSignUp ? <SignInCard /> : <LoginCard />}
           </div>
         </div>
 

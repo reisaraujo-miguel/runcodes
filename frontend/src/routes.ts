@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, redirect } from "react-router";
 
 import App from "./App.tsx";
 import { ProtectedRoute } from "./routes/protected.tsx";
@@ -11,9 +11,13 @@ export const router = createBrowserRouter([
       {
         path: "/login",
         lazy: async () => {
-          const { Login } = await import("./routes/login/page.tsx");
-          return { Component: Login };
+          const { AuthPage } = await import("./routes/login/page.tsx");
+          return { Component: AuthPage };
         },
+      },
+      {
+        path: "/signup",
+        loader: () => redirect("/login?mode=signup"),
       },
       {
         Component: ProtectedRoute,

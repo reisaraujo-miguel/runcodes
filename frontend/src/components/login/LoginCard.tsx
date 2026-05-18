@@ -14,7 +14,7 @@ import { login } from "@/lib/api/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Navigate } from "react-router";
+import { Link, Navigate } from "react-router";
 import { z } from "zod";
 
 const formSchema = z.object({
@@ -52,12 +52,17 @@ export function LoginCard() {
         <FieldGroup>
           <CardHeader>
             <CardTitle>Entrar na sua conta</CardTitle>
-            <CardDescription>
+            <CardAction>
+              <Link
+                to="?mode=signup"
+                className="inline-block text-sm underline-offset-4 hover:underline"
+              >
+                Cadastre-se
+              </Link>
+            </CardAction>
+            <CardDescription className="col-span-full">
               Digite seu email para entrar na sua conta
             </CardDescription>
-            <CardAction>
-              <Button variant="link">Cadastre-se</Button>
-            </CardAction>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col gap-6">
