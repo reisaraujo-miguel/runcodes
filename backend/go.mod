@@ -27,11 +27,11 @@ require (
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/valyala/fastjson v1.6.10 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
-	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/sys v0.44.0 // indirect
 )
 
 require (
 	github.com/go-chi/chi/v5 v5.2.5
-	github.com/lestrrat-go/jwx/v3 v3.1.0
-	golang.org/x/crypto v0.50.0
+	github.com/lestrrat-go/jwx/v3 v3.1.1
+	golang.org/x/crypto v0.51.0
 )
