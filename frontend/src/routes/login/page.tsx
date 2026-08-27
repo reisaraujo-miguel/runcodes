@@ -3,10 +3,16 @@ import LogoBlue from "@/assets/runcodes-logo/logoblue.png";
 
 import { AboutSection } from "../../components/login/AboutSection";
 import { LoginCard } from "../../components/login/LoginCard";
+import { SignInCard } from "../../components/login/SignInCard";
 import { ThemeToggle } from "../../components/ThemeToggle";
-import { globalIsDark } from "../../lib/theme";
+import { useTheme } from "../../hooks/use-theme";
+import { useSearchParams } from "react-router";
 
-export function Login() {
+export function AuthPage() {
+  const [searchParams] = useSearchParams();
+  const isSignUp = searchParams.get("mode") === "signup";
+  const isDark = useTheme() === "dark";
+
   return (
     <div className="min-h-screen bg-background">
       <div className="relative min-h-screen flex flex-col lg:grid lg:max-w-none lg:grid-cols-2 lg:px-0">
@@ -14,7 +20,7 @@ export function Login() {
         <div className="relative hidden h-full flex-col bg-muted p-10 lg:flex dark:border-r">
           <div className="relative z-20 flex items-center text-lg font-medium">
             <img
-              src={globalIsDark ? Logo : LogoBlue}
+              src={isDark ? Logo : LogoBlue}
               alt="RunCodes Logo"
               className="h-10"
             />
@@ -27,27 +33,27 @@ export function Login() {
           </div>
         </div>
 
-        {/* Desktop: Right Side (Login Card) */}
+        {/* Desktop: Right Side (Card) */}
         <div className="hidden lg:flex items-center justify-center p-8 lg:p-0">
-          <div className="mx-auto flex w-full flex-col items-center justify-center space-y-6 sm:w-[350px]">
-            <LoginCard />
+          <div className="mx-auto flex w-full flex-col items-center justify-center space-y-6 sm:w-87.5">
+            {isSignUp ? <SignInCard /> : <LoginCard />}
           </div>
         </div>
 
         {/* Mobile: Logo and Theme Toggle */}
         <div className="lg:hidden flex items-center justify-between p-6">
           <img
-            src={globalIsDark ? Logo : LogoBlue}
+            src={isDark ? Logo : LogoBlue}
             alt="RunCodes Logo"
             className="h-10"
           />
           <ThemeToggle />
         </div>
 
-        {/* Mobile: Login Card */}
+        {/* Mobile: Card */}
         <div className="flex flex-1 items-center justify-center p-8 lg:hidden">
-          <div className="mx-auto flex w-full flex-col items-center justify-center space-y-6 sm:w-[350px]">
-            <LoginCard />
+          <div className="mx-auto flex w-full flex-col items-center justify-center space-y-6 sm:w-87.5">
+            {isSignUp ? <SignInCard /> : <LoginCard />}
           </div>
         </div>
 

@@ -10,11 +10,12 @@ import {
 } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "@/hooks/use-auth";
 import { login } from "@/lib/api/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Navigate } from "react-router";
+import { Link, Navigate } from "react-router";
 import { z } from "zod";
 
 const formSchema = z.object({
@@ -23,6 +24,7 @@ const formSchema = z.object({
 });
 
 export function LoginCard() {
+  const { setAuthenticated } = useAuth();
   const [isLogged, setIsLogged] = useState(false);
 
   const form = useForm({
@@ -36,6 +38,9 @@ export function LoginCard() {
   const onSubmit = async (data: z.infer<typeof formSchema>) => {
     try {
       await login({ email: data.Email, password: data.Password });
+      // The backend set the session cookie — mark the app as authenticated
+      // and let ProtectedRoute grant access.
+      setAuthenticated(true);
       setIsLogged(true);
     } catch (error) {
       console.error("Erro ao logar:", error);
@@ -48,16 +53,24 @@ export function LoginCard() {
 
   return (
     <Card className="w-full max-w-sm">
-      <form onSubmit={void form.handleSubmit(onSubmit)} className="space-y-4">
+      <form
+        onSubmit={(...args) => void form.handleSubmit(onSubmit)(...args)}
+        className="space-y-4"
+      >
         <FieldGroup>
           <CardHeader>
             <CardTitle>Entrar na sua conta</CardTitle>
-            <CardDescription>
+            <CardAction>
+              <Link
+                to="?mode=signup"
+                className="inline-block text-sm underline-offset-4 hover:underline"
+              >
+                Cadastre-se
+              </Link>
+            </CardAction>
+            <CardDescription className="col-span-full">
               Digite seu email para entrar na sua conta
             </CardDescription>
-            <CardAction>
-              <Button variant="link">Cadastre-se</Button>
-            </CardAction>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col gap-6">

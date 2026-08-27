@@ -8,6 +8,7 @@ services:
       TZ: "America/Sao_Paulo"
       RUNCODES_DOMAIN: "http://localhost:8080"
       VITE_API_ENDPOINT: "http://localhost:8443"
+      CONTACT_INFO: 'Em caso de eventuais problemas com a plataforma, entre em contato com <a href="mailto:contact@example.com">contact@example.com</a>'
     volumes:
       - caddy_data:/data
       - caddy_config:/config
@@ -44,7 +45,7 @@ services:
       POSTGRES_PASSWORD: "${RUNCODES_DB_PASSWORD:?RUNCODES_DB_PASSWORD must be set}"
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=en_US.utf8 --lc-ctype=en_US.utf8"
     volumes:
-      - runcodes-db-vol:/var/lib/postgresql/data
+      - runcodes-db-vol:/var/lib/postgresql/
     networks:
       - runcodes-network
 

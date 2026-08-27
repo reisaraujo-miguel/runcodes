@@ -4,6 +4,7 @@ package services
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log/slog"
 
 	"runcodes/models"
@@ -14,11 +15,11 @@ CreateOffering creates a new offering on the platform.
 */
 func CreateOffering(
 	ctx context.Context, req *models.CreateOfferingRequest, claims map[string]any,
-) error {
+) (*models.Offering, error) {
 	ownerIDRaw, ok := claims["id"]
 	if !ok {
 		slog.ErrorContext(ctx, "missing user id claim")
-		return ErrServer
+		return nil, ErrServer
 	}
 	ownerIDFloat, ok := ownerIDRaw.(float64)
 	if !ok {
@@ -26,7 +27,7 @@ func CreateOffering(
 			"invalid user id claim type",
 			slog.Any("claim_id", ownerIDRaw),
 		)
-		return ErrServer
+		return nil, ErrServer
 	}
 
 	var tx *sql.Tx
@@ -37,7 +38,7 @@ func CreateOffering(
 			slog.String("error", err.Error()),
 			slog.Any("user_id", claims["id"]),
 		)
-		return ErrServer
+		return nil, ErrServer
 	}
 
 	defer tx.Rollback()
@@ -55,7 +56,7 @@ func CreateOffering(
 			slog.String("error", err.Error()),
 			slog.Any("user_id", claims["id"]),
 		)
-		return ErrServer
+		return nil, ErrServer
 	}
 
 	enrollmentCode := IDToCode(id)
@@ -71,7 +72,7 @@ func CreateOffering(
 			slog.Int64("offering_id", id),
 			slog.String("enrollment_code", enrollmentCode),
 		)
-		return ErrServer
+		return nil, ErrServer
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -80,10 +81,66 @@ func CreateOffering(
 			slog.String("error", err.Error()),
 			slog.Any("user_id", claims["id"]),
 		)
-		return ErrServer
+		return nil, ErrServer
 	}
 
-	return nil
+	return &models.Offering{
+		ID:             id,
+		Name:           req.Name,
+		EndDate:        req.EndDate,
+		Description:    req.Description,
+		EnrollmentCode: enrollmentCode,
+	}, nil
+}
+
+/*
+GetOffering fetches the offering owned by the requesting user.
+*/
+func GetOffering(
+	ctx context.Context, offeringID int64, claims map[string]any,
+) (*models.Offering, error) {
+	ownerIDRaw, ok := claims["id"]
+	if !ok {
+		slog.ErrorContext(ctx, "missing user id claim")
+		return nil, ErrServer
+	}
+	ownerIDFloat, ok := ownerIDRaw.(float64)
+	if !ok {
+		slog.ErrorContext(ctx,
+			"invalid user id claim type",
+			slog.Any("claim_id", ownerIDRaw),
+		)
+		return nil, ErrServer
+	}
+
+	var offering models.Offering
+	err := DB.QueryRowContext(ctx,
+		`
+		SELECT id, name, end_date, description, enrollment_code
+		FROM offerings
+		WHERE id = $1 AND owner_id = $2
+		`, offeringID, int(ownerIDFloat),
+	).Scan(
+		&offering.ID,
+		&offering.Name,
+		&offering.EndDate,
+		&offering.Description,
+		&offering.EnrollmentCode,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrOfferingNotFound
+		}
+		slog.ErrorContext(ctx,
+			"error fetching offering from the database",
+			slog.String("error", err.Error()),
+			slog.Int64("offering_id", offeringID),
+			slog.Any("user_id", claims["id"]),
+		)
+		return nil, ErrServer
+	}
+
+	return &offering, nil
 }
 
 const (

@@ -10,12 +10,12 @@ export async function apiRequest<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
+  const headers = new Headers(options.headers);
+  headers.set("Content-Type", "application/json");
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
+    headers,
     ...options,
   });
 
@@ -37,7 +37,11 @@ export async function apiRequest<T>(
     throw new Error(message);
   }
 
-  return response.json() as Promise<T>;
+  // Some endpoints (e.g. GET /api/v1/auth) return a success status with an
+  // empty body, which `response.json()` would reject on. Parse only when
+  // there is a body.
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 /** GET helper. */
@@ -46,13 +50,9 @@ export function apiGet<T>(path: string): Promise<T> {
 }
 
 /** POST helper. */
-export function apiPost<T>(
-  path: string,
-  body: unknown,
-): Promise<T> {
+export function apiPost<T>(path: string, body: unknown): Promise<T> {
   return apiRequest<T>(path, {
     method: "POST",
     body: JSON.stringify(body),
   });
 }
-

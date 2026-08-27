@@ -1,25 +1,46 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { useNavigate } from "react-router";
+import { z } from "zod";
 
-import { NavLink } from "react-router";
-
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { createOffering } from "@/lib/api/offerings";
 
 const formSchema = z.object({
   Name: z.string().min(1, "O nome da turma é obrigatório"),
-  EndDate: z.string().optional(),
+  EndDate: z.string().min(1, "A data limite é obrigatória"),
   Description: z.string().optional(),
 });
 
-export function NewClassModal() {
-  const [submitted, setSubmitted] = useState(false);
+/**
+ * Converts a date-only value (YYYY-MM-DD) from a date input into an ISO 8601
+ * timestamp representing the end of that day in the user's local timezone.
+ * Sending the instant (instead of a date-only string) lets the backend store
+ * a timezone-aware end date that can be shown in other users' timezones.
+ */
+function toEndOfDayTimestamp(dateOnly: string): string {
+  const [year, month, day] = dateOnly.split("-").map(Number);
+  return new Date(year, month - 1, day, 23, 59, 59).toISOString();
+}
+
+/**
+ * Modal for creating a new class offering. Rendered on top of the current
+ * page (no route navigation) and navigates to the new class page on success.
+ */
+export function NewClassModal({ onClose }: { onClose: () => void }) {
+  const navigate = useNavigate();
+  const [apiError, setApiError] = useState<string | null>(null);
 
   const form = useForm({
     resolver: zodResolver(formSchema),
@@ -32,97 +53,91 @@ export function NewClassModal() {
 
   const onSubmit = async (data: z.infer<typeof formSchema>) => {
     try {
-      await createOffering({
+      setApiError(null);
+      const offering = await createOffering({
         name: data.Name,
-        end_date: data.EndDate,
+        end_date: toEndOfDayTimestamp(data.EndDate),
         description: data.Description,
       });
-      setSubmitted(true);
+      // Open the newly created class page.
+      void navigate(`/professor/class/${String(offering.id)}`, {
+        state: offering,
+      });
+      onClose();
     } catch (error) {
-      console.error(
-        "Erro ao criar a turma:",
-        error instanceof Error ? error.message : error,
-      );
+      const message =
+        error instanceof Error ? error.message : "Erro ao criar a turma";
+      setApiError(message);
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
-      <Card className="w-full max-w-2xl max-h-[80vh] overflow-y-auto">
-        <CardHeader className="top-0 border-b">
-          <CardTitle className="text-2xl">Criar Nova Turma</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4 pt-4">
-          {submitted && (
-            <div>
-              <div
-                className="p-4 mb-4 text-sm text-green-700 bg-green-100 rounded-lg"
-                role="alert"
-              >
-                Turma criada com sucesso!
-              </div>
-              <div className="flex justify-end pt-4">
-                <NavLink
-                  to="/professor"
-                  className={buttonVariants({ variant: "default" })}
-                >
-                  Fechar
-                </NavLink>
-              </div>
-            </div>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="sm:max-w-2xl max-h-[calc(100vh-2rem)] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Criar Nova Turma</DialogTitle>
+          <DialogDescription>
+            Preencha os dados para criar uma nova turma.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form
+          onSubmit={(...args) => void form.handleSubmit(onSubmit)(...args)}
+          className="space-y-4"
+        >
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="Name">Nome da Turma</FieldLabel>
+              <Input
+                id="Name"
+                placeholder="Digite o nome da turma"
+                {...form.register("Name")}
+                required
+              />
+            </Field>
+
+            <Field>
+              <FieldLabel htmlFor="EndDate">Disponível até</FieldLabel>
+              <Input
+                id="EndDate"
+                type="date"
+                {...form.register("EndDate")}
+                required
+              />
+              {form.formState.errors.EndDate && (
+                <p className="text-sm text-destructive">
+                  {form.formState.errors.EndDate.message}
+                </p>
+              )}
+            </Field>
+
+            <Field>
+              <FieldLabel htmlFor="Description">Descrição</FieldLabel>
+              <Input
+                id="Description"
+                placeholder="Digite uma descrição (opcional)"
+                {...form.register("Description")}
+              />
+            </Field>
+          </FieldGroup>
+
+          {apiError && (
+            <p className="text-sm text-destructive text-center">{apiError}</p>
           )}
-          {!submitted && (
-            <form
-              onSubmit={void form.handleSubmit(onSubmit)}
-              className="space-y-4"
-            >
-              <FieldGroup>
-                <Field>
-                  <FieldLabel htmlFor="Name">Nome da Turma</FieldLabel>
-                  <Input
-                    id="Name"
-                    placeholder="Digite o nome da turma"
-                    {...form.register("Name")}
-                    required
-                  />
-                </Field>
 
-                <Field>
-                  <FieldLabel htmlFor="EndDate">Disponível até</FieldLabel>
-                  <Input
-                    id="EndDate"
-                    type="date"
-                    {...form.register("EndDate")}
-                  />
-                </Field>
-
-                <Field>
-                  <FieldLabel htmlFor="Description">Descrição</FieldLabel>
-                  <Input
-                    id="Description"
-                    placeholder="Digite uma descrição (opcional)"
-                    {...form.register("Description")}
-                  />
-                </Field>
-
-                <Field>
-                  <div className="flex justify-end pt-4">
-                    <NavLink
-                      to="/professor"
-                      className={buttonVariants({ variant: "destructive" })}
-                    >
-                      Fechar
-                    </NavLink>
-                    <Button className="ml-2" type="submit" variant="default">
-                      Criar Turma
-                    </Button>
-                  </div>
-                </Field>
-              </FieldGroup>
-            </form>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+          <DialogFooter>
+            <Button type="button" variant="destructive" onClick={onClose}>
+              Fechar
+            </Button>
+            <Button type="submit">Criar Turma</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

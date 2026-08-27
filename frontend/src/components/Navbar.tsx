@@ -1,4 +1,5 @@
 import { NavLink } from "react-router";
+import { useState } from "react";
 
 import { CircleUserRound } from "lucide-react";
 
@@ -11,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+import { NewClassModal } from "@/components/professor/NewClassModal";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 import Logo from "@/assets/runcodes-logo/logo.png";
@@ -24,7 +26,8 @@ const USER_ROLES = {
 type UserRole = (typeof USER_ROLES)[keyof typeof USER_ROLES];
 
 export function Navbar() {
-  let role: UserRole = USER_ROLES.Admin; // This should be dynamically set based on the logged-in user
+  const role: UserRole = USER_ROLES.Admin; // This should be dynamically set based on the logged-in user
+  const [isNewClassModalOpen, setIsNewClassModalOpen] = useState(false);
 
   return (
     <div>
@@ -50,18 +53,30 @@ export function Navbar() {
                   </div>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-56">
-                  <DropDownMenu role={role} />
+                  <DropDownMenu
+                    role={role}
+                    onCreateNewClass={() => {
+                      setIsNewClassModalOpen(true);
+                    }}
+                  />
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
           </div>
         </div>
       </nav>
+      {isNewClassModalOpen && (
+        <NewClassModal
+          onClose={() => {
+            setIsNewClassModalOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function DropDownMenu(props: { role: UserRole }) {
+function DropDownMenu(props: { role: UserRole; onCreateNewClass: () => void }) {
   return (
     <div>
       <div>
@@ -75,19 +90,18 @@ function DropDownMenu(props: { role: UserRole }) {
           Perfil
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        {(props.role === USER_ROLES.Teacher || USER_ROLES.Admin) && (
+        {(props.role === USER_ROLES.Teacher ||
+          props.role === USER_ROLES.Admin) && (
           <>
-            <DropdownMenuItem>
-              <NavLink
-                to="/professor/newclass"
-                style={{
-                  cursor: "pointer",
-                  color: "inherit",
-                  textDecoration: "none",
-                }}
-              >
-                Criar Nova Turma
-              </NavLink>
+            <DropdownMenuItem
+              onClick={props.onCreateNewClass}
+              style={{
+                cursor: "pointer",
+                color: "inherit",
+                textDecoration: "none",
+              }}
+            >
+              Criar Nova Turma
             </DropdownMenuItem>
             <DropdownMenuItem
               style={{

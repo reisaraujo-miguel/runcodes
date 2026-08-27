@@ -1,4 +1,6 @@
 import "./index.css";
+// Applies the stored/system theme to <html> before React renders anything.
+import "@/lib/theme";
 
 import { AuthProvider } from "@/components/AuthProvider.tsx";
 import { StrictMode } from "react";

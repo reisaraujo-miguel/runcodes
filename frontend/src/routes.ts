@@ -1,19 +1,25 @@
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, redirect } from "react-router";
 
 import App from "./App.tsx";
+import { RootHydrateFallback } from "./components/RootHydrateFallback.tsx";
 import { ProtectedRoute } from "./routes/protected.tsx";
 
 export const router = createBrowserRouter([
   {
     Component: App,
+    HydrateFallback: RootHydrateFallback,
 
     children: [
       {
         path: "/login",
         lazy: async () => {
-          const { Login } = await import("./routes/login/page.tsx");
-          return { Component: Login };
+          const { AuthPage } = await import("./routes/login/page.tsx");
+          return { Component: AuthPage };
         },
+      },
+      {
+        path: "/signup",
+        loader: () => redirect("/login?mode=signup"),
       },
       {
         Component: ProtectedRoute,
@@ -51,11 +57,11 @@ export const router = createBrowserRouter([
             },
             children: [
               {
-                path: "newclass",
+                path: "class/:offeringId",
                 lazy: async () => {
-                  const { NewClassModal } =
-                    await import("./components/professor/NewClassModal.tsx");
-                  return { Component: NewClassModal };
+                  const { ClassPage } =
+                    await import("./routes/professor/class/page.tsx");
+                  return { Component: ClassPage };
                 },
               },
             ],
