@@ -1,5 +1,6 @@
 import { createBrowserRouter, redirect } from "react-router";
 
+import { RootErrorBoundary } from "@/components/RootErrorBoundary.tsx";
 import App from "./App.tsx";
 import { RootHydrateFallback } from "./components/RootHydrateFallback.tsx";
 import {
@@ -11,6 +12,7 @@ import {
 export const router = createBrowserRouter([
   {
     Component: App,
+    ErrorBoundary: RootErrorBoundary,
     HydrateFallback: RootHydrateFallback,
 
     children: [
