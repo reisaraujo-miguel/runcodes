@@ -8,7 +8,7 @@ To make api calls to protected api's you must provide a valid JWT token:
 
 ```bash
 curl -H"Authorization: BEARER [token]" \
-     -d '{"email": "admin@admin", "name": "test", "end_date": "2027-01-01"}'\
+     -d '{"email": "admin@admin", "name": "test", "end_date": "2027-01-01T23:59:59-03:00"}'\
 	   -v http://localhost:8443/api/v1/offerings/create
 ```
 

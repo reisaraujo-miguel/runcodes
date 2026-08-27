@@ -35,6 +35,7 @@ func createRoutes(router *chi.Mux) {
 		})
 
 		r.Post("/api/v1/offerings/create", handlers.CreateOffering)
+		r.Get("/api/v1/offerings/{id}", handlers.GetOffering)
 	})
 }
 

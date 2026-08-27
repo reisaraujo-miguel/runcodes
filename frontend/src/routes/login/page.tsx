@@ -35,7 +35,7 @@ export function AuthPage() {
 
         {/* Desktop: Right Side (Card) */}
         <div className="hidden lg:flex items-center justify-center p-8 lg:p-0">
-          <div className="mx-auto flex w-full flex-col items-center justify-center space-y-6 sm:w-[350px]">
+          <div className="mx-auto flex w-full flex-col items-center justify-center space-y-6 sm:w-87.5">
             {isSignUp ? <SignInCard /> : <LoginCard />}
           </div>
         </div>
@@ -52,7 +52,7 @@ export function AuthPage() {
 
         {/* Mobile: Card */}
         <div className="flex flex-1 items-center justify-center p-8 lg:hidden">
-          <div className="mx-auto flex w-full flex-col items-center justify-center space-y-6 sm:w-[350px]">
+          <div className="mx-auto flex w-full flex-col items-center justify-center space-y-6 sm:w-87.5">
             {isSignUp ? <SignInCard /> : <LoginCard />}
           </div>
         </div>

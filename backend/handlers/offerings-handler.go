@@ -3,8 +3,10 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"runcodes/services"
 	"runcodes/validation"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/jwtauth/v5"
 )
 
@@ -70,7 +73,8 @@ func CreateOffering(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := services.CreateOffering(ctx, &req, claims); err != nil {
+	var offering *models.Offering
+	if offering, err = services.CreateOffering(ctx, &req, claims); err != nil {
 		slog.ErrorContext(ctx,
 			"Failed to create offering",
 			slog.String("error", err.Error()),
@@ -82,5 +86,51 @@ func CreateOffering(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	WriteResponse(w, http.StatusCreated, nil)
+	WriteResponse(w, http.StatusCreated, offering)
+}
+
+/*
+GetOffering handles fetching an offering owned by the requesting user.
+*/
+func GetOffering(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var claims map[string]any
+	var err error
+	if _, claims, err = jwtauth.FromContext(ctx); err != nil {
+		slog.ErrorContext(ctx,
+			"error retrieving claims from context",
+			slog.String("error", err.Error()))
+		WriteResponse(w, http.StatusUnauthorized, nil)
+		return
+	}
+
+	offeringID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "invalid offering id"},
+		)
+		return
+	}
+
+	var offering *models.Offering
+	if offering, err = services.GetOffering(ctx, offeringID, claims); err != nil {
+		if errors.Is(err, services.ErrOfferingNotFound) {
+			WriteResponse(w, http.StatusNotFound,
+				models.Error{Message: services.ErrOfferingNotFound.Error()},
+			)
+			return
+		}
+		slog.ErrorContext(ctx,
+			"error fetching offering",
+			slog.String("error", err.Error()),
+			slog.Any("user_id", claims["id"]),
+		)
+		WriteResponse(w, http.StatusInternalServerError,
+			models.Error{Message: services.ErrServer.Error()},
+		)
+		return
+	}
+
+	WriteResponse(w, http.StatusOK, offering)
 }

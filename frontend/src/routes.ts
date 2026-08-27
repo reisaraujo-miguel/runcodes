@@ -57,11 +57,11 @@ export const router = createBrowserRouter([
             },
             children: [
               {
-                path: "newclass",
+                path: "class/:offeringId",
                 lazy: async () => {
-                  const { NewClassModal } =
-                    await import("./components/professor/NewClassModal.tsx");
-                  return { Component: NewClassModal };
+                  const { ClassPage } =
+                    await import("./routes/professor/class/page.tsx");
+                  return { Component: ClassPage };
                 },
               },
             ],
