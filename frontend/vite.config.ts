@@ -66,14 +66,20 @@ export default defineConfig({
           // Browser extensions (e.g. React DevTools) reference source maps
           // such as `installHook.js.map` relative to the page origin. With
           // SPA fallback enabled Vite answers those missing files with
-          // index.html, which Firefox DevTools fails to JSON.parse. Serve an
-          // empty but valid source map instead.
+          // index.html, which Firefox DevTools fails to JSON.parse. Serve a
+          // valid stub map instead. It must declare at least one source,
+          // otherwise Firefox warns "No sources are declared in this source
+          // map".
+          const mapFile = pathname.slice(pathname.lastIndexOf("/") + 1);
+          const sourceName = mapFile.replace(/\.map$/, "") || "source";
+
           res.statusCode = 200;
           res.setHeader("Content-Type", "application/json");
           res.end(
             JSON.stringify({
               version: 3,
-              sources: [],
+              sources: [sourceName],
+              sourcesContent: [""],
               names: [],
               mappings: "",
             }),
