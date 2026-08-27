@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"runcodes/models"
+	"runcodes/validation"
 
 	"github.com/go-chi/jwtauth/v5"
 	"github.com/lib/pq"
@@ -71,9 +72,10 @@ func LogIn(ctx context.Context, req *models.LogInRequest) (map[string]any, error
 	var id int
 	var name string
 	var passwordHash string
+	var role string
 	if err := DB.QueryRowContext(ctx,
-		"SELECT id, name, password_hash FROM users WHERE email = $1",
-		req.Email).Scan(&id, &name, &passwordHash); err != nil {
+		"SELECT id, name, password_hash, role FROM users WHERE email = $1",
+		req.Email).Scan(&id, &name, &passwordHash, &role); err != nil {
 		if err == sql.ErrNoRows {
 			slog.InfoContext(ctx,
 				"someone tried to login as an user that does not exist",
@@ -109,12 +111,37 @@ func LogIn(ctx context.Context, req *models.LogInRequest) (map[string]any, error
 		"id":    id,
 		"name":  name,
 		"email": req.Email,
+		"role":  role,
 	}
 
 	jwtauth.SetIssuedAt(claims, time.Now())
-	jwtauth.SetExpiryIn(claims, 30*time.Minute)
+	jwtauth.SetExpiryIn(claims, validation.SessionTTL)
 
 	return claims, nil
+}
+
+/*
+GetUserByID fetches a user by id.
+*/
+func GetUserByID(ctx context.Context, id int) (*models.User, error) {
+	var user models.User
+	err := DB.QueryRowContext(ctx,
+		"SELECT id, name, email, role FROM users WHERE id = $1",
+		id,
+	).Scan(&user.ID, &user.Name, &user.Email, &user.Role)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrInvalidCredentials
+		}
+		slog.ErrorContext(ctx,
+			"error fetching user by id",
+			slog.String("error", err.Error()),
+			slog.Int("user_id", id),
+		)
+		return nil, ErrServer
+	}
+
+	return &user, nil
 }
 
 /*

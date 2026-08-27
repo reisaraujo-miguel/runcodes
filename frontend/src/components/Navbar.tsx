@@ -1,5 +1,5 @@
-import { NavLink } from "react-router";
 import { useState } from "react";
+import { NavLink } from "react-router";
 
 import { CircleUserRound } from "lucide-react";
 
@@ -15,18 +15,20 @@ import {
 import { NewClassModal } from "@/components/professor/NewClassModal";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
+import { useAuth } from "@/hooks/use-auth";
+import type { UserRole } from "@/lib/api/auth";
+
 import Logo from "@/assets/runcodes-logo/logo.png";
 
 const USER_ROLES = {
   Student: "student",
-  Teacher: "teacher",
+  Professor: "professor",
   Admin: "admin",
 } as const;
 
-type UserRole = (typeof USER_ROLES)[keyof typeof USER_ROLES];
-
 export function Navbar() {
-  const role: UserRole = USER_ROLES.Admin; // This should be dynamically set based on the logged-in user
+  const { user } = useAuth();
+  const role: UserRole = user?.role ?? USER_ROLES.Student;
   const [isNewClassModalOpen, setIsNewClassModalOpen] = useState(false);
 
   return (
@@ -49,7 +51,7 @@ export function Navbar() {
                 >
                   <div className="flex items-center h-full gap-2 text-white">
                     <CircleUserRound />
-                    test@usp.br
+                    {user?.email ?? ""}
                   </div>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-56">
@@ -90,7 +92,7 @@ function DropDownMenu(props: { role: UserRole; onCreateNewClass: () => void }) {
           Perfil
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        {(props.role === USER_ROLES.Teacher ||
+        {(props.role === USER_ROLES.Professor ||
           props.role === USER_ROLES.Admin) && (
           <>
             <DropdownMenuItem

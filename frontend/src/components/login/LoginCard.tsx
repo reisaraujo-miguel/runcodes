@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { useAuth } from "@/hooks/use-auth";
 import { login } from "@/lib/api/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -24,8 +25,9 @@ const formSchema = z.object({
 });
 
 export function LoginCard() {
-  const { setAuthenticated } = useAuth();
+  const { refreshAuth } = useAuth();
   const [isLogged, setIsLogged] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   const form = useForm({
     resolver: zodResolver(formSchema),
@@ -37,13 +39,16 @@ export function LoginCard() {
 
   const onSubmit = async (data: z.infer<typeof formSchema>) => {
     try {
+      setApiError(null);
       await login({ email: data.Email, password: data.Password });
-      // The backend set the session cookie — mark the app as authenticated
-      // and let ProtectedRoute grant access.
-      setAuthenticated(true);
+      // The backend set the session cookie — load the user (and role) into
+      // the auth context and let ProtectedRoute grant access.
+      await refreshAuth();
       setIsLogged(true);
     } catch (error) {
       console.error("Erro ao logar:", error);
+      const message = error instanceof Error ? error.message : "Erro ao logar";
+      setApiError(message);
     }
   };
 
@@ -96,15 +101,19 @@ export function LoginCard() {
                     >
                       Esqueceu sua senha?
                     </a>
-                    <Input
+                    <PasswordInput
                       id="Password"
-                      type="password"
                       required
                       {...form.register("Password")}
                     />
                   </Field>
                 </div>
               </div>
+              {apiError && (
+                <p className="text-sm text-destructive text-center">
+                  {apiError}
+                </p>
+              )}
             </div>
           </CardContent>
           <CardFooter className="flex-col gap-2">

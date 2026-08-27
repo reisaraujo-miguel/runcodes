@@ -1,5 +1,17 @@
 import { apiGet, apiPost } from "./client";
 
+export type UserRole = "student" | "professor" | "admin";
+
+/** The authenticated user as returned by GET /api/v1/auth. */
+export interface AuthUser {
+  id: number;
+  name: string;
+  email: string;
+  role: UserRole;
+  /** When the session token expires (unix timestamp in seconds). */
+  expires_at: number;
+}
+
 export interface LoginPayload {
   email: string;
   password: string;
@@ -15,9 +27,14 @@ export interface SignUpPayload {
   password_confirmation: string;
 }
 
-/** Check whether the current session is authenticated. */
-export function checkAuth(): Promise<void> {
-  return apiGet<undefined>("/api/v1/auth").then(() => undefined);
+/** Fetch the current session's user info. */
+export function checkAuth(): Promise<AuthUser> {
+  return apiGet<AuthUser>("/api/v1/auth");
+}
+
+/** Renew the current session before it expires (sliding expiration). */
+export function refreshSession(): Promise<AuthUser> {
+  return apiPost<AuthUser>("/api/v1/auth/refresh");
 }
 
 /** Send login credentials and obtain a session cookie. */

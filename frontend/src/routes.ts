@@ -2,7 +2,11 @@ import { createBrowserRouter, redirect } from "react-router";
 
 import App from "./App.tsx";
 import { RootHydrateFallback } from "./components/RootHydrateFallback.tsx";
-import { ProtectedRoute } from "./routes/protected.tsx";
+import {
+  AdminRoute,
+  ProfessorRoute,
+  ProtectedRoute,
+} from "./routes/protected.tsx";
 
 export const router = createBrowserRouter([
   {
@@ -33,36 +37,47 @@ export const router = createBrowserRouter([
           },
           {
             path: "/admin",
-            lazy: async () => {
-              const { AdminTools } = await import("./routes/admin/layout.tsx");
-              return { Component: AdminTools };
-            },
+            Component: AdminRoute,
             children: [
               {
-                index: true,
                 lazy: async () => {
-                  const { Dashboard } =
-                    await import("./routes/admin/dashboard/page.tsx");
-                  return { Component: Dashboard };
+                  const { AdminTools } =
+                    await import("./routes/admin/layout.tsx");
+                  return { Component: AdminTools };
                 },
+                children: [
+                  {
+                    index: true,
+                    lazy: async () => {
+                      const { Dashboard } =
+                        await import("./routes/admin/dashboard/page.tsx");
+                      return { Component: Dashboard };
+                    },
+                  },
+                ],
               },
             ],
           },
           {
             path: "/professor",
-            lazy: async () => {
-              const { ProfessorTools } =
-                await import("./routes/professor/layout.tsx");
-              return { Component: ProfessorTools };
-            },
+            Component: ProfessorRoute,
             children: [
               {
-                path: "class/:offeringId",
                 lazy: async () => {
-                  const { ClassPage } =
-                    await import("./routes/professor/class/page.tsx");
-                  return { Component: ClassPage };
+                  const { ProfessorTools } =
+                    await import("./routes/professor/layout.tsx");
+                  return { Component: ProfessorTools };
                 },
+                children: [
+                  {
+                    path: "class/:offeringId",
+                    lazy: async () => {
+                      const { ClassPage } =
+                        await import("./routes/professor/class/page.tsx");
+                      return { Component: ClassPage };
+                    },
+                  },
+                ],
               },
             ],
           },

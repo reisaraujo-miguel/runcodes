@@ -50,7 +50,7 @@ export function apiGet<T>(path: string): Promise<T> {
 }
 
 /** POST helper. */
-export function apiPost<T>(path: string, body: unknown): Promise<T> {
+export function apiPost<T>(path: string, body?: unknown): Promise<T> {
   return apiRequest<T>(path, {
     method: "POST",
     body: JSON.stringify(body),
