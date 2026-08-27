@@ -68,12 +68,21 @@ func configureMiddleware(router *chi.Mux) {
 
 	router.Use(middleware.Recoverer)
 
+	// The session JWT is delivered via an HttpOnly cookie, so the frontend
+	// calls the API with `credentials: "include"`. Cross-origin credentialed
+	// requests require `AllowCredentials` and an explicit origin list — the
+	// wildcard origin is not allowed by browsers when credentials are used.
+	frontendOrigin := os.Getenv("FRONTEND_ORIGIN")
+	if frontendOrigin == "" {
+		frontendOrigin = "http://localhost:5173"
+	}
+
 	router.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"*"},
+		AllowedOrigins:   []string{frontendOrigin},
 		AllowedMethods:   []string{"GET", "PUT", "POST", "DELETE", "HEAD", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		ExposedHeaders:   []string{"Link"},
-		AllowCredentials: false,
+		AllowCredentials: true,
 		MaxAge:           300,
 	}))
 

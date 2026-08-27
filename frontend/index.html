@@ -2,6 +2,26 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // Apply the persisted/system theme before first paint to avoid a flash
+      // of light mode. Keep in sync with src/lib/theme.ts.
+      (function () {
+        var theme = null;
+        try {
+          var stored = localStorage.getItem("theme-preference");
+          if (stored === "dark" || stored === "light") theme = stored;
+        } catch (e) {
+          // localStorage may be unavailable (e.g., in private browsing)
+        }
+        if (theme === null) {
+          theme = window.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light";
+        }
+        document.documentElement.classList.remove("dark", "light");
+        document.documentElement.classList.add(theme);
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RunCodes</title>

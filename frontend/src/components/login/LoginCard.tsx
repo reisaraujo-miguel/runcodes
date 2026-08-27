@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "@/hooks/use-auth";
 import { login } from "@/lib/api/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
@@ -23,6 +24,7 @@ const formSchema = z.object({
 });
 
 export function LoginCard() {
+  const { setAuthenticated } = useAuth();
   const [isLogged, setIsLogged] = useState(false);
 
   const form = useForm({
@@ -36,6 +38,9 @@ export function LoginCard() {
   const onSubmit = async (data: z.infer<typeof formSchema>) => {
     try {
       await login({ email: data.Email, password: data.Password });
+      // The backend set the session cookie — mark the app as authenticated
+      // and let ProtectedRoute grant access.
+      setAuthenticated(true);
       setIsLogged(true);
     } catch (error) {
       console.error("Erro ao logar:", error);
@@ -48,7 +53,10 @@ export function LoginCard() {
 
   return (
     <Card className="w-full max-w-sm">
-      <form onSubmit={void form.handleSubmit(onSubmit)} className="space-y-4">
+      <form
+        onSubmit={(...args) => void form.handleSubmit(onSubmit)(...args)}
+        className="space-y-4"
+      >
         <FieldGroup>
           <CardHeader>
             <CardTitle>Entrar na sua conta</CardTitle>

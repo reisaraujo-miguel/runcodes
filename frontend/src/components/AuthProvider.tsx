@@ -10,12 +10,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     checkAuth()
-      .then(() => setIsAuthenticated(true))
-      .catch(() => setIsAuthenticated(false))
-      .finally(() => setLoading(false));
+      .then(() => {
+        setIsAuthenticated(true);
+      })
+      .catch(() => {
+        setIsAuthenticated(false);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   }, []);
 
-  const auth = useMemo(() => isAuthenticated, [isAuthenticated]);
+  const auth = useMemo(
+    () => ({ isAuthenticated, setAuthenticated: setIsAuthenticated }),
+    [isAuthenticated],
+  );
 
   // Show a loader while checking auth to prevent "flickering" or redirects
   if (loading) return null;

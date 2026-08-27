@@ -6,9 +6,7 @@ export interface CreateOfferingPayload {
   description?: string;
 }
 
-export interface CreateOfferingResponse {
-  [key: string]: unknown;
-}
+export type CreateOfferingResponse = Record<string, unknown>;
 
 /** Create a new class / offering for a professor. */
 export function createOffering(

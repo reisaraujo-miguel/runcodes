@@ -24,7 +24,7 @@ const USER_ROLES = {
 type UserRole = (typeof USER_ROLES)[keyof typeof USER_ROLES];
 
 export function Navbar() {
-  let role: UserRole = USER_ROLES.Admin; // This should be dynamically set based on the logged-in user
+  const role: UserRole = USER_ROLES.Admin; // This should be dynamically set based on the logged-in user
 
   return (
     <div>
@@ -75,7 +75,8 @@ function DropDownMenu(props: { role: UserRole }) {
           Perfil
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        {(props.role === USER_ROLES.Teacher || USER_ROLES.Admin) && (
+        {(props.role === USER_ROLES.Teacher ||
+          props.role === USER_ROLES.Admin) && (
           <>
             <DropdownMenuItem>
               <NavLink

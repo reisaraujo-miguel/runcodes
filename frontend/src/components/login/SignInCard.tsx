@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "@/hooks/use-auth";
 import { login, signUp } from "@/lib/api/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
@@ -23,7 +24,10 @@ const formSchema = z
       .string()
       .min(1, "nome é obrigatório")
       .max(100, "nome deve ter no máximo 100 caracteres"),
-    Email: z.string().min(1, "email é obrigatório").email("email inválido"),
+    Email: z
+      .string()
+      .min(1, "email é obrigatório")
+      .pipe(z.email("email inválido")),
     Password: z
       .string()
       .min(8, "a senha deve ter no mínimo 8 caracteres")
@@ -31,7 +35,7 @@ const formSchema = z
       .regex(/[a-z]/, "a senha deve conter pelo menos uma letra minúscula")
       .regex(/[0-9]/, "a senha deve conter pelo menos um dígito")
       .regex(
-        /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`]/,
+        /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]/,
         "a senha deve conter pelo menos um caractere especial",
       ),
     PasswordConfirmation: z
@@ -44,6 +48,7 @@ const formSchema = z
   });
 
 export function SignInCard() {
+  const { setAuthenticated } = useAuth();
   const [isLogged, setIsLogged] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
@@ -68,6 +73,9 @@ export function SignInCard() {
       });
       // Auto-login after successful sign-up
       await login({ email: data.Email, password: data.Password });
+      // The backend set the session cookie — mark the app as authenticated
+      // and let ProtectedRoute grant access.
+      setAuthenticated(true);
       setIsLogged(true);
     } catch (error) {
       const message =
@@ -82,7 +90,10 @@ export function SignInCard() {
 
   return (
     <Card className="w-full max-w-sm">
-      <form onSubmit={void form.handleSubmit(onSubmit)} className="space-y-4">
+      <form
+        onSubmit={(...args) => void form.handleSubmit(onSubmit)(...args)}
+        className="space-y-4"
+      >
         <FieldGroup>
           <CardHeader>
             <CardTitle>Criar sua conta</CardTitle>

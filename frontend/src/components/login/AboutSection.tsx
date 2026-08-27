@@ -46,6 +46,8 @@ export function AboutSection() {
         <div className="pt-4">
           <p
             className="text-sm text-muted-foreground [&_a]:text-foreground"
+            // Content is sanitized with DOMPurify before being inserted.
+            // eslint-disable-next-line react-dom/no-dangerously-set-innerhtml
             dangerouslySetInnerHTML={{
               __html: DOMPurify.sanitize(CONTACT_INFO_HTML),
             }}

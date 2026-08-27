@@ -5,12 +5,13 @@ import { AboutSection } from "../../components/login/AboutSection";
 import { LoginCard } from "../../components/login/LoginCard";
 import { SignInCard } from "../../components/login/SignInCard";
 import { ThemeToggle } from "../../components/ThemeToggle";
-import { globalIsDark } from "../../lib/theme";
+import { useTheme } from "../../hooks/use-theme";
 import { useSearchParams } from "react-router";
 
 export function AuthPage() {
   const [searchParams] = useSearchParams();
   const isSignUp = searchParams.get("mode") === "signup";
+  const isDark = useTheme() === "dark";
 
   return (
     <div className="min-h-screen bg-background">
@@ -19,7 +20,7 @@ export function AuthPage() {
         <div className="relative hidden h-full flex-col bg-muted p-10 lg:flex dark:border-r">
           <div className="relative z-20 flex items-center text-lg font-medium">
             <img
-              src={globalIsDark ? Logo : LogoBlue}
+              src={isDark ? Logo : LogoBlue}
               alt="RunCodes Logo"
               className="h-10"
             />
@@ -42,7 +43,7 @@ export function AuthPage() {
         {/* Mobile: Logo and Theme Toggle */}
         <div className="lg:hidden flex items-center justify-between p-6">
           <img
-            src={globalIsDark ? Logo : LogoBlue}
+            src={isDark ? Logo : LogoBlue}
             alt="RunCodes Logo"
             className="h-10"
           />

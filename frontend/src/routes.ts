@@ -1,11 +1,13 @@
 import { createBrowserRouter, redirect } from "react-router";
 
 import App from "./App.tsx";
+import { RootHydrateFallback } from "./components/RootHydrateFallback.tsx";
 import { ProtectedRoute } from "./routes/protected.tsx";
 
 export const router = createBrowserRouter([
   {
     Component: App,
+    HydrateFallback: RootHydrateFallback,
 
     children: [
       {
