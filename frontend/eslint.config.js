@@ -8,7 +8,7 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default defineConfig([
-  globalIgnores(["dist", "src/components/ui"]),
+  globalIgnores(["dist"]),
   {
     files: ["**/*.{ts,tsx}"],
     extends: [
@@ -23,12 +23,26 @@ export default defineConfig([
       reactDom.configs.recommended,
     ],
     languageOptions: {
-      parserOptions: {
-        project: ["./tsconfig.json", "./tsconfig.node.json"],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      ecmaVersion: 2020,
+      ecmaVersion: "latest",
       globals: globals.browser,
+      parserOptions: {
+        // Uses the TypeScript project service to pick up tsconfigs
+        // automatically instead of hardcoding them.
+        projectService: true,
+      },
+    },
+    rules: {
+      // shadcn-style ui files intentionally export helpers alongside their
+      // components; allow these named exports for fast refresh.
+      "react-refresh/only-export-components": [
+        "error",
+        { allowExportNames: ["buttonVariants", "useSidebar"] },
+      ],
+    },
+  },
+  {
+    linterOptions: {
+      reportUnusedDisableDirectives: "error",
     },
   },
 ]);

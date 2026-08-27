@@ -1,12 +1,12 @@
 import Logo from "@/assets/runcodes-logo/logo.png";
 import LogoBlue from "@/assets/runcodes-logo/logoblue.png";
 
+import { useSearchParams } from "react-router";
 import { AboutSection } from "../../components/login/AboutSection";
 import { LoginCard } from "../../components/login/LoginCard";
 import { SignInCard } from "../../components/login/SignInCard";
 import { ThemeToggle } from "../../components/ThemeToggle";
 import { useTheme } from "../../hooks/use-theme";
-import { useSearchParams } from "react-router";
 
 export function AuthPage() {
   const [searchParams] = useSearchParams();

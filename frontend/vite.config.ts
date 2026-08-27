@@ -39,7 +39,8 @@ export default defineConfig({
 
           let pathname: string;
           try {
-            pathname = decodeURIComponent(req.url.split("?")[0]);
+            const [urlPath = ""] = req.url.split("?");
+            pathname = decodeURIComponent(urlPath);
           } catch {
             next();
             return;
