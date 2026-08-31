@@ -30,8 +30,18 @@ const formSchema = z.object({
  * a timezone-aware end date that can be shown in other users' timezones.
  */
 function toEndOfDayTimestamp(dateOnly: string): string {
-  const [year, month, day] = dateOnly.split("-").map(Number);
-  return new Date(year, month - 1, day, 23, 59, 59).toISOString();
+  const [year, month, day] = dateOnly.split("-");
+  if (!year || !month || !day) {
+    throw new Error(`invalid date value: ${dateOnly}`);
+  }
+  return new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    23,
+    59,
+    59,
+  ).toISOString();
 }
 
 /**

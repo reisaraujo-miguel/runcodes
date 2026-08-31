@@ -1,7 +1,22 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
+    <style>
+      /*
+       * Critical theme background, applied before the bundle CSS loads (in
+       * dev the CSS is injected by the JS bundle, which arrives later).
+       * Keep the colors in sync with src/index.css theme variables.
+       */
+      html {
+        color-scheme: light;
+        background-color: oklch(1 0 0);
+      }
+      html.dark {
+        color-scheme: dark;
+        background-color: oklch(0.141 0.005 285.823);
+      }
+    </style>
     <script>
       // Apply the persisted/system theme before first paint to avoid a flash
       // of light mode. Keep in sync with src/lib/theme.ts.

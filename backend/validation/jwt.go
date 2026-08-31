@@ -12,6 +12,10 @@ import (
 
 var TokenAuth *jwtauth.JWTAuth
 
+// SessionTTL is how long an auth session token stays valid. Sessions are
+// renewed (sliding) by POST /api/v1/auth/refresh while the user is active.
+const SessionTTL = 30 * time.Minute
+
 /*
 SetupJWT reads the JWT secret from the environment and creates a new jwtauth
 that can be accessed via the validation.TokenAuth variable

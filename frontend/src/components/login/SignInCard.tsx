@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { useAuth } from "@/hooks/use-auth";
 import { login, signUp } from "@/lib/api/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -48,7 +49,7 @@ const formSchema = z
   });
 
 export function SignInCard() {
-  const { setAuthenticated } = useAuth();
+  const { refreshAuth } = useAuth();
   const [isLogged, setIsLogged] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
@@ -73,9 +74,9 @@ export function SignInCard() {
       });
       // Auto-login after successful sign-up
       await login({ email: data.Email, password: data.Password });
-      // The backend set the session cookie — mark the app as authenticated
-      // and let ProtectedRoute grant access.
-      setAuthenticated(true);
+      // The backend set the session cookie — load the user (and role) into
+      // the auth context and let ProtectedRoute grant access.
+      await refreshAuth();
       setIsLogged(true);
     } catch (error) {
       const message =
@@ -148,9 +149,8 @@ export function SignInCard() {
               <div className="grid gap-2">
                 <Field>
                   <FieldLabel htmlFor="Password">Senha</FieldLabel>
-                  <Input
+                  <PasswordInput
                     id="Password"
-                    type="password"
                     required
                     {...form.register("Password")}
                   />
@@ -166,9 +166,8 @@ export function SignInCard() {
                   <FieldLabel htmlFor="PasswordConfirmation">
                     Confirmar Senha
                   </FieldLabel>
-                  <Input
+                  <PasswordInput
                     id="PasswordConfirmation"
-                    type="password"
                     required
                     {...form.register("PasswordConfirmation")}
                   />

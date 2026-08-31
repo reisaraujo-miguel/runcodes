@@ -1,9 +1,13 @@
 import { createContext, use } from "react";
 
+import type { AuthUser } from "@/lib/api/auth";
+
 export interface AuthContextValue {
+  /** The authenticated user, or null when there is no active session. */
+  user: AuthUser | null;
   isAuthenticated: boolean;
-  /** Update the auth state after a successful login/logout. */
-  setAuthenticated: (value: boolean) => void;
+  /** Re-fetches the session from the API and updates the auth state. */
+  refreshAuth: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextValue | undefined>(

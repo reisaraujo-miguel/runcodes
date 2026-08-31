@@ -30,12 +30,16 @@ func createRoutes(router *chi.Mux) {
 		r.Use(jwtauth.Verifier(validation.TokenAuth))
 		r.Use(jwtauth.Authenticator(validation.TokenAuth))
 
-		r.Get("/api/v1/auth", func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusAccepted)
-		})
+		r.Get("/api/v1/auth", handlers.GetAuth)
+		r.Post("/api/v1/auth/refresh", handlers.RefreshAuth)
 
-		r.Post("/api/v1/offerings/create", handlers.CreateOffering)
-		r.Get("/api/v1/offerings/{id}", handlers.GetOffering)
+		// professor and admin routes
+		r.Group(func(r chi.Router) {
+			r.Use(validation.RequireRole("professor", "admin"))
+
+			r.Post("/api/v1/offerings/create", handlers.CreateOffering)
+			r.Get("/api/v1/offerings/{id}", handlers.GetOffering)
+		})
 	})
 }
 
