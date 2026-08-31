@@ -3,14 +3,14 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true
-    }
+      "recommended": true,
+    },
   },
   "typecheck": {
-    "enabled": true
+    "enabled": true,
   },
   "plpgsqlCheck": {
-    "enabled": true
+    "enabled": true,
   },
   "format": {
     "enabled": true,
@@ -19,6 +19,6 @@
     "indentStyle": "spaces",
     "keywordCase": "upper",
     "constantCase": "upper",
-    "typeCase": "lower"
-  }
+    "typeCase": "lower",
+  },
 }
