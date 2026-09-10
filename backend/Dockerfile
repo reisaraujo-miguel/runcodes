@@ -8,6 +8,10 @@ CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
 
 FROM alpine:3.23 AS runner
 
+RUN addgroup -S runcodes && adduser -S runcodes -G runcodes
+
+USER runcodes
+
 WORKDIR /app/
 
 COPY --from=builder /app/main .

@@ -3,7 +3,7 @@ services:
     build: ./frontend/
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "8080:80"
     environment:
       TZ: "America/Sao_Paulo"
       RUNCODES_DOMAIN: "http://localhost:8080"
@@ -51,34 +51,35 @@ services:
       - runcodes-network
 
   # Compiler Engine
-  rcc:
-    image: ghcr.io/runcodes-icmc/compiler-engine:latest
-    restart: unless-stopped
-    environment:
-      TZ: "America/Sao_Paulo"
-      RUNCODES_COMPILER_EXEC_DIR: /exec
-      RUNCODES_COMPILER_EXEC_DIR_REMOTE: ${PWD}/exec
-      DOCKER_HOST: tcp://docker-dind:2375
-    volumes:
-      - ./exec:/exec
-    networks:
-      - runcodes-network
-      - dind-network
-    depends_on:
-      - docker-dind
+  #rcc:
+  #  image: ghcr.io/runcodes-icmc/compiler-engine:latest
+  #  restart: unless-stopped
+  #  environment:
+  #    TZ: "America/Sao_Paulo"
+  #    RUNCODES_COMPILER_EXEC_DIR: /exec
+  #    RUNCODES_COMPILER_EXEC_DIR_REMOTE: ${PWD}/exec
+  #    DOCKER_HOST: tcp://docker-dind:2375
+  #    RUNCODES_DB_PASSWORD: "${RUNCODES_DB_PASSWORD:?RUNCODES_DB_PASSWORD must be set}"
+  #  volumes:
+  #   - ./exec:/exec
+  #  networks:
+  #    - runcodes-network
+  #    - dind-network
+  #  depends_on:
+  #    - docker-dind
 
   # Docker-in-Docker for isolated container operations
-  docker-dind:
-    image: docker:dind
-    restart: unless-stopped
-    privileged: true
-    environment:
-      TZ: "America/Sao_Paulo"
-      DOCKER_TLS_CERTDIR: "" # Disable TLS for simplicity in internal network
-    networks:
-      - dind-network
-    volumes:
-      - docker-dind-vol:/var/lib/docker
+  #docker-dind:
+  #  image: docker:dind
+  #  restart: unless-stopped
+  #  privileged: true
+  #  environment:
+  #    TZ: "America/Sao_Paulo"
+  #    DOCKER_TLS_CERTDIR: "" # Disable TLS for simplicity in internal network
+  #  networks:
+  #    - dind-network
+  #  volumes:
+  #    - docker-dind-vol:/var/lib/docker
 
   # Local SMTP server for intercepting e-mails
   smtp4dev:
@@ -130,4 +131,4 @@ volumes:
   runcodes-db-vol:
   runcodes-redis-vol:
   runcodes-seaweed-vol:
-  docker-dind-vol:
+  #docker-dind-vol:

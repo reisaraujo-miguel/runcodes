@@ -7,6 +7,12 @@ RUN bun install --frozen-lockfile && bun run build
 
 FROM caddy:alpine AS dist
 
+# Upstream caddy images no longer ship a "caddy" user (they run as root).
+# Create it ourselves so the container can keep running unprivileged.
+RUN addgroup -S caddy && adduser -S caddy -G caddy
+
+USER caddy
+
 COPY --from=builder /app/dist /usr/share/caddy
 
 COPY Caddyfile /etc/caddy/Caddyfile
