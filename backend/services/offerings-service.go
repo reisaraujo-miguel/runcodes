@@ -7,7 +7,7 @@ import (
 	"errors"
 	"log/slog"
 
-	"runcodes/models"
+	"github.com/runcodes-icmc/runcodes/models"
 )
 
 /*

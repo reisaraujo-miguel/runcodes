@@ -25,8 +25,8 @@ import (
 	"net/http"
 	"os"
 
-	"runcodes/services"
-	"runcodes/validation"
+	"github.com/runcodes-icmc/runcodes/services"
+	"github.com/runcodes-icmc/runcodes/validation"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/joho/godotenv"

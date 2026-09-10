@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	"runcodes/handlers"
-	"runcodes/validation"
+	"github.com/runcodes-icmc/runcodes/handlers"
+	"github.com/runcodes-icmc/runcodes/validation"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"

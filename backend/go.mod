@@ -1,4 +1,4 @@
-module runcodes
+module github.com/runcodes-icmc/runcodes
 
 go 1.26.0
 
