@@ -1,0 +1,5 @@
+# Trivy ignore file — findings listed here are skipped by all scans.
+# Lines starting with `#` are comments. Add one finding ID per line, e.g.:
+#
+#   CVE-2024-12345  # reason for ignoring
+#   AVD-DS-0002     # reason for ignoring

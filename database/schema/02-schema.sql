@@ -145,9 +145,6 @@ CREATE TABLE commits (
   s3_key text
 );
 
--- Ordered to match the legacy integer values (0 = killed_with_signal,
--- 1 = correct, 2 = bad_formatted_output) so ordinal-based comparisons keep
--- working consistently with the old data.
 CREATE TYPE commit_exercise_test_case_status_t AS ENUM ('killed_with_signal', 'correct', 'bad_formatted_output');
 
 CREATE TABLE commits_exercise_test_cases_results (
