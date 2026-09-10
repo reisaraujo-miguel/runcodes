@@ -33,6 +33,9 @@ func createRoutes(router *chi.Mux) {
 		r.Get("/api/v1/auth", handlers.GetAuth)
 		r.Post("/api/v1/auth/refresh", handlers.RefreshAuth)
 
+		r.Post("/api/v1/submissions", handlers.CreateSubmission)
+		r.Get("/api/v1/submissions/{id}/events", handlers.StreamSubmissionEvents)
+
 		// professor and admin routes
 		r.Group(func(r chi.Router) {
 			r.Use(validation.RequireRole("professor", "admin"))

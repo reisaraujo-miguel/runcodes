@@ -32,6 +32,51 @@ services:
       RUNCODES_DB_USER: "runcodes"
       RUNCODES_DB_PASSWORD: "${RUNCODES_DB_PASSWORD:?RUNCODES_DB_PASSWORD must be set}"
       RUNCODES_DB_NAME: "runcodes"
+      RUNCODES_JUDGE_URL: "http://judge:9000"
+      RUNCODES_JUDGE_TOKEN: "${RUNCODES_JUDGE_TOKEN:-}"
+      RUNCODES_S3_ENDPOINT: "http://seaweed:8333"
+      RUNCODES_S3_REGION: "sa-east-1"
+      RUNCODES_S3_CREDENTIALS_KEY: "${RUNCODES_S3_CREDENTIALS_KEY:-test_key}"
+      RUNCODES_S3_CREDENTIALS_SECRET: "${RUNCODES_S3_CREDENTIALS_SECRET:-test_secret}"
+      RUNCODES_S3_BUCKET_PREFIX: "runcodes"
+
+  # Judge (execution engine). Runs the language images with rootless podman.
+  # It shares the host's exec directory with the podman service, so
+  # JUDGE_EXEC_DIR_REMOTE must be the *host* absolute path of ./exec.
+  judge:
+    build: ./judge/
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    # Run as the host user so the rootless podman socket and ./exec are accessible.
+    user: "${JUDGE_UID:-1000}:${JUDGE_GID:-1000}"
+    environment:
+      TZ: "America/Sao_Paulo"
+      JUDGE_ADDR: ":9000"
+      JUDGE_CONCURRENCY: "4"
+      JUDGE_PODMAN_URI: "unix:///run/podman/podman.sock"
+      JUDGE_EXEC_DIR: "/exec"
+      JUDGE_EXEC_DIR_REMOTE: "${PWD}/exec"
+      JUDGE_AUTH_TOKEN: "${RUNCODES_JUDGE_TOKEN:-}"
+      RUNCODES_DB_HOST: "database"
+      RUNCODES_DB_PORT: "5432"
+      RUNCODES_DB_USER: "runcodes"
+      RUNCODES_DB_PASSWORD: "${RUNCODES_DB_PASSWORD:?RUNCODES_DB_PASSWORD must be set}"
+      RUNCODES_DB_NAME: "runcodes"
+      RUNCODES_S3_ENDPOINT: "http://seaweed:8333"
+      RUNCODES_S3_REGION: "sa-east-1"
+      RUNCODES_S3_CREDENTIALS_KEY: "${RUNCODES_S3_CREDENTIALS_KEY:-test_key}"
+      RUNCODES_S3_CREDENTIALS_SECRET: "${RUNCODES_S3_CREDENTIALS_SECRET:-test_secret}"
+      RUNCODES_S3_BUCKET_PREFIX: "runcodes"
+    volumes:
+      - ./exec:/exec
+      # Rootless podman API socket. Override PODMAN_SOCKET when UID != 1000.
+      - "${PODMAN_SOCKET:-/run/user/1000/podman/podman.sock}:/run/podman/podman.sock"
+    networks:
+      - runcodes-network
+    depends_on:
+      - database
+      - seaweed
 
   # PostgreSQL Database
   database:
@@ -50,38 +95,6 @@ services:
     networks:
       - runcodes-network
 
-  # Compiler Engine
-  #rcc:
-  #  image: ghcr.io/runcodes-icmc/compiler-engine:latest
-  #  restart: unless-stopped
-  #  environment:
-  #    TZ: "America/Sao_Paulo"
-  #    RUNCODES_COMPILER_EXEC_DIR: /exec
-  #    RUNCODES_COMPILER_EXEC_DIR_REMOTE: ${PWD}/exec
-  #    DOCKER_HOST: tcp://docker-dind:2375
-  #    RUNCODES_DB_PASSWORD: "${RUNCODES_DB_PASSWORD:?RUNCODES_DB_PASSWORD must be set}"
-  #  volumes:
-  #   - ./exec:/exec
-  #  networks:
-  #    - runcodes-network
-  #    - dind-network
-  #  depends_on:
-  #    - docker-dind
-
-  # Docker-in-Docker for isolated container operations
-  #docker-dind:
-  #  image: docker:dind
-  #  restart: unless-stopped
-  #  privileged: true
-  #  environment:
-  #    TZ: "America/Sao_Paulo"
-  #    DOCKER_TLS_CERTDIR: "" # Disable TLS for simplicity in internal network
-  #  networks:
-  #    - dind-network
-  #  volumes:
-  #    - docker-dind-vol:/var/lib/docker
-
-  # Local SMTP server for intercepting e-mails
   smtp4dev:
     image: rnwood/smtp4dev:v3.15
     restart: unless-stopped
@@ -131,4 +144,3 @@ volumes:
   runcodes-db-vol:
   runcodes-redis-vol:
   runcodes-seaweed-vol:
-  #docker-dind-vol:

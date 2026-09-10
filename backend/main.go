@@ -19,6 +19,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -67,6 +68,8 @@ func main() {
 		slog.Error("Failed to setup JWT", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
+
+	go services.StartReconciliation(context.Background())
 
 	r := chi.NewRouter()
 	configureMiddleware(r)

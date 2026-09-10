@@ -29,3 +29,5 @@ runcodes
 main
 dist/
 .env
+tmp/
+bin/
