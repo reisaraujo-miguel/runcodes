@@ -25,6 +25,17 @@ type workspace struct {
 	TestCases  []model.TestCase
 }
 
+// mkdirWorld creates dir (and parents) and forces mode 0777 regardless of the
+// process umask. The container runs under a user namespace where its root maps
+// to a subuid, so the workspace must be world-writable for it to compile and
+// write outputs (the legacy engine did the same with 0o777).
+func mkdirWorld(dir string) error {
+	if err := os.MkdirAll(dir, 0o777); err != nil {
+		return err
+	}
+	return os.Chmod(dir, 0o777)
+}
+
 // prepareWorkspace creates the run directory and downloads every input.
 func (e *Engine) prepareWorkspace(ctx context.Context, commit *model.Commit) (*workspace, error) {
 	name := fmt.Sprintf("commit_%d", commit.ID)
@@ -35,8 +46,11 @@ func (e *Engine) prepareWorkspace(ctx context.Context, commit *model.Commit) (*w
 		return nil, fmt.Errorf("clean workspace: %w", err)
 	}
 	srcDir := filepath.Join(baseDir, "src")
-	if err := os.MkdirAll(srcDir, 0o777); err != nil {
+	if err := mkdirWorld(baseDir); err != nil {
 		return nil, fmt.Errorf("create workspace: %w", err)
+	}
+	if err := mkdirWorld(srcDir); err != nil {
+		return nil, fmt.Errorf("create source dir: %w", err)
 	}
 
 	ws := &workspace{BaseDir: baseDir, RemoteDir: remoteDir, SourceDir: srcDir}
@@ -131,7 +145,7 @@ func (e *Engine) fetchTestCases(ctx context.Context, ws *workspace) error {
 			return fmt.Errorf("download input of case %d: %w", tc.ID, err)
 		}
 		testDir := filepath.Join(ws.BaseDir, fmt.Sprintf("test_%d", tc.ID))
-		if err := os.MkdirAll(testDir, 0o777); err != nil {
+		if err := mkdirWorld(testDir); err != nil {
 			return fmt.Errorf("create dir of case %d: %w", tc.ID, err)
 		}
 		if len(tc.Files) > 0 {
@@ -181,12 +195,12 @@ func extractZip(archivePath, dest string) error {
 			return fmt.Errorf("archive entry %q escapes destination", f.Name)
 		}
 		if f.FileInfo().IsDir() {
-			if err := os.MkdirAll(target, 0o777); err != nil {
+			if err := mkdirWorld(target); err != nil {
 				return err
 			}
 			continue
 		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o777); err != nil {
+		if err := mkdirWorld(filepath.Dir(target)); err != nil {
 			return err
 		}
 		rc, err := f.Open()

@@ -103,6 +103,13 @@ func (h *Hub) publish(id int64, name string, payload any) {
 	}
 	if name == NameFinished || name == NameError {
 		t.done = true
+		// Close every subscriber so SSE handlers return on their own; a
+		// late subscriber gets the backlog from the closed-channel path in
+		// Subscribe.
+		for ch := range t.subs {
+			close(ch)
+		}
+		t.subs = make(map[chan Frame]struct{})
 		t.evict = time.AfterFunc(h.retention, func() { h.evictTopic(id, t) })
 	}
 }

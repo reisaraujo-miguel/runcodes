@@ -39,6 +39,7 @@ services:
       RUNCODES_S3_CREDENTIALS_KEY: "${RUNCODES_S3_CREDENTIALS_KEY:-test_key}"
       RUNCODES_S3_CREDENTIALS_SECRET: "${RUNCODES_S3_CREDENTIALS_SECRET:-test_secret}"
       RUNCODES_S3_BUCKET_PREFIX: "runcodes"
+      RUNCODES_REDIS_ADDR: "redis:6379"
 
   # Judge (execution engine). Runs the language images with rootless podman.
   # It shares the host's exec directory with the podman service, so

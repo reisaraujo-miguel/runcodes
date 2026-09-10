@@ -66,7 +66,7 @@ func run() error {
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           api.New(cfg, st, pc, hub, eng, pool.Wake, logger).Router(),
+		Handler:           api.New(cfg, st, pc, eng, hub, pool.Wake, logger).Router(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

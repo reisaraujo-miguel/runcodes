@@ -36,6 +36,30 @@ func createRoutes(router *chi.Mux) {
 		r.Post("/api/v1/submissions", handlers.CreateSubmission)
 		r.Get("/api/v1/submissions/{id}/events", handlers.StreamSubmissionEvents)
 
+		// exercise & test-case authoring (access is enforced in the services)
+		r.Get("/api/v1/allowed-file-types", handlers.ListAllowedFileTypes)
+
+		r.Post("/api/v1/offerings/{offeringId}/exercises", handlers.CreateExercise)
+		r.Get("/api/v1/offerings/{offeringId}/exercises", handlers.ListOfferingExercises)
+
+		r.Get("/api/v1/exercises/{id}", handlers.GetExercise)
+		r.Put("/api/v1/exercises/{id}", handlers.UpdateExercise)
+		r.Delete("/api/v1/exercises/{id}", handlers.DeleteExercise)
+
+		r.Get("/api/v1/exercises/{id}/test-cases", handlers.ListTestCases)
+		r.Post("/api/v1/exercises/{id}/test-cases", handlers.CreateTestCase)
+		r.Put("/api/v1/exercises/{id}/test-cases/{caseId}", handlers.UpdateTestCase)
+		r.Delete("/api/v1/exercises/{id}/test-cases/{caseId}", handlers.DeleteTestCase)
+
+		r.Get("/api/v1/exercises/{id}/compilation-files", handlers.ListCompilationFiles)
+		r.Post("/api/v1/exercises/{id}/compilation-files", handlers.CreateCompilationFile)
+		r.Get("/api/v1/exercises/{id}/compilation-files/{fileId}", handlers.GetCompilationFile)
+		r.Delete("/api/v1/exercises/{id}/compilation-files/{fileId}", handlers.DeleteCompilationFile)
+
+		r.Get("/api/v1/exercises/{id}/attached-files", handlers.ListAttachedFiles)
+		r.Post("/api/v1/exercises/{id}/attached-files", handlers.CreateAttachedFile)
+		r.Delete("/api/v1/exercises/{id}/attached-files/{fileId}", handlers.DeleteAttachedFile)
+
 		// professor and admin routes
 		r.Group(func(r chi.Router) {
 			r.Use(validation.RequireRole("professor", "admin"))

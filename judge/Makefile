@@ -3,7 +3,7 @@
 # have. `remote` also trims the local (non-client) code paths.
 TAGS ?= remote containers_image_openpgp exclude_graphdriver_btrfs exclude_graphdriver_overlay exclude_graphdriver_devicemapper exclude_graphdriver_zfs btrfs_noversion
 
-.PHONY: build test vet fmt tidy run clean
+.PHONY: build test vet fmt tidy run clean integration
 
 build:
 	@mkdir -p bin
@@ -26,3 +26,7 @@ run:
 
 clean:
 	rm -rf bin
+
+# End-to-end test against real PostgreSQL, SeaweedFS and rootless podman.
+integration:
+	./integration/run.sh

@@ -15,4 +15,11 @@ var (
 	ErrJudgeUnavailable = errors.New("the judge is unavailable, try again later")
 	ErrCommitNotFound   = errors.New("commit not found")
 	ErrCommitForbidden  = errors.New("you are not allowed to view this commit")
+
+	ErrNotOwner                = errors.New("you are not the owner of this offering")
+	ErrTestCaseNotFound        = errors.New("test case not found")
+	ErrCompilationFileNotFound = errors.New("compilation file not found")
+	ErrAttachedFileNotFound    = errors.New("attached file not found")
+	ErrInvalidTestCase         = errors.New("invalid test case")
+	ErrInvalidExercise         = errors.New("invalid exercise")
 )

@@ -185,3 +185,100 @@ func DeleteCommitSource(ctx context.Context, key string) error {
 
 	return nil
 }
+
+/*
+PutCaseObject uploads an object to the cases bucket. The judge reads every test
+case input/output from here, so this is the only path that writes authoring
+content.
+*/
+func PutCaseObject(
+	ctx context.Context, key string, body io.Reader, size int64, contentType string,
+) error {
+	client, buckets, err := Storage()
+	if err != nil {
+		return err
+	}
+
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	if _, err := client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:        aws.String(buckets.Cases),
+		Key:           aws.String(key),
+		Body:          body,
+		ContentLength: aws.Int64(size),
+		ContentType:   aws.String(contentType),
+	}); err != nil {
+		return fmt.Errorf("uploading case object: %w", err)
+	}
+
+	return nil
+}
+
+/*
+DeleteCaseObject removes an object from the cases bucket, best effort.
+*/
+func DeleteCaseObject(ctx context.Context, key string) error {
+	client, buckets, err := Storage()
+	if err != nil {
+		return err
+	}
+
+	if _, err := client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(buckets.Cases),
+		Key:    aws.String(key),
+	}); err != nil {
+		return fmt.Errorf("deleting case object: %w", err)
+	}
+
+	return nil
+}
+
+/*
+PutFileObject uploads an object to the files bucket (compilation files and
+attachments).
+*/
+func PutFileObject(
+	ctx context.Context, key string, body io.Reader, size int64, contentType string,
+) error {
+	client, buckets, err := Storage()
+	if err != nil {
+		return err
+	}
+
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	if _, err := client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:        aws.String(buckets.Files),
+		Key:           aws.String(key),
+		Body:          body,
+		ContentLength: aws.Int64(size),
+		ContentType:   aws.String(contentType),
+	}); err != nil {
+		return fmt.Errorf("uploading file object: %w", err)
+	}
+
+	return nil
+}
+
+/*
+DeleteFileObject removes an object from the files bucket, best effort.
+*/
+func DeleteFileObject(ctx context.Context, key string) error {
+	client, buckets, err := Storage()
+	if err != nil {
+		return err
+	}
+
+	if _, err := client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(buckets.Files),
+		Key:    aws.String(key),
+	}); err != nil {
+		return fmt.Errorf("deleting file object: %w", err)
+	}
+
+	return nil
+}

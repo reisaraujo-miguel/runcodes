@@ -69,6 +69,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := services.PingCache(context.Background()); err != nil {
+		slog.Warn("Redis cache unavailable, continuing without it",
+			slog.String("error", err.Error()),
+		)
+	}
+
 	go services.StartReconciliation(context.Background())
 
 	r := chi.NewRouter()

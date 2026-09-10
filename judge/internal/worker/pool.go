@@ -9,28 +9,37 @@ import (
 	"time"
 
 	"github.com/runcodes-icmc/judge/internal/config"
-	"github.com/runcodes-icmc/judge/internal/engine"
-	"github.com/runcodes-icmc/judge/internal/store"
+	"github.com/runcodes-icmc/judge/internal/model"
 )
+
+// Store is the slice of the data layer the pool needs.
+type Store interface {
+	Claim(ctx context.Context) (*model.Commit, error)
+}
+
+// Processor runs a single claimed commit.
+type Processor interface {
+	Process(ctx context.Context, commit *model.Commit)
+}
 
 // Pool claims and processes commits.
 type Pool struct {
-	cfg    *config.Config
-	store  *store.Store
-	engine *engine.Engine
-	logger *slog.Logger
+	cfg       *config.Config
+	store     Store
+	processor Processor
+	logger    *slog.Logger
 
 	wake chan struct{}
 }
 
 // New builds a Pool.
-func New(cfg *config.Config, st *store.Store, eng *engine.Engine, logger *slog.Logger) *Pool {
+func New(cfg *config.Config, st Store, processor Processor, logger *slog.Logger) *Pool {
 	return &Pool{
-		cfg:    cfg,
-		store:  st,
-		engine: eng,
-		logger: logger,
-		wake:   make(chan struct{}, 1),
+		cfg:       cfg,
+		store:     st,
+		processor: processor,
+		logger:    logger,
+		wake:      make(chan struct{}, 1),
 	}
 }
 
@@ -89,7 +98,7 @@ func (p *Pool) drain(ctx context.Context, sem chan struct{}, wg *sync.WaitGroup)
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
-			p.engine.Process(ctx, commit)
+			p.processor.Process(ctx, commit)
 		}()
 	}
 }

@@ -31,8 +31,11 @@ func New(cfg *config.Config) (*Store, error) {
 	}
 	db.SetMaxOpenConns(cfg.DB.MaxOpenConns)
 	db.SetMaxIdleConns(cfg.DB.MaxIdleConns)
-	return &Store{db: db}, nil
+	return NewWithDB(db), nil
 }
+
+// NewWithDB wraps an existing database handle. Used by tests.
+func NewWithDB(db *sql.DB) *Store { return &Store{db: db} }
 
 // Close releases the pool.
 func (s *Store) Close() error { return s.db.Close() }

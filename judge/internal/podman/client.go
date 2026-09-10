@@ -133,7 +133,10 @@ func (c *Client) Create(ctx context.Context, rc RunConfig) (*Container, error) {
 		Type:        "bind",
 		Source:      rc.MountSource,
 		Destination: "/root",
-		Options:     []string{"rw"},
+		// "z" relabels the workspace for container access (required on
+		// SELinux hosts, ignored elsewhere); without it a rootless
+		// container's root cannot write to the bind mount even at 0777.
+		Options: []string{"rw", "z"},
 	}}
 
 	resp, err := containers.CreateWithSpec(conn, s, nil)

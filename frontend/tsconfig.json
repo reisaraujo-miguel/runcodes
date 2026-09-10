@@ -28,13 +28,14 @@
 
     /* Path aliases */
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
     },
 
     /* Environment types */
     "types": ["vite/client"],
-    "useDefineForClassFields": true
+    "useDefineForClassFields": true,
   },
   "include": ["src"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"],
+  "references": [{ "path": "./tsconfig.node.json" }],
 }

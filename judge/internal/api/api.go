@@ -17,34 +17,46 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/runcodes-icmc/judge/internal/config"
-	"github.com/runcodes-icmc/judge/internal/engine"
 	"github.com/runcodes-icmc/judge/internal/events"
-	"github.com/runcodes-icmc/judge/internal/podman"
-	"github.com/runcodes-icmc/judge/internal/store"
 )
+
+// DBHealth reports whether Postgres is reachable.
+type DBHealth interface {
+	Ping(ctx context.Context) error
+}
+
+// RuntimeHealth reports whether the container runtime is reachable.
+type RuntimeHealth interface {
+	Ready(ctx context.Context) error
+}
+
+// ArtifactLocator resolves a commit's output archive path.
+type ArtifactLocator interface {
+	ArtifactPath(commitID int64) string
+}
 
 // Server wires the HTTP handlers.
 type Server struct {
-	cfg    *config.Config
-	store  *store.Store
-	podman *podman.Client
-	hub    *events.Hub
-	engine *engine.Engine
-	wake   func()
-	logger *slog.Logger
+	cfg       *config.Config
+	store     DBHealth
+	runtime   RuntimeHealth
+	artifacts ArtifactLocator
+	hub       *events.Hub
+	wake      func()
+	logger    *slog.Logger
 }
 
 // New builds a Server.
 func New(
 	cfg *config.Config,
-	st *store.Store,
-	pc *podman.Client,
+	st DBHealth,
+	runtime RuntimeHealth,
+	artifacts ArtifactLocator,
 	hub *events.Hub,
-	eng *engine.Engine,
 	wake func(),
 	logger *slog.Logger,
 ) *Server {
-	return &Server{cfg: cfg, store: st, podman: pc, hub: hub, engine: eng, wake: wake, logger: logger}
+	return &Server{cfg: cfg, store: st, runtime: runtime, artifacts: artifacts, hub: hub, wake: wake, logger: logger}
 }
 
 // Router returns the handler. `/healthz` and `/readyz` are public so container
@@ -100,7 +112,7 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "database unavailable"})
 		return
 	}
-	if err := s.podman.Ready(ctx); err != nil {
+	if err := s.runtime.Ready(ctx); err != nil {
 		s.logger.Warn("readiness: podman unavailable", "error", err)
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "podman unavailable"})
 		return
@@ -182,7 +194,7 @@ func (s *Server) handleOutput(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	path := s.engine.ArtifactPath(id)
+	path := s.artifacts.ArtifactPath(id)
 	f, err := os.Open(path)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no output archive"})
