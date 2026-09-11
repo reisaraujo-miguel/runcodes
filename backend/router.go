@@ -19,6 +19,9 @@ import (
 )
 
 func createRoutes(router *chi.Mux) {
+	// unauthenticated liveness probe (Docker HEALTHCHECK / orchestrators)
+	router.Get("/healthz", handlers.Health)
+
 	// public routes
 	router.Group(func(r chi.Router) {
 		r.Post("/api/v1/user/signup", handlers.SignUp)

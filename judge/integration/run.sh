@@ -85,7 +85,7 @@ for _ in $(seq 1 60); do
 done
 
 default_tags="remote containers_image_openpgp exclude_graphdriver_btrfs exclude_graphdriver_overlay exclude_graphdriver_devicemapper exclude_graphdriver_zfs btrfs_noversion"
-TAGS="integration ${TAGS:-$default_tags}"
+TAGS="${TAGS:-$default_tags}"
 
 echo ">> running integration test"
 cd "$judge_dir"

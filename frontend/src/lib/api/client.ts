@@ -1,4 +1,4 @@
-export const API_BASE_URL = import.meta.env.VITE_API_ENDPOINT as string;
+export const API_BASE_URL = import.meta.env.VITE_API_ENDPOINT;
 
 /** Standard error shape returned by the API. */
 export interface ApiError {

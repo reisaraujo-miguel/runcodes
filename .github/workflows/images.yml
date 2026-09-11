@@ -1,0 +1,79 @@
+name: Container Images
+
+on:
+  push:
+    branches:
+      - main
+      - development
+  pull_request:
+  schedule:
+    # Weekly, Mondays at 03:00 UTC — catches new CVEs in the base images even
+    # without code changes.
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-scan:
+    name: Build & scan ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Required to upload SARIF results to the Security tab.
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: backend
+            context: ./backend
+          - service: frontend
+            context: ./frontend
+          - service: database
+            context: ./database
+          - service: judge
+            context: ./judge
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build ${{ matrix.service }} image
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          # Load into the local docker daemon so Trivy can scan it.
+          load: true
+          tags: runcodes-${{ matrix.service }}:ci
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+      - name: Scan ${{ matrix.service }} image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: runcodes-${{ matrix.service }}:ci
+          trivy-config: trivy.yaml
+          # Focus the image gate on the shipped artifact.
+          scanners: vuln,secret
+          format: sarif
+          output: trivy-${{ matrix.service }}.sarif
+          # trivy.yaml sets exit-code: 1, so CRITICAL/HIGH findings fail this
+          # step; the SARIF upload below still runs.
+          cache-dir: /tmp/trivy-cache
+
+      - name: Upload results to the Security tab
+        uses: github/codeql-action/upload-sarif@v4
+        # Uploads are not allowed for PRs from forks, so skip them there.
+        if: always() && (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork)
+        with:
+          sarif_file: trivy-${{ matrix.service }}.sarif
+          category: trivy-image-${{ matrix.service }}

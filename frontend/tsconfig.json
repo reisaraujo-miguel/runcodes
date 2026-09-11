@@ -32,10 +32,9 @@
     },
 
     /* Environment types */
-    "types": ["vite/client"],
+    "types": ["vite/client", "bun"],
     "useDefineForClassFields": true,
   },
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"],
   "references": [{ "path": "./tsconfig.node.json" }],
 }

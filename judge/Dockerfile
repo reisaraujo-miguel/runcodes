@@ -27,4 +27,7 @@ COPY --from=builder /app/judge .
 
 EXPOSE 9000
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -q -O /dev/null "http://127.0.0.1:9000/healthz" || exit 1
+
 CMD ["./judge"]

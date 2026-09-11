@@ -8,3 +8,6 @@ COPY schema/04-change-password.sh /docker-entrypoint-initdb.d/04-change-password
 RUN chmod +x /docker-entrypoint-initdb.d/04-change-password.sh
 
 USER postgres
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=5 \
+  CMD pg_isready -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" || exit 1

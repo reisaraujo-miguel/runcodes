@@ -18,4 +18,7 @@ COPY --from=builder /app/main .
 
 EXPOSE 8443
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -q -O /dev/null "http://127.0.0.1:${RUNCODES_API_PORT:-8443}/healthz" || exit 1
+
 CMD ["./main"]

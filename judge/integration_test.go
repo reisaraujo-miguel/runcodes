@@ -1,8 +1,7 @@
-//go:build integration
-
-// Package main hosts the judge's end-to-end integration test. It runs only with
-// the `integration` build tag and requires a real PostgreSQL, an S3-compatible
-// store (SeaweedFS) and a rootless podman socket; see integration/run.sh.
+// Package main hosts the judge's end-to-end integration test. It is skipped
+// unless JUDGE_TEST_DB_DSN is set, in which case it also requires a real
+// PostgreSQL, an S3-compatible store (SeaweedFS) and a rootless podman socket;
+// see integration/run.sh for the harness that provides them.
 //
 // The test seeds a commit and a test case, uploads the source and the case I/O,
 // claims the commit through the real store, and drives the real engine against a
