@@ -87,13 +87,13 @@ export RUNCODES_JUDGE_TOKEN='change-me'
 docker compose up --build
 ```
 
-| Service   | URL                     |
-| --------- | ----------------------- |
-| Frontend  | `http://localhost:8080` |
-| Backend   | `http://localhost:8443` |
-| Judge     | `http://localhost:9000` |
-| SeaweedFS | `http://localhost:8333` |
-| smtp4dev  | `http://localhost:8081` |
+| Service   | URL                                                             |
+| --------- | --------------------------------------------------------------- |
+| Frontend  | `http://localhost:8080` (serves the SPA and proxies `/api/*`)   |
+| Backend   | reached through the frontend proxy at `/api` (loopback `:8443`) |
+| Judge     | `http://localhost:9000`                                         |
+| SeaweedFS | `http://localhost:8333`                                         |
+| smtp4dev  | `http://localhost:8081`                                         |
 
 The database is seeded with a default admin user (`admin@admin.com`, password
 `Admin&1234`) — **change it** before using the platform anywhere real.

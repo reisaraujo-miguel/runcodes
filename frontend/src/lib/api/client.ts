@@ -1,4 +1,6 @@
-export const API_BASE_URL = import.meta.env.VITE_API_ENDPOINT;
+// Empty by default: Caddy serves the API same-origin, so the app uses the
+// relative /api path. An absolute URL is only needed for split deployments.
+export const API_BASE_URL = import.meta.env.VITE_API_ENDPOINT ?? "";
 
 /** Standard error shape returned by the API. */
 export interface ApiError {
