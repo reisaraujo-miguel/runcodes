@@ -40,13 +40,13 @@ engine derived it from the filename). The judge does **not** read
 
 ## S3 layout (SeaweedFS, path-style)
 
-| Bucket                     | Object                      | Contents                       |
-| -------------------------- | --------------------------- | ------------------------------ |
-| `<prefix>-commits`         | `commit.s3_key`             | submitted source (or `.zip`)   |
-| `<prefix>-cases`           | `<case_id>/in`              | test-case stdin                |
-| `<prefix>-cases`           | `<case_id>/out`             | expected stdout                |
-| `<prefix>-cases`           | `<case_id>/files/<name>`    | extra files for the case       |
-| `<prefix>-files`           | `compilationfiles/<exercise_id>/<path>` | exercise compilation files |
+| Bucket             | Object                                  | Contents                     |
+| ------------------ | --------------------------------------- | ---------------------------- |
+| `<prefix>-commits` | `commit.s3_key`                         | submitted source (or `.zip`) |
+| `<prefix>-cases`   | `<case_id>/in`                          | test-case stdin              |
+| `<prefix>-cases`   | `<case_id>/out`                         | expected stdout              |
+| `<prefix>-cases`   | `<case_id>/files/<name>`                | extra files for the case     |
+| `<prefix>-files`   | `compilationfiles/<exercise_id>/<path>` | exercise compilation files   |
 
 ## State machine (mirrors the legacy engine)
 
@@ -86,14 +86,14 @@ sequence. Comment heartbeats (`: ping`) are sent every 15s.
 
 Event types (SSE `event:` field):
 
-| event         | data                                                                                              |
-| ------------- | ------------------------------------------------------------------------------------------------- |
-| `status`      | `{"type":"status","commit_id":1,"seq":1,"status":"compiling","at":"RFC3339"}`                     |
-| `compilation` | `{"type":"compilation","commit_id":1,"seq":2,"compiled":true,"message":"...","error":"...","at":"..."}` |
+| event         | data                                                                                                                                                                                                   |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `status`      | `{"type":"status","commit_id":1,"seq":1,"status":"compiling","at":"RFC3339"}`                                                                                                                          |
+| `compilation` | `{"type":"compilation","commit_id":1,"seq":2,"compiled":true,"message":"...","error":"...","at":"..."}`                                                                                                |
 | `case_result` | `{"type":"case_result","commit_id":1,"seq":3,"test_case_id":7,"cpu_time":0.12,"mem_usage":-1,"status":"correct","status_message":"","user_output":"...","user_output_type":"text","error_message":""}` |
-| `artifact`    | `{"type":"artifact","commit_id":1,"seq":4,"kind":"output","url":"/v1/runs/1/output"}` (optional)   |
-| `finished`    | `{"type":"finished","commit_id":1,"seq":5,"status":"completed","num_correct_cases":5,"score":100.00,"compilation_message":"...","compilation_error":"...","started_at":"...","finished_at":"..."}` |
-| `error`       | `{"type":"error","commit_id":1,"seq":6,"message":"..."}` (stream ends)                             |
+| `artifact`    | `{"type":"artifact","commit_id":1,"seq":4,"kind":"output","url":"/v1/runs/1/output"}` (optional)                                                                                                       |
+| `finished`    | `{"type":"finished","commit_id":1,"seq":5,"status":"completed","num_correct_cases":5,"score":100.00,"compilation_message":"...","compilation_error":"...","started_at":"...","finished_at":"..."}`     |
+| `error`       | `{"type":"error","commit_id":1,"seq":6,"message":"..."}` (stream ends)                                                                                                                                 |
 
 `status` values: `compiling`, `running`.
 `case_result.status` maps to the DB enum: `correct`, `bad_formatted_output`,
@@ -107,17 +107,17 @@ Event types (SSE `event:` field):
 Authenticated download of the generated output zip (monitor output, per-case
 stdout/stderr), if produced. The backend may fetch this and store it in S3.
 
-## Container contract (from `tmp/compiler-images`)
+## Container contract (from `github.com/runcodes-icmc/compiler-images`)
 
 The per-run workspace is bind-mounted at `/root`; the image's `CMD
 /usr/bin/runcodes` sources `container.config` there. The judge writes:
 
 ```
-monitor_max_fs=5242880
-monitor_max_ms=268435456
-compilation_timeout=10
-src_file='submission.c'
-t_<case_id>=5
+monitor_max_fs = 5242880
+monitor_max_ms = 268435456
+compilation_timeout = 10
+src_file = 'submission.c'
+t_<case_id> = 5
 ```
 
 and expects these log milestones: `compilation.start` / `compilation.done` (only
