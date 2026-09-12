@@ -1,3 +1,18 @@
+/*
+ * ░█████████                          ░██████                    ░██
+ * ░██     ░██                        ░██   ░██                   ░██
+ * ░██     ░██ ░██    ░██ ░████████  ░██         ░███████   ░████████  ░███████   ░███████
+ * ░█████████  ░██    ░██ ░██    ░██ ░██        ░██    ░██ ░██    ░██ ░██    ░██ ░██
+ * ░██   ░██   ░██    ░██ ░██    ░██ ░██        ░██    ░██ ░██    ░██ ░█████████  ░███████
+ * ░██    ░██  ░██   ░███ ░██    ░██  ░██   ░██ ░██    ░██ ░██   ░███ ░██               ░██
+ * ░██     ░██  ░█████░██ ░██    ░██   ░██████   ░███████   ░█████░██  ░███████   ░███████
+ *
+ * "Nobody's innocent, citizen. We're just here to determine the level of your guilt"
+ *
+ * -- Judge, Judge Dredd (1995)
+ *
+ */
+
 // Command judge runs the run.codes judge service: a durable Postgres-backed
 // queue of submissions executed in rootless podman containers, with results
 // streamed to the backend over SSE.
