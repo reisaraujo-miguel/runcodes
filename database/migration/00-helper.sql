@@ -7,6 +7,9 @@
 --
 -- Each script may be re-run on a fresh database; this helper is idempotent.
 
+-- The migration drops and recreates its own private scratch schema on every
+-- run; it is not a client-facing schema.
+-- pgls-ignore lint/safety/banDropSchema: private scratch schema, recreated below.
 DROP SCHEMA IF EXISTS _migration CASCADE;
 CREATE SCHEMA _migration;
 

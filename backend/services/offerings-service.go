@@ -7,7 +7,7 @@ import (
 	"errors"
 	"log/slog"
 
-	"runcodes/models"
+	"github.com/runcodes-icmc/runcodes/models"
 )
 
 /*
@@ -84,6 +84,8 @@ func CreateOffering(
 		return nil, ErrServer
 	}
 
+	CacheDelete(ctx, cacheKeyOffering(id))
+
 	return &models.Offering{
 		ID:             id,
 		Name:           req.Name,
@@ -91,6 +93,15 @@ func CreateOffering(
 		Description:    req.Description,
 		EnrollmentCode: enrollmentCode,
 	}, nil
+}
+
+/*
+cachedOffering couples the cached offering with its owner so a cache hit can
+still enforce ownership.
+*/
+type cachedOffering struct {
+	Offering models.Offering `json:"offering"`
+	OwnerID  int64           `json:"owner_id"`
 }
 
 /*
@@ -112,20 +123,31 @@ func GetOffering(
 		)
 		return nil, ErrServer
 	}
+	ownerID := int64(ownerIDFloat)
+
+	key := cacheKeyOffering(offeringID)
+	var cached cachedOffering
+	if CacheGetJSON(ctx, key, &cached) {
+		if cached.OwnerID == ownerID {
+			return &cached.Offering, nil
+		}
+		return nil, ErrOfferingNotFound
+	}
 
 	var offering models.Offering
 	err := DB.QueryRowContext(ctx,
 		`
-		SELECT id, name, end_date, description, enrollment_code
+		SELECT id, name, end_date, description, enrollment_code, owner_id
 		FROM offerings
 		WHERE id = $1 AND owner_id = $2
-		`, offeringID, int(ownerIDFloat),
+		`, offeringID, ownerID,
 	).Scan(
 		&offering.ID,
 		&offering.Name,
 		&offering.EndDate,
 		&offering.Description,
 		&offering.EnrollmentCode,
+		&cached.OwnerID,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -139,6 +161,8 @@ func GetOffering(
 		)
 		return nil, ErrServer
 	}
+
+	CacheSetJSON(ctx, key, cachedOffering{Offering: offering, OwnerID: ownerID}, CacheOfferingTTL)
 
 	return &offering, nil
 }

@@ -19,14 +19,15 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 
-	"runcodes/services"
-	"runcodes/validation"
+	"github.com/runcodes-icmc/runcodes/services"
+	"github.com/runcodes-icmc/runcodes/validation"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/joho/godotenv"
@@ -67,6 +68,14 @@ func main() {
 		slog.Error("Failed to setup JWT", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
+
+	if err := services.PingCache(context.Background()); err != nil {
+		slog.Warn("Redis cache unavailable, continuing without it",
+			slog.String("error", err.Error()),
+		)
+	}
+
+	go services.StartReconciliation(context.Background())
 
 	r := chi.NewRouter()
 	configureMiddleware(r)

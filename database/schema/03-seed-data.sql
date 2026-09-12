@@ -1,6 +1,10 @@
 SET ROLE TO runcodes;
 
 -- Default Languages
+-- NOTE: allowed_file_types.extension is UNIQUE, so each extension appears
+-- once. Zip archives are represented by the Makefile entry: a .zip submission
+-- is compiled with make when it contains a Makefile, otherwise the judge
+-- detects the language from the archive contents.
 INSERT INTO allowed_file_types (name, extension, is_compilable, is_available)
 VALUES
   ('Python 3', 'py', TRUE, TRUE),
@@ -14,7 +18,6 @@ VALUES
   ('Portugol 2.6', 'por', TRUE, TRUE),
   ('R', 'r', TRUE, TRUE),
   ('Rust', 'rs', TRUE, TRUE),
-  ('Zip', 'zip', FALSE, TRUE),
   ('PDF', 'pdf', FALSE, TRUE),
   ('Golang', 'go', TRUE, TRUE),
   ('Octave', 'm', TRUE, TRUE),

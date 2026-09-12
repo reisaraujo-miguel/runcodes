@@ -1,7 +1,22 @@
-:80 {
-    root * /usr/share/caddy
-    encode gzip
-    @favicon path /favicon.png
-    try_files {path} /index.html
-    file_server
+# Single entrypoint for the SPA and the API.
+#
+# The site address comes from RUNCODES_DOMAIN:
+#   :80          -> local HTTP (default)
+#   example.com  -> automatic HTTPS (Caddy obtains certificates on :443)
+{$RUNCODES_DOMAIN::80} {
+	route {
+		# API and its long-lived SSE stream. The path is preserved
+		# (/api/v1/...); buffering is disabled so submission events reach the
+		# browser as they happen.
+		@api path /api/*
+		reverse_proxy @api {$BACKEND_UPSTREAM:http://backend:8443} {
+			flush_interval -1
+		}
+
+		# Everything else is the single-page app.
+		encode gzip
+		root * /usr/share/caddy
+		try_files {path} /index.html
+		file_server
+	}
 }

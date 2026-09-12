@@ -4,7 +4,7 @@ import DOMPurify from "dompurify";
 
 import { TermsModal } from "./TermsModal";
 
-const CONTACT_INFO_HTML = import.meta.env.VITE_CONTACT_INFO_HTML as string;
+const CONTACT_INFO_HTML = import.meta.env.VITE_CONTACT_INFO_HTML ?? "";
 
 export function AboutSection() {
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
