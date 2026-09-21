@@ -40,17 +40,20 @@ func StartReconciliation(ctx context.Context) {
 
 /*
 reconcileStaleCommits marks claimed commits whose compilation_started is older
-than the timeout as server_error, so a crashed judge cannot leave commits
-stuck forever.
+than the timeout as server_error, so a crashed judge cannot leave commits stuck
+forever, and releases the event hub of each one: the run can no longer report
+anything, so keeping its judge stream open would leak a goroutine and a
+connection per crashed run.
 */
 func reconcileStaleCommits(ctx context.Context, timeout time.Duration) {
-	result, err := database.DB.ExecContext(ctx,
+	rows, err := database.DB.QueryContext(ctx,
 		`UPDATE commits
 		 SET status = 'server_error',
 		     compilation_finished = COALESCE(compilation_finished, now())
 		 WHERE status IN ('compiling', 'running')
 		   AND compilation_started IS NOT NULL
-		   AND compilation_started < now() - make_interval(secs => $1)`,
+		   AND compilation_started < now() - make_interval(secs => $1)
+		 RETURNING id`,
 		timeout.Seconds(),
 	)
 	if err != nil {
@@ -59,10 +62,33 @@ func reconcileStaleCommits(ctx context.Context, timeout time.Duration) {
 		)
 		return
 	}
+	defer rows.Close()
 
-	if affected, err := result.RowsAffected(); err == nil && affected > 0 {
+	var commitIDs []int64
+	for rows.Next() {
+		var commitID int64
+		if err := rows.Scan(&commitID); err != nil {
+			slog.ErrorContext(ctx, "error scanning a reconciled commit",
+				slog.String("error", err.Error()),
+			)
+			return
+		}
+		commitIDs = append(commitIDs, commitID)
+	}
+	if err := rows.Err(); err != nil {
+		slog.ErrorContext(ctx, "error iterating reconciled commits",
+			slog.String("error", err.Error()),
+		)
+		return
+	}
+
+	for _, commitID := range commitIDs {
+		CloseHub(commitID)
+	}
+
+	if len(commitIDs) > 0 {
 		slog.WarnContext(ctx, "marked stale commits as server_error",
-			slog.Int64("commits", affected),
+			slog.Int("commits", len(commitIDs)),
 			slog.Duration("stale_timeout", timeout),
 		)
 	}

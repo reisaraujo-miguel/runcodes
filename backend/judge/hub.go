@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/runcodes-icmc/runcodes/config"
 )
 
 const (
@@ -27,10 +29,23 @@ const (
 // ErrStreamClosed is returned when subscribing to an already finished commit.
 var ErrStreamClosed = errors.New("event stream is already closed")
 
+// hubLifetimeMargin is added to the stale timeout to bound how long a hub keeps
+// its upstream judge stream open.
+const hubLifetimeMargin = 5 * time.Minute
+
 var (
 	hubsMu sync.Mutex
 	hubs   = make(map[int64]*Hub)
 )
+
+/*
+hubLifetime bounds one hub's upstream connection. It is deliberately longer than
+the stale timeout, at which the sweeper settles a stuck commit: tearing the stream
+down earlier would abandon a run the judge might still finish.
+*/
+func hubLifetime() time.Duration {
+	return config.Get().Judge.StaleTimeout + hubLifetimeMargin
+}
 
 /*
 Hub owns the single upstream judge SSE connection for one commit and fans its
@@ -111,7 +126,10 @@ func getOrCreateHub(commitID int64) *Hub {
 		return hub
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	// The hub owns a connection to the judge (and a goroutine); a deadline keeps a
+	// half-open stream from pinning both for the life of the process, while still
+	// outliving the window in which the run can legitimately finish.
+	ctx, cancel := context.WithTimeout(context.Background(), hubLifetime())
 	hub := &Hub{
 		commitID: commitID,
 		subs:     make(map[chan []byte]struct{}),
@@ -122,6 +140,21 @@ func getOrCreateHub(commitID int64) *Hub {
 	go hub.run(ctx)
 
 	return hub
+}
+
+/*
+CloseHub tears down a commit's hub if one exists. The reconciliation sweeper uses
+it once a commit has been settled in the database, so the hub stops holding a
+judge stream (and a goroutine) for a run that can no longer report anything.
+*/
+func CloseHub(commitID int64) {
+	hubsMu.Lock()
+	hub, ok := hubs[commitID]
+	hubsMu.Unlock()
+
+	if ok {
+		hub.finish()
+	}
 }
 
 /*

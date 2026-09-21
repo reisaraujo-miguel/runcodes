@@ -35,6 +35,7 @@ func createRoutes(router *chi.Mux) {
 
 		r.Get("/api/v1/auth", handlers.GetAuth)
 		r.Post("/api/v1/auth/refresh", handlers.RefreshAuth)
+		r.Post("/api/v1/user/logout", handlers.LogOut)
 
 		r.Post("/api/v1/submissions", handlers.CreateSubmission)
 		r.Get("/api/v1/submissions/{id}/events", handlers.StreamSubmissionEvents)

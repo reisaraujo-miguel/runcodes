@@ -12,6 +12,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
 	"strconv"
@@ -237,7 +238,32 @@ func (c *Config) validate() error {
 		return fmt.Errorf("RUNCODES_REDIS_DB must not be negative, got %d", c.Redis.DB)
 	}
 
+	// The frontend is served same-origin through the proxy, so CORS only matters
+	// for a separate origin (a local `bun run dev`, say). The default is the
+	// development origin, so a real cross-origin deployment that forgets to set
+	// FRONTEND_ORIGIN is still rejected rather than silently allowed.
+	if c.FrontendOrigin == "*" {
+		return fmt.Errorf("FRONTEND_ORIGIN must be a single origin, not a wildcard")
+	}
+	if _, err := url.Parse(c.FrontendOrigin); err != nil {
+		return fmt.Errorf("FRONTEND_ORIGIN must be a valid origin, got %q", c.FrontendOrigin)
+	}
+
 	return nil
+}
+
+/*
+LogInsecureTransportWarnings names the variables to set when the process talks to
+its dependencies in clear text. It is kept out of validate so the messages are
+emitted through the configured logger, and so a plaintext internal network is not
+mistaken for a startup error.
+*/
+func (c *Config) LogInsecureTransportWarnings() {
+	if c.DB.SSLMode == "disable" {
+		slog.Warn("database connections are not encrypted",
+			"variable", "RUNCODES_DB_SSLMODE",
+		)
+	}
 }
 
 // checkPort validates that a value is a usable TCP port number.

@@ -167,6 +167,31 @@ func setSessionCookie(w http.ResponseWriter, tokenString string) {
 }
 
 /*
+LogOut clears the session cookie.
+
+There is no server-side session store, so the token itself stays valid until it
+expires: this ends the browser's session (the credential is dropped, so the next
+request is unauthenticated) rather than revoking the token. Changing a password
+or rotating RUNCODES_JWT_SECRET is what invalidates an issued token.
+*/
+func LogOut(w http.ResponseWriter, _ *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "jwt",
+		Value:    "",
+		HttpOnly: true,
+		Secure:   !config.Get().Debug,
+		SameSite: http.SameSiteStrictMode,
+		Path:     "/",
+		// A negative MaxAge deletes the cookie; Expires in the past covers
+		// clients that only look at that attribute.
+		MaxAge:  -1,
+		Expires: time.Unix(1, 0),
+	})
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+/*
 GetAuth returns the current session's user info (read from the JWT claims),
 including the user role and the session expiry.
 */

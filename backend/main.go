@@ -25,6 +25,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/runcodes-icmc/runcodes/cache"
 	"github.com/runcodes-icmc/runcodes/config"
@@ -64,6 +65,7 @@ func main() {
 	}
 
 	SetupLogger(cfg.Debug)
+	cfg.LogInsecureTransportWarnings()
 
 	if err := database.InitDB(); err != nil {
 		slog.Error("Failed to initialize database")
@@ -98,6 +100,12 @@ func main() {
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%s", cfg.Addr),
 		Handler: r,
+		// Bound how long a client may take to send its request headers and how long
+		// an idle keep-alive connection is held, so a slow-loris client cannot pin
+		// a connection (and a goroutine) indefinitely. WriteTimeout stays unset on
+		// purpose: the SSE submission stream is a long-lived response.
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	if err := srv.ListenAndServe(); err != nil {
