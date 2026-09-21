@@ -13,8 +13,11 @@ func clearEnv(t *testing.T) {
 		"JUDGE_CONCURRENCY", "JUDGE_POLL_INTERVAL", "JUDGE_EVENT_RETENTION",
 		"JUDGE_PODMAN_URI", "CONTAINER_HOST", "JUDGE_IMAGE_FORMAT",
 		"JUDGE_EXEC_DIR", "JUDGE_EXEC_DIR_REMOTE", "JUDGE_KEEP_WORKSPACES",
-		"JUDGE_DEFAULT_COMPILATION_TIMEOUT", "JUDGE_DEFAULT_EXEC_TIMEOUT",
-		"JUDGE_DEFAULT_CASE_TIMEOUT",
+		"JUDGE_DEFAULT_COMPILATION_TIMEOUT", "JUDGE_COMPILATION_WAIT",
+		"JUDGE_DEFAULT_EXEC_TIMEOUT", "JUDGE_DEFAULT_CASE_TIMEOUT",
+		"JUDGE_MONITOR_MAX_FILE_SIZE", "JUDGE_MONITOR_MAX_MEM_SIZE",
+		"JUDGE_CONTAINER_MEMORY_BYTES", "JUDGE_CONTAINER_PIDS_LIMIT",
+		"JUDGE_CONTAINER_CPU_QUOTA", "JUDGE_MAX_RUN_DURATION",
 		"RUNCODES_DB_HOST", "RUNCODES_DB_PORT", "RUNCODES_DB_NAME",
 		"RUNCODES_DB_USER", "RUNCODES_DB_USERNAME", "RUNCODES_DB_PASSWORD",
 		"RUNCODES_DB_SSLMODE",
@@ -47,6 +50,17 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.ExecDirRemote != cfg.ExecDir {
 		t.Errorf("ExecDirRemote = %q, want ExecDir %q", cfg.ExecDirRemote, cfg.ExecDir)
+	}
+	// The compilation limit is the image's; the judge only bounds its own patience.
+	if cfg.CompilationTimeout != 0 {
+		t.Errorf("CompilationTimeout = %s, want 0 (use the image's own)", cfg.CompilationTimeout)
+	}
+	if cfg.CompilationWait != 2*time.Minute {
+		t.Errorf("CompilationWait = %s, want 2m", cfg.CompilationWait)
+	}
+	if cfg.MonitorMaxMemSize != 0 || cfg.MonitorMaxFileSize != 0 {
+		t.Errorf("monitor limits = %d/%d, want 0/0 (use the image's own)",
+			cfg.MonitorMaxMemSize, cfg.MonitorMaxFileSize)
 	}
 	if cfg.DB.User != "runcodes" {
 		t.Errorf("DB.User = %q, want runcodes", cfg.DB.User)
@@ -99,6 +113,31 @@ func TestLoadRejectsInvalidConcurrency(t *testing.T) {
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected an error for JUDGE_CONCURRENCY=0")
+	}
+}
+
+// The judge abandoning a run the container is still allowed to compile is the
+// failure the two compilation knobs exist to prevent, so the pairing is checked
+// rather than left to whoever sets both.
+func TestLoadRejectsCompilationWaitShorterThanTheLimit(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JUDGE_COMPILATION_WAIT", "60s")
+	t.Setenv("JUDGE_DEFAULT_COMPILATION_TIMEOUT", "60s")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected an error when the wait equals the container's limit")
+	}
+
+	t.Setenv("JUDGE_COMPILATION_WAIT", "61s")
+	if _, err := Load(); err != nil {
+		t.Fatalf("Load with a longer wait: %v", err)
+	}
+
+	// With no override the wait stands alone: the image's limit is not known here.
+	t.Setenv("JUDGE_DEFAULT_COMPILATION_TIMEOUT", "0")
+	t.Setenv("JUDGE_COMPILATION_WAIT", "30s")
+	if _, err := Load(); err != nil {
+		t.Fatalf("Load without a compilation limit: %v", err)
 	}
 }
 
