@@ -42,17 +42,23 @@ func (c *Client) Ready(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("connect to podman: %w", err)
 	}
+
+	// system.Version is a simple ping that returns the podman version.
 	if _, err := system.Version(conn, nil); err != nil {
 		return fmt.Errorf("podman version: %w", err)
 	}
+
 	return nil
 }
 
 // EnsureImage makes sure the image is present locally, pulling it if needed.
 func (c *Client) EnsureImage(ctx context.Context, image string) error {
+	// avoid pulling the same image multiple times in parallel
 	c.mu.Lock()
+	// check again after acquiring the lock, in case another goroutine pulled it
 	already := c.ensured[image]
 	c.mu.Unlock()
+
 	if already {
 		return nil
 	}
@@ -61,18 +67,24 @@ func (c *Client) EnsureImage(ctx context.Context, image string) error {
 	if err != nil {
 		return err
 	}
+
+	// check if the image exists locally
 	exists, err := images.Exists(conn, image, nil)
 	if err != nil {
 		return fmt.Errorf("check image %s: %w", image, err)
 	}
+
+	// pull the image if it does not exist
 	if !exists {
 		if _, err := images.Pull(conn, image, nil); err != nil {
 			return fmt.Errorf("pull image %s: %w", image, err)
 		}
 	}
+
 	c.mu.Lock()
 	c.ensured[image] = true
 	c.mu.Unlock()
+
 	return nil
 }
 
@@ -84,16 +96,21 @@ func (c *Client) RemoveByName(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
+
 	exists, err := containers.Exists(conn, name, nil)
 	if err != nil {
 		return fmt.Errorf("check container %s: %w", name, err)
 	}
+
 	if !exists {
 		return nil
 	}
+
+	// force-remove the container and its anonymous volumes; ignore errors if it was already removed
 	if _, err := containers.Remove(conn, name, new(containers.RemoveOptions).WithForce(true).WithVolumes(true)); err != nil {
 		return fmt.Errorf("remove stale container %s: %w", name, err)
 	}
+
 	return nil
 }
 
@@ -121,6 +138,7 @@ func (c *Client) Create(ctx context.Context, rc RunConfig) (*Container, error) {
 		return nil, err
 	}
 
+	// generate the container spec
 	s := specgen.NewSpecGenerator(rc.Image, false)
 	s.Name = rc.Name
 	s.Labels = rc.Labels
@@ -139,20 +157,25 @@ func (c *Client) Create(ctx context.Context, rc RunConfig) (*Container, error) {
 		Options: []string{"rw", "z"},
 	}}
 
+	// create the container with the spec
 	resp, err := containers.CreateWithSpec(conn, s, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create container: %w", err)
 	}
+
 	return &Container{ID: resp.ID, cfg: rc, conn: conn}, nil
 }
 
 // Start starts the container.
 func (ct *Container) Start(ctx context.Context) error {
+	// use a 30-second timeout for starting the container; it should be fast
 	reqCtx, cancel := context.WithTimeout(ct.conn, 30*time.Second)
 	defer cancel()
+
 	if err := containers.Start(reqCtx, ct.ID, nil); err != nil {
 		return fmt.Errorf("start container: %w", err)
 	}
+
 	return nil
 }
 
@@ -167,6 +190,7 @@ type LogStream struct {
 
 // Logs follows the container's logs from the beginning, line-buffered.
 func (ct *Container) Logs(ctx context.Context) *LogStream {
+	// derive a cancellable context from the container's connection context
 	streamCtx, cancel := context.WithCancel(ct.conn)
 
 	stdout := make(chan string, 256)
@@ -177,6 +201,8 @@ func (ct *Container) Logs(ctx context.Context) *LogStream {
 	go func() {
 		defer close(stdout)
 		defer close(stderr)
+
+		// follow the logs with a 5-minute timeout; it should be fast
 		logErr <- containers.Logs(
 			streamCtx, ct.ID,
 			new(containers.LogOptions).
@@ -186,13 +212,14 @@ func (ct *Container) Logs(ctx context.Context) *LogStream {
 				WithTail("all"),
 			stdout, stderr,
 		)
+
 		close(logErr)
 	}()
 
+	// merge stdout and stderr into a single line stream
 	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() { defer wg.Done(); emitLines(stdout, lines) }()
-	go func() { defer wg.Done(); emitLines(stderr, lines) }()
+	wg.Go(func() { emitLines(stdout, lines) })
+	wg.Go(func() { emitLines(stderr, lines) })
 	go func() { wg.Wait(); close(lines) }()
 
 	return &LogStream{Lines: lines, Err: logErr, cancel: cancel}
@@ -208,19 +235,28 @@ func (ls *LogStream) Close() {
 // emitLines splits arbitrary chunks into complete lines.
 func emitLines(in <-chan string, out chan<- string) {
 	var buf strings.Builder
+
 	for chunk := range in {
 		buf.WriteString(chunk)
+
+		// split the buffer into lines and send them to the output channel
 		for {
 			s := buf.String()
-			i := strings.IndexByte(s, '\n')
+			i := strings.IndexByte(s, '\n') // find the next newline
+
 			if i < 0 {
-				break
+				break // no complete line left in the buffer
 			}
-			out <- strings.TrimRight(s[:i], "\r")
+
+			out <- strings.TrimRight(s[:i], "\r") // send the line without trailing CR
+
+			// remove the emitted line from the buffer and continue
 			buf.Reset()
 			buf.WriteString(s[i+1:])
 		}
 	}
+
+	// send any remaining partial line in the buffer
 	if rem := buf.String(); rem != "" {
 		out <- strings.TrimRight(rem, "\r")
 	}
@@ -230,10 +266,13 @@ func emitLines(in <-chan string, out chan<- string) {
 func (ct *Container) Wait(timeout time.Duration) (int32, error) {
 	reqCtx, cancel := context.WithTimeout(ct.conn, timeout)
 	defer cancel()
+
+	// wait for the container to exit and get its exit code
 	code, err := containers.Wait(reqCtx, ct.ID, nil)
 	if err != nil {
 		return code, fmt.Errorf("wait container: %w", err)
 	}
+
 	return code, nil
 }
 
@@ -241,9 +280,12 @@ func (ct *Container) Wait(timeout time.Duration) (int32, error) {
 func (ct *Container) Kill(ctx context.Context) error {
 	reqCtx, cancel := context.WithTimeout(ct.conn, 15*time.Second)
 	defer cancel()
+
+	// send SIGKILL to the container; this is a last resort if it does not exit cleanly
 	if err := containers.Kill(reqCtx, ct.ID, new(containers.KillOptions).WithSignal("SIGKILL")); err != nil {
 		return fmt.Errorf("kill container: %w", err)
 	}
+
 	return nil
 }
 
@@ -251,8 +293,11 @@ func (ct *Container) Kill(ctx context.Context) error {
 func (ct *Container) Remove(ctx context.Context) error {
 	reqCtx, cancel := context.WithTimeout(ct.conn, 30*time.Second)
 	defer cancel()
+
+	// force-remove the container and its anonymous volumes; ignore errors if it was already removed
 	if _, err := containers.Remove(reqCtx, ct.ID, new(containers.RemoveOptions).WithForce(true).WithVolumes(true)); err != nil {
 		return fmt.Errorf("remove container: %w", err)
 	}
+
 	return nil
 }

@@ -28,6 +28,7 @@ func (l *Language) Image(format string) string {
 	if format == "" {
 		format = DefaultImageFormat
 	}
+
 	return fmt.Sprintf(format, l.ImageName)
 }
 
@@ -36,10 +37,11 @@ func (l *Language) StandardExtension() string {
 	if len(l.Extensions) == 0 {
 		return ""
 	}
+
 	return l.Extensions[0]
 }
 
-// KnownLanguages mirrors the legacy engine's list.
+// KnownLanguages is the list of languages the judge recognizes, in order of preference.
 var KnownLanguages = []Language{
 	{Name: "C", Extensions: []string{"c", "h"}, Compilable: true, ImageName: "c"},
 	{Name: "C++", Extensions: []string{"cpp", "cc", "cxx", "c++", "hpp", "h"}, Compilable: true, ImageName: "cpp"},
@@ -65,14 +67,16 @@ var KnownLanguages = []Language{
 	{Name: "Zig", Extensions: []string{"zig"}, Compilable: true, ImageName: "zig"},
 }
 
-// extensionIndex maps an extension to its language. Ambiguous extensions map to
-// nil, exactly like the legacy engine.
+// extensionIndex maps an extension to its language. Ambiguous extensions map to nil.
 var extensionIndex = buildIndex()
 
+// buildIndex constructs the extension index, marking ambiguous extensions as nil.
 func buildIndex() map[string]*Language {
 	idx := make(map[string]*Language)
+
 	for i := range KnownLanguages {
 		lang := &KnownLanguages[i]
+
 		for _, ext := range lang.Extensions {
 			if _, exists := idx[ext]; exists {
 				idx[ext] = nil // ambiguous
@@ -81,6 +85,7 @@ func buildIndex() map[string]*Language {
 			}
 		}
 	}
+
 	return idx
 }
 
@@ -88,21 +93,30 @@ func buildIndex() map[string]*Language {
 // handling the OpenMP/MPI compound extensions (`main.omp.c` -> `omp.c`).
 func normalizeExtension(name string) string {
 	ext := strings.ToLower(path.Ext(name))
+
+	// remove the leading dot from the extension
 	ext = strings.TrimPrefix(ext, ".")
 	if ext == "" {
 		return ""
 	}
+
+	// check for compound extensions like "omp.c" or "mpi.cpp"
 	base := strings.TrimSuffix(name, path.Ext(name))
+
 	if isCompound(ext) && strings.Contains(base, ".") {
 		pre := strings.ToLower(path.Ext(base))
+
 		pre = strings.TrimPrefix(pre, ".")
+
 		if pre == "omp" || pre == "mpi" {
 			return pre + "." + ext
 		}
 	}
+
 	return ext
 }
 
+// isCompound checks if the extension is one of the recognized compound extensions.
 func isCompound(ext string) bool {
 	switch ext {
 	case "c", "h", "cpp", "cc", "cxx", "c++", "hpp":
@@ -127,12 +141,15 @@ func FromExtension(ext string) *Language {
 // used when deducing the language inside a zip archive.
 func StandardizeExtension(ext string) string {
 	ext = strings.ToLower(strings.TrimPrefix(ext, "."))
+
 	if ext == "zip" {
 		return "zip"
 	}
+
 	if lang := FromExtension(ext); lang != nil {
 		return lang.StandardExtension()
 	}
+
 	return ""
 }
 
@@ -146,25 +163,31 @@ func IsCompilable(ext string) bool {
 // file names (used for zip submissions).
 func DeduceFromArchive(names []string) (string, error) {
 	counts := make(map[string]int)
+
 	for _, name := range names {
 		ext := path.Ext(name)
 		if ext == "" {
 			continue
 		}
+
 		standard := StandardizeExtension(ext)
 		if standard == "" {
 			continue
 		}
+
 		counts[standard]++
 	}
+
 	if len(counts) == 0 {
 		return "", fmt.Errorf("no files with known extensions found in archive")
 	}
+
 	best, bestCount := "", -1
 	for ext, count := range counts {
 		if count > bestCount || (count == bestCount && ext < best) {
 			best, bestCount = ext, count
 		}
 	}
+
 	return best, nil
 }

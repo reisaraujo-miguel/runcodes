@@ -27,14 +27,19 @@ func (e *Engine) awaitLine(stream *podman.LogStream, expected string, timeout ti
 	for {
 		select {
 		case <-timer.C:
+			// Timeout occurred while waiting for the expected line.
 			return &timeoutError{msg: fmt.Sprintf("timed out waiting for %q", expected)}
 		case line, ok := <-stream.Lines:
+			// The log stream ended before the expected line was found.
 			if !ok {
 				return fmt.Errorf("%w before %q", errLogStreamEnded, expected)
 			}
+
+			// Check if the current line matches the expected line.
 			if line == expected {
 				return nil
 			}
+
 			e.logger.Debug("container output", "line", line)
 		}
 	}
@@ -52,12 +57,17 @@ func (e *Engine) stopContainer(ct *podman.Container, stream *podman.LogStream) {
 		}
 	}()
 
+	// Wait for the container to exit, but don't block forever.
 	if _, err := ct.Wait(e.cfg.BaseExecTimeout); err != nil {
 		e.logger.Warn("container did not exit; killing", "error", err)
+
+		// Force-kill the container if it didn't exit in time.
 		if killErr := ct.Kill(context.Background()); killErr != nil {
 			e.logger.Warn("could not kill container", "error", killErr)
 		}
 	}
+
+	// Remove the container, logging any errors but not failing the run.
 	if err := ct.Remove(context.Background()); err != nil {
 		e.logger.Warn("container removal failed", "error", err)
 	}

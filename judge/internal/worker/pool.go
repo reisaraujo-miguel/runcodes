@@ -54,12 +54,17 @@ func (p *Pool) Wake() {
 
 // Run polls until ctx is cancelled, then waits for in-flight runs.
 func (p *Pool) Run(ctx context.Context) {
+	// The semaphore limits the number of concurrent runs to cfg.Concurrency.
+	// The WaitGroup waits for all in-flight runs to finish before returning.
 	sem := make(chan struct{}, p.cfg.Concurrency)
 	var wg sync.WaitGroup
 
+	// The ticker triggers a poll every cfg.PollInterval, but the API can also nudge the pool.
 	ticker := time.NewTicker(p.cfg.PollInterval)
 	defer ticker.Stop()
 
+	// The main loop polls for work until the context is cancelled. It waits for either
+	// the ticker to tick or the API to nudge it, then calls drain to claim and process commits.
 	for {
 		select {
 		case <-ctx.Done():
@@ -68,6 +73,7 @@ func (p *Pool) Run(ctx context.Context) {
 		case <-p.wake:
 		case <-ticker.C:
 		}
+
 		p.drain(ctx, sem, &wg)
 	}
 }
@@ -75,12 +81,14 @@ func (p *Pool) Run(ctx context.Context) {
 // drain claims commits until the queue is empty or every slot is busy.
 func (p *Pool) drain(ctx context.Context, sem chan struct{}, wg *sync.WaitGroup) {
 	for {
+		// Try to acquire a slot in the semaphore. If all slots are busy, return.
 		select {
 		case sem <- struct{}{}:
 		default:
-			return // all slots busy
+			return
 		}
 
+		// Claim the next commit from the store.
 		claimCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		commit, err := p.store.Claim(claimCtx)
 		cancel()
@@ -89,16 +97,17 @@ func (p *Pool) drain(ctx context.Context, sem chan struct{}, wg *sync.WaitGroup)
 			p.logger.Error("could not claim commit", "error", err)
 			return
 		}
+
+		// If the queue is empty, release the semaphore slot and return.
 		if commit == nil {
 			<-sem
-			return // queue empty
+			return
 		}
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		// Process the claimed commit in a new goroutine, releasing the semaphore slot when done.
+		wg.Go(func() {
 			defer func() { <-sem }()
 			p.processor.Process(ctx, commit)
-		}()
+		})
 	}
 }

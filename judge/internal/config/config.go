@@ -134,42 +134,48 @@ func Load() (*Config, error) {
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
+
 	return cfg, nil
 }
 
 func (c *Config) validate() error {
 	if c.Concurrency < 1 {
 		return fmt.Errorf("JUDGE_CONCURRENCY must be >= 1, got %d", c.Concurrency)
-	}
-	if c.PollInterval <= 0 {
+	} else if c.PollInterval <= 0 {
 		return fmt.Errorf("JUDGE_POLL_INTERVAL must be positive, got %s", c.PollInterval)
 	}
+
 	if c.DB.MaxIdleConns == 0 {
 		c.DB.MaxIdleConns = c.Concurrency
 	}
+
 	if c.DB.MaxOpenConns == 0 {
 		c.DB.MaxOpenConns = c.Concurrency + 2
 	}
+
 	return nil
 }
 
 func podmanURI() string {
 	if uri := os.Getenv("JUDGE_PODMAN_URI"); uri != "" {
 		return uri
-	}
-	if uri := os.Getenv("CONTAINER_HOST"); uri != "" {
+	} else if uri := os.Getenv("CONTAINER_HOST"); uri != "" {
 		return uri
 	}
+
 	return fmt.Sprintf("unix:///run/user/%d/podman/podman.sock", os.Getuid())
 }
 
+// env returns the value of the environment variable named by the key.
 func env(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
 	}
+
 	return def
 }
 
+// envInt returns the value of the environment variable named by the key, parsed as an int.
 func envInt(key string, def int) int {
 	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
@@ -179,6 +185,7 @@ func envInt(key string, def int) int {
 	return def
 }
 
+// envInt64 returns the value of the environment variable named by the key, parsed as an int64.
 func envInt64(key string, def int64) int64 {
 	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
@@ -188,6 +195,7 @@ func envInt64(key string, def int64) int64 {
 	return def
 }
 
+// envBool returns the value of the environment variable named by the key, parsed as a bool.
 func envBool(key string, def bool) bool {
 	if v := os.Getenv(key); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {
@@ -197,6 +205,7 @@ func envBool(key string, def bool) bool {
 	return def
 }
 
+// envDuration returns the value of the environment variable named by the key, parsed as a time.Duration.
 func envDuration(key string, def time.Duration) time.Duration {
 	if v := os.Getenv(key); v != "" {
 		// Accept both a bare number of seconds and a Go duration ("10s").

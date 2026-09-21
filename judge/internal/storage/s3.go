@@ -28,6 +28,7 @@ type S3 struct {
 // NewS3 builds the client. Static credentials are always used, matching the
 // platform's SeaweedFS setup.
 func NewS3(ctx context.Context, cfg config.S3Config) (*S3, error) {
+	// load the AWS SDK config with static credentials and the given region
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx,
 		awsconfig.WithRegion(cfg.Region),
 		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
@@ -37,14 +38,19 @@ func NewS3(ctx context.Context, cfg config.S3Config) (*S3, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load aws config: %w", err)
 	}
+
+	// create the S3 client with the custom endpoint and path-style addressing
 	client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
 		o.BaseEndpoint = aws.String(cfg.Endpoint)
 		o.UsePathStyle = true
 	})
+
 	return &S3{client: client, cfg: cfg}, nil
 }
 
+// download fetches the object from S3 and writes it to dest, creating parent directories as needed.
 func (s *S3) download(ctx context.Context, bucket, key, dest string) error {
+	// fetch the object from S3
 	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
@@ -54,21 +60,29 @@ func (s *S3) download(ctx context.Context, bucket, key, dest string) error {
 	}
 	defer out.Body.Close()
 
+	// create parent directories for dest if they don't exist
 	if err := os.MkdirAll(filepath.Dir(dest), 0o777); err != nil {
 		return fmt.Errorf("create dir for %s: %w", dest, err)
 	}
+
+	// create the destination file and copy the object body into it
 	f, err := os.Create(dest)
 	if err != nil {
 		return fmt.Errorf("create %s: %w", dest, err)
 	}
 	defer f.Close()
+
 	if _, err := io.Copy(f, out.Body); err != nil {
 		return fmt.Errorf("write %s: %w", dest, err)
 	}
+
 	return nil
 }
 
+// downloadBytes fetches the object from S3 and returns its contents as a byte slice.
+/* [unused for now, but could be useful in the future]
 func (s *S3) downloadBytes(ctx context.Context, bucket, key string) ([]byte, error) {
+	// fetch the object from S3
 	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
@@ -77,8 +91,10 @@ func (s *S3) downloadBytes(ctx context.Context, bucket, key string) ([]byte, err
 		return nil, fmt.Errorf("get s3://%s/%s: %w", bucket, key, err)
 	}
 	defer out.Body.Close()
+
 	return io.ReadAll(out.Body)
 }
+*/
 
 // FetchCommitSource downloads the submitted source file.
 func (s *S3) FetchCommitSource(ctx context.Context, key, dest string) error {
@@ -100,10 +116,12 @@ func (s *S3) FetchCaseFiles(ctx context.Context, caseID int64, files []string, d
 	for _, name := range files {
 		key := fmt.Sprintf("%d/files/%s", caseID, name)
 		dest := filepath.Join(dir, filepath.Base(name))
+
 		if err := s.download(ctx, s.cfg.CasesBucket(), key, dest); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 

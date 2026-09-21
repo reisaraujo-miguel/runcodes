@@ -13,9 +13,6 @@
  *
  */
 
-// Command judge runs the run.codes judge service: a durable Postgres-backed
-// queue of submissions executed in rootless podman containers, with results
-// streamed to the backend over SSE.
 package main
 
 import (
@@ -54,20 +51,24 @@ func run() error {
 		return err
 	}
 
+	// Listen for SIGINT and SIGTERM to gracefully shut down the server.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// open the database connection pool and defer its closure
 	st, err := store.New(cfg)
 	if err != nil {
 		return err
 	}
 	defer st.Close()
 
+	// open the S3 connection and defer its closure
 	s3, err := storage.NewS3(ctx, cfg.S3)
 	if err != nil {
 		return err
 	}
 
+	// ensure the execution directory exists and is writable
 	if err := os.MkdirAll(cfg.ExecDir, 0o777); err != nil {
 		return err
 	}
@@ -77,6 +78,7 @@ func run() error {
 	eng := engine.New(cfg, st, s3, pc, hub, logger)
 	pool := worker.New(cfg, st, eng, logger)
 
+	// run the worker pool in a separate goroutine, which will process queued commits
 	go pool.Run(ctx)
 
 	srv := &http.Server{
@@ -93,6 +95,7 @@ func run() error {
 			"podman", cfg.PodmanURI,
 			"exec_dir", cfg.ExecDir,
 		)
+
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErr <- err
 		}
@@ -105,11 +108,16 @@ func run() error {
 		return err
 	}
 
+	// shutting down the server
+
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
+
+	// Stop accepting new requests and wait for in-flight requests to finish.
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Warn("http shutdown error", "error", err)
 	}
+
 	// The worker pool observed the cancelled context and is draining; give
 	// in-flight runs a moment to finish.
 	time.Sleep(2 * time.Second)

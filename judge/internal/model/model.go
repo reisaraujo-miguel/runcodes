@@ -18,12 +18,15 @@ func (c Commit) Filename() string {
 	return baseName(c.S3Key)
 }
 
+// baseName returns the last path component of a key, or the key itself if it has no slashes.
+// This is like path.Base but without the OS-specific behavior.
 func baseName(key string) string {
 	for i := len(key) - 1; i >= 0; i-- {
 		if key[i] == '/' {
 			return key[i+1:]
 		}
 	}
+
 	return key
 }
 
