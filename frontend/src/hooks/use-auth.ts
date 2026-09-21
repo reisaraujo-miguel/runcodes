@@ -8,6 +8,8 @@ export interface AuthContextValue {
   isAuthenticated: boolean;
   /** Re-fetches the session from the API and updates the auth state. */
   refreshAuth: () => Promise<void>;
+  /** Clears the session cookie and the local user, ending the session. */
+  signOut: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextValue | undefined>(

@@ -46,3 +46,11 @@ export function login(payload: LoginPayload): Promise<LoginResponse> {
 export function signUp(payload: SignUpPayload): Promise<void> {
   return apiPost<undefined>("/api/v1/user/signup", payload);
 }
+
+/**
+ * End the session. The backend clears the HttpOnly session cookie, which is the
+ * only way to drop it since JavaScript cannot read or delete it.
+ */
+export function logout(): Promise<void> {
+  return apiPost<undefined>("/api/v1/user/logout");
+}

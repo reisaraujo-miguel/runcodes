@@ -27,7 +27,7 @@ const USER_ROLES = {
 } as const;
 
 export function Navbar() {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const role: UserRole = user?.role ?? USER_ROLES.Student;
   const [isNewClassModalOpen, setIsNewClassModalOpen] = useState(false);
 
@@ -57,6 +57,9 @@ export function Navbar() {
                 <DropdownMenuContent className="w-56">
                   <DropDownMenu
                     role={role}
+                    onSignOut={() => {
+                      void signOut();
+                    }}
                     onCreateNewClass={() => {
                       setIsNewClassModalOpen(true);
                     }}
@@ -78,7 +81,11 @@ export function Navbar() {
   );
 }
 
-function DropDownMenu(props: { role: UserRole; onCreateNewClass: () => void }) {
+function DropDownMenu(props: {
+  role: UserRole;
+  onCreateNewClass: () => void;
+  onSignOut: () => void;
+}) {
   return (
     <div>
       <div>
@@ -119,23 +126,18 @@ function DropDownMenu(props: { role: UserRole; onCreateNewClass: () => void }) {
         )}
         {props.role === USER_ROLES.Admin && (
           <>
-            <DropdownMenuItem>
-              <NavLink
-                to="/admin"
-                style={{
-                  cursor: "pointer",
-                  textDecoration: "none",
-                  color: "inherit",
-                }}
-              >
-                Ferramentas de Admin
-              </NavLink>
+            {/* Compose the link onto the menu item instead of nesting it: base-ui
+                dispatches Enter on the item itself, so a nested anchor would
+                never be activated from the keyboard. */}
+            <DropdownMenuItem render={<NavLink to="/admin" />}>
+              Ferramentas de Admin
             </DropdownMenuItem>
             <DropdownMenuSeparator />
           </>
         )}
         <DropdownMenuItem
           variant="destructive"
+          onClick={props.onSignOut}
           style={{
             cursor: "pointer",
             textDecoration: "none",
