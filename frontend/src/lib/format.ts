@@ -30,6 +30,18 @@ export function formatCpuTime(seconds: number): string {
 }
 
 /**
+ * Formats a per-case limit, which the API stores as 0 when the exercise left the
+ * field empty: the judge reads that as "use the platform default", not as a
+ * limit of zero, so it is shown as such.
+ */
+export function formatLimit(
+  value: number,
+  render: (value: number) => string,
+): string {
+  return value > 0 ? render(value) : "padrão";
+}
+
+/**
  * Converts a date-only value (YYYY-MM-DD) from a date input into an ISO 8601
  * timestamp for the start or end of that day in the user's local timezone.
  * Returns null when the value is not a valid date.

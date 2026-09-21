@@ -25,7 +25,12 @@ import {
   type Exercise,
   type TestCase,
 } from "@/lib/api";
-import { formatBytes, formatDateTime } from "@/lib/format";
+import {
+  formatBytes,
+  formatCpuTime,
+  formatDateTime,
+  formatLimit,
+} from "@/lib/format";
 
 function compilationFileName(file: CompilationFile): string {
   const name = file.filename ?? file.name;
@@ -339,9 +344,14 @@ export function ExercisePage() {
                   </div>
 
                   <p className="text-muted-foreground text-xs">
-                    Tempo: {testCase.cpu_time_limit_seconds} s · Memória:{" "}
-                    {formatBytes(testCase.mem_usage_limit_bytes)} · Arquivos:{" "}
-                    {String(testCase.files.length)}
+                    Tempo:{" "}
+                    {formatLimit(
+                      testCase.cpu_time_limit_seconds,
+                      formatCpuTime,
+                    )}{" "}
+                    · Memória:{" "}
+                    {formatLimit(testCase.mem_usage_limit_bytes, formatBytes)} ·
+                    Arquivos: {String(testCase.files.length)}
                   </p>
 
                   <div className="text-muted-foreground text-xs">
