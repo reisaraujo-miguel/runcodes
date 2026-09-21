@@ -44,15 +44,17 @@ services:
       RUNCODES_LEGACY_PASSWORD_SALT: "${RUNCODES_LEGACY_PASSWORD_SALT:-}"
       RUNCODES_DB_HOST: "database"
       RUNCODES_DB_PORT: "5432"
-      RUNCODES_DB_USER: "runcodes"
-      RUNCODES_DB_PASSWORD: "${RUNCODES_DB_PASSWORD:?RUNCODES_DB_PASSWORD must be set}"
+      # The application role, not the database owner: it can read and write rows
+      # and nothing else (database/schema/05-app-role.sh).
+      RUNCODES_DB_USER: "runcodes_app"
+      RUNCODES_DB_PASSWORD: "${RUNCODES_DB_APP_PASSWORD:?RUNCODES_DB_APP_PASSWORD must be set}"
       RUNCODES_DB_NAME: "runcodes"
       RUNCODES_JUDGE_URL: "http://judge:9000"
-      RUNCODES_JUDGE_TOKEN: "${RUNCODES_JUDGE_TOKEN:-}"
+      RUNCODES_JUDGE_TOKEN: "${RUNCODES_JUDGE_TOKEN:?RUNCODES_JUDGE_TOKEN must be set}"
       RUNCODES_S3_ENDPOINT: "http://seaweed:8333"
       RUNCODES_S3_REGION: "sa-east-1"
-      RUNCODES_S3_CREDENTIALS_KEY: "${RUNCODES_S3_CREDENTIALS_KEY:-test_key}"
-      RUNCODES_S3_CREDENTIALS_SECRET: "${RUNCODES_S3_CREDENTIALS_SECRET:-test_secret}"
+      RUNCODES_S3_CREDENTIALS_KEY: "${RUNCODES_S3_CREDENTIALS_KEY:?RUNCODES_S3_CREDENTIALS_KEY must be set}"
+      RUNCODES_S3_CREDENTIALS_SECRET: "${RUNCODES_S3_CREDENTIALS_SECRET:?RUNCODES_S3_CREDENTIALS_SECRET must be set}"
       RUNCODES_S3_BUCKET_PREFIX: "runcodes"
       RUNCODES_REDIS_ADDR: "redis:6379"
 
@@ -78,7 +80,10 @@ services:
     build: ./judge/
     restart: unless-stopped
     ports:
-      - "9000:9000"
+      # Loopback only. The backend reaches the judge over the compose network, so
+      # nothing needs this published: the judge runs untrusted code and its API is
+      # guarded by a single shared token.
+      - "127.0.0.1:9000:9000"
     # Run as the host user so the rootless podman socket and ./exec are accessible.
     user: "${JUDGE_UID:-1000}:${JUDGE_GID:-1000}"
     environment:
@@ -88,16 +93,19 @@ services:
       JUDGE_PODMAN_URI: "unix:///run/podman/podman.sock"
       JUDGE_EXEC_DIR: "/exec"
       JUDGE_EXEC_DIR_REMOTE: "${PWD}/exec"
-      JUDGE_AUTH_TOKEN: "${RUNCODES_JUDGE_TOKEN:-}"
+      # Required: without it the judge refuses every /v1 request, because the API
+      # serves other people's submissions and outputs.
+      JUDGE_AUTH_TOKEN: "${RUNCODES_JUDGE_TOKEN:?RUNCODES_JUDGE_TOKEN must be set}"
       RUNCODES_DB_HOST: "database"
       RUNCODES_DB_PORT: "5432"
-      RUNCODES_DB_USER: "runcodes"
-      RUNCODES_DB_PASSWORD: "${RUNCODES_DB_PASSWORD:?RUNCODES_DB_PASSWORD must be set}"
+      # The application role, not the database owner (database/schema/05-app-role.sh).
+      RUNCODES_DB_USER: "runcodes_app"
+      RUNCODES_DB_PASSWORD: "${RUNCODES_DB_APP_PASSWORD:?RUNCODES_DB_APP_PASSWORD must be set}"
       RUNCODES_DB_NAME: "runcodes"
       RUNCODES_S3_ENDPOINT: "http://seaweed:8333"
       RUNCODES_S3_REGION: "sa-east-1"
-      RUNCODES_S3_CREDENTIALS_KEY: "${RUNCODES_S3_CREDENTIALS_KEY:-test_key}"
-      RUNCODES_S3_CREDENTIALS_SECRET: "${RUNCODES_S3_CREDENTIALS_SECRET:-test_secret}"
+      RUNCODES_S3_CREDENTIALS_KEY: "${RUNCODES_S3_CREDENTIALS_KEY:?RUNCODES_S3_CREDENTIALS_KEY must be set}"
+      RUNCODES_S3_CREDENTIALS_SECRET: "${RUNCODES_S3_CREDENTIALS_SECRET:?RUNCODES_S3_CREDENTIALS_SECRET must be set}"
       RUNCODES_S3_BUCKET_PREFIX: "runcodes"
     volumes:
       - ./exec:/exec
@@ -126,6 +134,8 @@ services:
       POSTGRES_USER: runcodes
       POSTGRES_DB: runcodes
       POSTGRES_PASSWORD: "${RUNCODES_DB_PASSWORD:?RUNCODES_DB_PASSWORD must be set}"
+      # Only read by 05-app-role.sh, which creates the role the services use.
+      RUNCODES_DB_APP_PASSWORD: "${RUNCODES_DB_APP_PASSWORD:?RUNCODES_DB_APP_PASSWORD must be set}"
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=en_US.utf8 --lc-ctype=en_US.utf8"
     volumes:
       - runcodes-db-vol:/var/lib/postgresql/
@@ -136,7 +146,9 @@ services:
     image: rnwood/smtp4dev:v3.15
     restart: unless-stopped
     ports:
-      - "8081:80"
+      # Loopback only: the mail catcher has no authentication and keeps every
+      # message the platform has sent.
+      - "127.0.0.1:8081:80"
     environment:
       TZ: "America/Sao_Paulo"
     networks:
@@ -160,7 +172,9 @@ services:
   seaweed:
     image: chrislusf/seaweedfs:4.46
     ports:
-      - 8333:8333
+      # Loopback only: the S3 gateway holds every submission and expected output,
+      # so reaching it directly must not be possible from the network.
+      - "127.0.0.1:8333:8333"
     environment:
       TZ: "America/Sao_Paulo"
     command: server -s3 -volume.max=50 -dir="/data" -master.volumeSizeLimitMB=256 -ip=seaweed -ip.bind=0.0.0.0
