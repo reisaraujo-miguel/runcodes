@@ -114,6 +114,23 @@ jobs:
       - name: Build
         run: bun run build
 
+  monitor:
+    name: Monitor & runners (C, shell)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # The monitor is the only thing inside a graded container that produces
+      # data the judge trusts, and the harness is what reads the judge's config
+      # and enforces the limits. Both are tested against real child processes;
+      # neither needs Docker.
+      - name: Test the monitor
+        run: ./monitor/test/monitor.test.sh
+
+      - name: Test the image harness
+        run: ./judge-runners/test/harness.test.sh
+
   database:
     name: Database (schema)
     runs-on: ubuntu-latest
@@ -149,3 +166,47 @@ jobs:
               -f "database/schema/$file"
             echo "::endgroup::"
           done
+
+      # The services log in as this role, so a broken grant breaks every request
+      # rather than only the database: create it the way the image's init step does.
+      - name: Create the application role
+        env:
+          POSTGRES_USER: runcodes
+          POSTGRES_DB: runcodes
+          PGHOST: localhost
+          PGPASSWORD: runcodes
+          RUNCODES_DB_APP_PASSWORD: app-password
+        run: ./database/schema/05-app-role.sh
+
+      # The role exists to bound what a SQL injection in a service can do, so the
+      # point of it is what it cannot do. Assert both directions: without the
+      # positive checks a role that cannot connect at all would pass.
+      - name: Verify the application role's privileges
+        env:
+          PGHOST: localhost
+          PGDATABASE: runcodes
+          PGUSER: runcodes_app
+          PGPASSWORD: app-password
+        run: |
+          psql -v ON_ERROR_STOP=1 \
+            -c "BEGIN;
+                  INSERT INTO users (name, email, password_hash)
+                       VALUES ('ci-privilege-check', 'ci-privilege-check@invalid', '!');
+                  DELETE FROM users WHERE email = 'ci-privilege-check@invalid';
+                  ROLLBACK;"
+          psql -v ON_ERROR_STOP=1 \
+            -c "UPDATE commits SET status = status WHERE false"
+
+          denied=0
+          deny() {
+            if psql -v ON_ERROR_STOP=1 -tAc "$1" >/dev/null 2>&1; then
+              echo "::error::runcodes_app was allowed to run: $1"
+              denied=1
+            fi
+          }
+          deny "CREATE TABLE ci_privilege_check (i int)"
+          deny "DROP TABLE commits"
+          deny "ALTER TABLE commits ADD COLUMN ci_privilege_check int"
+          deny "CREATE ROLE ci_privilege_check"
+          deny "SELECT * FROM pg_authid"
+          exit "${denied}"

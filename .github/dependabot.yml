@@ -39,8 +39,10 @@ updates:
         update-types: ["version-update:semver-major"]
 
   # --- DOCKER IMAGES ---
+  # Every Dockerfile the platform builds or ships: the database and judge images
+  # are production artifacts too.
   - package-ecosystem: "docker"
-    directories: ["/backend/", "/frontend/"]
+    directories: ["/backend/", "/frontend/", "/database/", "/judge/"]
     schedule:
       interval: "weekly"
     groups:
@@ -51,9 +53,67 @@ updates:
     commit-message:
       prefix: "chore(docker)"
 
+  # --- DOCKER IMAGES (JUDGE RUNTIME) ---
+  # The images a submission is actually graded in, and the monitor every one of
+  # them copies its binary from. They pin third-party toolchains (python,
+  # temurin, iverilog, ...), so a tag that stops moving here is an unpatched
+  # toolchain running untrusted code.
+  - package-ecosystem: "docker"
+    directories:
+      - "/monitor/"
+      - "/judge-runners/base/"
+      - "/judge-runners/c/"
+      - "/judge-runners/c-omp/"
+      - "/judge-runners/c-omp-mpi/"
+      - "/judge-runners/cpp/"
+      - "/judge-runners/cpp-omp/"
+      - "/judge-runners/cpp-omp-mpi/"
+      - "/judge-runners/dotnet/"
+      - "/judge-runners/fortran/"
+      - "/judge-runners/go/"
+      - "/judge-runners/haskell/"
+      - "/judge-runners/java/"
+      - "/judge-runners/julia/"
+      - "/judge-runners/lua/"
+      - "/judge-runners/octave/"
+      - "/judge-runners/pascal/"
+      - "/judge-runners/portugol/"
+      - "/judge-runners/prolog/"
+      - "/judge-runners/python/"
+      - "/judge-runners/r/"
+      - "/judge-runners/rust/"
+      - "/judge-runners/verilog/"
+      - "/judge-runners/zig/"
+    schedule:
+      interval: "weekly"
+    groups:
+      docker-runners:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(docker/runners)"
+
+  # --- GITHUB ACTIONS ---
+  # The workflows build the images that gate merges, so a stale or moved action
+  # tag is a supply-chain risk, not just outdated tooling.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(actions)"
+
   # --- DOCKER COMPOSE SCRIPTS ---
+  # The compose file at the root is the only one; the backend used to carry a
+  # second, per-service copy.
   - package-ecosystem: "docker-compose"
-    directories: ["*"]
+    directory: "/"
     schedule:
       interval: "weekly"
     groups:

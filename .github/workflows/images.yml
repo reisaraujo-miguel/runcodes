@@ -62,8 +62,11 @@ jobs:
           scan-type: image
           image-ref: runcodes-${{ matrix.service }}:ci
           trivy-config: trivy.yaml
-          # Focus the image gate on the shipped artifact.
-          scanners: vuln,secret
+          # Focus the image gate on the shipped artifact. `misconfig` is included
+          # because trivy.yaml enables it: without it here, the only scan whose
+          # findings can fail the pipeline would ignore Dockerfile and compose
+          # misconfiguration entirely.
+          scanners: vuln,secret,misconfig
           format: sarif
           output: trivy-${{ matrix.service }}.sarif
           # trivy.yaml sets exit-code: 1, so CRITICAL/HIGH findings fail this
