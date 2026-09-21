@@ -37,6 +37,7 @@ import (
 const debugModeEnv string = "DEBUG_MODE"
 
 func main() {
+	// check if debug mode is enabled via command line flag
 	debugMode := flag.Bool("debug", false, "Sets the server to development mode")
 	flag.Parse()
 
@@ -44,6 +45,7 @@ func main() {
 		os.Setenv(debugModeEnv, "true")
 	}
 
+	// load environment variables from .env file if it exists, otherwise use system environment variables
 	if err := godotenv.Load(); err != nil {
 		slog.Info(
 			"No .env file found, using environment variables",
@@ -51,6 +53,7 @@ func main() {
 		)
 	}
 
+	// duh
 	SetupLogger()
 
 	var apiPort string
@@ -63,6 +66,7 @@ func main() {
 		slog.Error("Failed to initialize database")
 		os.Exit(1)
 	}
+	defer services.DB.Close()
 
 	if err := validation.SetupJWT(); err != nil {
 		slog.Error("Failed to setup JWT", slog.String("error", err.Error()))
@@ -75,6 +79,7 @@ func main() {
 		)
 	}
 
+	// start the judge reconciliation service in a separate goroutine
 	go services.StartReconciliation(context.Background())
 
 	r := chi.NewRouter()
@@ -87,7 +92,12 @@ func main() {
 		slog.Info("Server is running", slog.String("port", apiPort))
 	}
 
-	if err := http.ListenAndServe(fmt.Sprintf(":%s", apiPort), r); err != nil {
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%s", apiPort),
+		Handler: r,
+	}
+
+	if err := srv.ListenAndServe(); err != nil {
 		slog.Error("Server failed", slog.String("error", err.Error()))
 		os.Exit(1)
 	}

@@ -121,7 +121,14 @@ func configureMiddleware(router *chi.Mux) {
 		MaxAge:           300,
 	}))
 
-	router.Use(httprate.LimitByIP(100, 1*time.Minute))
+	router.Use(middleware.ClientIPFromXFF(os.Getenv("RUNCODES_DOMAIN")))
+
+	router.Use(httprate.LimitBy(100, time.Minute, clientIPKey))
+}
+
+// clientIPKey returns the canonicalized client IP address for rate limiting
+func clientIPKey(r *http.Request) (string, error) {
+	return httprate.CanonicalizeIP(middleware.GetClientIP(r.Context())), nil
 }
 
 // isDebugHeaderSet returns if the debug header is set on the request
