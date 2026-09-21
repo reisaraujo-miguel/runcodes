@@ -121,7 +121,12 @@ func configureMiddleware(router *chi.Mux) {
 		MaxAge:           300,
 	}))
 
-	router.Use(middleware.ClientIPFromXFF(os.Getenv("RUNCODES_DOMAIN")))
+	// The only hop in front of this API is the Caddy container, whose address is
+	// dynamic, so count hops instead of enumerating trusted proxy CIDRs. With no
+	// trusted_proxies configured, Caddy ignores a client-supplied
+	// X-Forwarded-For and writes the address it observed itself, so that entry is
+	// the real client rather than a proxy.
+	router.Use(middleware.ClientIPFromXFFTrustedProxies(1))
 
 	router.Use(httprate.LimitBy(100, time.Minute, clientIPKey))
 }

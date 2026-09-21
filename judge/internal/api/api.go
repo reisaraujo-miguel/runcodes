@@ -65,7 +65,6 @@ func New(
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.ClientIPFromXFF(os.Getenv("RUNCODES_DOMAIN")))
 
 	r.Get("/healthz", s.handleHealth)
 	r.Get("/readyz", s.handleReady)
