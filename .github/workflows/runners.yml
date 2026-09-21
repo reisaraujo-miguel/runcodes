@@ -1,0 +1,151 @@
+name: Docker Build and Publish Runners
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+concurrency:
+  group: runners-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # Required to push the images to GHCR.
+  packages: write
+
+env:
+  # Every image reference in this repository is literal and absolute:
+  # the per-language Dockerfiles copy out of `${IMAGE_PREFIX}-base`, and the
+  # judge resolves a submission's language to `${IMAGE_PREFIX}-<lang>` (see
+  # `language.DefaultImageFormat`). Publishing under `github.repository` would
+  # therefore build images that nothing ever pulls.
+  IMAGE_PREFIX: ghcr.io/runcodes-icmc/runcodes-runner
+
+jobs:
+  docker-build-base:
+    name: Build & push base
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-base
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            # The language Dockerfiles derive from `:latest`; without it a
+            # release would leave them building on the previous base.
+            type=raw,value=latest
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: ./judge-runners/base
+          push: true
+          # Images are built for the judge's architecture only; the sources they
+          # install (toolchains distributed as amd64 packages, for the most part)
+          # are not all available for arm64.
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ github.workflow }}-base
+          cache-to: type=gha,mode=max,scope=${{ github.workflow }}-base
+
+  docker-build-others:
+    name: Build & push ${{ matrix.image }}
+    # The language images are built on top of the base just pushed: all 23 pull
+    # it, 12 as their own base image and 11 to copy `/usr/bin/runcodes` and
+    # `/usr/bin/monitor` into a third-party base.
+    needs: docker-build-base
+    strategy:
+      # One broken language must not hide the state of the other 21: this job
+      # publishes what a graded run depends on, and a partial release is easier
+      # to reason about from a full matrix than from the first failure.
+      fail-fast: false
+      matrix:
+        # The languages the judge recognizes (`judge/internal/language`), one
+        # image each. A new language needs an entry here, a directory next to
+        # this file, and an entry in the database schema — nothing else.
+        image:
+          - c
+          - cpp
+          - c-omp
+          - c-omp-mpi
+          - cpp-omp
+          - cpp-omp-mpi
+          - dotnet
+          - fortran
+          - go
+          - haskell
+          - java
+          - julia
+          - lua
+          - octave
+          - pascal
+          - portugol
+          - prolog
+          - python
+          - r
+          - rust
+          - verilog
+          - zig
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            # What the judge pulls by default (`JUDGE_IMAGE_FORMAT`).
+            type=raw,value=latest
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: ./judge-runners/${{ matrix.image }}
+          push: true
+          # Every referenced image (starting with the base pushed above, then
+          # the language's own distribution base) is resolved at build time:
+          # without this, a builder could reuse a base image cached from an
+          # earlier run and publish an image with a stale monitor in it.
+          pull: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ github.workflow }}-${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ github.workflow }}-${{ matrix.image }}

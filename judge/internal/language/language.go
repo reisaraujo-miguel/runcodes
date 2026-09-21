@@ -12,7 +12,7 @@ import (
 )
 
 // DefaultImageFormat is how a language's image name is expanded.
-const DefaultImageFormat = "ghcr.io/runcodes-icmc/compiler-images-%s:latest"
+const DefaultImageFormat = "ghcr.io/runcodes-icmc/runcodes-runner-%s:latest"
 
 // Language describes one supported language.
 type Language struct {

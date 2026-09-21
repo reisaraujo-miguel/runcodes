@@ -1,0 +1,73 @@
+name: Docker Build and Publish Monitor
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+concurrency:
+  group: monitor-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # Required to push the image to GHCR.
+  packages: write
+
+env:
+  # The monitor is consumed by name: `judge-runners/base/Dockerfile` copies the
+  # binary out of exactly this reference. It is spelled out rather than derived
+  # from github.repository, which in a fork would publish to a name that no
+  # Dockerfile and no judge ever pulls.
+  IMAGE: ghcr.io/runcodes-icmc/runcodes-monitor
+
+jobs:
+  docker-build:
+    name: Build & push monitor
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            # The runner images copy the binary out of `:latest`, so a release
+            # that only creates version tags would leave every rebuild of the
+            # language images on the previous monitor.
+            type=raw,value=latest
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          # The Dockerfile builds ./src with the CMakeLists.txt next to it, so
+          # the context is the monitor directory itself, not the repository root.
+          context: ./monitor
+          file: ./monitor/Dockerfile
+          push: true
+          # Published for the architecture the judge runs on (see
+          # judge-runners/README.md): the language images are amd64, and a
+          # multi-arch monitor would be the one image that could not be used
+          # with them.
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ github.workflow }}
+          cache-to: type=gha,mode=max,scope=${{ github.workflow }}
