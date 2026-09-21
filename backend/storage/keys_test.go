@@ -1,4 +1,4 @@
-package services
+package storage
 
 import "testing"
 
@@ -43,20 +43,8 @@ func TestFileBasename(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		if got := fileBasename(tt.input); got != tt.expected {
-			t.Errorf("fileBasename(%q) = %q, want %q", tt.input, got, tt.expected)
+		if got := FileBasename(tt.input); got != tt.expected {
+			t.Errorf("FileBasename(%q) = %q, want %q", tt.input, got, tt.expected)
 		}
-	}
-}
-
-func TestCacheKeyHelpers(t *testing.T) {
-	if got := cacheKeyOffering(12); got != "offering:12" {
-		t.Errorf("cacheKeyOffering = %q", got)
-	}
-	if got := cacheKeyOfferingExercises(12); got != "offering_exercises:12" {
-		t.Errorf("cacheKeyOfferingExercises = %q", got)
-	}
-	if cacheKeyAllowedFileTypes != "allowed_file_types" {
-		t.Errorf("cacheKeyAllowedFileTypes = %q", cacheKeyAllowedFileTypes)
 	}
 }

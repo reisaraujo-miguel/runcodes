@@ -11,7 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/runcodes-icmc/runcodes/database"
+	"github.com/runcodes-icmc/runcodes/judge"
 	"github.com/runcodes-icmc/runcodes/models"
+	"github.com/runcodes-icmc/runcodes/storage"
 
 	"github.com/google/uuid"
 )
@@ -54,7 +57,7 @@ func CreateSubmission(ctx context.Context, in SubmissionInput) (int64, error) {
 	}
 
 	// Do not register anything if the judge cannot run the submission.
-	if err := JudgeReady(ctx); err != nil {
+	if err := judge.Ready(ctx); err != nil {
 		slog.ErrorContext(ctx, "judge is not ready",
 			slog.String("error", err.Error()),
 		)
@@ -63,7 +66,7 @@ func CreateSubmission(ctx context.Context, in SubmissionInput) (int64, error) {
 
 	key := buildCommitKey(in.Filename)
 
-	if err := UploadCommitSource(
+	if err := storage.UploadCommitSource(
 		ctx, key, in.File, in.Size, in.ContentType,
 	); err != nil {
 		slog.ErrorContext(ctx, "failed to upload submission source",
@@ -78,7 +81,7 @@ func CreateSubmission(ctx context.Context, in SubmissionInput) (int64, error) {
 	// BEFORE committing. The judge's poller must not see the row until the wake
 	// has succeeded; otherwise a failed wake could delete a commit the judge had
 	// already claimed (orphaning a running container and losing the row).
-	tx, err := DB.BeginTx(ctx, nil)
+	tx, err := database.DB.BeginTx(ctx, nil)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to begin submission transaction",
 			slog.String("error", err.Error()),
@@ -107,7 +110,7 @@ func CreateSubmission(ctx context.Context, in SubmissionInput) (int64, error) {
 	wakeCtx, cancel := context.WithTimeout(ctx, wakeTimeout)
 	defer cancel()
 
-	if err := WakeJudge(wakeCtx, commitID); err != nil {
+	if err := judge.Wake(wakeCtx, commitID); err != nil {
 		slog.ErrorContext(ctx, "failed to wake judge for commit",
 			slog.Int64("commit_id", commitID),
 			slog.String("error", err.Error()),
@@ -129,7 +132,7 @@ func CreateSubmission(ctx context.Context, in SubmissionInput) (int64, error) {
 
 	// Consume the judge stream immediately, even if nobody is watching yet:
 	// results must be persisted for a user who reloads or comes back later.
-	getOrCreateHub(commitID)
+	judge.Consume(commitID)
 
 	slog.InfoContext(ctx, "submission queued",
 		slog.Int64("commit_id", commitID),
@@ -145,7 +148,7 @@ deleteSourceBestEffort removes an uploaded object, logging (but not returning)
 any failure.
 */
 func deleteSourceBestEffort(ctx context.Context, key string) {
-	if err := DeleteCommitSource(ctx, key); err != nil {
+	if err := storage.DeleteCommitSource(ctx, key); err != nil {
 		slog.ErrorContext(ctx, "failed to clean up uploaded source",
 			slog.String("s3_key", key),
 			slog.String("error", err.Error()),
@@ -164,7 +167,7 @@ func validateExercise(ctx context.Context, exerciseID, userID int64) error {
 		enrolled bool
 	)
 
-	err := DB.QueryRowContext(ctx,
+	err := database.DB.QueryRowContext(ctx,
 		`SELECT (e.deadline < now()) AS expired,
 		        EXISTS (
 		            SELECT 1 FROM enrollments en
@@ -204,7 +207,7 @@ allowed file types. Exercises without any configured allowed type are accepted
 as-is (there is nothing to validate against).
 */
 func validateFileType(ctx context.Context, exerciseID int64, filename string) error {
-	rows, err := DB.QueryContext(ctx,
+	rows, err := database.DB.QueryContext(ctx,
 		`SELECT aft.extension
 		 FROM exercises_allowed_file_types eaft
 		 JOIN allowed_file_types aft ON aft.id = eaft.allowed_file_type_id
@@ -313,7 +316,7 @@ GetCommitSnapshot reads the current commit state and its test-case results.
 func GetCommitSnapshot(ctx context.Context, commitID int64) (*models.Snapshot, error) {
 	commit := models.Commit{}
 
-	err := DB.QueryRowContext(ctx,
+	err := database.DB.QueryRowContext(ctx,
 		`SELECT id, user_id, exercise_id, status, num_correct_cases, score,
 		        compiled, compilation_message, compilation_error,
 		        compilation_started, compilation_finished, created_at,
@@ -338,7 +341,7 @@ func GetCommitSnapshot(ctx context.Context, commitID int64) (*models.Snapshot, e
 		return nil, ErrServer
 	}
 
-	rows, err := DB.QueryContext(ctx,
+	rows, err := database.DB.QueryContext(ctx,
 		`SELECT exercise_test_case_id, cpu_time, mem_usage, user_output,
 		        user_output_type, status, status_message, error_message
 		 FROM commits_exercise_test_cases_results

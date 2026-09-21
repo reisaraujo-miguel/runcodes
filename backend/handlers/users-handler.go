@@ -5,18 +5,16 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
+	"github.com/runcodes-icmc/runcodes/config"
 	"github.com/runcodes-icmc/runcodes/models"
 	"github.com/runcodes-icmc/runcodes/services"
 	"github.com/runcodes-icmc/runcodes/validation"
 
 	"github.com/go-chi/jwtauth/v5"
 )
-
-const debugModeEnv string = "DEBUG_MODE"
 
 func SignUp(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -159,8 +157,8 @@ func setSessionCookie(w http.ResponseWriter, tokenString string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "jwt",
 		Value:    tokenString,
-		HttpOnly: true,                              // JS cannot access it
-		Secure:   os.Getenv(debugModeEnv) != "true", // HTTPS only (disabled in local dev)
+		HttpOnly: true,                // JS cannot access it
+		Secure:   !config.Get().Debug, // HTTPS only (disabled in local dev)
 		SameSite: http.SameSiteStrictMode,
 		Path:     "/",
 		MaxAge:   int(validation.SessionTTL.Seconds()),

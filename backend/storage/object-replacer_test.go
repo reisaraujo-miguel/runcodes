@@ -1,4 +1,4 @@
-package services
+package storage
 
 import (
 	"context"
@@ -80,9 +80,9 @@ func (f *fakeObjectOps) backupKeys() []string {
 func TestObjectReplacerRestoresPreviousObject(t *testing.T) {
 	fake := newFakeObjectOps()
 	fake.objects["case/in"] = "old"
-	replacer := newObjectReplacer(context.Background(), fake.ops())
+	replacer := NewObjectReplacer(context.Background(), fake.ops())
 
-	if err := replacer.replace("case/in", []byte("new"), "text/plain"); err != nil {
+	if err := replacer.Replace("case/in", []byte("new"), "text/plain"); err != nil {
 		t.Fatalf("replace: %v", err)
 	}
 	if got := fake.objects["case/in"]; got != "new" {
@@ -92,7 +92,7 @@ func TestObjectReplacerRestoresPreviousObject(t *testing.T) {
 		t.Fatalf("expected one backup, got %v", got)
 	}
 
-	replacer.restore()
+	replacer.Restore()
 	if got := fake.objects["case/in"]; got != "old" {
 		t.Fatalf("after restore object = %q, want old", got)
 	}
@@ -103,16 +103,16 @@ func TestObjectReplacerRestoresPreviousObject(t *testing.T) {
 
 func TestObjectReplacerRemovesNewObjectOnRestore(t *testing.T) {
 	fake := newFakeObjectOps()
-	replacer := newObjectReplacer(context.Background(), fake.ops())
+	replacer := NewObjectReplacer(context.Background(), fake.ops())
 
-	if err := replacer.replace("case/out", []byte("new"), "text/plain"); err != nil {
+	if err := replacer.Replace("case/out", []byte("new"), "text/plain"); err != nil {
 		t.Fatalf("replace: %v", err)
 	}
 	if got := fake.backupKeys(); len(got) != 0 {
 		t.Fatalf("a brand new object must not be backed up: %v", got)
 	}
 
-	replacer.restore()
+	replacer.Restore()
 	if _, ok := fake.objects["case/out"]; ok {
 		t.Fatal("a newly created object must be removed on restore")
 	}
@@ -121,13 +121,13 @@ func TestObjectReplacerRemovesNewObjectOnRestore(t *testing.T) {
 func TestObjectReplacerDiscardKeepsNewObject(t *testing.T) {
 	fake := newFakeObjectOps()
 	fake.objects["case/in"] = "old"
-	replacer := newObjectReplacer(context.Background(), fake.ops())
+	replacer := NewObjectReplacer(context.Background(), fake.ops())
 
-	if err := replacer.replace("case/in", []byte("new"), "text/plain"); err != nil {
+	if err := replacer.Replace("case/in", []byte("new"), "text/plain"); err != nil {
 		t.Fatalf("replace: %v", err)
 	}
 
-	replacer.discard()
+	replacer.Discard()
 	if got := fake.objects["case/in"]; got != "new" {
 		t.Fatalf("object = %q, want new", got)
 	}
@@ -136,7 +136,7 @@ func TestObjectReplacerDiscardKeepsNewObject(t *testing.T) {
 	}
 
 	// discard must also make a later restore a no-op.
-	replacer.restore()
+	replacer.Restore()
 	if got := fake.objects["case/in"]; got != "new" {
 		t.Fatalf("restore after discard changed the object: %q", got)
 	}
@@ -146,7 +146,7 @@ func TestObjectReplacerRestoresEveryWrite(t *testing.T) {
 	fake := newFakeObjectOps()
 	fake.objects["case/in"] = "in-old"
 	fake.objects["case/files/a.txt"] = "a-old"
-	replacer := newObjectReplacer(context.Background(), fake.ops())
+	replacer := NewObjectReplacer(context.Background(), fake.ops())
 
 	replaces := []struct {
 		key  string
@@ -157,12 +157,12 @@ func TestObjectReplacerRestoresEveryWrite(t *testing.T) {
 		{"case/files/a.txt", "a-new"},
 	}
 	for _, r := range replaces {
-		if err := replacer.replace(r.key, []byte(r.data), "text/plain"); err != nil {
+		if err := replacer.Replace(r.key, []byte(r.data), "text/plain"); err != nil {
 			t.Fatalf("replace %s: %v", r.key, err)
 		}
 	}
 
-	replacer.restore()
+	replacer.Restore()
 
 	if got := fake.objects["case/in"]; got != "in-old" {
 		t.Fatalf("case/in = %q, want in-old", got)
@@ -182,9 +182,9 @@ func TestObjectReplacerPutFailureLeavesPreviousObject(t *testing.T) {
 	fake := newFakeObjectOps()
 	fake.objects["case/in"] = "old"
 	fake.failPut["case/in"] = true
-	replacer := newObjectReplacer(context.Background(), fake.ops())
+	replacer := NewObjectReplacer(context.Background(), fake.ops())
 
-	if err := replacer.replace("case/in", []byte("new"), "text/plain"); err == nil {
+	if err := replacer.Replace("case/in", []byte("new"), "text/plain"); err == nil {
 		t.Fatal("expected a put error")
 	}
 	if got := fake.objects["case/in"]; got != "old" {
@@ -199,9 +199,9 @@ func TestObjectReplacerBackupFailureLeavesObjectUntouched(t *testing.T) {
 	fake := newFakeObjectOps()
 	fake.objects["case/in"] = "old"
 	fake.failCopy["case/in"] = true
-	replacer := newObjectReplacer(context.Background(), fake.ops())
+	replacer := NewObjectReplacer(context.Background(), fake.ops())
 
-	if err := replacer.replace("case/in", []byte("new"), "text/plain"); err == nil {
+	if err := replacer.Replace("case/in", []byte("new"), "text/plain"); err == nil {
 		t.Fatal("expected a backup error")
 	}
 	if got := fake.objects["case/in"]; got != "old" {
@@ -216,9 +216,9 @@ func TestObjectReplacerExistsFailureAborts(t *testing.T) {
 	fake := newFakeObjectOps()
 	fake.objects["case/in"] = "old"
 	fake.failExists["case/in"] = true
-	replacer := newObjectReplacer(context.Background(), fake.ops())
+	replacer := NewObjectReplacer(context.Background(), fake.ops())
 
-	if err := replacer.replace("case/in", []byte("new"), "text/plain"); err == nil {
+	if err := replacer.Replace("case/in", []byte("new"), "text/plain"); err == nil {
 		t.Fatal("expected an existence-check error")
 	}
 	if got := fake.objects["case/in"]; got != "old" {

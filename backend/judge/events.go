@@ -1,18 +1,20 @@
-package services
+package judge
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+
+	"github.com/runcodes-icmc/runcodes/database"
 )
 
 /*
-JudgeEvent is the union of every event payload streamed by the judge. Only the
+Event is the union of every event payload streamed by the judge. Only the
 fields relevant to a given "type" are populated; the raw JSON is relayed to
 clients untouched.
 */
-type JudgeEvent struct {
+type Event struct {
 	Type     string `json:"type"`
 	CommitID int64  `json:"commit_id"`
 	Seq      int64  `json:"seq"`
@@ -73,7 +75,7 @@ func IsTerminalStatus(status string) bool {
 PersistEvent writes a judge event to Postgres. Every update is guarded so a
 terminal status is never overwritten by a later event.
 */
-func PersistEvent(ctx context.Context, ev *JudgeEvent) error {
+func PersistEvent(ctx context.Context, ev *Event) error {
 	switch ev.Type {
 	case "status":
 		if IsTerminalStatus(ev.Status) {
@@ -109,12 +111,12 @@ func PersistEvent(ctx context.Context, ev *JudgeEvent) error {
 	}
 }
 
-func persistStatus(ctx context.Context, ev *JudgeEvent) error {
+func persistStatus(ctx context.Context, ev *Event) error {
 	if ev.Status == "" {
 		return fmt.Errorf("status event without a status")
 	}
 
-	if _, err := DB.ExecContext(ctx,
+	if _, err := database.DB.ExecContext(ctx,
 		`UPDATE commits SET status = $1::commit_status_t
 		 WHERE id = $2 AND `+nonTerminalGuard,
 		ev.Status, ev.CommitID,
@@ -125,13 +127,13 @@ func persistStatus(ctx context.Context, ev *JudgeEvent) error {
 	return nil
 }
 
-func persistCompilation(ctx context.Context, ev *JudgeEvent) error {
+func persistCompilation(ctx context.Context, ev *Event) error {
 	compiled := false
 	if ev.Compiled != nil {
 		compiled = *ev.Compiled
 	}
 
-	if _, err := DB.ExecContext(ctx,
+	if _, err := database.DB.ExecContext(ctx,
 		`UPDATE commits
 		 SET compiled = $1,
 		     compilation_message = $2,
@@ -146,7 +148,7 @@ func persistCompilation(ctx context.Context, ev *JudgeEvent) error {
 	return nil
 }
 
-func persistCaseResult(ctx context.Context, ev *JudgeEvent) error {
+func persistCaseResult(ctx context.Context, ev *Event) error {
 	if ev.TestCaseID == 0 || ev.Status == "" {
 		return fmt.Errorf("malformed case_result event")
 	}
@@ -166,7 +168,7 @@ func persistCaseResult(ctx context.Context, ev *JudgeEvent) error {
 		userOutputType = "text"
 	}
 
-	if _, err := DB.ExecContext(ctx,
+	if _, err := database.DB.ExecContext(ctx,
 		`INSERT INTO commits_exercise_test_cases_results
 		     (commit_id, exercise_test_case_id, cpu_time, mem_usage,
 		      user_output, user_output_type, status, status_message, error_message)
@@ -192,7 +194,7 @@ func persistCaseResult(ctx context.Context, ev *JudgeEvent) error {
 	return nil
 }
 
-func persistFinished(ctx context.Context, ev *JudgeEvent) error {
+func persistFinished(ctx context.Context, ev *Event) error {
 	if ev.Status == "" {
 		return fmt.Errorf("finished event without a status")
 	}
@@ -207,7 +209,7 @@ func persistFinished(ctx context.Context, ev *JudgeEvent) error {
 		score = ev.Score.String()
 	}
 
-	if _, err := DB.ExecContext(ctx,
+	if _, err := database.DB.ExecContext(ctx,
 		`UPDATE commits
 		 SET status = $1::commit_status_t,
 		     num_correct_cases = $2,
@@ -230,7 +232,7 @@ MarkCommitServerError marks a non-terminal commit as failed. Used when the judge
 stream ends without a finished event and by the reconciliation sweeper.
 */
 func MarkCommitServerError(ctx context.Context, commitID int64) error {
-	if _, err := DB.ExecContext(ctx,
+	if _, err := database.DB.ExecContext(ctx,
 		`UPDATE commits
 		 SET status = 'server_error',
 		     compilation_finished = COALESCE(compilation_finished, now())

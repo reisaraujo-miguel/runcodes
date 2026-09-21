@@ -1,26 +1,24 @@
-package services
+package judge
 
 import (
 	"context"
 	"log/slog"
-	"os"
 	"time"
+
+	"github.com/runcodes-icmc/runcodes/config"
+	"github.com/runcodes-icmc/runcodes/database"
 )
 
-const (
-	staleTimeoutEnv = "RUNCODES_JUDGE_STALE_TIMEOUT"
-
-	defaultStaleTimeout = 15 * time.Minute
-	reconcileInterval   = 30 * time.Second
-)
+// reconcileInterval is how often the sweeper looks for stale commits.
+const reconcileInterval = 30 * time.Second
 
 /*
 StartReconciliation runs the judge reconciliation sweeper until ctx is
 cancelled. Every 30s it marks commits stuck in compiling/running (claimed but
-never finished) as server_error.
+never finished) for longer than the configured stale timeout as server_error.
 */
 func StartReconciliation(ctx context.Context) {
-	timeout := staleTimeout()
+	timeout := config.Get().Judge.StaleTimeout
 
 	slog.InfoContext(ctx, "judge reconciliation sweeper started",
 		slog.Duration("stale_timeout", timeout),
@@ -41,43 +39,12 @@ func StartReconciliation(ctx context.Context) {
 }
 
 /*
-staleTimeout reads RUNCODES_JUDGE_STALE_TIMEOUT, falling back to the default
-when unset or invalid.
-*/
-func staleTimeout() time.Duration {
-	raw := os.Getenv(staleTimeoutEnv)
-	if raw == "" {
-		return defaultStaleTimeout
-	}
-
-	timeout, err := time.ParseDuration(raw)
-	if err != nil {
-		slog.Warn("invalid judge stale timeout, using default",
-			slog.String("value", raw),
-			slog.String("error", err.Error()),
-			slog.Duration("default", defaultStaleTimeout),
-		)
-		return defaultStaleTimeout
-	}
-
-	if timeout <= 0 {
-		slog.Warn("judge stale timeout must be positive, using default",
-			slog.String("value", raw),
-			slog.Duration("default", defaultStaleTimeout),
-		)
-		return defaultStaleTimeout
-	}
-
-	return timeout
-}
-
-/*
 reconcileStaleCommits marks claimed commits whose compilation_started is older
 than the timeout as server_error, so a crashed judge cannot leave commits
 stuck forever.
 */
 func reconcileStaleCommits(ctx context.Context, timeout time.Duration) {
-	result, err := DB.ExecContext(ctx,
+	result, err := database.DB.ExecContext(ctx,
 		`UPDATE commits
 		 SET status = 'server_error',
 		     compilation_finished = COALESCE(compilation_finished, now())

@@ -1,4 +1,13 @@
-package services
+/*
+Package storage owns the S3-compatible object storage used for submissions,
+test cases, compilation files and attachments, along with the object keys and
+in-place replacement helper that go with it.
+
+The object keys are shared with the judge, which materialises the objects in its
+workspaces under exactly these names (`<case_id>/in`, `<case_id>/out`, ...), so
+changing a key format is a breaking change for the judge.
+*/
+package storage
 
 import (
 	"context"
@@ -7,28 +16,17 @@ import (
 	"io"
 	"log/slog"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/runcodes-icmc/runcodes/config"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-)
-
-const (
-	s3EndpointEnv     = "RUNCODES_S3_ENDPOINT"
-	s3RegionEnv       = "RUNCODES_S3_REGION"
-	s3KeyEnv          = "RUNCODES_S3_CREDENTIALS_KEY"
-	s3SecretEnv       = "RUNCODES_S3_CREDENTIALS_SECRET"
-	s3BucketPrefixEnv = "RUNCODES_S3_BUCKET_PREFIX"
-
-	defaultS3Endpoint = "http://seaweed:8333"
-	defaultS3Region   = "sa-east-1"
-	defaultS3Prefix   = "runcodes"
 )
 
 // Buckets holds the bucket names derived from the configured prefix.
@@ -47,58 +45,46 @@ var (
 )
 
 /*
-initStorage reads the S3 configuration from the environment and builds a
-path-style S3 client (SeaweedFS is S3 compatible but does not support virtual
-hosted-style buckets).
+initStorage builds a path-style S3 client from the configured endpoint
+(SeaweedFS is S3 compatible but does not support virtual hosted-style buckets).
 */
 func initStorage() error {
-	endpoint := os.Getenv(s3EndpointEnv)
-	if endpoint == "" {
-		endpoint = defaultS3Endpoint
+	s3Config := config.Get().S3
+
+	opts := []func(*awsconfig.LoadOptions) error{
+		awsconfig.WithRegion(s3Config.Region),
 	}
 
-	region := os.Getenv(s3RegionEnv)
-	if region == "" {
-		region = defaultS3Region
-	}
-
-	prefix := strings.Trim(os.Getenv(s3BucketPrefixEnv), "-")
-	if prefix == "" {
-		prefix = defaultS3Prefix
-	}
-
-	opts := []func(*config.LoadOptions) error{config.WithRegion(region)}
-
-	key := os.Getenv(s3KeyEnv)
-	secret := os.Getenv(s3SecretEnv)
-	if key != "" || secret != "" {
-		opts = append(opts, config.WithCredentialsProvider(
-			credentials.NewStaticCredentialsProvider(key, secret, ""),
+	if s3Config.AccessKey != "" || s3Config.SecretKey != "" {
+		opts = append(opts, awsconfig.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(
+				s3Config.AccessKey, s3Config.SecretKey, "",
+			),
 		))
 	}
 
-	cfg, err := config.LoadDefaultConfig(context.Background(), opts...)
+	cfg, err := awsconfig.LoadDefaultConfig(context.Background(), opts...)
 	if err != nil {
 		return fmt.Errorf("loading S3 configuration: %w", err)
 	}
 
 	storageClient = s3.NewFromConfig(cfg, func(o *s3.Options) {
-		o.BaseEndpoint = aws.String(endpoint)
+		o.BaseEndpoint = aws.String(s3Config.Endpoint)
 		o.UsePathStyle = true
 	})
 
 	storageBuckets = Buckets{
-		Commits:     prefix + "-commits",
-		Cases:       prefix + "-cases",
-		Files:       prefix + "-files",
-		OutputFiles: prefix + "-outputfiles",
+		Commits:     s3Config.CommitsBucket(),
+		Cases:       s3Config.CasesBucket(),
+		Files:       s3Config.FilesBucket(),
+		OutputFiles: s3Config.OutputFilesBucket(),
 	}
 
 	ensureBuckets(storageClient, storageBuckets)
 
 	slog.Info("S3 storage configured",
-		slog.String("endpoint", endpoint),
-		slog.String("region", region),
+		slog.String("endpoint", s3Config.Endpoint),
+		slog.String("region", s3Config.Region),
 		slog.String("commits_bucket", storageBuckets.Commits),
 	)
 
@@ -106,10 +92,10 @@ func initStorage() error {
 }
 
 /*
-Storage lazily initializes (once) and returns the S3 client and the bucket
+Client lazily initializes (once) and returns the S3 client and the bucket
 names. The first call performs the actual configuration.
 */
-func Storage() (*s3.Client, Buckets, error) {
+func Client() (*s3.Client, Buckets, error) {
 	storageOnce.Do(func() { storageErr = initStorage() })
 	if storageErr != nil {
 		return nil, Buckets{}, storageErr
@@ -147,7 +133,7 @@ UploadCommitSource uploads the submitted source file to the commits bucket.
 func UploadCommitSource(
 	ctx context.Context, key string, body io.Reader, size int64, contentType string,
 ) error {
-	client, buckets, err := Storage()
+	client, buckets, err := Client()
 	if err != nil {
 		return err
 	}
@@ -174,7 +160,7 @@ DeleteCommitSource removes an object from the commits bucket. It is used to
 compensate a failed submission (best effort).
 */
 func DeleteCommitSource(ctx context.Context, key string) error {
-	client, buckets, err := Storage()
+	client, buckets, err := Client()
 	if err != nil {
 		return err
 	}
@@ -197,7 +183,7 @@ content.
 func PutCaseObject(
 	ctx context.Context, key string, body io.Reader, size int64, contentType string,
 ) error {
-	client, buckets, err := Storage()
+	client, buckets, err := Client()
 	if err != nil {
 		return err
 	}
@@ -223,7 +209,7 @@ func PutCaseObject(
 DeleteCaseObject removes an object from the cases bucket, best effort.
 */
 func DeleteCaseObject(ctx context.Context, key string) error {
-	client, buckets, err := Storage()
+	client, buckets, err := Client()
 	if err != nil {
 		return err
 	}
@@ -245,7 +231,7 @@ attachments).
 func PutFileObject(
 	ctx context.Context, key string, body io.Reader, size int64, contentType string,
 ) error {
-	client, buckets, err := Storage()
+	client, buckets, err := Client()
 	if err != nil {
 		return err
 	}
@@ -271,7 +257,7 @@ func PutFileObject(
 DeleteFileObject removes an object from the files bucket, best effort.
 */
 func DeleteFileObject(ctx context.Context, key string) error {
-	client, buckets, err := Storage()
+	client, buckets, err := Client()
 	if err != nil {
 		return err
 	}
@@ -306,7 +292,7 @@ metadata. It is used to snapshot an object before an in-place replacement and to
 restore it if the surrounding transaction does not commit.
 */
 func copyObject(ctx context.Context, bucket, srcKey, dstKey string) error {
-	client, _, err := Storage()
+	client, _, err := Client()
 	if err != nil {
 		return err
 	}
@@ -326,7 +312,7 @@ func copyObject(ctx context.Context, bucket, srcKey, dstKey string) error {
 CopyCaseObject copies an object within the cases bucket.
 */
 func CopyCaseObject(ctx context.Context, srcKey, dstKey string) error {
-	_, buckets, err := Storage()
+	_, buckets, err := Client()
 	if err != nil {
 		return err
 	}
@@ -338,7 +324,7 @@ func CopyCaseObject(ctx context.Context, srcKey, dstKey string) error {
 CopyFileObject copies an object within the files bucket.
 */
 func CopyFileObject(ctx context.Context, srcKey, dstKey string) error {
-	_, buckets, err := Storage()
+	_, buckets, err := Client()
 	if err != nil {
 		return err
 	}
@@ -352,7 +338,7 @@ not an error; any other failure is returned so callers never mistake a transient
 fault for an absent object and overwrite content they cannot restore.
 */
 func objectExists(ctx context.Context, bucket, key string) (bool, error) {
-	client, _, err := Storage()
+	client, _, err := Client()
 	if err != nil {
 		return false, err
 	}
@@ -375,7 +361,7 @@ func objectExists(ctx context.Context, bucket, key string) (bool, error) {
 CaseObjectExists reports whether a cases-bucket object exists.
 */
 func CaseObjectExists(ctx context.Context, key string) (bool, error) {
-	_, buckets, err := Storage()
+	_, buckets, err := Client()
 	if err != nil {
 		return false, err
 	}
@@ -387,7 +373,7 @@ func CaseObjectExists(ctx context.Context, key string) (bool, error) {
 FileObjectExists reports whether a files-bucket object exists.
 */
 func FileObjectExists(ctx context.Context, key string) (bool, error) {
-	_, buckets, err := Storage()
+	_, buckets, err := Client()
 	if err != nil {
 		return false, err
 	}

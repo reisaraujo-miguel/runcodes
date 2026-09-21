@@ -6,11 +6,13 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/runcodes-icmc/runcodes/database"
+
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 )
 
-// newMockDB swaps the package-level DB for a sqlmock handle and restores the
-// previous handle when the test finishes.
+// newMockDB swaps the package-level database.DB for a sqlmock handle and
+// restores the previous handle when the test finishes.
 func newMockDB(t *testing.T) sqlmock.Sqlmock {
 	t.Helper()
 
@@ -19,10 +21,10 @@ func newMockDB(t *testing.T) sqlmock.Sqlmock {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
 
-	previous := DB
-	DB = db
+	previous := database.DB
+	database.DB = db
 	t.Cleanup(func() {
-		DB = previous
+		database.DB = previous
 		db.Close()
 	})
 

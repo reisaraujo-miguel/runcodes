@@ -8,10 +8,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"log/slog"
-	"os"
 	"strings"
 	"time"
 
+	"github.com/runcodes-icmc/runcodes/config"
+	"github.com/runcodes-icmc/runcodes/database"
 	"github.com/runcodes-icmc/runcodes/models"
 	"github.com/runcodes-icmc/runcodes/validation"
 
@@ -24,8 +25,7 @@ import (
 const (
 	// legacyPasswordPrefix marks password hashes carried over from the old
 	// system by the database migration: 'legacy-sha1$' + hex(SHA-1(salt + plaintext)).
-	legacyPasswordPrefix  = "legacy-sha1$"
-	legacyPasswordSaltEnv = "RUNCODES_LEGACY_PASSWORD_SALT"
+	legacyPasswordPrefix = "legacy-sha1$"
 )
 
 /*
@@ -43,7 +43,7 @@ func SignUp(ctx context.Context, req *models.SignUpRequest) error {
 	}
 
 	var tx *sql.Tx
-	if tx, err = DB.BeginTx(ctx, nil); err != nil {
+	if tx, err = database.DB.BeginTx(ctx, nil); err != nil {
 		slog.ErrorContext(ctx,
 			"error initializing database transaction",
 			slog.String("error", err.Error()),
@@ -85,7 +85,7 @@ func LogIn(ctx context.Context, req *models.LogInRequest) (map[string]any, error
 	var name string
 	var passwordHash string
 	var role string
-	if err := DB.QueryRowContext(ctx,
+	if err := database.DB.QueryRowContext(ctx,
 		"SELECT id, name, password_hash, role FROM users WHERE email = $1",
 		req.Email).Scan(&id, &name, &passwordHash, &role); err != nil {
 		if err == sql.ErrNoRows {
@@ -157,7 +157,7 @@ GetUserByID fetches a user by id.
 */
 func GetUserByID(ctx context.Context, id int) (*models.User, error) {
 	var user models.User
-	err := DB.QueryRowContext(ctx,
+	err := database.DB.QueryRowContext(ctx,
 		"SELECT id, name, email, role FROM users WHERE id = $1",
 		id,
 	).Scan(&user.ID, &user.Name, &user.Email, &user.Role)
@@ -181,7 +181,7 @@ CheckEmailExistence checks if the given email is already in use
 */
 func CheckEmailExistence(ctx context.Context, email string) error {
 	var id int
-	err := DB.QueryRowContext(ctx,
+	err := database.DB.QueryRowContext(ctx,
 		`SELECT id FROM users WHERE email = $1`,
 		email,
 	).Scan(&id)
@@ -208,11 +208,10 @@ disappears after the first login.
 func verifyAndUpgradeLegacyPassword(
 	ctx context.Context, userID int, password, stored string,
 ) error {
-	salt := os.Getenv(legacyPasswordSaltEnv)
+	salt := config.Get().LegacyPasswordSalt
 	if salt == "" {
 		slog.ErrorContext(ctx,
-			"legacy password hash found but the salt environment variable is not set",
-			slog.String("env_var", legacyPasswordSaltEnv),
+			"legacy password hash found but RUNCODES_LEGACY_PASSWORD_SALT is not set",
 			slog.Int("user_id", userID),
 		)
 		return ErrServer
@@ -237,7 +236,7 @@ func verifyAndUpgradeLegacyPassword(
 		return ErrServer
 	}
 
-	if _, err := DB.ExecContext(ctx,
+	if _, err := database.DB.ExecContext(ctx,
 		"UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2",
 		upgraded, userID,
 	); err != nil {

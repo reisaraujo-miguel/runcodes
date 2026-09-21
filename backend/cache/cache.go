@@ -1,25 +1,26 @@
-package services
+/*
+Package cache is a best-effort JSON cache in Redis.
+
+Every operation degrades to a no-op when Redis is unavailable: a cache failure
+must never fail a request.
+*/
+package cache
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"os"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/runcodes-icmc/runcodes/config"
 
 	"github.com/redis/go-redis/v9"
 )
 
 const (
-	redisAddrEnv     = "RUNCODES_REDIS_ADDR"
-	redisPasswordEnv = "RUNCODES_REDIS_PASSWORD"
-	redisDBEnv       = "RUNCODES_REDIS_DB"
-
-	defaultRedisAddr = "redis:6379"
-
 	// cacheTimeout bounds a single Redis round trip so an unresponsive cache
 	// can never meaningfully delay an API request.
 	cacheTimeout = 500 * time.Millisecond
@@ -28,53 +29,37 @@ const (
 	// failure, so a down cache does not add a timeout to every request.
 	cacheCooldown = 30 * time.Second
 
-	// CacheOfferingTTL is how long an offering is cached.
-	CacheOfferingTTL = 30 * time.Second
-	// CacheExercisesTTL is how long an offering's exercise list is cached.
-	CacheExercisesTTL = 30 * time.Second
-	// CacheAllowedFileTypesTTL is how long the allowed file type catalog is cached.
-	CacheAllowedFileTypesTTL = 5 * time.Minute
+	// OfferingTTL is how long an offering is cached.
+	OfferingTTL = 30 * time.Second
+	// ExercisesTTL is how long an offering's exercise list is cached.
+	ExercisesTTL = 30 * time.Second
+	// AllowedFileTypesTTL is how long the allowed file type catalog is cached.
+	AllowedFileTypesTTL = 5 * time.Minute
 )
 
 /*
-cacheStore wraps the lazily-initialised Redis client. Every operation degrades
-to a no-op when Redis is unavailable: a cache failure must never fail a request.
+store wraps the lazily-initialised Redis client.
 */
-type cacheStore struct {
+type store struct {
 	mu            sync.Mutex
 	client        *redis.Client
 	disabledUntil time.Time
 	warnOnce      sync.Once
 }
 
-var cache = &cacheStore{}
+var cache = &store{}
 
 /*
-newRedisClient builds a Redis client from the RUNCODES_REDIS_* environment
-variables. It never dials, so it cannot fail here.
+newRedisClient builds a Redis client from the configured address. It never
+dials, so it cannot fail here.
 */
 func newRedisClient() *redis.Client {
-	addr := os.Getenv(redisAddrEnv)
-	if addr == "" {
-		addr = defaultRedisAddr
-	}
-
-	db := 0
-	if raw := os.Getenv(redisDBEnv); raw != "" {
-		if parsed, err := strconv.Atoi(raw); err == nil {
-			db = parsed
-		} else {
-			slog.Warn("invalid redis db, using default",
-				slog.String("value", raw),
-				slog.String("error", err.Error()),
-			)
-		}
-	}
+	cfg := config.Get().Redis
 
 	return redis.NewClient(&redis.Options{
-		Addr:         addr,
-		Password:     os.Getenv(redisPasswordEnv),
-		DB:           db,
+		Addr:         cfg.Addr,
+		Password:     cfg.Password,
+		DB:           cfg.DB,
 		DialTimeout:  cacheTimeout,
 		ReadTimeout:  cacheTimeout,
 		WriteTimeout: cacheTimeout,
@@ -82,10 +67,10 @@ func newRedisClient() *redis.Client {
 }
 
 /*
-client returns the Redis client, or nil when the cache is disabled or in its
+current returns the Redis client, or nil when the cache is disabled or in its
 failure cooldown. It is safe for concurrent use.
 */
-func (c *cacheStore) current() *redis.Client {
+func (c *store) current() *redis.Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -103,7 +88,7 @@ func (c *cacheStore) current() *redis.Client {
 markFailure records that Redis is unreachable. The warning is logged once; the
 layer then goes silent for the cooldown so it cannot slow requests down.
 */
-func (c *cacheStore) markFailure(err error) {
+func (c *store) markFailure(err error) {
 	c.warnOnce.Do(func() {
 		slog.Warn("redis cache unavailable, degrading to no-op",
 			slog.String("error", err.Error()),
@@ -116,10 +101,10 @@ func (c *cacheStore) markFailure(err error) {
 }
 
 /*
-PingCache dials Redis once at startup so configuration problems surface in the
-logs. A failure is not fatal: the cache simply degrades to a no-op.
+Ping dials Redis once at startup so configuration problems surface in the logs.
+A failure is not fatal: the cache simply degrades to a no-op.
 */
-func PingCache(ctx context.Context) error {
+func Ping(ctx context.Context) error {
 	client := cache.current()
 	if client == nil {
 		return errors.New("redis cache is disabled")
@@ -137,11 +122,11 @@ func PingCache(ctx context.Context) error {
 }
 
 /*
-CacheGetJSON unmarshals the value stored at key into dst. It reports whether a
+GetJSON unmarshals the value stored at key into dst. It reports whether a
 usable value was found. Any error (miss, unreachable Redis, bad payload) is a
 plain false.
 */
-func CacheGetJSON(ctx context.Context, key string, dst any) bool {
+func GetJSON(ctx context.Context, key string, dst any) bool {
 	client := cache.current()
 	if client == nil {
 		return false
@@ -170,9 +155,9 @@ func CacheGetJSON(ctx context.Context, key string, dst any) bool {
 }
 
 /*
-CacheSetJSON stores v at key as JSON for the given ttl. Failures are swallowed.
+SetJSON stores v at key as JSON for the given ttl. Failures are swallowed.
 */
-func CacheSetJSON(ctx context.Context, key string, v any, ttl time.Duration) {
+func SetJSON(ctx context.Context, key string, v any, ttl time.Duration) {
 	client := cache.current()
 	if client == nil {
 		return
@@ -196,9 +181,9 @@ func CacheSetJSON(ctx context.Context, key string, v any, ttl time.Duration) {
 }
 
 /*
-CacheDelete removes the given keys. Failures are swallowed.
+Delete removes the given keys. Failures are swallowed.
 */
-func CacheDelete(ctx context.Context, keys ...string) {
+func Delete(ctx context.Context, keys ...string) {
 	if len(keys) == 0 {
 		return
 	}
@@ -216,18 +201,19 @@ func CacheDelete(ctx context.Context, keys ...string) {
 	}
 }
 
-// Cache keys. Kept here so producers and invalidators cannot drift apart.
-const (
-	cacheKeyAllowedFileTypes = "allowed_file_types"
+/*
+Keys. Kept here so producers and invalidators cannot drift apart.
+*/
 
-	cacheKeyOfferingPrefix  = "offering:"
-	cacheKeyExercisesPrefix = "offering_exercises:"
-)
+// KeyAllowedFileTypes caches the catalog of allowed file types.
+const KeyAllowedFileTypes = "allowed_file_types"
 
-func cacheKeyOffering(id int64) string {
-	return cacheKeyOfferingPrefix + strconv.FormatInt(id, 10)
+// OfferingKey caches a single offering.
+func OfferingKey(id int64) string {
+	return "offering:" + strconv.FormatInt(id, 10)
 }
 
-func cacheKeyOfferingExercises(id int64) string {
-	return cacheKeyExercisesPrefix + strconv.FormatInt(id, 10)
+// OfferingExercisesKey caches an offering's exercise list.
+func OfferingExercisesKey(id int64) string {
+	return "offering_exercises:" + strconv.FormatInt(id, 10)
 }

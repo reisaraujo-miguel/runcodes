@@ -26,7 +26,10 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/runcodes-icmc/runcodes/services"
+	"github.com/runcodes-icmc/runcodes/cache"
+	"github.com/runcodes-icmc/runcodes/config"
+	"github.com/runcodes-icmc/runcodes/database"
+	"github.com/runcodes-icmc/runcodes/judge"
 	"github.com/runcodes-icmc/runcodes/validation"
 
 	"github.com/go-chi/chi/v5"
@@ -34,16 +37,10 @@ import (
 	_ "github.com/lib/pq"
 )
 
-const debugModeEnv string = "DEBUG_MODE"
-
 func main() {
 	// check if debug mode is enabled via command line flag
-	debugMode := flag.Bool("debug", false, "Sets the server to development mode")
+	debugFlag := flag.Bool("debug", false, "Sets the server to development mode")
 	flag.Parse()
-
-	if *debugMode {
-		os.Setenv(debugModeEnv, "true")
-	}
 
 	// load environment variables from .env file if it exists, otherwise use system environment variables
 	if err := godotenv.Load(); err != nil {
@@ -53,47 +50,53 @@ func main() {
 		)
 	}
 
-	// duh
-	SetupLogger()
-
-	var apiPort string
-	if apiPort = os.Getenv("RUNCODES_API_PORT"); apiPort == "" {
-		slog.Error("RUNCODES_API_PORT environment variable is not set")
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("Invalid configuration", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 
-	if err := services.InitDB(); err != nil {
+	// The flag is the local-development switch; DEBUG_MODE does the same for an
+	// environment that cannot pass arguments to the binary. This is the only
+	// change main makes to the configuration Load published.
+	if *debugFlag {
+		cfg.Debug = true
+	}
+
+	SetupLogger(cfg.Debug)
+
+	if err := database.InitDB(); err != nil {
 		slog.Error("Failed to initialize database")
 		os.Exit(1)
 	}
-	defer services.DB.Close()
+	defer database.DB.Close()
 
 	if err := validation.SetupJWT(); err != nil {
 		slog.Error("Failed to setup JWT", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 
-	if err := services.PingCache(context.Background()); err != nil {
+	if err := cache.Ping(context.Background()); err != nil {
 		slog.Warn("Redis cache unavailable, continuing without it",
 			slog.String("error", err.Error()),
 		)
 	}
 
 	// start the judge reconciliation service in a separate goroutine
-	go services.StartReconciliation(context.Background())
+	go judge.StartReconciliation(context.Background())
 
 	r := chi.NewRouter()
-	configureMiddleware(r)
+	configureMiddleware(r, cfg)
 	createRoutes(r)
 
-	if os.Getenv(debugModeEnv) == "true" {
-		slog.Info("Server is running in debug mode", slog.String("port", apiPort))
+	if cfg.Debug {
+		slog.Info("Server is running in debug mode", slog.String("port", cfg.Addr))
 	} else {
-		slog.Info("Server is running", slog.String("port", apiPort))
+		slog.Info("Server is running", slog.String("port", cfg.Addr))
 	}
 
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%s", apiPort),
+		Addr:    fmt.Sprintf(":%s", cfg.Addr),
 		Handler: r,
 	}
 

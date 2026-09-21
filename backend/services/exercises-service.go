@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/runcodes-icmc/runcodes/cache"
+	"github.com/runcodes-icmc/runcodes/database"
 	"github.com/runcodes-icmc/runcodes/models"
 	"github.com/runcodes-icmc/runcodes/validation"
 
@@ -47,11 +49,11 @@ catalog. The catalog is global and rarely changes, so it is cached.
 */
 func ListAllowedFileTypes(ctx context.Context) ([]models.AllowedFileType, error) {
 	var types []models.AllowedFileType
-	if CacheGetJSON(ctx, cacheKeyAllowedFileTypes, &types) {
+	if cache.GetJSON(ctx, cache.KeyAllowedFileTypes, &types) {
 		return types, nil
 	}
 
-	rows, err := DB.QueryContext(ctx, `
+	rows, err := database.DB.QueryContext(ctx, `
 		SELECT id, name, extension, is_compilable, is_available
 		FROM allowed_file_types
 		WHERE is_available
@@ -84,7 +86,7 @@ func ListAllowedFileTypes(ctx context.Context) ([]models.AllowedFileType, error)
 		return nil, ErrServer
 	}
 
-	CacheSetJSON(ctx, cacheKeyAllowedFileTypes, types, CacheAllowedFileTypesTTL)
+	cache.SetJSON(ctx, cache.KeyAllowedFileTypes, types, cache.AllowedFileTypesTTL)
 	return types, nil
 }
 
@@ -100,7 +102,7 @@ func offeringAccess(
 		isEnrolled bool
 	)
 
-	err = DB.QueryRowContext(ctx, `
+	err = database.DB.QueryRowContext(ctx, `
 		SELECT o.owner_id,
 		       EXISTS (
 		           SELECT 1 FROM enrollments en
@@ -164,7 +166,7 @@ func loadExerciseAccess(
 		enrolled bool
 	)
 
-	err := DB.QueryRowContext(ctx, `
+	err := database.DB.QueryRowContext(ctx, `
 		SELECT e.id, e.offering_id, e.title, e.description, e.deadline,
 		       e.open_date, e.show_before_open_date, e.removed,
 		       e.created_at, e.updated_at, e.ghost, e.real_id, o.owner_id,
@@ -237,7 +239,7 @@ loadAllowedFileTypeIDs returns the allowed file type ids configured for an
 exercise (empty when none).
 */
 func loadAllowedFileTypeIDs(ctx context.Context, exerciseID int64) ([]int64, error) {
-	rows, err := DB.QueryContext(ctx, `
+	rows, err := database.DB.QueryContext(ctx, `
 		SELECT allowed_file_type_id
 		FROM exercises_allowed_file_types
 		WHERE exercise_id = $1
@@ -287,7 +289,7 @@ func validateAllowedFileTypeIDs(ctx context.Context, ids []int64) error {
 	}
 
 	var count int
-	err := DB.QueryRowContext(ctx, `
+	err := database.DB.QueryRowContext(ctx, `
 		SELECT count(*) FROM allowed_file_types
 		WHERE id = ANY($1) AND is_available`, pq.Array(unique),
 	).Scan(&count)
@@ -343,7 +345,7 @@ func CreateExercise(
 		showBefore = *req.ShowBeforeOpenDate
 	}
 
-	tx, err := DB.BeginTx(ctx, nil)
+	tx, err := database.DB.BeginTx(ctx, nil)
 	if err != nil {
 		slog.ErrorContext(ctx, "error initializing exercise transaction",
 			slog.String("error", err.Error()),
@@ -395,7 +397,7 @@ func CreateExercise(
 	if exs := []models.Exercise{exercise}; attachAllowedFileTypes(ctx, exs) == nil {
 		exercise = exs[0]
 	}
-	CacheDelete(ctx, cacheKeyOfferingExercises(offeringID))
+	cache.Delete(ctx, cache.OfferingExercisesKey(offeringID))
 
 	slog.InfoContext(ctx, "exercise created",
 		slog.Int64("exercise_id", exercise.ID),
@@ -484,17 +486,17 @@ owner view, removed exercises included). Role-specific filtering is applied by
 callers on top of it, so the cache key stays user-independent.
 */
 func loadOfferingExercises(ctx context.Context, offeringID int64) ([]models.Exercise, error) {
-	key := cacheKeyOfferingExercises(offeringID)
+	key := cache.OfferingExercisesKey(offeringID)
 
 	var list []models.Exercise
-	if CacheGetJSON(ctx, key, &list) {
+	if cache.GetJSON(ctx, key, &list) {
 		if list == nil {
 			list = []models.Exercise{}
 		}
 		return list, nil
 	}
 
-	rows, err := DB.QueryContext(ctx, `
+	rows, err := database.DB.QueryContext(ctx, `
 		SELECT id, offering_id, title, description, deadline, open_date,
 		       show_before_open_date, removed, created_at, updated_at
 		FROM exercises
@@ -533,7 +535,7 @@ func loadOfferingExercises(ctx context.Context, offeringID int64) ([]models.Exer
 		return nil, err
 	}
 
-	CacheSetJSON(ctx, key, list, CacheExercisesTTL)
+	cache.SetJSON(ctx, key, list, cache.ExercisesTTL)
 	return list, nil
 }
 
@@ -555,7 +557,7 @@ func attachAllowedFileTypes(ctx context.Context, exercises []models.Exercise) er
 		exercises[i].AllowedFileTypes = []models.AllowedFileType{}
 	}
 
-	rows, err := DB.QueryContext(ctx, `
+	rows, err := database.DB.QueryContext(ctx, `
 		SELECT eaft.exercise_id, aft.id, aft.name, aft.extension,
 		       aft.is_compilable, aft.is_available
 		FROM exercises_allowed_file_types eaft
@@ -669,7 +671,7 @@ func UpdateExercise(
 		}
 	}
 
-	tx, err := DB.BeginTx(ctx, nil)
+	tx, err := database.DB.BeginTx(ctx, nil)
 	if err != nil {
 		slog.ErrorContext(ctx, "error initializing exercise update transaction",
 			slog.String("error", err.Error()),
@@ -723,7 +725,7 @@ func UpdateExercise(
 		return nil, ErrServer
 	}
 
-	CacheDelete(ctx, cacheKeyOfferingExercises(ex.OfferingID))
+	cache.Delete(ctx, cache.OfferingExercisesKey(ex.OfferingID))
 
 	if exs := []models.Exercise{ex}; attachAllowedFileTypes(ctx, exs) == nil {
 		ex = exs[0]
@@ -743,7 +745,7 @@ func DeleteExercise(
 		return err
 	}
 
-	if _, err := DB.ExecContext(ctx, `
+	if _, err := database.DB.ExecContext(ctx, `
 		UPDATE exercises
 		SET removed = TRUE, updated_at = now()
 		WHERE id = $1`, exerciseID,
@@ -755,7 +757,7 @@ func DeleteExercise(
 		return ErrServer
 	}
 
-	CacheDelete(ctx, cacheKeyOfferingExercises(acc.exercise.OfferingID))
+	cache.Delete(ctx, cache.OfferingExercisesKey(acc.exercise.OfferingID))
 	return nil
 }
 

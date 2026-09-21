@@ -1,4 +1,4 @@
-package services
+package storage
 
 import (
 	"bytes"
@@ -11,10 +11,12 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/runcodes-icmc/runcodes/config"
 )
 
 // fakeS3Server is a minimal path-style S3 endpoint used by the storage tests. It
-// implements just the operations storage-service.go performs: CreateBucket,
+// implements just the operations storage.go performs: CreateBucket,
 // PutObject, GetObject, HeadObject, DeleteObject and CopyObject.
 type fakeS3Server struct {
 	mu      sync.Mutex
@@ -117,11 +119,15 @@ func withFakeS3(t *testing.T) *fakeS3Server {
 	server := httptest.NewServer(fake)
 	t.Cleanup(server.Close)
 
-	t.Setenv(s3EndpointEnv, server.URL)
-	t.Setenv(s3RegionEnv, "us-east-1")
-	t.Setenv(s3KeyEnv, "test")
-	t.Setenv(s3SecretEnv, "test")
-	t.Setenv(s3BucketPrefixEnv, "test")
+	previous := config.C
+	config.C = &config.Config{S3: config.S3Config{
+		Endpoint:     server.URL,
+		Region:       "us-east-1",
+		AccessKey:    "test",
+		SecretKey:    "test",
+		BucketPrefix: "test",
+	}}
+	t.Cleanup(func() { config.C = previous })
 
 	resetStorageForTest()
 	t.Cleanup(resetStorageForTest)
@@ -142,9 +148,9 @@ func TestCaseObjectStorageRoundTrip(t *testing.T) {
 	fake := withFakeS3(t)
 	ctx := context.Background()
 
-	_, buckets, err := Storage()
+	_, buckets, err := Client()
 	if err != nil {
-		t.Fatalf("Storage: %v", err)
+		t.Fatalf("Client: %v", err)
 	}
 
 	if err := PutCaseObject(ctx, "1/in", bytes.NewReader([]byte("hello")), 5, "text/plain"); err != nil {
@@ -185,9 +191,9 @@ func TestFileObjectStorageRoundTrip(t *testing.T) {
 	fake := withFakeS3(t)
 	ctx := context.Background()
 
-	_, buckets, err := Storage()
+	_, buckets, err := Client()
 	if err != nil {
-		t.Fatalf("Storage: %v", err)
+		t.Fatalf("Client: %v", err)
 	}
 
 	if err := PutFileObject(

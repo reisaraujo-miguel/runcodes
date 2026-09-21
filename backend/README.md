@@ -19,6 +19,27 @@ curl -d '{"email": "admin@admin", "password": "[password]"}'\
 	   -v http://localhost:8443/api/v1/user/login
 ```
 
+## Configuration
+
+Every setting is read once, at startup, by `config.Load()`
+(`config/config.go`), which applies the defaults, validates the result and
+publishes it as `config.C`; the rest of the code reads the values from there.
+`.env.example` lists the variables a deployment normally sets.
+
+A required variable that is missing, or a value that cannot be parsed (an
+invalid port, a malformed duration, a judge URL without a scheme), aborts
+startup with a message naming the variable. A typo therefore fails the deploy
+instead of silently falling back to a default.
+
+`DEBUG_MODE=true` — or the `-debug` flag, which wins over the variable —
+switches logging to the human-readable development handler and drops the
+`Secure` flag from the session cookie so it also works over plain HTTP on
+localhost. Request and response bodies are only logged in that mode, and only
+for requests that ask for them with the `Debug: reveal-body-logs` header.
+
+`RUNCODES_DB_SSLMODE` (default `disable`) exists for a database that requires
+TLS; the Compose setup reaches PostgreSQL over the internal network.
+
 ## Submissions & live judging
 
 Submit source code (multipart form with `exercise_id` and `file`, max 10 MiB):

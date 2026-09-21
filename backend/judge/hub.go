@@ -1,4 +1,4 @@
-package services
+package judge
 
 import (
 	"context"
@@ -63,10 +63,19 @@ type Subscription struct {
 }
 
 /*
-SubscribeCommit registers a subscriber for a commit, starting the upstream
-judge stream if this is the first one.
+Consume starts (or joins) the background consumption of a commit's judge event
+stream, so events are persisted even while nobody is watching. It returns
+immediately; the stream is torn down when the commit reaches a terminal status.
 */
-func SubscribeCommit(commitID int64) (*Subscription, error) {
+func Consume(commitID int64) {
+	getOrCreateHub(commitID)
+}
+
+/*
+Subscribe registers a subscriber for a commit, starting the upstream judge
+stream if this is the first one.
+*/
+func Subscribe(commitID int64) (*Subscription, error) {
 	hub := getOrCreateHub(commitID)
 
 	ch := make(chan []byte, subscriberBuffer)
@@ -163,7 +172,7 @@ func (h *Hub) run(ctx context.Context) {
 stream reads one upstream connection until it ends or the commit finishes.
 */
 func (h *Hub) stream(ctx context.Context) error {
-	resp, err := openJudgeEvents(ctx, h.commitID, h.lastSeq)
+	resp, err := openEvents(ctx, h.commitID, h.lastSeq)
 	if err != nil {
 		return err
 	}
@@ -174,7 +183,7 @@ func (h *Hub) stream(ctx context.Context) error {
 			return nil
 		}
 
-		var ev JudgeEvent
+		var ev Event
 		if err := json.Unmarshal(frame.Data, &ev); err != nil {
 			slog.ErrorContext(ctx, "malformed judge event",
 				slog.Int64("commit_id", h.commitID),
@@ -212,7 +221,7 @@ caller reconnects from the last persisted sequence and the judge replays the
 event; the writes are idempotent upserts, so a replayed event is safe. Terminal
 events are retried in-line before the failure is returned.
 */
-func (h *Hub) handleEvent(ctx context.Context, ev *JudgeEvent, raw []byte) error {
+func (h *Hub) handleEvent(ctx context.Context, ev *Event, raw []byte) error {
 	if ev.Type != "finished" && ev.Type != "error" {
 		// A non-terminal event (status, compilation, case_result) is now also
 		// persisted before broadcast and must not be lost: return the failure
@@ -243,7 +252,7 @@ persistTerminalEvent persists a terminal judge event, retrying a few times so a
 short database blip does not drop the authoritative result. When it ultimately
 fails, the caller leaves the hub open so the event is replayed on reconnect.
 */
-func persistTerminalEvent(ctx context.Context, ev *JudgeEvent) error {
+func persistTerminalEvent(ctx context.Context, ev *Event) error {
 	var err error
 	for attempt := 1; attempt <= terminalPersistAttempts; attempt++ {
 		if err = PersistEvent(ctx, ev); err == nil {

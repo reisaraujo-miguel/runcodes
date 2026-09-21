@@ -1,4 +1,4 @@
-package services
+package cache
 
 import (
 	"context"
@@ -11,13 +11,25 @@ import (
 
 // useCache points the package cache at the given client for the duration of a
 // test, restoring the previous store afterwards.
-func useCache(t *testing.T, client *redis.Client) *cacheStore {
+func useCache(t *testing.T, client *redis.Client) *store {
 	t.Helper()
 	previous := cache
-	store := &cacheStore{client: client}
-	cache = store
+	s := &store{client: client}
+	cache = s
 	t.Cleanup(func() { cache = previous })
-	return store
+	return s
+}
+
+func TestKeyHelpers(t *testing.T) {
+	if got := OfferingKey(12); got != "offering:12" {
+		t.Errorf("OfferingKey = %q", got)
+	}
+	if got := OfferingExercisesKey(12); got != "offering_exercises:12" {
+		t.Errorf("OfferingExercisesKey = %q", got)
+	}
+	if KeyAllowedFileTypes != "allowed_file_types" {
+		t.Errorf("KeyAllowedFileTypes = %q", KeyAllowedFileTypes)
+	}
 }
 
 func TestCacheRoundTrip(t *testing.T) {
@@ -36,10 +48,10 @@ func TestCacheRoundTrip(t *testing.T) {
 	}
 	want := payload{A: 7, B: "x"}
 
-	CacheSetJSON(ctx, "key", want, 5*time.Minute)
+	SetJSON(ctx, "key", want, 5*time.Minute)
 
 	var got payload
-	if !CacheGetJSON(ctx, "key", &got) {
+	if !GetJSON(ctx, "key", &got) {
 		t.Fatal("expected a cache hit")
 	}
 	if got != want {
@@ -61,7 +73,7 @@ func TestCacheMiss(t *testing.T) {
 	useCache(t, redis.NewClient(&redis.Options{Addr: mr.Addr()}))
 
 	var got map[string]any
-	if CacheGetJSON(context.Background(), "absent", &got) {
+	if GetJSON(context.Background(), "absent", &got) {
 		t.Fatal("expected a cache miss")
 	}
 }
@@ -80,7 +92,7 @@ func TestCacheDiscardsMalformedEntry(t *testing.T) {
 	}
 
 	var got map[string]any
-	if CacheGetJSON(context.Background(), "bad", &got) {
+	if GetJSON(context.Background(), "bad", &got) {
 		t.Fatal("expected a malformed entry to be treated as a miss")
 	}
 }
@@ -95,15 +107,15 @@ func TestCacheDelete(t *testing.T) {
 	useCache(t, redis.NewClient(&redis.Options{Addr: mr.Addr()}))
 	ctx := context.Background()
 
-	CacheSetJSON(ctx, "a", 1, time.Minute)
-	CacheSetJSON(ctx, "b", 2, time.Minute)
-	CacheDelete(ctx, "a", "b")
+	SetJSON(ctx, "a", 1, time.Minute)
+	SetJSON(ctx, "b", 2, time.Minute)
+	Delete(ctx, "a", "b")
 
 	var got int
-	if CacheGetJSON(ctx, "a", &got) {
+	if GetJSON(ctx, "a", &got) {
 		t.Fatal("expected key a to be deleted")
 	}
-	if CacheGetJSON(ctx, "b", &got) {
+	if GetJSON(ctx, "b", &got) {
 		t.Fatal("expected key b to be deleted")
 	}
 }
@@ -115,30 +127,30 @@ func TestCacheDegradesWhenUnreachable(t *testing.T) {
 		ReadTimeout:  20 * time.Millisecond,
 		WriteTimeout: 20 * time.Millisecond,
 	})
-	store := useCache(t, client)
+	s := useCache(t, client)
 	defer client.Close()
 
 	ctx := context.Background()
 
 	var got map[string]any
-	if CacheGetJSON(ctx, "key", &got) {
+	if GetJSON(ctx, "key", &got) {
 		t.Fatal("expected a miss when redis is unreachable")
 	}
 
 	// These must not panic nor block.
-	CacheSetJSON(ctx, "key", got, time.Minute)
-	CacheDelete(ctx, "key")
+	SetJSON(ctx, "key", got, time.Minute)
+	Delete(ctx, "key")
 
-	if store.disabledUntil.IsZero() {
+	if s.disabledUntil.IsZero() {
 		t.Fatal("expected the cache to enter its failure cooldown")
 	}
 
-	if err := PingCache(ctx); err == nil {
-		t.Fatal("expected PingCache to report an error")
+	if err := Ping(ctx); err == nil {
+		t.Fatal("expected Ping to report an error")
 	}
 }
 
-func TestPingCacheSuccess(t *testing.T) {
+func TestPingSuccess(t *testing.T) {
 	mr, err := miniredis.Run()
 	if err != nil {
 		t.Fatalf("miniredis: %v", err)
@@ -146,7 +158,7 @@ func TestPingCacheSuccess(t *testing.T) {
 	defer mr.Close()
 
 	useCache(t, redis.NewClient(&redis.Options{Addr: mr.Addr()}))
-	if err := PingCache(context.Background()); err != nil {
-		t.Fatalf("PingCache returned error: %v", err)
+	if err := Ping(context.Background()); err != nil {
+		t.Fatalf("Ping returned error: %v", err)
 	}
 }

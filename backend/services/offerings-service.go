@@ -7,6 +7,8 @@ import (
 	"errors"
 	"log/slog"
 
+	"github.com/runcodes-icmc/runcodes/cache"
+	"github.com/runcodes-icmc/runcodes/database"
 	"github.com/runcodes-icmc/runcodes/models"
 )
 
@@ -32,7 +34,7 @@ func CreateOffering(
 
 	var tx *sql.Tx
 	var err error
-	if tx, err = DB.BeginTx(ctx, nil); err != nil {
+	if tx, err = database.DB.BeginTx(ctx, nil); err != nil {
 		slog.ErrorContext(ctx,
 			"error initializing database transaction",
 			slog.String("error", err.Error()),
@@ -84,7 +86,7 @@ func CreateOffering(
 		return nil, ErrServer
 	}
 
-	CacheDelete(ctx, cacheKeyOffering(id))
+	cache.Delete(ctx, cache.OfferingKey(id))
 
 	return &models.Offering{
 		ID:             id,
@@ -125,9 +127,9 @@ func GetOffering(
 	}
 	ownerID := int64(ownerIDFloat)
 
-	key := cacheKeyOffering(offeringID)
+	key := cache.OfferingKey(offeringID)
 	var cached cachedOffering
-	if CacheGetJSON(ctx, key, &cached) {
+	if cache.GetJSON(ctx, key, &cached) {
 		if cached.OwnerID == ownerID {
 			return &cached.Offering, nil
 		}
@@ -135,7 +137,7 @@ func GetOffering(
 	}
 
 	var offering models.Offering
-	err := DB.QueryRowContext(ctx,
+	err := database.DB.QueryRowContext(ctx,
 		`
 		SELECT id, name, end_date, description, enrollment_code, owner_id
 		FROM offerings
@@ -162,7 +164,7 @@ func GetOffering(
 		return nil, ErrServer
 	}
 
-	CacheSetJSON(ctx, key, cachedOffering{Offering: offering, OwnerID: ownerID}, CacheOfferingTTL)
+	cache.SetJSON(ctx, key, cachedOffering{Offering: offering, OwnerID: ownerID}, cache.OfferingTTL)
 
 	return &offering, nil
 }

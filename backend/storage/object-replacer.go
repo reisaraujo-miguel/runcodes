@@ -1,4 +1,4 @@
-package services
+package storage
 
 import (
 	"bytes"
@@ -28,13 +28,15 @@ type objectOps struct {
 }
 
 var (
-	caseObjectOps = objectOps{
+	// CaseOps operates on test-case objects in the cases bucket.
+	CaseOps = objectOps{
 		exists: CaseObjectExists,
 		copy:   CopyCaseObject,
 		put:    PutCaseObject,
 		remove: DeleteCaseObject,
 	}
-	fileObjectOps = objectOps{
+	// FileOps operates on compilation files and attachments in the files bucket.
+	FileOps = objectOps{
 		exists: FileObjectExists,
 		copy:   CopyFileObject,
 		put:    PutFileObject,
@@ -43,27 +45,28 @@ var (
 )
 
 /*
-objectReplacer overwrites objects in place, backing up their previous content so
-every write can be undone (restore) or finalized (discard) once the surrounding
+ObjectReplacer overwrites objects in place, backing up their previous content so
+every write can be undone (Restore) or finalized (Discard) once the surrounding
 database transaction has resolved. Reusing the final keys keeps the judge's
 `<case_id>/in`, `<case_id>/out` and `<case_id>/files/<name>` contract.
 */
-type objectReplacer struct {
+type ObjectReplacer struct {
 	ctx   context.Context
 	ops   objectOps
 	items []replacedObject
 }
 
-func newObjectReplacer(ctx context.Context, ops objectOps) *objectReplacer {
-	return &objectReplacer{ctx: ctx, ops: ops}
+// NewObjectReplacer returns a replacer that writes through ops.
+func NewObjectReplacer(ctx context.Context, ops objectOps) *ObjectReplacer {
+	return &ObjectReplacer{ctx: ctx, ops: ops}
 }
 
 /*
-replace writes data to key, keeping a backup of the previous object when there
+Replace writes data to key, keeping a backup of the previous object when there
 was one. If the write fails the partial backup is removed and the error returned,
 leaving the previous object untouched.
 */
-func (r *objectReplacer) replace(key string, data []byte, contentType string) error {
+func (r *ObjectReplacer) Replace(key string, data []byte, contentType string) error {
 	item := replacedObject{key: key}
 
 	exists, err := r.ops.exists(r.ctx, key)
@@ -89,10 +92,10 @@ func (r *objectReplacer) replace(key string, data []byte, contentType string) er
 }
 
 /*
-restore undoes every in-place write, putting the backed-up objects back and
-removing the ones that were newly created. It is a no-op after discard.
+Restore undoes every in-place write, putting the backed-up objects back and
+removing the ones that were newly created. It is a no-op after Discard.
 */
-func (r *objectReplacer) restore() {
+func (r *ObjectReplacer) Restore() {
 	for _, item := range r.items {
 		if item.backupKey == "" {
 			r.remove(item.key)
@@ -112,9 +115,9 @@ func (r *objectReplacer) restore() {
 }
 
 /*
-discard drops the backups once the transaction has committed.
+Discard drops the backups once the transaction has committed.
 */
-func (r *objectReplacer) discard() {
+func (r *ObjectReplacer) Discard() {
 	for _, item := range r.items {
 		r.remove(item.backupKey)
 	}
@@ -123,7 +126,7 @@ func (r *objectReplacer) discard() {
 }
 
 // remove deletes a key best-effort, ignoring an empty key.
-func (r *objectReplacer) remove(key string) {
+func (r *ObjectReplacer) remove(key string) {
 	if key == "" {
 		return
 	}

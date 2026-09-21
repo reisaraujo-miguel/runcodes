@@ -1,55 +1,45 @@
-package services
+/*
+Package judge is the backend's side of the judge integration: the HTTP client
+for the judge's API, the SSE event stream (parsing, fan-out and persistence) and
+the sweeper that settles commits the judge never finished.
+*/
+package judge
 
 import (
 	"context"
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strconv"
-	"strings"
 	"time"
-)
 
-const (
-	judgeURLEnv     = "RUNCODES_JUDGE_URL"
-	judgeTokenEnv   = "RUNCODES_JUDGE_TOKEN"
-	defaultJudgeURL = "http://judge:9000"
+	"github.com/runcodes-icmc/runcodes/config"
 )
 
 var (
-	// judgeReadyClient bounds the pre-registration readiness probe.
-	judgeReadyClient = &http.Client{Timeout: 2 * time.Second}
+	// readyClient bounds the pre-registration readiness probe.
+	readyClient = &http.Client{Timeout: 2 * time.Second}
 
-	// judgeStreamClient has no overall timeout: SSE responses are long-lived.
-	judgeStreamClient = &http.Client{}
+	// streamClient has no overall timeout: SSE responses are long-lived.
+	streamClient = &http.Client{}
 )
 
 /*
-judgeBaseURL returns the judge base URL, without a trailing slash.
+newRequest builds a request to the judge, adding the shared bearer token when
+one is configured.
 */
-func judgeBaseURL() string {
-	url := os.Getenv(judgeURLEnv)
-	if url == "" {
-		url = defaultJudgeURL
-	}
-	return strings.TrimRight(url, "/")
-}
-
-/*
-newJudgeRequest builds a request to the judge, adding the shared bearer token
-when RUNCODES_JUDGE_TOKEN is set.
-*/
-func newJudgeRequest(
+func newRequest(
 	ctx context.Context, method, path string, body io.Reader,
 ) (*http.Request, error) {
-	req, err := http.NewRequestWithContext(ctx, method, judgeBaseURL()+path, body)
+	judgeConfig := config.Get().Judge
+
+	req, err := http.NewRequestWithContext(ctx, method, judgeConfig.URL+path, body)
 	if err != nil {
 		return nil, err
 	}
 
-	if token := os.Getenv(judgeTokenEnv); token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	if judgeConfig.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+judgeConfig.Token)
 	}
 	req.Header.Set("Accept", "application/json")
 
@@ -57,16 +47,16 @@ func newJudgeRequest(
 }
 
 /*
-JudgeReady checks the judge readiness endpoint (podman + postgres reachable).
+Ready checks the judge readiness endpoint (podman + postgres reachable).
 It is used before registering a submission.
 */
-func JudgeReady(ctx context.Context) error {
-	req, err := newJudgeRequest(ctx, http.MethodGet, "/readyz", nil)
+func Ready(ctx context.Context) error {
+	req, err := newRequest(ctx, http.MethodGet, "/readyz", nil)
 	if err != nil {
 		return err
 	}
 
-	resp, err := judgeReadyClient.Do(req)
+	resp, err := readyClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("judge readiness check failed: %w", err)
 	}
@@ -81,17 +71,17 @@ func JudgeReady(ctx context.Context) error {
 }
 
 /*
-WakeJudge nudges the judge to process a commit. It is idempotent.
+Wake nudges the judge to process a commit. It is idempotent.
 */
-func WakeJudge(ctx context.Context, commitID int64) error {
-	req, err := newJudgeRequest(
+func Wake(ctx context.Context, commitID int64) error {
+	req, err := newRequest(
 		ctx, http.MethodPost, "/v1/runs/"+strconv.FormatInt(commitID, 10), nil,
 	)
 	if err != nil {
 		return err
 	}
 
-	resp, err := judgeStreamClient.Do(req)
+	resp, err := streamClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("waking judge: %w", err)
 	}
@@ -106,10 +96,10 @@ func WakeJudge(ctx context.Context, commitID int64) error {
 }
 
 /*
-openJudgeEvents opens the judge SSE stream for a commit, resuming after "from"
-when it is greater than zero.
+openEvents opens the judge SSE stream for a commit, resuming after "from" when
+it is greater than zero.
 */
-func openJudgeEvents(
+func openEvents(
 	ctx context.Context, commitID int64, from int64,
 ) (*http.Response, error) {
 	path := "/v1/runs/" + strconv.FormatInt(commitID, 10) + "/events"
@@ -117,13 +107,13 @@ func openJudgeEvents(
 		path += "?from=" + strconv.FormatInt(from, 10)
 	}
 
-	req, err := newJudgeRequest(ctx, http.MethodGet, path, nil)
+	req, err := newRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Accept", "text/event-stream")
 
-	resp, err := judgeStreamClient.Do(req)
+	resp, err := streamClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to judge events stream: %w", err)
 	}

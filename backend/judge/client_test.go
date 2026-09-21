@@ -1,4 +1,4 @@
-package services
+package judge
 
 import (
 	"context"
@@ -7,21 +7,22 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/runcodes-icmc/runcodes/config"
 )
 
-func TestJudgeBaseURL(t *testing.T) {
-	t.Setenv(judgeURLEnv, "http://example.test:9000/")
-	if got := judgeBaseURL(); got != "http://example.test:9000" {
-		t.Fatalf("judgeBaseURL() = %q", got)
-	}
+// useJudgeConfig points the client at a judge for the duration of a test.
+func useJudgeConfig(t *testing.T, baseURL, token string) {
+	t.Helper()
 
-	t.Setenv(judgeURLEnv, "")
-	if got := judgeBaseURL(); got != defaultJudgeURL {
-		t.Fatalf("judgeBaseURL() default = %q", got)
+	previous := config.C
+	config.C = &config.Config{
+		Judge: config.JudgeConfig{URL: baseURL, Token: token},
 	}
+	t.Cleanup(func() { config.C = previous })
 }
 
-func TestJudgeReady(t *testing.T) {
+func TestReady(t *testing.T) {
 	var path string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path = r.URL.Path
@@ -29,38 +30,39 @@ func TestJudgeReady(t *testing.T) {
 	}))
 	defer server.Close()
 
-	t.Setenv(judgeURLEnv, server.URL)
+	useJudgeConfig(t, server.URL, "")
 
-	if err := JudgeReady(context.Background()); err != nil {
-		t.Fatalf("JudgeReady returned error: %v", err)
+	if err := Ready(context.Background()); err != nil {
+		t.Fatalf("Ready returned error: %v", err)
 	}
 	if path != "/readyz" {
 		t.Fatalf("expected /readyz, got %q", path)
 	}
 }
 
-func TestJudgeReadyErrors(t *testing.T) {
+func TestReadyErrors(t *testing.T) {
 	t.Run("not ok status", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}))
 		defer server.Close()
-		t.Setenv(judgeURLEnv, server.URL)
+		useJudgeConfig(t, server.URL, "")
 
-		if err := JudgeReady(context.Background()); err == nil {
+		if err := Ready(context.Background()); err == nil {
 			t.Fatal("expected an error for a 503 readiness response")
 		}
 	})
 
 	t.Run("unreachable", func(t *testing.T) {
-		t.Setenv(judgeURLEnv, "http://127.0.0.1:1")
-		if err := JudgeReady(context.Background()); err == nil {
+		useJudgeConfig(t, "http://127.0.0.1:1", "")
+
+		if err := Ready(context.Background()); err == nil {
 			t.Fatal("expected an error for an unreachable judge")
 		}
 	})
 }
 
-func TestWakeJudge(t *testing.T) {
+func TestWake(t *testing.T) {
 	var (
 		method string
 		path   string
@@ -71,29 +73,29 @@ func TestWakeJudge(t *testing.T) {
 	}))
 	defer server.Close()
 
-	t.Setenv(judgeURLEnv, server.URL)
+	useJudgeConfig(t, server.URL, "")
 
-	if err := WakeJudge(context.Background(), 42); err != nil {
-		t.Fatalf("WakeJudge returned error: %v", err)
+	if err := Wake(context.Background(), 42); err != nil {
+		t.Fatalf("Wake returned error: %v", err)
 	}
 	if method != http.MethodPost || path != "/v1/runs/42" {
 		t.Fatalf("unexpected request %s %s", method, path)
 	}
 }
 
-func TestWakeJudgeErrors(t *testing.T) {
+func TestWakeErrors(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
-	t.Setenv(judgeURLEnv, server.URL)
+	useJudgeConfig(t, server.URL, "")
 
-	if err := WakeJudge(context.Background(), 1); err == nil {
+	if err := Wake(context.Background(), 1); err == nil {
 		t.Fatal("expected an error for a 500 wake response")
 	}
 }
 
-func TestJudgeRequestAddsToken(t *testing.T) {
+func TestRequestAddsToken(t *testing.T) {
 	var authorization string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authorization = r.Header.Get("Authorization")
@@ -101,18 +103,17 @@ func TestJudgeRequestAddsToken(t *testing.T) {
 	}))
 	defer server.Close()
 
-	t.Setenv(judgeURLEnv, server.URL)
-	t.Setenv(judgeTokenEnv, "s3cret")
+	useJudgeConfig(t, server.URL, "s3cret")
 
-	if err := JudgeReady(context.Background()); err != nil {
-		t.Fatalf("JudgeReady returned error: %v", err)
+	if err := Ready(context.Background()); err != nil {
+		t.Fatalf("Ready returned error: %v", err)
 	}
 	if authorization != "Bearer s3cret" {
 		t.Fatalf("expected bearer token, got %q", authorization)
 	}
 }
 
-func TestOpenJudgeEvents(t *testing.T) {
+func TestOpenEvents(t *testing.T) {
 	t.Run("streams frames", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path != "/v1/runs/7/events" {
@@ -126,11 +127,11 @@ func TestOpenJudgeEvents(t *testing.T) {
 			io.WriteString(w, "event: status\nid: 5\ndata: {\"type\":\"status\"}\n\n")
 		}))
 		defer server.Close()
-		t.Setenv(judgeURLEnv, server.URL)
+		useJudgeConfig(t, server.URL, "")
 
-		resp, err := openJudgeEvents(context.Background(), 7, 5)
+		resp, err := openEvents(context.Background(), 7, 5)
 		if err != nil {
-			t.Fatalf("openJudgeEvents returned error: %v", err)
+			t.Fatalf("openEvents returned error: %v", err)
 		}
 		defer resp.Body.Close()
 
@@ -151,24 +152,29 @@ func TestOpenJudgeEvents(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		}))
 		defer server.Close()
-		t.Setenv(judgeURLEnv, server.URL)
+		useJudgeConfig(t, server.URL, "")
 
-		if _, err := openJudgeEvents(context.Background(), 7, 0); err == nil {
+		if _, err := openEvents(context.Background(), 7, 0); err == nil {
 			t.Fatal("expected an error for a 404 stream response")
 		}
 	})
 
 	t.Run("unreachable", func(t *testing.T) {
-		t.Setenv(judgeURLEnv, "http://127.0.0.1:1")
-		if _, err := openJudgeEvents(context.Background(), 7, 0); err == nil {
+		useJudgeConfig(t, "http://127.0.0.1:1", "")
+
+		if _, err := openEvents(context.Background(), 7, 0); err == nil {
 			t.Fatal("expected an error for an unreachable judge")
 		}
 	})
 }
 
-func TestNewJudgeRequestRejectsBadURL(t *testing.T) {
-	t.Setenv(judgeURLEnv, "://not-a-url")
-	if _, err := newJudgeRequest(context.Background(), http.MethodGet, "/readyz", nil); err == nil {
+// TestNewRequestRejectsBadURL documents the second line of defence: config.Load
+// rejects a malformed URL at startup, and the request builder fails on one that
+// was injected directly.
+func TestNewRequestRejectsBadURL(t *testing.T) {
+	useJudgeConfig(t, "://not-a-url", "")
+
+	if _, err := newRequest(context.Background(), http.MethodGet, "/readyz", nil); err == nil {
 		t.Fatal("expected an error for a malformed judge URL")
 	}
 }
