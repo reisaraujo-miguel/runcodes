@@ -108,8 +108,8 @@ func Load() (*Config, error) {
 		ExecDir:        env("JUDGE_EXEC_DIR", filepath.Join(os.TempDir(), "runcodes-judge")),
 		KeepWorkspaces: envBool("JUDGE_KEEP_WORKSPACES", false),
 
-		CompilationTimeout: envDuration("RUNCODES_DEFAULT_COMPILATION_TIMEOUT", 10*time.Second),
-		BaseExecTimeout:    envDuration("RUNCODES_DEFAULT_EXEC_TIMEOUT", 5*time.Second),
+		CompilationTimeout: envDuration("JUDGE_DEFAULT_COMPILATION_TIMEOUT", 10*time.Second),
+		BaseExecTimeout:    envDuration("JUDGE_DEFAULT_EXEC_TIMEOUT", 5*time.Second),
 		DefaultCaseTimeout: envDuration("JUDGE_DEFAULT_CASE_TIMEOUT", 3*time.Second),
 
 		MonitorMaxFileSize: envInt64("JUDGE_MONITOR_MAX_FILE_SIZE", 5*1024*1024),
