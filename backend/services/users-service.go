@@ -121,21 +121,8 @@ func LogIn(ctx context.Context, req *models.LogInRequest) (map[string]any, error
 			return nil, ErrServer
 		}
 	} else {
-		if err := bcrypt.CompareHashAndPassword(
-			[]byte(passwordHash), []byte(req.Password),
-		); err != nil {
-			if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
-				slog.InfoContext(ctx,
-					"provided password doesn't match with database",
-					slog.String("error", err.Error()),
-				)
-				return nil, ErrInvalidCredentials
-			}
-			slog.ErrorContext(ctx,
-				"error comparing hash and password",
-				slog.String("error", err.Error()),
-			)
-			return nil, ErrServer
+		if err := verifyBcryptPassword(ctx, req.Password, passwordHash); err != nil {
+			return nil, err
 		}
 	}
 
@@ -250,6 +237,34 @@ func verifyAndUpgradeLegacyPassword(
 	}
 
 	return nil
+}
+
+/*
+verifyBcryptPassword checks a password against a stored bcrypt hash.
+
+A stored value the library cannot parse at all — the locked account the seed
+creates, or a corrupted row — matches no password, and is answered exactly like
+a wrong password: telling the two apart would report the state of an account to
+whoever asks for it. The reason is kept in the log for the operator instead.
+*/
+func verifyBcryptPassword(ctx context.Context, password, stored string) error {
+	err := bcrypt.CompareHashAndPassword([]byte(stored), []byte(password))
+	if err == nil {
+		return nil
+	}
+
+	if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
+		slog.InfoContext(ctx,
+			"provided password doesn't match with database",
+		)
+	} else {
+		slog.WarnContext(ctx,
+			"stored password hash cannot be verified",
+			slog.String("error", err.Error()),
+		)
+	}
+
+	return ErrInvalidCredentials
 }
 
 /*

@@ -32,7 +32,17 @@ VALUES
   ('Zig', 'zig', TRUE, TRUE);
 
 
--- IMPORTANT: Don't forget to change the default user's password :)
-
--- Passwords: Admin&1234
-INSERT INTO users (name, email, password_hash, role, confirmed) VALUES ('admin', 'admin@admin.com', '$2a$12$oEehawURBhhtdOLAE8ARpem031dAxE4fJGIMjXFCK2hxb65kRIPvC', 'admin', TRUE);
+-- The platform needs an owner, and the seed creates the account — but not a
+-- password. A hash committed to this repository is a published credential: this
+-- file used to ship `admin@admin.com` with a fixed bcrypt hash and its plaintext
+-- in a comment above it.
+--
+-- `password_hash` is NOT NULL, so the row carries a value that is not a hash and
+-- therefore cannot match any password (`verifyBcryptPassword` answers such a
+-- login with 401, not 500).
+--
+-- Set a real password before the first login:
+--
+--   RUNCODES_ADMIN_PASSWORD='...' ./database/bootstrap-admin.sh
+INSERT INTO users (name, email, password_hash, role, confirmed)
+VALUES ('admin', 'admin@admin.com', '!', 'admin', TRUE);
