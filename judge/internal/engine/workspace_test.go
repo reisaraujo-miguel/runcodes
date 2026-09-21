@@ -89,7 +89,7 @@ func TestExtractZip(t *testing.T) {
 	archive := makeZip(t, dir, map[string]string{"src/main.c": "int main(){}"})
 	out := filepath.Join(dir, "out")
 
-	if err := extractZip(archive, out); err != nil {
+	if err := extractZip(archive, out, 1<<20, 1<<20); err != nil {
 		t.Fatalf("extractZip: %v", err)
 	}
 	content, err := os.ReadFile(filepath.Join(out, "src", "main.c"))
@@ -105,11 +105,32 @@ func TestExtractZipRejectsTraversal(t *testing.T) {
 	dir := t.TempDir()
 	archive := makeZip(t, dir, map[string]string{"../evil.txt": "boom"})
 
-	if err := extractZip(archive, filepath.Join(dir, "out")); err == nil {
+	if err := extractZip(archive, filepath.Join(dir, "out"), 1<<20, 1<<20); err == nil {
 		t.Fatal("expected a path-traversal error")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "evil.txt")); err == nil {
 		t.Fatal("traversal entry was written outside the destination")
+	}
+}
+
+func TestExtractZipRejectsOversizedEntry(t *testing.T) {
+	dir := t.TempDir()
+	archive := makeZip(t, dir, map[string]string{"big.c": strings.Repeat("a", 4096)})
+
+	if err := extractZip(archive, filepath.Join(dir, "out"), 1024, 1<<20); err == nil {
+		t.Fatal("expected a per-file size-limit error")
+	}
+}
+
+func TestExtractZipRejectsOversizedTotal(t *testing.T) {
+	dir := t.TempDir()
+	archive := makeZip(t, dir, map[string]string{
+		"a.c": strings.Repeat("a", 1024),
+		"b.c": strings.Repeat("b", 1024),
+	})
+
+	if err := extractZip(archive, filepath.Join(dir, "out"), 1<<20, 1500); err == nil {
+		t.Fatal("expected a total size-limit error")
 	}
 }
 

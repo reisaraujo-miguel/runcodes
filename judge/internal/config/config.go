@@ -36,6 +36,12 @@ type Config struct {
 	MonitorMaxMemSize  int64
 	MaxOutputFileSize  int64
 
+	// MaxExtractFileBytes bounds a single entry and MaxExtractBytes the total
+	// expanded size when unpacking a zip submission, so a zip bomb cannot fill
+	// the shared execution directory.
+	MaxExtractFileBytes int64
+	MaxExtractBytes     int64
+
 	KeepWorkspaces bool
 
 	DB DBConfig
@@ -110,6 +116,9 @@ func Load() (*Config, error) {
 		MonitorMaxMemSize:  envInt64("JUDGE_MONITOR_MAX_MEM_SIZE", 256*1024*1024),
 		MaxOutputFileSize:  envInt64("JUDGE_MAX_OUTPUT_FILE_SIZE", 1024*1024),
 
+		MaxExtractFileBytes: envInt64("JUDGE_MAX_EXTRACT_FILE_BYTES", 64*1024*1024),
+		MaxExtractBytes:     envInt64("JUDGE_MAX_EXTRACT_BYTES", 256*1024*1024),
+
 		DB: DBConfig{
 			Host:     env("RUNCODES_DB_HOST", "localhost"),
 			Port:     env("RUNCODES_DB_PORT", "5432"),
@@ -143,6 +152,12 @@ func (c *Config) validate() error {
 		return fmt.Errorf("JUDGE_CONCURRENCY must be >= 1, got %d", c.Concurrency)
 	} else if c.PollInterval <= 0 {
 		return fmt.Errorf("JUDGE_POLL_INTERVAL must be positive, got %s", c.PollInterval)
+	}
+
+	if c.MaxExtractFileBytes <= 0 || c.MaxExtractBytes <= 0 {
+		return fmt.Errorf("extraction size limits must be positive")
+	} else if c.MaxExtractFileBytes > c.MaxExtractBytes {
+		return fmt.Errorf("JUDGE_MAX_EXTRACT_FILE_BYTES must not exceed JUDGE_MAX_EXTRACT_BYTES")
 	}
 
 	if c.DB.MaxIdleConns == 0 {

@@ -64,24 +64,45 @@ func TestClaimCommit(t *testing.T) {
 	}
 }
 
-func TestClaimMissingS3Key(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatal(err)
+func TestClaimMissingS3KeyIsMarkedTerminal(t *testing.T) {
+	tests := []struct {
+		name string
+		key  any
+	}{
+		{"null s3_key", nil},
+		{"empty s3_key", ""},
 	}
-	defer db.Close()
 
-	rows := sqlmock.NewRows([]string{"id", "user_id", "exercise_id", "created_at", "s3_key"}).
-		AddRow(int64(1), nil, int64(3), time.Now(), nil)
-	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT id, user_id, exercise_id, created_at, s3_key").WillReturnRows(rows)
-	mock.ExpectRollback()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
 
-	if _, err := NewWithDB(db).Claim(context.Background()); err == nil {
-		t.Fatal("expected an error for a commit without an s3_key")
-	}
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatal(err)
+			rows := sqlmock.NewRows([]string{"id", "user_id", "exercise_id", "created_at", "s3_key"}).
+				AddRow(int64(1), nil, int64(3), time.Now(), tt.key)
+			mock.ExpectBegin()
+			mock.ExpectQuery("SELECT id, user_id, exercise_id, created_at, s3_key").WillReturnRows(rows)
+			// The malformed row must be marked terminal and committed, not rolled
+			// back, so it is not re-selected forever and later submissions are not
+			// starved.
+			mock.ExpectExec("UPDATE commits SET status = 'server_error'").
+				WillReturnResult(sqlmock.NewResult(0, 1))
+			mock.ExpectCommit()
+
+			commit, err := NewWithDB(db).Claim(context.Background())
+			if err != nil {
+				t.Fatalf("Claim: %v", err)
+			}
+			if commit != nil {
+				t.Fatalf("want no commit, got %+v", commit)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

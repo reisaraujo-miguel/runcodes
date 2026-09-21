@@ -42,9 +42,30 @@ Rootless podman must expose its API socket:
 systemctl --user start podman.socket   # unix:///run/user/$UID/podman/podman.sock
 ```
 
+### Shared execution directory
+
+The judge creates one workspace per commit under `JUDGE_EXEC_DIR` (mounted at
+`/exec`) and shares it with the podman service through `JUDGE_EXEC_DIR_REMOTE`,
+so the language containers can bind-mount it. The directory must exist and be
+writable by the judge's UID.
+
+When running through the root `docker-compose.yml` this is handled
+automatically: the one-shot `judge-exec-init` service creates `./exec` and makes
+it writable before the judge starts, so a fresh checkout needs no manual setup.
+When running the judge directly (outside Compose), create it yourself:
+
+```sh
+mkdir -p ./exec && chmod 0777 ./exec
+```
+
 ## Configuration
 
 All configuration is via environment variables; see `.env.example`.
+
+Zip submissions are unpacked with a per-entry limit
+(`JUDGE_MAX_EXTRACT_FILE_BYTES`, default 64 MiB) and a total expanded-size limit
+(`JUDGE_MAX_EXTRACT_BYTES`, default 256 MiB) so an archive cannot fill the
+shared execution directory.
 
 ## Endpoints
 

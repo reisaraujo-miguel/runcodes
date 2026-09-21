@@ -155,7 +155,8 @@ func deleteSourceBestEffort(ctx context.Context, key string) {
 
 /*
 validateExercise checks the exercise exists, is not removed and belongs to an
-offering the user is enrolled in, and that its deadline has not passed.
+offering the user is enrolled in (and not banned from), and that its deadline
+has not passed.
 */
 func validateExercise(ctx context.Context, exerciseID, userID int64) error {
 	var (
@@ -168,6 +169,7 @@ func validateExercise(ctx context.Context, exerciseID, userID int64) error {
 		        EXISTS (
 		            SELECT 1 FROM enrollments en
 		            WHERE en.offering_id = e.offering_id AND en.user_id = $2
+		              AND NOT en.banned
 		        ) AS enrolled
 		 FROM exercises e
 		 WHERE e.id = $1 AND e.removed = FALSE`,

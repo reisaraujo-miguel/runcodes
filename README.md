@@ -72,7 +72,8 @@ The judge/backend integration contract is documented in
 
 The whole stack runs with Docker Compose. The judge additionally needs a
 **rootless podman** API socket on the host and a directory shared with it (see
-[`judge/README.md`](judge/README.md)):
+[`judge/README.md`](judge/README.md)); Compose creates and prepares `./exec`
+automatically, so no manual setup is required there:
 
 ```bash
 # Rootless podman API socket used by the judge.

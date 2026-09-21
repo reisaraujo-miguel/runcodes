@@ -56,6 +56,21 @@ services:
       RUNCODES_S3_BUCKET_PREFIX: "runcodes"
       RUNCODES_REDIS_ADDR: "redis:6379"
 
+  # Ensures the host's ./exec directory exists and is writable by the
+  # unprivileged judge before it starts. On a fresh checkout Docker creates a
+  # missing bind-mount source as a root-owned directory, which the judge (UID
+  # 1000) cannot create its per-commit workspaces in; this one-shot init chmods
+  # it automatically so no manual host setup is required.
+  judge-exec-init:
+    image: alpine:3.23
+    user: "0:0"
+    restart: "no"
+    command: ["sh", "-c", "mkdir -p /exec && chmod 0777 /exec"]
+    volumes:
+      - ./exec:/exec
+    networks:
+      - runcodes-network
+
   # Judge (execution engine). Runs the language images with rootless podman.
   # It shares the host's exec directory with the podman service, so
   # JUDGE_EXEC_DIR_REMOTE must be the *host* absolute path of ./exec.
@@ -91,8 +106,14 @@ services:
     networks:
       - runcodes-network
     depends_on:
-      - database
-      - seaweed
+      database:
+        condition: service_started
+      seaweed:
+        condition: service_started
+      # The shared exec directory must exist and be writable before the judge
+      # can create its workspaces (see judge-exec-init above).
+      judge-exec-init:
+        condition: service_completed_successfully
 
   # PostgreSQL Database
   database:

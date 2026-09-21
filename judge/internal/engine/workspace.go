@@ -106,7 +106,7 @@ func (e *Engine) resolveLanguage(ws *workspace, sourcePath string) error {
 		}
 
 		ext = deduced
-		if err := extractZip(sourcePath, ws.SourceDir); err != nil {
+		if err := extractZip(sourcePath, ws.SourceDir, e.cfg.MaxExtractFileBytes, e.cfg.MaxExtractBytes); err != nil {
 			return fmt.Errorf("extract archive: %w", err)
 		}
 
@@ -219,14 +219,20 @@ func shellSingleQuote(s string) string {
 	return strings.ReplaceAll(s, "'", `'\''`)
 }
 
-// extractZip unpacks an archive into dest, rejecting entries that escape it.
-func extractZip(archivePath, dest string) error {
+// extractZip unpacks an archive into dest, rejecting entries that escape it or
+// whose expanded size exceeds the configured bounds. The bounds stop a zip bomb
+// from filling the shared execution directory: the per-entry and the running
+// total are checked both against the size declared in the archive header and
+// against the bytes actually written, since a header can lie.
+func extractZip(archivePath, dest string, maxFileBytes, maxTotalBytes int64) error {
 	zr, err := zip.OpenReader(archivePath)
 	if err != nil {
 		return err
 	}
 
 	defer zr.Close()
+
+	var total int64
 
 	// Iterate through each file in the zip archive and extract it to the destination directory.
 	for _, f := range zr.File {
@@ -244,6 +250,15 @@ func extractZip(archivePath, dest string) error {
 			}
 
 			continue
+		}
+
+		// Reject entries whose declared uncompressed size alone already exceeds
+		// the per-entry limit or the remaining total budget.
+		if f.UncompressedSize64 > uint64(maxFileBytes) {
+			return fmt.Errorf("archive entry %q exceeds the per-file size limit", f.Name)
+		}
+		if total+int64(f.UncompressedSize64) > maxTotalBytes {
+			return fmt.Errorf("archive expands beyond the total size limit")
 		}
 
 		// Create the parent directory for the target file if it doesn't exist.
@@ -264,15 +279,26 @@ func extractZip(archivePath, dest string) error {
 			return err
 		}
 
-		// Copy the contents of the zip entry to the target file.
-		if _, err := io.Copy(out, rc); err != nil {
-			out.Close()
-			rc.Close()
-			return err
+		// Bound the copy by both the per-entry limit and the remaining total
+		// budget, reading one byte past the limit so an oversized entry is
+		// detected even when its header understates the real size.
+		limit := maxFileBytes
+		if remaining := maxTotalBytes - total; remaining < limit {
+			limit = remaining
 		}
 
+		written, copyErr := io.Copy(out, io.LimitReader(rc, limit+1))
 		out.Close()
 		rc.Close()
+
+		if copyErr != nil {
+			return copyErr
+		}
+		if written > limit {
+			return fmt.Errorf("archive entry %q exceeds the size limit", f.Name)
+		}
+
+		total += written
 	}
 
 	return nil

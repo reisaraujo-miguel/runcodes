@@ -184,9 +184,9 @@ func (h *Hub) stream(ctx context.Context) error {
 		}
 
 		if err := h.handleEvent(ctx, &ev, frame.Data); err != nil {
-			// A terminal persistence failure is fatal to this connection: report
-			// it so run reconnects from lastSeq and the judge replays the event,
-			// instead of silently dropping the authoritative result.
+			// Any persistence failure is fatal to this connection: report it so
+			// run reconnects from lastSeq and the judge replays the event, instead
+			// of advancing the cursor past an event that was never durably stored.
 			slog.ErrorContext(ctx, "failed to persist judge event",
 				slog.Int64("commit_id", h.commitID),
 				slog.String("type", ev.Type),
@@ -196,7 +196,7 @@ func (h *Hub) stream(ctx context.Context) error {
 		}
 
 		// Advance the resume cursor only after the event was persisted, so a
-		// failed terminal event is replayed on reconnect.
+		// failed event is replayed on reconnect.
 		if ev.Seq > h.lastSeq {
 			h.lastSeq = ev.Seq
 		}
@@ -207,18 +207,18 @@ func (h *Hub) stream(ctx context.Context) error {
 
 /*
 handleEvent persists an event, broadcasts it to subscribers and, for the
-terminal events, shuts the hub down. Non-terminal persistence failures are
-logged and tolerated (the stream keeps going); a terminal failure is returned so
-the caller can reconnect and have the judge replay the event.
+terminal events, shuts the hub down. Any persistence failure is returned so the
+caller reconnects from the last persisted sequence and the judge replays the
+event; the writes are idempotent upserts, so a replayed event is safe. Terminal
+events are retried in-line before the failure is returned.
 */
 func (h *Hub) handleEvent(ctx context.Context, ev *JudgeEvent, raw []byte) error {
 	if ev.Type != "finished" && ev.Type != "error" {
+		// A non-terminal event (status, compilation, case_result) is now also
+		// persisted before broadcast and must not be lost: return the failure
+		// so the cursor is not advanced past an unpersisted event.
 		if err := PersistEvent(ctx, ev); err != nil {
-			slog.ErrorContext(ctx, "failed to persist judge event",
-				slog.Int64("commit_id", h.commitID),
-				slog.String("type", ev.Type),
-				slog.String("error", err.Error()),
-			)
+			return err
 		}
 
 		h.broadcast(FormatSSEFrame(ev.Type, ev.Seq, raw))

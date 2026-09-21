@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/lib/pq"
 
@@ -73,7 +74,27 @@ func (s *Store) Claim(ctx context.Context) (*model.Commit, error) {
 	}
 
 	if !s3Key.Valid || s3Key.String == "" {
-		return nil, fmt.Errorf("commit %d has no s3_key", commit.ID)
+		// A queued row with no source object can never be processed. Mark it
+		// terminal and commit; rolling back would leave it `queued`, and since
+		// every poll orders by created_at that same row would be selected again
+		// forever, starving every later submission.
+		slog.WarnContext(ctx, "marking queued commit without s3_key as server_error",
+			slog.Int64("commit_id", commit.ID),
+		)
+
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE commits SET status = 'server_error' WHERE id = $1`, commit.ID,
+		); err != nil {
+			return nil, fmt.Errorf("mark commit %d without s3_key as server_error: %w", commit.ID, err)
+		}
+
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("commit terminal claim %d: %w", commit.ID, err)
+		}
+
+		// Report an empty queue so the caller's drain loop moves on and the next
+		// poll picks up the following row.
+		return nil, nil
 	}
 
 	commit.S3Key = s3Key.String
