@@ -7,6 +7,12 @@ import { TermsModal } from "./TermsModal";
 const CONTACT_DISCLAIMER_HTML =
   import.meta.env.VITE_CONTACT_DISCLAIMER_HTML ?? "";
 
+// Sanitized once at module scope rather than on every render: the value is a
+// build-time constant.
+const SANITIZED_CONTACT_DISCLAIMER = DOMPurify.sanitize(
+  CONTACT_DISCLAIMER_HTML,
+);
+
 export function AboutSection() {
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
 
@@ -34,12 +40,15 @@ export function AboutSection() {
         <div className="pt-4">
           <p className="text-sm text-muted-foreground">
             Ao navegar no RunCodes você concorda com os{" "}
-            <a
+            {/* A button, not an anchor without href: that is focusable and
+                responds to Enter, so keyboard users can open the terms. */}
+            <button
+              type="button"
               onClick={openTermsModal}
-              className="cursor-pointer text-foreground"
+              className="cursor-pointer text-foreground underline underline-offset-4"
             >
               termos de uso
-            </a>
+            </button>
             .
           </p>
         </div>
@@ -50,7 +59,7 @@ export function AboutSection() {
             // Content is sanitized with DOMPurify before being inserted.
             // eslint-disable-next-line react-dom/no-dangerously-set-innerhtml
             dangerouslySetInnerHTML={{
-              __html: DOMPurify.sanitize(CONTACT_DISCLAIMER_HTML),
+              __html: SANITIZED_CONTACT_DISCLAIMER,
             }}
           />
         </div>
