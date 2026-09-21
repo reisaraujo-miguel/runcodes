@@ -29,11 +29,10 @@ import {
   type AllowedFileType,
   type CommitStatus,
   type Exercise,
-  type FinishedStatus,
   type SubmissionStatusEvent,
 } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import { isPendingStatus } from "@/lib/submission-status";
+import { isTerminalStatus } from "@/lib/submission-status";
 import {
   upsertCaseResult,
   viewFromEvent,
@@ -121,10 +120,6 @@ function validateFile(file: File, allowed: string[] | null): string | null {
   const extension = normalizeExtension(extensionOf(file.name));
   if (extension !== "" && allowed.includes(extension)) return null;
   return `Extensão não permitida. Tipos aceitos: ${allowed.join(", ")}.`;
-}
-
-function isTerminalStatus(status: CommitStatus): status is FinishedStatus {
-  return !isPendingStatus(status);
 }
 
 /** Student page to submit a solution and watch the live judging results. */
