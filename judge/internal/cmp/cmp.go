@@ -40,6 +40,16 @@ func readText(fname string) ([]string, bool) {
 	return splitLines(string(raw)), true
 }
 
+// textLines is readText's in-memory counterpart, used by the byte-oriented
+// comparisons so the caller can read (and bound) the content itself.
+func textLines(raw []byte) ([]string, bool) {
+	if !utf8.Valid(raw) {
+		return nil, false
+	}
+
+	return splitLines(string(raw)), true
+}
+
 // TextEqual is a strict comparison: line counts must match and each line must
 // be equal after stripping trailing whitespace.
 func TextEqual(fnameA, fnameB string) bool {
@@ -53,6 +63,29 @@ func TextEqual(fnameA, fnameB string) bool {
 		return false
 	}
 
+	return linesEqual(a, b)
+}
+
+// TextEqualBytes is TextEqual over content already in memory. The judge grades
+// with this variant: it reads both sides itself, under its own size bound, so the
+// comparison never opens a path the submission could have replaced with a
+// symlink.
+func TextEqualBytes(a, b []byte) bool {
+	linesA, ok := textLines(a)
+	if !ok {
+		return false
+	}
+
+	linesB, ok := textLines(b)
+	if !ok {
+		return false
+	}
+
+	return linesEqual(linesA, linesB)
+}
+
+// linesEqual compares already-split lines strictly, after trimming trailing whitespace.
+func linesEqual(a, b []string) bool {
 	// Check if the number of lines in both files is the same.
 	if len(a) != len(b) {
 		return false
@@ -82,6 +115,27 @@ func TextLenient(fnameA, fnameB string) bool {
 		return false
 	}
 
+	return linesLenient(a, b)
+}
+
+// TextLenientBytes is TextLenient over content already in memory; see
+// TextEqualBytes for why the judge grades with the byte-oriented variants.
+func TextLenientBytes(a, b []byte) bool {
+	linesA, ok := textLines(a)
+	if !ok {
+		return false
+	}
+
+	linesB, ok := textLines(b)
+	if !ok {
+		return false
+	}
+
+	return linesLenient(linesA, linesB)
+}
+
+// linesLenient compares already-split lines leniently.
+func linesLenient(a, b []string) bool {
 	i, j := 0, 0
 
 	// Loop through both files, skipping empty lines and comparing non-empty lines.

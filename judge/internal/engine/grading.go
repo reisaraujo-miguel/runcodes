@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/runcodes-icmc/judge/internal/cmp"
 	"github.com/runcodes-icmc/judge/internal/model"
@@ -22,12 +23,22 @@ type monitorInfo struct {
 	HasMem bool
 }
 
+// maxMonitorBytes bounds the monitor output the judge parses. The file is written
+// in the workspace by the submission, so it is read like every other file there:
+// as a bounded, symlink-refusing read of a regular file.
+const maxMonitorBytes = 1 << 20
+
 // readMonitor parses the monitor's INI-ish output (`<id>.monitor_out`). Keys
 // live under an `[info]` section; the parser is deliberately lenient.
+//
+// The report carries the exit status, the signal and the wall clock time. It
+// carries no memory figure: the harness runs the program through `timeout`, so the
+// monitor is not its parent and cannot read its peak RSS — it is never measured
+// rather than guessed, which is why MemUsage stays -1 (unknown).
 func readMonitor(path string) monitorInfo {
 	var info monitorInfo
 
-	raw, err := os.ReadFile(path)
+	raw, err := readRegularBounded(path, maxMonitorBytes)
 	if err != nil {
 		return info // missing file is not an error, just means no info
 	}
@@ -88,6 +99,10 @@ func (e *Engine) gradeAll(ctx context.Context, commit *model.Commit, ws *workspa
 
 // gradeCase grades a single test case, reading the user's output and comparing it
 // to the expected output. It also reads the monitor output for resource usage.
+//
+// Every file read from the workspace is checked to be a regular file and bounded:
+// the workspace is written by the untrusted submission, so a symlink there would
+// otherwise choose what the judge reads and compares.
 func (e *Engine) gradeCase(ctx context.Context, tc model.TestCase, ws *workspace) (model.CaseResult, error) {
 	result := model.CaseResult{
 		TestCaseID: tc.ID,
@@ -109,21 +124,43 @@ func (e *Engine) gradeCase(ctx context.Context, tc model.TestCase, ws *workspace
 
 	errContent := readLimited(errorPath, e.cfg.MaxOutputFileSize)
 
-	if info.Signal != "" || errContent != "" {
+	// Read the submission's output up front, under the comparison bound, so both
+	// sides of the comparison below are data the judge read itself.
+	userOutput, outputErr := readRegularBounded(outputPath, e.cfg.MaxCompareFileBytes)
+
+	switch {
+	case outputErr != nil:
+		// A missing, oversized or non-regular output file cannot be a correct
+		// answer, so the case fails instead of being compared. The detail stays in
+		// the log: an os error would name a judge-side path to the student.
+		e.logger.Warn("could not read a test case output",
+			"test_case_id", tc.ID,
+			"error", outputErr,
+		)
+		result.Status = model.CaseKilledBySignal
+		result.ErrorMessage = "the output of this test case could not be read"
+
+	case info.Signal != "" || errContent != "":
 		// If the monitor indicates a signal or there is error output, we consider the case killed by a signal.
 		result.Status = model.CaseKilledBySignal
 		result.StatusMsg = info.Signal
 		result.ErrorMessage = errContent
-	} else {
-		// Download the expected output from S3 for comparison.
-		expectedPath := filepath.Join(ws.BaseDir, fmt.Sprintf("%d.out", tc.ID))
 
+	default:
+		// Download the expected output from S3 for comparison, into the directory
+		// the container cannot write to, then read it under the comparison bound.
+		expectedPath := ws.expectedOutputPath(tc.ID)
 		if err := e.s3.FetchCaseOutput(ctx, tc.ID, expectedPath); err != nil {
 			return result, fmt.Errorf("download expected output of case %d: %w", tc.ID, err)
 		}
 
+		expected, err := readRegularBounded(expectedPath, e.cfg.MaxCompareFileBytes)
+		if err != nil {
+			return result, fmt.Errorf("read expected output of case %d: %w", tc.ID, err)
+		}
+
 		// Compare the user's output with the expected output based on the expected output type.
-		result.Status = compareOutput(outputPath, expectedPath, tc.ExpectedOutputType)
+		result.Status = compareOutput(userOutput, expected, tc.ExpectedOutputType)
 	}
 
 	// Read the user's output, limited to the configured maximum size, and store it in the result.
@@ -135,11 +172,11 @@ func (e *Engine) gradeCase(ctx context.Context, tc model.TestCase, ws *workspace
 // compareOutput maps the legacy comparison modes onto the new schema:
 // `file` expected outputs are compared byte-for-byte, `text` ones with the
 // strict/lenient text comparators.
-func compareOutput(userPath, expectedPath, expectedType string) model.CaseStatus {
+func compareOutput(userOutput, expected []byte, expectedType string) model.CaseStatus {
 	// If the expected output type is "file", we perform a byte-for-byte comparison
 	// of the user's output and the expected output.
 	if expectedType == "file" {
-		if filesEqual(userPath, expectedPath) {
+		if bytes.Equal(userOutput, expected) {
 			return model.CaseCorrect
 		}
 
@@ -150,31 +187,71 @@ func compareOutput(userPath, expectedPath, expectedType string) model.CaseStatus
 	// the case status. The comparison is done in a lenient manner, allowing for
 	// differences in whitespace and case.
 	switch {
-	case cmp.TextEqual(userPath, expectedPath):
+	case cmp.TextEqualBytes(userOutput, expected):
 		return model.CaseCorrect
-	case cmp.TextLenient(userPath, expectedPath):
+	case cmp.TextLenientBytes(userOutput, expected):
 		return model.CaseBadFormat
 	default:
 		return model.CaseKilledBySignal
 	}
 }
 
-// filesEqual checks if two files are equal by reading their contents and comparing them byte-for-byte.
-func filesEqual(a, b string) bool {
-	ra, errA := os.ReadFile(a)
-	rb, errB := os.ReadFile(b)
-
-	if errA != nil || errB != nil {
-		return false
+// openRegular opens path for reading only when it is a regular file. The
+// workspace is written by the untrusted submission, and os.Open follows symlinks,
+// so without this check a submission could point the judge at any file the judge
+// process can read (and have its contents published as its own output).
+//
+// O_NOFOLLOW closes the race between the check and the open, so the guarantee
+// holds even if the path is replaced in between.
+func openRegular(path string) (*os.File, error) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
 	}
 
-	return bytes.Equal(ra, rb)
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", filepath.Base(path))
+	}
+
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	return f, nil
 }
 
-// readLimited returns at most max bytes of a file, replacing invalid UTF-8 so
-// it stays safe to store in a text column. A missing file yields "".
+// readRegularBounded reads at most max bytes of a regular file. An oversized file
+// is an error rather than a truncated comparison, so a submission cannot win or
+// lose a case on a prefix of its output.
+func readRegularBounded(path string, max int64) ([]byte, error) {
+	f, err := openRegular(path)
+	if err != nil {
+		return nil, err
+	}
+
+	defer f.Close()
+
+	raw, err := io.ReadAll(io.LimitReader(f, max+1))
+	if err != nil {
+		return nil, err
+	}
+
+	if int64(len(raw)) > max {
+		return nil, fmt.Errorf("file exceeds the %d byte limit", max)
+	}
+
+	return raw, nil
+}
+
+// readLimited returns at most max bytes of a regular file, replacing invalid
+// UTF-8 so it stays safe to store in a text column. A missing file yields "".
+//
+// Non-regular files are refused: everything under the workspace is written by the
+// submission, and following a symlink there would make the judge read — and
+// publish as the submission's own output — a file of the submission's choosing.
 func readLimited(path string, max int64) string {
-	f, err := os.Open(path)
+	f, err := openRegular(path)
 	if err != nil {
 		return ""
 	}
