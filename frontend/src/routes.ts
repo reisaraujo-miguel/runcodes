@@ -38,6 +38,14 @@ export const router = createBrowserRouter([
             },
           },
           {
+            path: "/exercises/:exerciseId/submit",
+            lazy: async () => {
+              const { SubmitPage } =
+                await import("./routes/exercises/submit/page.tsx");
+              return { Component: SubmitPage };
+            },
+          },
+          {
             path: "/admin",
             Component: AdminRoute,
             children: [
@@ -77,6 +85,14 @@ export const router = createBrowserRouter([
                       const { ClassPage } =
                         await import("./routes/professor/class/page.tsx");
                       return { Component: ClassPage };
+                    },
+                  },
+                  {
+                    path: "exercise/:exerciseId",
+                    lazy: async () => {
+                      const { ExercisePage } =
+                        await import("./routes/professor/exercise/page.tsx");
+                      return { Component: ExercisePage };
                     },
                   },
                 ],

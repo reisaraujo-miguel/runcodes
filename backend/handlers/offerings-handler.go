@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"runcodes/models"
-	"runcodes/services"
-	"runcodes/validation"
+	"github.com/runcodes-icmc/runcodes/models"
+	"github.com/runcodes-icmc/runcodes/services"
+	"github.com/runcodes-icmc/runcodes/validation"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/jwtauth/v5"

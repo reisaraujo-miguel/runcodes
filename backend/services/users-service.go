@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"runcodes/models"
-	"runcodes/validation"
+	"github.com/runcodes-icmc/runcodes/models"
+	"github.com/runcodes-icmc/runcodes/validation"
 
 	"github.com/go-chi/jwtauth/v5"
 	"github.com/lib/pq"

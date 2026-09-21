@@ -1,15 +1,24 @@
 import { useEffect, useState } from "react";
-import { useLocation, useParams } from "react-router";
+import { Link, useLocation, useParams } from "react-router";
 
+import { NewExerciseForm } from "@/components/professor/NewExerciseForm";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 
-import { getOffering, type Offering } from "@/lib/api/offerings";
+import {
+  getOffering,
+  getOfferingExercises,
+  type Exercise,
+  type Offering,
+} from "@/lib/api";
+import { formatDateTime } from "@/lib/format";
 
 /**
  * Page for a class offering. After creating a class, the offering is passed
@@ -24,9 +33,16 @@ export function ClassPage() {
   const [loading, setLoading] = useState(initialOffering === null);
   const [error, setError] = useState<string | null>(null);
 
+  const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [exercisesLoading, setExercisesLoading] = useState(true);
+  const [exercisesError, setExercisesError] = useState<string | null>(null);
+  const [showNewExercise, setShowNewExercise] = useState(false);
+
+  const offeringIdNumber = Number(offeringId);
+
   useEffect(() => {
     let cancelled = false;
-    const id = Number(offeringId);
+    const id = offeringIdNumber;
 
     async function loadOffering() {
       if (!Number.isInteger(id) || id <= 0) {
@@ -49,7 +65,34 @@ export function ClassPage() {
     return () => {
       cancelled = true;
     };
-  }, [offeringId]);
+  }, [offeringIdNumber]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadExercises() {
+      if (!Number.isInteger(offeringIdNumber) || offeringIdNumber <= 0) {
+        setExercisesLoading(false);
+        return;
+      }
+      try {
+        const data = await getOfferingExercises(offeringIdNumber);
+        if (!cancelled) setExercises(data);
+      } catch {
+        if (!cancelled) {
+          setExercisesError("Não foi possível carregar os exercícios.");
+        }
+      } finally {
+        if (!cancelled) setExercisesLoading(false);
+      }
+    }
+
+    void loadExercises();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [offeringIdNumber]);
 
   if (loading) {
     return (
@@ -88,7 +131,7 @@ export function ClassPage() {
       : null;
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
+    <div className="mx-auto max-w-3xl space-y-4 p-6">
       <Card>
         <CardHeader>
           <CardTitle className="text-2xl">{offering.name}</CardTitle>
@@ -109,9 +152,99 @@ export function ClassPage() {
               <p>{endDate}</p>
             </div>
           )}
-          <p className="text-sm text-muted-foreground">
-            Os exercícios desta turma aparecerão aqui em breve.
-          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Exercícios</CardTitle>
+          <CardDescription>
+            Crie e gerencie os exercícios desta turma.
+          </CardDescription>
+          <CardAction>
+            <Button
+              size="sm"
+              variant={showNewExercise ? "outline" : "default"}
+              onClick={() => {
+                setShowNewExercise((previous) => !previous);
+              }}
+            >
+              {showNewExercise ? "Fechar" : "Novo exercício"}
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {showNewExercise && (
+            <NewExerciseForm
+              offeringId={offering.id}
+              onCancel={() => {
+                setShowNewExercise(false);
+              }}
+              onCreated={(exercise) => {
+                setExercises((previous) => [exercise, ...previous]);
+                setShowNewExercise(false);
+              }}
+            />
+          )}
+
+          {exercisesLoading && (
+            <p className="text-muted-foreground text-sm">
+              Carregando exercícios…
+            </p>
+          )}
+
+          {exercisesError && (
+            <p className="text-destructive text-sm">{exercisesError}</p>
+          )}
+
+          {!exercisesLoading && !exercisesError && exercises.length === 0 && (
+            <p className="text-muted-foreground text-sm">
+              Nenhum exercício cadastrado ainda.
+            </p>
+          )}
+
+          {exercises.length > 0 && (
+            <ul className="space-y-3">
+              {exercises.map((exercise) => (
+                <li
+                  key={exercise.id}
+                  className="flex flex-wrap items-start justify-between gap-3 rounded-lg border p-3"
+                >
+                  <div className="min-w-0 space-y-1">
+                    <p className="font-medium">{exercise.title}</p>
+                    {exercise.description && (
+                      <p className="text-muted-foreground text-sm">
+                        {exercise.description}
+                      </p>
+                    )}
+                    <p className="text-muted-foreground text-xs">
+                      Prazo: {formatDateTime(exercise.deadline)}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Link
+                      to={`/exercises/${String(exercise.id)}/submit`}
+                      className={buttonVariants({
+                        variant: "outline",
+                        size: "sm",
+                      })}
+                    >
+                      Enviar solução
+                    </Link>
+                    <Link
+                      to={`/professor/exercise/${String(exercise.id)}`}
+                      className={buttonVariants({
+                        variant: "secondary",
+                        size: "sm",
+                      })}
+                    >
+                      Gerenciar
+                    </Link>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </CardContent>
       </Card>
     </div>

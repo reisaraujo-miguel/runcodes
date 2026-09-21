@@ -4,7 +4,8 @@ import DOMPurify from "dompurify";
 
 import { TermsModal } from "./TermsModal";
 
-const CONTACT_INFO_HTML = import.meta.env.VITE_CONTACT_INFO_HTML as string;
+const CONTACT_DISCLAIMER_HTML =
+  import.meta.env.VITE_CONTACT_DISCLAIMER_HTML ?? "";
 
 export function AboutSection() {
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
@@ -49,7 +50,7 @@ export function AboutSection() {
             // Content is sanitized with DOMPurify before being inserted.
             // eslint-disable-next-line react-dom/no-dangerously-set-innerhtml
             dangerouslySetInnerHTML={{
-              __html: DOMPurify.sanitize(CONTACT_INFO_HTML),
+              __html: DOMPurify.sanitize(CONTACT_DISCLAIMER_HTML),
             }}
           />
         </div>

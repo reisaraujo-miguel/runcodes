@@ -6,6 +6,8 @@ interface TermsModalProps {
   onClose: () => void;
 }
 
+const CONTACT_EMAIL = import.meta.env.VITE_CONTACT_EMAIL ?? "";
+
 export function TermsModal({ isOpen, onClose }: TermsModalProps) {
   if (!isOpen) return null;
 
@@ -137,10 +139,10 @@ export function TermsModal({ isOpen, onClose }: TermsModalProps) {
               Em caso de dúvidas sobre estes termos, entre em contato através do
               email{" "}
               <a
-                href="mailto:runcodes@icmc.usp.br"
+                href={`mailto:${CONTACT_EMAIL}`}
                 className="text-link hover:text-link-hover underline"
               >
-                runcodes@icmc.usp.br
+                {CONTACT_EMAIL}
               </a>
             </p>
           </div>

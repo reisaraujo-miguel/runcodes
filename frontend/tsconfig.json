@@ -28,13 +28,13 @@
 
     /* Path aliases */
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
     },
 
     /* Environment types */
-    "types": ["vite/client"],
-    "useDefineForClassFields": true
+    "types": ["vite/client", "bun"],
+    "useDefineForClassFields": true,
   },
   "include": ["src"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "references": [{ "path": "./tsconfig.node.json" }],
 }

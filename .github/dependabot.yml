@@ -22,9 +22,9 @@ updates:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
 
-  # --- BACKEND DEPENDENCIES ---
+  # --- BACKEND AND JUDGE DEPENDENCIES ---
   - package-ecosystem: "gomod"
-    directory: "/backend/"
+    directories: ["/backend/", "/judge/"]
     schedule:
       interval: "weekly"
     groups:
@@ -33,7 +33,7 @@ updates:
           - "*"
     open-pull-requests-limit: 10
     commit-message:
-      prefix: "chore(backend/deps)"
+      prefix: "chore(go/deps)"
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]

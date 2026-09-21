@@ -1,0 +1,7 @@
+.git
+node_modules
+dist
+# Never bake a developer's local .env into the image; the Docker build receives
+# its values as build args instead (see the Dockerfile).
+.env
+.env.*
