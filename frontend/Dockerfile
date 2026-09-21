@@ -14,7 +14,7 @@ ENV VITE_CONTACT_EMAIL=$VITE_CONTACT_EMAIL
 COPY . .
 RUN bun install --frozen-lockfile && bun run build
 
-FROM caddy:alpine AS dist
+FROM caddy:2.11-alpine AS dist
 
 # Upstream caddy images no longer ship a "caddy" user (they run as root).
 # Create it ourselves so the container can keep running unprivileged.
