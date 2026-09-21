@@ -128,6 +128,15 @@ func TextLenient(fnameA, fnameB string) bool {
 		j++
 	}
 
+	// Skip any trailing blank lines so an extra blank line at the end of one
+	// file does not make otherwise equal outputs differ.
+	for i < len(a) && strings.TrimSpace(a[i]) == "" {
+		i++
+	}
+	for j < len(b) && strings.TrimSpace(b[j]) == "" {
+		j++
+	}
+
 	// return true if both files have been fully processed, indicating they are equal.
 	return i >= len(a) && j >= len(b)
 }

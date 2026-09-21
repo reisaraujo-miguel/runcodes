@@ -10,5 +10,6 @@
 // VITE_API_ENDPOINT is unset and the app falls back to the relative /api path.
 interface ImportMetaEnv {
   readonly VITE_API_ENDPOINT?: string;
-  readonly VITE_CONTACT_INFO_HTML?: string;
+  readonly VITE_CONTACT_DISCLAIMER_HTML?: string;
+  readonly VITE_CONTACT_EMAIL?: string;
 }

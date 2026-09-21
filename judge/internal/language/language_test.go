@@ -49,6 +49,25 @@ func TestDeduceFromArchive(t *testing.T) {
 	}
 }
 
+func TestDeduceFromArchiveCompoundExtensions(t *testing.T) {
+	cases := []struct {
+		names []string
+		want  string
+	}{
+		{[]string{"src/main.omp.c", "src/util.h"}, "omp.c"},
+		{[]string{"src/main.mpi.cpp"}, "mpi.cpp"},
+	}
+	for _, tc := range cases {
+		got, err := DeduceFromArchive(tc.names)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != tc.want {
+			t.Errorf("DeduceFromArchive(%v) = %q, want %q", tc.names, got, tc.want)
+		}
+	}
+}
+
 func TestImageFormat(t *testing.T) {
 	lang := FromFilename("main.cpp")
 	if lang == nil {

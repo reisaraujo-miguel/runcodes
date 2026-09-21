@@ -2,9 +2,11 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -14,6 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
 const (
@@ -281,4 +284,113 @@ func DeleteFileObject(ctx context.Context, key string) error {
 	}
 
 	return nil
+}
+
+/*
+encodeCopySource renders the `x-amz-copy-source` value for CopyObject. The
+separator between the bucket and the key is kept intact while each key segment
+is escaped, so names with spaces or other reserved characters are handled.
+*/
+func encodeCopySource(bucket, key string) string {
+	segments := strings.Split(key, "/")
+	for i, segment := range segments {
+		segments[i] = url.PathEscape(segment)
+	}
+
+	return bucket + "/" + strings.Join(segments, "/")
+}
+
+/*
+copyObject copies an object within a bucket, preserving its content type and
+metadata. It is used to snapshot an object before an in-place replacement and to
+restore it if the surrounding transaction does not commit.
+*/
+func copyObject(ctx context.Context, bucket, srcKey, dstKey string) error {
+	client, _, err := Storage()
+	if err != nil {
+		return err
+	}
+
+	if _, err := client.CopyObject(ctx, &s3.CopyObjectInput{
+		Bucket:     aws.String(bucket),
+		CopySource: aws.String(encodeCopySource(bucket, srcKey)),
+		Key:        aws.String(dstKey),
+	}); err != nil {
+		return fmt.Errorf("copying object: %w", err)
+	}
+
+	return nil
+}
+
+/*
+CopyCaseObject copies an object within the cases bucket.
+*/
+func CopyCaseObject(ctx context.Context, srcKey, dstKey string) error {
+	_, buckets, err := Storage()
+	if err != nil {
+		return err
+	}
+
+	return copyObject(ctx, buckets.Cases, srcKey, dstKey)
+}
+
+/*
+CopyFileObject copies an object within the files bucket.
+*/
+func CopyFileObject(ctx context.Context, srcKey, dstKey string) error {
+	_, buckets, err := Storage()
+	if err != nil {
+		return err
+	}
+
+	return copyObject(ctx, buckets.Files, srcKey, dstKey)
+}
+
+/*
+objectExists reports whether an object exists in a bucket. A missing object is
+not an error; any other failure is returned so callers never mistake a transient
+fault for an absent object and overwrite content they cannot restore.
+*/
+func objectExists(ctx context.Context, bucket, key string) (bool, error) {
+	client, _, err := Storage()
+	if err != nil {
+		return false, err
+	}
+
+	if _, err := client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	}); err != nil {
+		var notFound *types.NotFound
+		if errors.As(err, &notFound) {
+			return false, nil
+		}
+		return false, fmt.Errorf("checking object: %w", err)
+	}
+
+	return true, nil
+}
+
+/*
+CaseObjectExists reports whether a cases-bucket object exists.
+*/
+func CaseObjectExists(ctx context.Context, key string) (bool, error) {
+	_, buckets, err := Storage()
+	if err != nil {
+		return false, err
+	}
+
+	return objectExists(ctx, buckets.Cases, key)
+}
+
+/*
+FileObjectExists reports whether a files-bucket object exists.
+*/
+func FileObjectExists(ctx context.Context, key string) (bool, error) {
+	_, buckets, err := Storage()
+	if err != nil {
+		return false, err
+	}
+
+	return objectExists(ctx, buckets.Files, key)
 }

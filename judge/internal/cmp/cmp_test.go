@@ -48,6 +48,8 @@ func TestTextLenient(t *testing.T) {
 		expected bool
 	}{
 		{"blank lines skipped", "hello\n\nworld\n", "hello\nworld\n", true},
+		{"trailing blank lines skipped", "hello\n\n", "hello\n", true},
+		{"trailing blank lines on either side", "hello\n", "hello\n\n\n", true},
 		{"case insensitive tokens", "HELLO world\n", "hello  WORLD\n", true},
 		{"token mismatch", "hello there\n", "hello world\n", false},
 		{"token count mismatch", "hello there\n", "hello\n", false},

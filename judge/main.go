@@ -78,8 +78,13 @@ func run() error {
 	eng := engine.New(cfg, st, s3, pc, hub, logger)
 	pool := worker.New(cfg, st, eng, logger)
 
-	// run the worker pool in a separate goroutine, which will process queued commits
-	go pool.Run(ctx)
+	// run the worker pool in a separate goroutine, which will process queued commits.
+	// poolDone is closed once the pool has drained every in-flight run.
+	poolDone := make(chan struct{})
+	go func() {
+		defer close(poolDone)
+		pool.Run(ctx)
+	}()
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,
@@ -118,9 +123,14 @@ func run() error {
 		logger.Warn("http shutdown error", "error", err)
 	}
 
-	// The worker pool observed the cancelled context and is draining; give
-	// in-flight runs a moment to finish.
-	time.Sleep(2 * time.Second)
+	// The worker pool observed the cancelled context and is draining. Wait for
+	// every in-flight run to finish, bounded by the shutdown deadline, instead of
+	// abandoning runs that need longer than a fixed grace period.
+	select {
+	case <-poolDone:
+	case <-shutdownCtx.Done():
+		logger.Warn("shutdown deadline reached while draining the worker pool")
+	}
 	return nil
 }
 

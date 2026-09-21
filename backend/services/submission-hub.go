@@ -17,6 +17,11 @@ const (
 	// maxStreamAttempts bounds how many times the hub reconnects to the judge
 	// stream (resuming with ?from=<seq>) before giving up.
 	maxStreamAttempts = 3
+
+	// terminalPersistAttempts bounds the in-line retries when persisting a
+	// terminal event, so a short database blip does not drop the authoritative
+	// result and leave the commit non-terminal until reconciliation.
+	terminalPersistAttempts = 3
 )
 
 // ErrStreamClosed is returned when subscribing to an already finished commit.
@@ -178,16 +183,22 @@ func (h *Hub) stream(ctx context.Context) error {
 			return nil
 		}
 
-		if ev.Seq > h.lastSeq {
-			h.lastSeq = ev.Seq
-		}
-
 		if err := h.handleEvent(ctx, &ev, frame.Data); err != nil {
+			// A terminal persistence failure is fatal to this connection: report
+			// it so run reconnects from lastSeq and the judge replays the event,
+			// instead of silently dropping the authoritative result.
 			slog.ErrorContext(ctx, "failed to persist judge event",
 				slog.Int64("commit_id", h.commitID),
 				slog.String("type", ev.Type),
 				slog.String("error", err.Error()),
 			)
+			return err
+		}
+
+		// Advance the resume cursor only after the event was persisted, so a
+		// failed terminal event is replayed on reconnect.
+		if ev.Seq > h.lastSeq {
+			h.lastSeq = ev.Seq
 		}
 
 		return nil
@@ -196,22 +207,64 @@ func (h *Hub) stream(ctx context.Context) error {
 
 /*
 handleEvent persists an event, broadcasts it to subscribers and, for the
-terminal events, shuts the hub down.
+terminal events, shuts the hub down. Non-terminal persistence failures are
+logged and tolerated (the stream keeps going); a terminal failure is returned so
+the caller can reconnect and have the judge replay the event.
 */
 func (h *Hub) handleEvent(ctx context.Context, ev *JudgeEvent, raw []byte) error {
-	if ev.Type == "finished" || ev.Type == "error" {
-		h.setTerminal()
+	if ev.Type != "finished" && ev.Type != "error" {
+		if err := PersistEvent(ctx, ev); err != nil {
+			slog.ErrorContext(ctx, "failed to persist judge event",
+				slog.Int64("commit_id", h.commitID),
+				slog.String("type", ev.Type),
+				slog.String("error", err.Error()),
+			)
+		}
+
+		h.broadcast(FormatSSEFrame(ev.Type, ev.Seq, raw))
+		return nil
 	}
 
-	persistErr := PersistEvent(ctx, ev)
+	// Terminal events carry the authoritative result: persist them before closing
+	// the hub, so a transient database failure cannot lose the result and leave
+	// the commit non-terminal until reconciliation.
+	if err := persistTerminalEvent(ctx, ev); err != nil {
+		return err
+	}
 
+	h.setTerminal()
 	h.broadcast(FormatSSEFrame(ev.Type, ev.Seq, raw))
+	h.finish()
+	return nil
+}
 
-	if ev.Type == "finished" || ev.Type == "error" {
-		h.finish()
+/*
+persistTerminalEvent persists a terminal judge event, retrying a few times so a
+short database blip does not drop the authoritative result. When it ultimately
+fails, the caller leaves the hub open so the event is replayed on reconnect.
+*/
+func persistTerminalEvent(ctx context.Context, ev *JudgeEvent) error {
+	var err error
+	for attempt := 1; attempt <= terminalPersistAttempts; attempt++ {
+		if err = PersistEvent(ctx, ev); err == nil {
+			return nil
+		}
+
+		slog.WarnContext(ctx, "retrying terminal judge event persistence",
+			slog.Int64("commit_id", ev.CommitID),
+			slog.String("type", ev.Type),
+			slog.Int("attempt", attempt),
+			slog.String("error", err.Error()),
+		)
+
+		select {
+		case <-time.After(time.Duration(attempt) * 250 * time.Millisecond):
+		case <-ctx.Done():
+			return err
+		}
 	}
 
-	return persistErr
+	return err
 }
 
 /*

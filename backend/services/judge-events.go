@@ -49,7 +49,8 @@ type JudgeEvent struct {
 }
 
 // terminalStatuses are the commit statuses from which a commit never moves
-// away (unless the judge sends its authoritative "finished" event).
+// away. Every persistence path, including the authoritative "finished" event,
+// is guarded so a delayed or stale event cannot revive a settled commit.
 var terminalStatuses = map[string]bool{
 	"completed":         true,
 	"uncompleted":       true,
@@ -70,7 +71,7 @@ func IsTerminalStatus(status string) bool {
 
 /*
 PersistEvent writes a judge event to Postgres. Every update is guarded so a
-terminal status is never overwritten by a non-terminal one.
+terminal status is never overwritten by a later event.
 */
 func PersistEvent(ctx context.Context, ev *JudgeEvent) error {
 	switch ev.Type {
@@ -214,7 +215,7 @@ func persistFinished(ctx context.Context, ev *JudgeEvent) error {
 		     compilation_message = COALESCE(NULLIF($4, ''), compilation_message),
 		     compilation_error = COALESCE(NULLIF($5, ''), compilation_error),
 		     compilation_finished = COALESCE(compilation_finished, now())
-		 WHERE id = $6`,
+		 WHERE id = $6 AND `+nonTerminalGuard,
 		ev.Status, numCorrect, score, ev.CompilationMessage,
 		ev.CompilationError, ev.CommitID,
 	); err != nil {

@@ -165,7 +165,9 @@ func DeduceFromArchive(names []string) (string, error) {
 	counts := make(map[string]int)
 
 	for _, name := range names {
-		ext := path.Ext(name)
+		// Normalize compound extensions (`main.omp.c`) the same way FromFilename
+		// does, so archive entries map to the correct language image.
+		ext := normalizeExtension(name)
 		if ext == "" {
 			continue
 		}

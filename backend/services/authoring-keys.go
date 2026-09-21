@@ -1,9 +1,11 @@
 package services
 
 import (
+	"crypto/rand"
 	"fmt"
 	"path"
 	"strings"
+	"time"
 )
 
 /*
@@ -20,6 +22,20 @@ func fileBasename(name string) string {
 		return "file"
 	}
 	return base
+}
+
+/*
+backupKeyFor derives a temporary key in the same namespace as key. Before an
+in-place object replacement the previous object is copied here, so it can be
+restored if the surrounding database transaction rolls back.
+*/
+func backupKeyFor(key string) string {
+	var token [8]byte
+	if _, err := rand.Read(token[:]); err != nil {
+		return fmt.Sprintf("%s.backup-%d", key, time.Now().UnixNano())
+	}
+
+	return fmt.Sprintf("%s.backup-%x", key, token)
 }
 
 /*

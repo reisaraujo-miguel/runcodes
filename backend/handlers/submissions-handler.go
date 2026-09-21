@@ -199,11 +199,14 @@ func StreamSubmissionEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	owner := int64(userID)
-	if snapshot.Commit.UserID != nil {
-		owner = *snapshot.Commit.UserID
-	}
-	if int64(userID) != owner && role != "professor" && role != "admin" {
+	// A commit with a NULL user_id (the schema allows it and the judge
+	// integration creates such rows) is not owned by the requester. Students must
+	// not be able to read another user's or a system commit stream, so only the
+	// owner or a privileged role may subscribe.
+	isPrivileged := role == "professor" || role == "admin"
+	owned := snapshot.Commit.UserID != nil && *snapshot.Commit.UserID == int64(userID)
+
+	if !owned && !isPrivileged {
 		WriteResponse(w, http.StatusForbidden,
 			models.Error{Message: services.ErrCommitForbidden.Error()},
 		)

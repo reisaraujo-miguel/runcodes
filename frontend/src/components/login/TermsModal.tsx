@@ -139,7 +139,7 @@ export function TermsModal({ isOpen, onClose }: TermsModalProps) {
               Em caso de dúvidas sobre estes termos, entre em contato através do
               email{" "}
               <a
-                href="mailto:{CONTACT_EMAIL}"
+                href={`mailto:${CONTACT_EMAIL}`}
                 className="text-link hover:text-link-hover underline"
               >
                 {CONTACT_EMAIL}

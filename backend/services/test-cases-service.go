@@ -649,35 +649,27 @@ func UpdateTestCase(
 		return nil, ErrServer
 	}
 
-	uploaded := make([]string, 0, 4)
-
-	upload := func(key string, obj *UploadedFile) error {
-		if err := PutCaseObject(
-			ctx, key, bytes.NewReader(obj.Data), int64(len(obj.Data)), obj.ContentType,
-		); err != nil {
-			return err
-		}
-		uploaded = append(uploaded, key)
-		return nil
-	}
+	// Objects are replaced in place, but the replacer backs up their previous
+	// content first so a failure before the transaction commits can restore it.
+	replacer := newObjectReplacer(ctx, caseObjectOps)
 
 	if res.InputObject != nil {
-		if err := upload(CaseInputKey(caseID), res.InputObject); err != nil {
+		if err := replacer.replace(CaseInputKey(caseID), res.InputObject.Data, res.InputObject.ContentType); err != nil {
 			slog.ErrorContext(ctx, "failed to upload test case input",
 				slog.Int64("test_case_id", caseID),
 				slog.String("error", err.Error()),
 			)
-			deleteCaseObjectsBestEffort(ctx, uploaded)
+			replacer.restore()
 			return nil, ErrServer
 		}
 	}
 	if res.OutputObject != nil {
-		if err := upload(CaseOutputKey(caseID), res.OutputObject); err != nil {
+		if err := replacer.replace(CaseOutputKey(caseID), res.OutputObject.Data, res.OutputObject.ContentType); err != nil {
 			slog.ErrorContext(ctx, "failed to upload test case output",
 				slog.Int64("test_case_id", caseID),
 				slog.String("error", err.Error()),
 			)
-			deleteCaseObjectsBestEffort(ctx, uploaded)
+			replacer.restore()
 			return nil, ErrServer
 		}
 	}
@@ -691,21 +683,19 @@ func UpdateTestCase(
 				slog.Int64("test_case_id", caseID),
 				slog.String("error", err.Error()),
 			)
-			deleteCaseObjectsBestEffort(ctx, uploaded)
+			replacer.restore()
 			return nil, ErrServer
 		}
 
 		newFiles = make([]models.TestCaseFile, 0, len(res.Files))
 		for _, f := range res.Files {
 			key := CaseFileKey(caseID, f.Name)
-			if err := upload(key, &UploadedFile{
-				Filename: f.Name, ContentType: f.ContentType, Data: f.Data,
-			}); err != nil {
+			if err := replacer.replace(key, f.Data, f.ContentType); err != nil {
 				slog.ErrorContext(ctx, "failed to upload test case file",
 					slog.Int64("test_case_id", caseID),
 					slog.String("error", err.Error()),
 				)
-				deleteCaseObjectsBestEffort(ctx, uploaded)
+				replacer.restore()
 				return nil, ErrServer
 			}
 
@@ -719,7 +709,7 @@ func UpdateTestCase(
 					slog.Int64("test_case_id", caseID),
 					slog.String("error", err.Error()),
 				)
-				deleteCaseObjectsBestEffort(ctx, uploaded)
+				replacer.restore()
 				return nil, ErrServer
 			}
 			newFiles = append(newFiles, models.TestCaseFile{ID: fileID, Path: f.Name})
@@ -731,9 +721,12 @@ func UpdateTestCase(
 			slog.Int64("test_case_id", caseID),
 			slog.String("error", err.Error()),
 		)
-		deleteCaseObjectsBestEffort(ctx, uploaded)
+		replacer.restore()
 		return nil, ErrServer
 	}
+
+	// The transaction is durable, so the backups are no longer needed.
+	replacer.discard()
 
 	if res.FilesChanged {
 		// The old files are no longer referenced; drop their objects, but keep
@@ -961,14 +954,16 @@ func CreateCompilationFile(
 		return nil, ErrServer
 	}
 
-	if err := PutFileObject(
-		ctx, key, bytes.NewReader(file.Data), int64(len(file.Data)), file.ContentType,
-	); err != nil {
+	// A file with this path may already exist and share the key; the replacer
+	// backs up the previous object so the transaction can be rolled back.
+	replacer := newObjectReplacer(ctx, fileObjectOps)
+
+	if err := replacer.replace(key, file.Data, file.ContentType); err != nil {
 		slog.ErrorContext(ctx, "failed to upload compilation file",
 			slog.String("s3_key", key),
 			slog.String("error", err.Error()),
 		)
-		deleteFileObjectBestEffort(ctx, key)
+		replacer.restore()
 		return nil, ErrServer
 	}
 
@@ -976,9 +971,11 @@ func CreateCompilationFile(
 		slog.ErrorContext(ctx, "error committing compilation file",
 			slog.String("error", err.Error()),
 		)
-		deleteFileObjectBestEffort(ctx, key)
+		replacer.restore()
 		return nil, ErrServer
 	}
+
+	replacer.discard()
 
 	return &models.CompilationFile{ID: fileID, ExerciseID: authoringID, Path: name, Filename: name}, nil
 }
@@ -1123,14 +1120,16 @@ func CreateAttachedFile(
 		return nil, ErrServer
 	}
 
-	if err := PutFileObject(
-		ctx, key, bytes.NewReader(file.Data), int64(len(file.Data)), file.ContentType,
-	); err != nil {
+	// An attachment with this name may already exist and share the key; the
+	// replacer backs up the previous object so the transaction can be rolled back.
+	replacer := newObjectReplacer(ctx, fileObjectOps)
+
+	if err := replacer.replace(key, file.Data, file.ContentType); err != nil {
 		slog.ErrorContext(ctx, "failed to upload attached file",
 			slog.String("s3_key", key),
 			slog.String("error", err.Error()),
 		)
-		deleteFileObjectBestEffort(ctx, key)
+		replacer.restore()
 		return nil, ErrServer
 	}
 
@@ -1138,9 +1137,11 @@ func CreateAttachedFile(
 		slog.ErrorContext(ctx, "error committing attached file",
 			slog.String("error", err.Error()),
 		)
-		deleteFileObjectBestEffort(ctx, key)
+		replacer.restore()
 		return nil, ErrServer
 	}
+
+	replacer.discard()
 
 	return &models.AttachedFile{ID: fileID, ExerciseID: exerciseID, Path: name, Filename: name}, nil
 }

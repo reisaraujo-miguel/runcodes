@@ -16,7 +16,7 @@ vet:
 	go vet -tags "$(TAGS)" ./...
 
 fmt:
-	gofmt -w .
+	go fmt ./...
 
 tidy:
 	go mod tidy
