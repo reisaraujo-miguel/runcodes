@@ -70,7 +70,7 @@ func TestSpecForCutsTheRunOffFromEverything(t *testing.T) {
 	if got.Type != want.Type || got.Source != want.Source || got.Destination != want.Destination {
 		t.Errorf("mount = %+v, want %+v", got, want)
 	}
-	// "z" is what lets the container's root write to the bind mount on SELinux
+	// "z" is what lets the container's user write to the bind mount on SELinux
 	// hosts; without it every run fails there.
 	if len(got.Options) != len(want.Options) {
 		t.Fatalf("mount options = %v, want %v", got.Options, want.Options)
@@ -79,6 +79,21 @@ func TestSpecForCutsTheRunOffFromEverything(t *testing.T) {
 		if got.Options[i] != opt {
 			t.Errorf("mount option %d = %q, want %q", i, got.Options[i], opt)
 		}
+	}
+}
+
+func TestSpecForLetsTheJudgeCleanUpAfterARun(t *testing.T) {
+	// A run's image is non-root, so the container writes as a system uid that
+	// rootless podman maps to a subuid: not the judge's uid, and not one the
+	// judge may chmod. Only the absence of a umask keeps what the run wrote
+	// deletable — the harness's outputfiles directory, a compiler's build tree,
+	// the caches toolchains drop in $HOME — and a workspace the judge cannot
+	// remove is a run that leaks disk and a retried commit that fails at "clean
+	// workspace".
+	s := specFor(RunConfig{Image: "img", MountSource: "/work"}, Limits{})
+
+	if s.Umask != "0000" {
+		t.Errorf("umask = %q, want %q", s.Umask, "0000")
 	}
 }
 

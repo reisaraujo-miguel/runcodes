@@ -14,9 +14,6 @@ export function Footer() {
           </p>
         </div>
         <div>
-          {/* A link styled as a button, not a button wrapping a link: nesting
-              one interactive element inside another is invalid HTML and gives
-              the control two tab stops. */}
           <a
             href={REPOSITORY_URL}
             target="_blank"

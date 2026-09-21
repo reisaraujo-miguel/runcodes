@@ -57,7 +57,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
-          context: ./judge-runners/base
+          context: ./runners/base
           push: true
           # Images are built for the judge's architecture only; the sources they
           # install (toolchains distributed as amd64 packages, for the most part)
@@ -137,7 +137,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
-          context: ./judge-runners/${{ matrix.image }}
+          context: ./runners/${{ matrix.image }}
           push: true
           # Every referenced image (starting with the base pushed above, then
           # the language's own distribution base) is resolved at build time:

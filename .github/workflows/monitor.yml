@@ -16,7 +16,7 @@ permissions:
   packages: write
 
 env:
-  # The monitor is consumed by name: `judge-runners/base/Dockerfile` copies the
+  # The monitor is consumed by name: `runners/base/Dockerfile` copies the
   # binary out of exactly this reference. It is spelled out rather than derived
   # from github.repository, which in a fork would publish to a name that no
   # Dockerfile and no judge ever pulls.
@@ -63,7 +63,7 @@ jobs:
           file: ./monitor/Dockerfile
           push: true
           # Published for the architecture the judge runs on (see
-          # judge-runners/README.md): the language images are amd64, and a
+          # runners/README.md): the language images are amd64, and a
           # multi-arch monitor would be the one image that could not be used
           # with them.
           platforms: linux/amd64

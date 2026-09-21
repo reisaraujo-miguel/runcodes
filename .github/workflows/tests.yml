@@ -129,7 +129,7 @@ jobs:
         run: ./monitor/test/monitor.test.sh
 
       - name: Test the image harness
-        run: ./judge-runners/test/harness.test.sh
+        run: ./runners/test/harness.test.sh
 
   database:
     name: Database (schema)

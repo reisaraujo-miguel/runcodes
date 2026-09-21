@@ -54,9 +54,13 @@ func newRunNonce() (string, error) {
 }
 
 // mkdirWorld creates dir (and parents) and forces mode 0777 regardless of the
-// process umask. The container runs under a user namespace where its root maps
-// to a subuid, so the workspace must be world-writable for it to compile and
-// write outputs.
+// process umask. The graded container runs as an unprivileged system user (see
+// runners/README.md), which rootless podman maps to a subuid — an
+// identity of its own, never the judge's — so the workspace must be
+// world-writable for it to compile and write outputs.
+//
+// The reverse, the judge deleting what the container wrote, is what the run's
+// umask is for (see podman.containerUmask).
 //
 // Only call this for paths the container is meant to write. Anything the judge
 // alone reads stays private: see prepareWorkspace's expected dir.
@@ -334,8 +338,9 @@ func shellSingleQuote(s string) string {
 // shellWord validates a value for the single-quoted assignment the harness reads.
 //
 // A line break would end the assignment and turn the rest of the value into an
-// instruction for the harness, which runs as the container's root: the file name
-// comes from the submitted object's key, so it is rejected rather than escaped.
+// instruction for the harness, which runs with the image's own privileges and
+// prints the milestones the judge trusts: the file name comes from the
+// submitted object's key, so it is rejected rather than escaped.
 func shellWord(value string) (string, error) {
 	if strings.ContainsAny(value, "\n\r\x00") {
 		return "", fmt.Errorf("invalid file name %q for the container config", value)

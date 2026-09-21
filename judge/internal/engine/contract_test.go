@@ -13,7 +13,7 @@ import (
 )
 
 // harnessPath is the image-side script the judge's config file is written for.
-const harnessPath = "../../../judge-runners/base/base-script.sh"
+const harnessPath = "../../../runners/base/base-script.sh"
 
 /*
 TestHarnessReadsTheJudgeConfig is the cross-component check for the container
@@ -21,7 +21,7 @@ contract: the keys writeContainerConfig emits are the keys the image's harness
 reads, with the meaning both sides assume.
 
 Both halves are tested on their own elsewhere (the judge's writer in Go, the
-harness in judge-runners/test/harness.test.sh), but a rename on one side would
+harness in runners/test/harness.test.sh), but a rename on one side would
 pass both of those tests and only break in production. Here the real base script
 runs against a config the judge generated, with a stand-in monitor that records
 the arguments it was handed.

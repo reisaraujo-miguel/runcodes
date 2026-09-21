@@ -1,9 +1,9 @@
 # RunCodes — Judge
 
-The execution engine for run.codes submissions. It is the successor to the
-legacy Python `compiler-engine` (see `tmp/compiler-engine` for reference) and
-runs the language images from `judge-runners/` with **rootless podman** instead
-of Docker. The image a run uses is `ghcr.io/runcodes-icmc/runcodes-runner-<language>`
+The execution engine for RunCodes submissions. It is the successor to the
+legacy Python `compiler-engine` and runs the language images from `runners/`
+with **rootless podman** instead of Docker.
+The image a run uses is `ghcr.io/runcodes-icmc/runcodes-runner-<language>`
 (`JUDGE_IMAGE_FORMAT` overrides the format), built together with the in-container
 monitor from `monitor/` — the three parts are released as one contract.
 
@@ -126,7 +126,7 @@ the backend's `RUNCODES_JUDGE_STALE_TIMEOUT`.
 **Container images.** The judge writes `run_nonce` into `container.config` and only
 accepts progress milestones that carry it, and it sends the exercise's per-case
 limits as `ms_<id>` / `fs_<id>` / `stack_<id>`. Both are part of the contract in
-`DESIGN.md`, so the language images must be rebuilt from `judge-runners/`
+`DESIGN.md`, so the language images must be rebuilt from `runners/`
 together with the judge: an image built from an older base script prints bare
 milestones, which the judge logs as a warning and ignores (the run then times
 out).

@@ -151,6 +151,21 @@ func (c *Client) Create(ctx context.Context, rc RunConfig) (*Container, error) {
 	return &Container{ID: resp.ID, cfg: rc, conn: conn}, nil
 }
 
+// containerUmask is the umask every graded run starts with.
+//
+// The run's image is non-root (see `runners/README.md`): it runs as a
+// system user, which rootless podman maps to a subuid — a different uid from
+// the judge's, and one the judge is not allowed to chmod. Everything a run
+// creates therefore has to be world-writable for the judge to be able to grade
+// and delete it. With the default umask, the harness's own `outputfiles`
+// directory, a compiler's build tree and the caches the toolchains put in
+// $HOME are all 0755 and owned by that subuid: the judge can read them but not
+// unlink inside them, so removing the workspace fails (a retried run then
+// aborts at "clean workspace") and the shared exec directory grows without
+// bound. The workspace is 0777 and belongs to a single run at a time, so
+// nothing here was private from the container to begin with.
+const containerUmask = "0000"
+
 // specFor renders the spec of a graded run's container. Everything that keeps a
 // submission inside it — namespaces, the missing network, the cgroup limits, the
 // mount options — is decided here, and the function is separate from Create so
@@ -178,13 +193,16 @@ func specFor(rc RunConfig, limits Limits) *specgen.SpecGenerator {
 	// Bound memory, PIDs and CPU from outside the container; the in-container
 	// monitor is advisory because the submission shares its privileges.
 	s.ResourceLimits = limits.Resources()
+	// See containerUmask: without it the judge cannot clean up what the run
+	// wrote, because the container's uid is not the judge's.
+	s.Umask = containerUmask
 	s.Mounts = []spec.Mount{{
 		Type:        "bind",
 		Source:      rc.MountSource,
 		Destination: "/root",
 		// "z" relabels the workspace for container access (required on
-		// SELinux hosts, ignored elsewhere); without it a rootless
-		// container's root cannot write to the bind mount even at 0777.
+		// SELinux hosts, ignored elsewhere); without it the container's
+		// user cannot write to the bind mount even at 0777.
 		Options: []string{"rw", "z"},
 	}}
 

@@ -1,4 +1,4 @@
-# run.codes Compiler - Monitor
+# RunCodes Runner Monitor
 
 This program monitors the execution of another program. In particular, it
 gathers information such as the running time, exit status and/or signal that
@@ -52,7 +52,7 @@ matter: the program under test runs in the same filesystem as the report, so
 otherwise it could write the report itself — claiming a status, a signal or a
 running time of its choosing — or point the path at another file with a symlink.
 A process that puts itself in a new session still escapes the process-group kill;
-the harness (`judge-runners/base/base-script.sh`) kills whatever is left as soon
+the harness (`runners/base/base-script.sh`) kills whatever is left as soon
 as the monitor returns.
 
 Where a submission does not control the monitor's arguments, the report path and
@@ -62,7 +62,7 @@ the limits come from the judge through the container's `container.config`.
 
 The monitor is shipped as `ghcr.io/runcodes-icmc/runcodes-monitor`, built from
 this directory by `.github/workflows/monitor.yml` on a `v*.*.*` tag.
-`judge-runners/base/Dockerfile` is the only place that copies the binary out of
+`runners/base/Dockerfile` is the only place that copies the binary out of
 that reference, and every language image gets it from the base — 12 of them
 `FROM` it, the other 11 copy it into a third-party base. That makes the `:latest`
 tag the workflow pushes the one in use: bumping only the version tags would leave

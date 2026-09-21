@@ -40,8 +40,6 @@ export function AboutSection() {
         <div className="pt-4">
           <p className="text-sm text-muted-foreground">
             Ao navegar no RunCodes você concorda com os{" "}
-            {/* A button, not an anchor without href: that is focusable and
-                responds to Enter, so keyboard users can open the terms. */}
             <button
               type="button"
               onClick={openTermsModal}

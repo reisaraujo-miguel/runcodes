@@ -275,7 +275,8 @@ func TestWriteContainerConfigCarriesTheContract(t *testing.T) {
 
 // TestWriteContainerConfigRejectsAnUnsafeFileName pins the input that reaches a
 // file the harness sources with bash: a line break would end the assignment and
-// turn the rest of the name into an instruction for the container's root.
+// turn the rest of the name into an instruction for the process that prints the
+// milestones the judge trusts.
 func TestWriteContainerConfigRejectsAnUnsafeFileName(t *testing.T) {
 	dir := t.TempDir()
 	e := &Engine{cfg: &config.Config{DefaultCaseTimeout: time.Second}}

@@ -7,7 +7,7 @@ containers, and the results are streamed back live.
 This repository is the next-generation rewrite of the legacy run.codes platform.
 The original compiler engine and language images live in separate repositories
 (`compiler-engine`, `compiler-images`); they were folded into this one as
-`judge/`, `judge-runners/` and `monitor/`.
+`judge/`, `runners/` and `monitor/`.
 
 ## Architecture
 
@@ -46,18 +46,18 @@ A submission flows through the platform like this:
 
 ## Services
 
-| Service     | Path             | Stack                                     | Description                                      |
-| ----------- | ---------------- | ----------------------------------------- | ------------------------------------------------ |
-| Frontend    | `frontend/`      | React 19, Vite, TypeScript, Tailwind, Bun | The web client.                                  |
-| Backend API | `backend/`       | Go, chi, PostgreSQL, JWT, S3              | Auth, courses, submissions, SSE relay.           |
-| Judge       | `judge/`         | Go, rootless podman, PostgreSQL, S3       | Compiles, runs and grades submissions.           |
-| Runners     | `judge-runners/` | Docker images per language                | The container each submission is graded in.      |
-| Monitor     | `monitor/`       | C                                         | Limits, times and reports one graded process.    |
-| Database    | `database/`      | PostgreSQL                                | Schema, seed data and the legacy-data migration. |
+| Service     | Path        | Stack                                     | Description                                      |
+| ----------- | ----------- | ----------------------------------------- | ------------------------------------------------ |
+| Frontend    | `frontend/` | React 19, Vite, TypeScript, Tailwind, Bun | The web client.                                  |
+| Backend API | `backend/`  | Go, chi, PostgreSQL, JWT, S3              | Auth, courses, submissions, SSE relay.           |
+| Judge       | `judge/`    | Go, rootless podman, PostgreSQL, S3       | Compiles, runs and grades submissions.           |
+| Runners     | `runners/`  | Docker images per language                | The container each submission is graded in.      |
+| Monitor     | `monitor/`  | C                                         | Limits, times and reports one graded process.    |
+| Database    | `database/` | PostgreSQL                                | Schema, seed data and the legacy-data migration. |
 
 Each service has its own README: [`backend/README.md`](backend/README.md),
 [`frontend/README.md`](frontend/README.md), [`judge/README.md`](judge/README.md),
-[`judge-runners/README.md`](judge-runners/README.md),
+[`runners/README.md`](runners/README.md),
 [`monitor/README.md`](monitor/README.md).
 The judge/backend integration contract is documented in
 [`judge/DESIGN.md`](judge/DESIGN.md); the judge/image contract (the milestone
@@ -70,7 +70,7 @@ nonce and the per-case limits) is in the same file.
 ├── backend/        Go API (auth, offerings, submissions, SSE relay)
 ├── frontend/       React client served by Caddy
 ├── judge/          Execution engine (rootless podman)
-├── judge-runners/  Language images the judge runs submissions in
+├── runners/        Language images the judge runs submissions in
 ├── monitor/        In-container process monitor (limits, timing, report)
 ├── database/       PostgreSQL schema, seeds and legacy migration
 └── docker-compose.yml
@@ -173,7 +173,7 @@ it and 11 copy the harness and the monitor out of it.
 That makes the judge, the monitor and the language images one contract (the
 milestone nonce and the per-case limits, documented in
 [`judge/DESIGN.md`](judge/DESIGN.md)): changing it means releasing the judge and
-rebuilding the images in `judge-runners/` together, or the runs of the new judge
+rebuilding the images in `runners/` together, or the runs of the new judge
 fail against images that are still on the old base script.
 
 The application images (backend, frontend, database, judge) are built and

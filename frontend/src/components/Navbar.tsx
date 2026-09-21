@@ -126,9 +126,6 @@ function DropDownMenu(props: {
         )}
         {props.role === USER_ROLES.Admin && (
           <>
-            {/* Compose the link onto the menu item instead of nesting it: base-ui
-                dispatches Enter on the item itself, so a nested anchor would
-                never be activated from the keyboard. */}
             <DropdownMenuItem render={<NavLink to="/admin" />}>
               Ferramentas de Admin
             </DropdownMenuItem>

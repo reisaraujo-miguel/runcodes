@@ -1,9 +1,8 @@
 # Judge service — design & contract
 
-The judge is the execution engine for run.codes submissions. It replaces the
-legacy Python `compiler-engine` (see `tmp/compiler-engine` for reference) and
-runs the language images from `judge-runners/` (published as
-`ghcr.io/runcodes-icmc/runcodes-runner-<language>`) with **rootless podman**.
+The judge is the execution engine for RunCodes submissions. It replaces the
+legacy Python `compiler-engine` and runs the language images from `runners/`
+(published as `ghcr.io/runcodes-icmc/runcodes-runner-<language>`) with **rootless podman**.
 
 ## Responsibility split (agreed)
 
@@ -108,7 +107,7 @@ Event types (SSE `event:` field):
 Authenticated download of the generated output zip (monitor output, per-case
 stdout/stderr), if produced. The backend may fetch this and store it in S3.
 
-## Container contract (from `judge-runners/`)
+## Container contract (from `runners/`)
 
 The per-run workspace is bind-mounted at `/root`; the image's `CMD
 /usr/bin/runcodes` sources `container.config` there. The judge writes:
@@ -154,6 +153,19 @@ Memory is bounded twice, and the two bounds must be ordered: the image's limit
 (the monitor reports exceeding it) sits below `JUDGE_CONTAINER_MEMORY_BYTES` (the
 cgroup cap, which the runtime reports only as a killed process).
 
+### The user a run executes as
+
+Every language image runs as an unprivileged `runcodes` user and never as root,
+and the harness inherits that identity: the submission is compiled and executed
+with exactly the permissions the harness itself has, and neither can change the
+image they are being graded in — `/usr/bin/runcodes` and `/usr/bin/monitor`
+included. What a run may write is what the workspace lets it write.
+
+The judge does not depend on the uid the images pick, only on the shape: a
+non-root user whose home directory is `/root`, because `/root` is where the
+workspace is mounted and where the toolchains look for `$HOME` to place their
+caches. See `runners/README.md` for how the images build it.
+
 ### Why the nonce
 
 The milestones travel on the container's log stream, which also carries the
@@ -196,6 +208,16 @@ has its own PID, UTS and IPC namespaces, **no network namespace**, and
 `no-new-privileges`, which stops a setuid binary or a file capability in a
 language image from giving the submission rights the monitor does not hold. The
 only mount is the run's workspace, at `/root`.
+
+The run also starts with a **zero umask**, because the container's uid is not the
+judge's: rootless podman maps the image's unprivileged user to a subuid, so the
+files a run creates are owned by an identity the judge may read but not chmod.
+With the default umask, the harness's own `outputfiles` directory and every build
+tree a compiler leaves behind would be 0755 and owned by that subuid — the judge
+could read them but never remove them, so the workspace would be impossible to
+clean up and the shared exec directory would grow without bound. The workspace is
+0777 and belongs to one run at a time, so none of it was private from the
+container to begin with.
 
 ## Configuration
 
