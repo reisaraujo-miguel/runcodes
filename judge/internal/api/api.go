@@ -78,12 +78,27 @@ func (s *Server) Router() http.Handler {
 	return r
 }
 
-// auth is a middleware that checks the Authorization header for a bearer token
+// auth is a middleware that checks the Authorization header for a bearer token.
+//
+// The judge executes untrusted code and serves other people's submissions and
+// outputs, so a deployment with no token fails CLOSED: without JUDGE_AUTH_TOKEN
+// every /v1 request is refused. Set JUDGE_ALLOW_INSECURE=true to opt out, which
+// is only appropriate for a local instance that is not reachable by anyone else.
 func (s *Server) auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// if no token is configured, allow all requests
 		if s.cfg.AuthToken == "" {
-			next.ServeHTTP(w, r)
+			if s.cfg.AllowInsecureAPI {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			s.logger.ErrorContext(r.Context(),
+				"refusing a request: JUDGE_AUTH_TOKEN is not set",
+				"path", r.URL.Path,
+			)
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+				"error": "judge is not configured: set JUDGE_AUTH_TOKEN (or JUDGE_ALLOW_INSECURE=true for a local instance)",
+			})
 			return
 		}
 

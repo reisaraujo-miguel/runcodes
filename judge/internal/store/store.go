@@ -78,23 +78,7 @@ func (s *Store) Claim(ctx context.Context) (*model.Commit, error) {
 		// terminal and commit; rolling back would leave it `queued`, and since
 		// every poll orders by created_at that same row would be selected again
 		// forever, starving every later submission.
-		slog.WarnContext(ctx, "marking queued commit without s3_key as server_error",
-			slog.Int64("commit_id", commit.ID),
-		)
-
-		if _, err := tx.ExecContext(ctx,
-			`UPDATE commits SET status = 'server_error' WHERE id = $1`, commit.ID,
-		); err != nil {
-			return nil, fmt.Errorf("mark commit %d without s3_key as server_error: %w", commit.ID, err)
-		}
-
-		if err := tx.Commit(); err != nil {
-			return nil, fmt.Errorf("commit terminal claim %d: %w", commit.ID, err)
-		}
-
-		// Report an empty queue so the caller's drain loop moves on and the next
-		// poll picks up the following row.
-		return nil, nil
+		return s.markTerminal(ctx, tx, commit.ID, "queued commit without an s3_key")
 	}
 
 	commit.S3Key = s3Key.String
@@ -117,7 +101,11 @@ func (s *Store) Claim(ctx context.Context) (*model.Commit, error) {
 		SELECT CASE WHEN ghost AND real_id IS NOT NULL THEN real_id ELSE id END
 		FROM exercises WHERE id = $1`, commit.ExerciseID).Scan(&commit.RealExerciseID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("exercise %d not found", commit.ExerciseID)
+		// The exercise is gone (or the commit has none), so this commit can never
+		// be graded. It must leave the queue in this transaction: returning an
+		// error would roll back and leave it queued, and the next poll would select
+		// the same oldest row again, starving every later submission.
+		return s.markTerminal(ctx, tx, commit.ID, fmt.Sprintf("exercise %d not found", commit.ExerciseID))
 	}
 	if err != nil {
 		return nil, fmt.Errorf("resolve real exercise: %w", err)
@@ -127,6 +115,32 @@ func (s *Store) Claim(ctx context.Context) (*model.Commit, error) {
 		return nil, fmt.Errorf("commit claim: %w", err)
 	}
 	return &commit, nil
+}
+
+// markTerminal settles a claimed commit that can never be processed, inside the
+// claim transaction, and reports an empty queue so the caller's drain loop moves
+// on to the next row. Rolling back instead would leave the row `queued`, and
+// because every poll takes the oldest row first it would be selected again on
+// every poll — starving every submission behind it.
+func (s *Store) markTerminal(
+	ctx context.Context, tx *sql.Tx, commitID int64, reason string,
+) (*model.Commit, error) {
+	slog.WarnContext(ctx, "marking a queued commit as server_error",
+		slog.Int64("commit_id", commitID),
+		slog.String("reason", reason),
+	)
+
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE commits SET status = 'server_error' WHERE id = $1`, commitID,
+	); err != nil {
+		return nil, fmt.Errorf("mark commit %d as server_error: %w", commitID, err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit terminal claim %d: %w", commitID, err)
+	}
+
+	return nil, nil
 }
 
 // FetchTestCases returns the test cases of an exercise (ordered by id), each
