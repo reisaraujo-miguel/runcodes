@@ -18,7 +18,7 @@ score.
   `unix:///run/user/$UID/podman/podman.sock`
   (`systemctl --user start podman.socket`).
 - The language image. The default is the C image, which the test pulls on
-  demand: `ghcr.io/runcodes-icmc/compiler-images-c:latest`.
+  demand: `ghcr.io/runcodes-icmc/runcodes-runner-c:latest`.
 
 ## Run
 
@@ -35,9 +35,14 @@ make integration          # starts containers, runs the test, tears down
 | `RUNCODES_S3_ENDPOINT`            | `http://127.0.0.1:8333`                           | S3 endpoint                          |
 | `RUNCODES_S3_BUCKET_PREFIX`       | `runcodes-itest`                                  | Bucket prefix                        |
 | `JUDGE_PODMAN_URI`                | `unix:///run/user/$UID/podman/podman.sock`        | Podman API socket                    |
-| `JUDGE_TEST_IMAGE_FORMAT`         | `ghcr.io/runcodes-icmc/compiler-images-%s:latest` | Image format                         |
+| `JUDGE_TEST_IMAGE_FORMAT`         | `ghcr.io/runcodes-icmc/runcodes-runner-%s:latest` | Image format                         |
 | `JUDGE_TEST_KEEP`                 | `false`                                           | Keep per-commit workspaces           |
 | `ITEST_DB_PORT` / `ITEST_S3_PORT` | `55432` / `18333`                                 | Host ports                           |
+
+The harness creates, applies the schema to and drops its own scratch database,
+so it connects as the **owner** (`runcodes`), and the judge it starts uses the
+same DSN. A deployment points the judge at `runcodes_app` instead
+(`database/schema/05-app-role.sh`), which cannot create a database at all.
 
 You can also point the test at an already-running PostgreSQL/SeaweedFS without
 the harness:
