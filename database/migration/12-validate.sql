@@ -105,10 +105,16 @@ BEGIN
     RAISE EXCEPTION 'allowed_files: % old rows but only % mapped', v_old, v_new;
   END IF;
 
+  -- Exercises x allowed file types. The comparison must go through
+  -- _migration.file_types_map, exactly as 06-migrate-allowed-file-types.sql does:
+  -- several legacy file types can be mapped onto one new row, so counting the
+  -- legacy (exercise, allowed_file_id) pairs would report a false mismatch for a
+  -- migration that is correct.
   SELECT count(*) INTO v_old
-  FROM (SELECT DISTINCT exercise_id, allowed_file_id
-        FROM old.allowed_files_exercises
-        WHERE allowed_file_id IS NOT NULL) s;
+  FROM (SELECT DISTINCT afe.exercise_id, ftm.new_id
+        FROM old.allowed_files_exercises afe
+        JOIN _migration.file_types_map ftm ON ftm.old_id = afe.allowed_file_id
+        WHERE afe.allowed_file_id IS NOT NULL) s;
   SELECT count(*) INTO v_new FROM public.exercises_allowed_file_types;
   IF v_old <> v_new THEN
     RAISE EXCEPTION 'allowed_files_exercises: % old pairs vs % new rows', v_old, v_new;
