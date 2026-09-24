@@ -1,10 +1,12 @@
-FROM golang:1.27-trixie AS builder
+FROM golang:1.27.1-alpine3.24 AS builder
 
 WORKDIR /app/
-COPY . .
 
-RUN go mod download && \
-CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
 
 FROM alpine:3.24 AS runner
 
