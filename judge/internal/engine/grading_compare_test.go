@@ -9,15 +9,6 @@ import (
 )
 
 func TestCompareOutput(t *testing.T) {
-	dir := t.TempDir()
-	write := func(name, content string) string {
-		path := filepath.Join(dir, name)
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		return path
-	}
-
 	tests := []struct {
 		name     string
 		user     string
@@ -34,12 +25,63 @@ func TestCompareOutput(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			user := write("user_"+tc.name, tc.user)
-			expected := write("expected_"+tc.name, tc.expected)
-			if got := compareOutput(user, expected, tc.typ); got != tc.want {
+			got := compareOutput([]byte(tc.user), []byte(tc.expected), tc.typ)
+			if got != tc.want {
 				t.Fatalf("compareOutput = %s, want %s", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestOpenRegularRefusesSymlinks(t *testing.T) {
+	dir := t.TempDir()
+
+	secret := filepath.Join(dir, "secret")
+	if err := os.WriteFile(secret, []byte("leaked"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	link := filepath.Join(dir, "1.output")
+	if err := os.Symlink(secret, link); err != nil {
+		t.Fatal(err)
+	}
+
+	// The workspace is written by the submission, so a symlinked output must not
+	// be followed: doing so would publish whatever file it points at as the
+	// submission's own output.
+	if _, err := openRegular(link); err == nil {
+		t.Fatal("openRegular followed a symlink to a regular file")
+	}
+
+	if got := readLimited(link, 1024); got != "" {
+		t.Fatalf("readLimited(symlink) = %q, want empty", got)
+	}
+
+	if _, err := readRegularBounded(link, 1024); err == nil {
+		t.Fatal("readRegularBounded followed a symlink to a regular file")
+	}
+
+	// ...and a directory is refused too, rather than read as a huge file.
+	if _, err := openRegular(dir); err == nil {
+		t.Fatal("openRegular accepted a directory")
+	}
+}
+
+func TestReadRegularBoundedEnforcesTheLimit(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "1.output")
+	if err := os.WriteFile(path, []byte("abcdef"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := readRegularBounded(path, 6)
+	if err != nil || string(got) != "abcdef" {
+		t.Fatalf("readRegularBounded(6) = %q, %v", got, err)
+	}
+
+	// An oversized output must be an error, not a silently truncated compare.
+	if _, err := readRegularBounded(path, 5); err == nil {
+		t.Fatal("readRegularBounded accepted a file over the limit")
 	}
 }
 

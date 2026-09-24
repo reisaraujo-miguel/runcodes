@@ -2,9 +2,51 @@
 // relative /api path. An absolute URL is only needed for split deployments.
 export const API_BASE_URL = import.meta.env.VITE_API_ENDPOINT ?? "";
 
+/**
+ * How long a request may take before it is aborted. Without a bound, a request
+ * that is accepted but never answered (a wedged proxy, a dropped connection)
+ * leaves the UI waiting forever with no way to retry.
+ */
+export const REQUEST_TIMEOUT_MS = 15_000;
+
+/** A file upload is slower than a JSON round trip, so it gets its own budget. */
+export const UPLOAD_TIMEOUT_MS = 120_000;
+
+/**
+ * Bounds a request with a timeout while still honouring a caller's own signal,
+ * so a component can cancel on unmount as well.
+ */
+export function requestSignal(
+  signal: AbortSignal | null | undefined,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
+): AbortSignal {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
+/** True when a thrown value is the abort caused by our own timeout. */
+function isTimeoutAbort(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "TimeoutError";
+}
+
 /** Standard error shape returned by the API. */
 export interface ApiError {
   error_msg: string;
+}
+
+/**
+ * A failed API request. It carries the HTTP status alongside the message the
+ * API sent, so a caller can react to the reason (a 403 is not a 404) without
+ * matching the message text.
+ */
+export class ApiRequestError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+  }
 }
 
 /** True for non-null objects, used to narrow parsed JSON safely. */
@@ -46,14 +88,27 @@ export async function apiRequest<T>(
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    credentials: "include",
-    headers,
-    ...options,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      // Spread first: a caller-supplied header set must be merged into `headers`
+      // rather than replacing the Content-Type set above.
+      ...options,
+      credentials: "include",
+      headers,
+      signal: requestSignal(options.signal),
+    });
+  } catch (error) {
+    if (isTimeoutAbort(error)) {
+      throw new Error("Tempo esgotado ao contatar o servidor.", {
+        cause: error,
+      });
+    }
+    throw error;
+  }
 
   if (!response.ok) {
-    throw new Error(await readApiError(response));
+    throw new ApiRequestError(await readApiError(response), response.status);
   }
 
   return readApiBody<T>(response);

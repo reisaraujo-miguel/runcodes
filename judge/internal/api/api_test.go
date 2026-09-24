@@ -30,16 +30,27 @@ type fakeArtifacts struct{ path string }
 
 func (f fakeArtifacts) ArtifactPath(int64) string { return f.path }
 
-func newServer(db fakeDB, rt fakeRuntime, art fakeArtifacts, token string) (*Server, *events.Hub, *int32) {
+func newServerWith(cfg *config.Config, db fakeDB, rt fakeRuntime, art fakeArtifacts) (*Server, *events.Hub, *int32) {
 	hub := events.New(time.Minute)
 	var woke int32
 	srv := New(
-		&config.Config{AuthToken: token},
+		cfg,
 		db, rt, art, hub,
 		func() { atomic.AddInt32(&woke, 1) },
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 	)
 	return srv, hub, &woke
+}
+
+func newServer(db fakeDB, rt fakeRuntime, art fakeArtifacts, token string) (*Server, *events.Hub, *int32) {
+	return newServerWith(&config.Config{AuthToken: token}, db, rt, art)
+}
+
+// newInsecureServer is for the tests that exercise endpoint behaviour rather than
+// authentication: without a token the /v1 routes fail closed unless the insecure
+// mode is explicitly enabled.
+func newInsecureServer(db fakeDB, rt fakeRuntime, art fakeArtifacts) (*Server, *events.Hub, *int32) {
+	return newServerWith(&config.Config{AllowInsecureAPI: true}, db, rt, art)
 }
 
 func TestHealth(t *testing.T) {
@@ -105,11 +116,33 @@ func TestAuth(t *testing.T) {
 }
 
 func TestWakeInvalidID(t *testing.T) {
-	srv, _, _ := newServer(fakeDB{}, fakeRuntime{}, fakeArtifacts{}, "")
+	srv, _, _ := newInsecureServer(fakeDB{}, fakeRuntime{}, fakeArtifacts{})
 	rec := httptest.NewRecorder()
 	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/runs/abc", nil))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("code = %d, want 400", rec.Code)
+	}
+}
+
+// TestAuthFailsClosedWithoutAToken pins the security property that an
+// unconfigured judge refuses its API instead of serving it to anyone who can
+// reach the port.
+func TestAuthFailsClosedWithoutAToken(t *testing.T) {
+	srv, _, woke := newServer(fakeDB{}, fakeRuntime{}, fakeArtifacts{}, "")
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/runs/1", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("code = %d, want 503 when no token is configured", rec.Code)
+	}
+	if got := atomic.LoadInt32(woke); got != 0 {
+		t.Fatalf("wake calls = %d, want 0", got)
+	}
+
+	// The probes stay public so an orchestrator can still see the process.
+	rec = httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("healthz code = %d, want 200", rec.Code)
 	}
 }
 
@@ -157,7 +190,7 @@ func TestOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	srv, _, _ := newServer(fakeDB{}, fakeRuntime{}, fakeArtifacts{path: path}, "")
+	srv, _, _ := newInsecureServer(fakeDB{}, fakeRuntime{}, fakeArtifacts{path: path})
 	rec := httptest.NewRecorder()
 	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/runs/1/output", nil))
 	if rec.Code != http.StatusOK {
@@ -169,7 +202,7 @@ func TestOutput(t *testing.T) {
 }
 
 func TestOutputMissing(t *testing.T) {
-	srv, _, _ := newServer(fakeDB{}, fakeRuntime{}, fakeArtifacts{path: filepath.Join(t.TempDir(), "nope.zip")}, "")
+	srv, _, _ := newInsecureServer(fakeDB{}, fakeRuntime{}, fakeArtifacts{path: filepath.Join(t.TempDir(), "nope.zip")})
 	rec := httptest.NewRecorder()
 	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/runs/1/output", nil))
 	if rec.Code != http.StatusNotFound {

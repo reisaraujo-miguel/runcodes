@@ -77,7 +77,13 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 	}
 
 	podmanURI := envOr("JUDGE_PODMAN_URI", fmt.Sprintf("unix:///run/user/%d/podman/podman.sock", os.Getuid()))
-	pc := podman.New(podmanURI)
+	// Limits mirror the production defaults so the container this test runs is
+	// sandboxed the same way a graded one is.
+	pc := podman.New(podmanURI, podman.Limits{
+		MemoryBytes: 512 << 20,
+		PidsLimit:   256,
+		CPUQuota:    100000,
+	})
 	if err := pc.Ready(ctx); err != nil {
 		t.Skipf("podman unreachable at %s: %v", podmanURI, err)
 	}
@@ -136,11 +142,13 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 	// --- Build the real engine ------------------------------------------------
 	execDir := t.TempDir()
 	cfg := &config.Config{
-		Concurrency:        1,
-		ExecDir:            execDir,
-		ExecDirRemote:      execDir,
-		ImageFormat:        envOr("JUDGE_TEST_IMAGE_FORMAT", "ghcr.io/runcodes-icmc/compiler-images-%s:latest"),
-		CompilationTimeout: 90 * time.Second,
+		Concurrency:   1,
+		ExecDir:       execDir,
+		ExecDirRemote: execDir,
+		ImageFormat:   envOr("JUDGE_TEST_IMAGE_FORMAT", "ghcr.io/runcodes-icmc/runcodes-runner-%s:latest"),
+		// The C image's own compilation timeout is the base script's 10s; the judge
+		// only has to outwait it.
+		CompilationWait:    2 * time.Minute,
 		BaseExecTimeout:    15 * time.Second,
 		DefaultCaseTimeout: 10 * time.Second,
 		MonitorMaxFileSize: 5 * 1024 * 1024,
@@ -156,7 +164,7 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 	}
 	hub := events.New(2 * time.Minute)
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	eng := engine.New(cfg, st, s3store, pc, hub, logger)
+	eng := engine.New(cfg, st, s3store, engine.PodmanRuntime(pc), hub, logger)
 
 	// --- Claim and run --------------------------------------------------------
 	commit, err := st.Claim(ctx)

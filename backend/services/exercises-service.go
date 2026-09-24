@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/runcodes-icmc/runcodes/cache"
+	"github.com/runcodes-icmc/runcodes/database"
 	"github.com/runcodes-icmc/runcodes/models"
 	"github.com/runcodes-icmc/runcodes/validation"
 
@@ -47,11 +49,11 @@ catalog. The catalog is global and rarely changes, so it is cached.
 */
 func ListAllowedFileTypes(ctx context.Context) ([]models.AllowedFileType, error) {
 	var types []models.AllowedFileType
-	if CacheGetJSON(ctx, cacheKeyAllowedFileTypes, &types) {
+	if cache.GetJSON(ctx, cache.KeyAllowedFileTypes, &types) {
 		return types, nil
 	}
 
-	rows, err := DB.QueryContext(ctx, `
+	rows, err := database.DB.QueryContext(ctx, `
 		SELECT id, name, extension, is_compilable, is_available
 		FROM allowed_file_types
 		WHERE is_available
@@ -84,44 +86,8 @@ func ListAllowedFileTypes(ctx context.Context) ([]models.AllowedFileType, error)
 		return nil, ErrServer
 	}
 
-	CacheSetJSON(ctx, cacheKeyAllowedFileTypes, types, CacheAllowedFileTypesTTL)
+	cache.SetJSON(ctx, cache.KeyAllowedFileTypes, types, cache.AllowedFileTypesTTL)
 	return types, nil
-}
-
-/*
-offeringAccess reports whether the user owns the offering (privileged role) or
-is an enrolled, non-banned participant.
-*/
-func offeringAccess(
-	ctx context.Context, offeringID, userID int64, role string,
-) (owner bool, enrolled bool, err error) {
-	var (
-		ownerID    int64
-		isEnrolled bool
-	)
-
-	err = DB.QueryRowContext(ctx, `
-		SELECT o.owner_id,
-		       EXISTS (
-		           SELECT 1 FROM enrollments en
-		           WHERE en.offering_id = o.id AND en.user_id = $2 AND NOT en.banned
-		       )
-		FROM offerings o
-		WHERE o.id = $1`, offeringID, userID,
-	).Scan(&ownerID, &isEnrolled)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return false, false, ErrOfferingNotFound
-		}
-		slog.ErrorContext(ctx, "error checking offering access",
-			slog.Int64("offering_id", offeringID),
-			slog.String("error", err.Error()),
-		)
-		return false, false, ErrServer
-	}
-
-	owner = isPrivilegedRole(role) && ownerID == userID
-	return owner, isEnrolled, nil
 }
 
 /*
@@ -132,8 +98,15 @@ type exerciseAccess struct {
 	exercise models.Exercise
 
 	offeringOwnerID int64
-	isOwner         bool
-	isEnrolled      bool
+
+	// canAuthor is true when the caller may change the exercise's authoring rows
+	// (the owner, an admin, or a professor assigned to teach the class).
+	// enrollmentRole is the caller's enrollment role ("" when not enrolled) and
+	// banned whether that enrollment is banned.
+	canAuthor      bool
+	isEnrolled     bool
+	enrollmentRole string
+	banned         bool
 
 	// ghost exercises reuse the test cases and compilation files of their
 	// real exercise, exactly like the judge does.
@@ -153,35 +126,33 @@ func (a *exerciseAccess) authoringExerciseID() int64 {
 }
 
 /*
-loadExerciseAccess fetches the exercise together with whether the caller owns
-the offering or is enrolled in it.
+loadExerciseAccess fetches the exercise together with the caller's relation to
+its offering: whether they own it, teach it, or are enrolled in it.
 */
 func loadExerciseAccess(
 	ctx context.Context, exerciseID, userID int64, role string,
 ) (*exerciseAccess, error) {
 	var (
-		acc      exerciseAccess
-		enrolled bool
+		acc             exerciseAccess
+		offeringOwnerID sql.NullInt64
 	)
 
-	err := DB.QueryRowContext(ctx, `
+	err := database.DB.QueryRowContext(ctx, `
 		SELECT e.id, e.offering_id, e.title, e.description, e.deadline,
 		       e.open_date, e.show_before_open_date, e.removed,
 		       e.created_at, e.updated_at, e.ghost, e.real_id, o.owner_id,
-		       EXISTS (
-		           SELECT 1 FROM enrollments en
-		           WHERE en.offering_id = e.offering_id AND en.user_id = $2
-		             AND NOT en.banned
-		       )
+		       COALESCE(en.role::text, ''), COALESCE(en.banned, FALSE)
 		FROM exercises e
 		JOIN offerings o ON o.id = e.offering_id
+		LEFT JOIN enrollments en
+		       ON en.offering_id = e.offering_id AND en.user_id = $2
 		WHERE e.id = $1`, exerciseID, userID,
 	).Scan(
 		&acc.exercise.ID, &acc.exercise.OfferingID, &acc.exercise.Title,
 		&acc.exercise.Description, &acc.exercise.Deadline, &acc.exercise.OpenDate,
 		&acc.exercise.ShowBeforeOpenDate, &acc.exercise.Removed,
 		&acc.exercise.CreatedAt, &acc.exercise.UpdatedAt, &acc.ghost, &acc.realID,
-		&acc.offeringOwnerID, &enrolled,
+		&offeringOwnerID, &acc.enrollmentRole, &acc.banned,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -194,8 +165,15 @@ func loadExerciseAccess(
 		return nil, ErrServer
 	}
 
-	acc.isEnrolled = enrolled
-	acc.isOwner = isPrivilegedRole(role) && acc.offeringOwnerID == userID
+	if offeringOwnerID.Valid {
+		acc.offeringOwnerID = offeringOwnerID.Int64
+	}
+	acc.isEnrolled = acc.enrollmentRole != "" && !acc.banned
+	owner := isPrivilegedRole(role) && offeringOwnerID.Valid &&
+		offeringOwnerID.Int64 == userID
+	acc.canAuthor = owner ||
+		(acc.isEnrolled && acc.enrollmentRole == EnrollmentRoleProfessor)
+
 	return &acc, nil
 }
 
@@ -211,10 +189,11 @@ func exerciseVisible(ex models.Exercise, now time.Time) bool {
 }
 
 /*
-requireExerciseOwner loads an exercise and returns ErrNotOwner unless the caller
-owns the offering it belongs to.
+requireExerciseAuthor loads an exercise and returns ErrNotOwner unless the caller
+may author it: the offering's owner, an admin, or a professor assigned to teach
+the class. Students and monitors never pass, even when enrolled.
 */
-func requireExerciseOwner(
+func requireExerciseAuthor(
 	ctx context.Context, exerciseID int64, claims map[string]any,
 ) (*exerciseAccess, error) {
 	userID, role, err := claimsUserID(claims)
@@ -226,7 +205,7 @@ func requireExerciseOwner(
 	if err != nil {
 		return nil, err
 	}
-	if !acc.isOwner {
+	if !acc.canAuthor {
 		return nil, ErrNotOwner
 	}
 	return acc, nil
@@ -237,7 +216,7 @@ loadAllowedFileTypeIDs returns the allowed file type ids configured for an
 exercise (empty when none).
 */
 func loadAllowedFileTypeIDs(ctx context.Context, exerciseID int64) ([]int64, error) {
-	rows, err := DB.QueryContext(ctx, `
+	rows, err := database.DB.QueryContext(ctx, `
 		SELECT allowed_file_type_id
 		FROM exercises_allowed_file_types
 		WHERE exercise_id = $1
@@ -287,7 +266,7 @@ func validateAllowedFileTypeIDs(ctx context.Context, ids []int64) error {
 	}
 
 	var count int
-	err := DB.QueryRowContext(ctx, `
+	err := database.DB.QueryRowContext(ctx, `
 		SELECT count(*) FROM allowed_file_types
 		WHERE id = ANY($1) AND is_available`, pq.Array(unique),
 	).Scan(&count)
@@ -315,11 +294,11 @@ func CreateExercise(
 		return nil, err
 	}
 
-	owner, _, err := offeringAccess(ctx, offeringID, userID, role)
+	rel, err := loadOfferingRelation(ctx, offeringID, userID, role)
 	if err != nil {
 		return nil, err
 	}
-	if !owner {
+	if !rel.CanAuthor() {
 		return nil, ErrNotOwner
 	}
 
@@ -343,7 +322,7 @@ func CreateExercise(
 		showBefore = *req.ShowBeforeOpenDate
 	}
 
-	tx, err := DB.BeginTx(ctx, nil)
+	tx, err := database.DB.BeginTx(ctx, nil)
 	if err != nil {
 		slog.ErrorContext(ctx, "error initializing exercise transaction",
 			slog.String("error", err.Error()),
@@ -395,7 +374,7 @@ func CreateExercise(
 	if exs := []models.Exercise{exercise}; attachAllowedFileTypes(ctx, exs) == nil {
 		exercise = exs[0]
 	}
-	CacheDelete(ctx, cacheKeyOfferingExercises(offeringID))
+	cache.Delete(ctx, cache.OfferingExercisesKey(offeringID))
 
 	slog.InfoContext(ctx, "exercise created",
 		slog.Int64("exercise_id", exercise.ID),
@@ -440,8 +419,9 @@ func insertAllowedFileTypes(
 }
 
 /*
-ListOfferingExercises lists the exercises of an offering. Owners see every
-exercise (including removed ones); enrolled students only see visible ones.
+ListOfferingExercises lists the exercises of an offering. Owners, admins and
+co-professors see every exercise (including removed ones); monitors and enrolled
+students only see the visible ones.
 */
 func ListOfferingExercises(
 	ctx context.Context, offeringID int64, claims map[string]any,
@@ -451,11 +431,11 @@ func ListOfferingExercises(
 		return nil, err
 	}
 
-	owner, enrolled, err := offeringAccess(ctx, offeringID, userID, role)
+	rel, err := loadOfferingRelation(ctx, offeringID, userID, role)
 	if err != nil {
 		return nil, err
 	}
-	if !owner && !enrolled {
+	if !rel.CanView() {
 		return nil, ErrOfferingNotFound
 	}
 
@@ -464,7 +444,7 @@ func ListOfferingExercises(
 		return nil, err
 	}
 
-	if owner {
+	if rel.CanAuthor() {
 		return list, nil
 	}
 
@@ -484,17 +464,17 @@ owner view, removed exercises included). Role-specific filtering is applied by
 callers on top of it, so the cache key stays user-independent.
 */
 func loadOfferingExercises(ctx context.Context, offeringID int64) ([]models.Exercise, error) {
-	key := cacheKeyOfferingExercises(offeringID)
+	key := cache.OfferingExercisesKey(offeringID)
 
 	var list []models.Exercise
-	if CacheGetJSON(ctx, key, &list) {
+	if cache.GetJSON(ctx, key, &list) {
 		if list == nil {
 			list = []models.Exercise{}
 		}
 		return list, nil
 	}
 
-	rows, err := DB.QueryContext(ctx, `
+	rows, err := database.DB.QueryContext(ctx, `
 		SELECT id, offering_id, title, description, deadline, open_date,
 		       show_before_open_date, removed, created_at, updated_at
 		FROM exercises
@@ -533,7 +513,7 @@ func loadOfferingExercises(ctx context.Context, offeringID int64) ([]models.Exer
 		return nil, err
 	}
 
-	CacheSetJSON(ctx, key, list, CacheExercisesTTL)
+	cache.SetJSON(ctx, key, list, cache.ExercisesTTL)
 	return list, nil
 }
 
@@ -555,7 +535,7 @@ func attachAllowedFileTypes(ctx context.Context, exercises []models.Exercise) er
 		exercises[i].AllowedFileTypes = []models.AllowedFileType{}
 	}
 
-	rows, err := DB.QueryContext(ctx, `
+	rows, err := database.DB.QueryContext(ctx, `
 		SELECT eaft.exercise_id, aft.id, aft.name, aft.extension,
 		       aft.is_compilable, aft.is_available
 		FROM exercises_allowed_file_types eaft
@@ -603,7 +583,7 @@ func GetExercise(
 	if err != nil {
 		return nil, err
 	}
-	if !acc.isOwner {
+	if !acc.canAuthor {
 		if !acc.isEnrolled {
 			return nil, ErrNotEnrolled
 		}
@@ -636,7 +616,7 @@ func UpdateExercise(
 	if err != nil {
 		return nil, err
 	}
-	if !acc.isOwner {
+	if !acc.canAuthor {
 		return nil, ErrNotOwner
 	}
 
@@ -669,7 +649,7 @@ func UpdateExercise(
 		}
 	}
 
-	tx, err := DB.BeginTx(ctx, nil)
+	tx, err := database.DB.BeginTx(ctx, nil)
 	if err != nil {
 		slog.ErrorContext(ctx, "error initializing exercise update transaction",
 			slog.String("error", err.Error()),
@@ -723,7 +703,7 @@ func UpdateExercise(
 		return nil, ErrServer
 	}
 
-	CacheDelete(ctx, cacheKeyOfferingExercises(ex.OfferingID))
+	cache.Delete(ctx, cache.OfferingExercisesKey(ex.OfferingID))
 
 	if exs := []models.Exercise{ex}; attachAllowedFileTypes(ctx, exs) == nil {
 		ex = exs[0]
@@ -738,12 +718,12 @@ DeleteExercise soft-deletes an exercise owned by the caller.
 func DeleteExercise(
 	ctx context.Context, exerciseID int64, claims map[string]any,
 ) error {
-	acc, err := requireExerciseOwner(ctx, exerciseID, claims)
+	acc, err := requireExerciseAuthor(ctx, exerciseID, claims)
 	if err != nil {
 		return err
 	}
 
-	if _, err := DB.ExecContext(ctx, `
+	if _, err := database.DB.ExecContext(ctx, `
 		UPDATE exercises
 		SET removed = TRUE, updated_at = now()
 		WHERE id = $1`, exerciseID,
@@ -755,7 +735,7 @@ func DeleteExercise(
 		return ErrServer
 	}
 
-	CacheDelete(ctx, cacheKeyOfferingExercises(acc.exercise.OfferingID))
+	cache.Delete(ctx, cache.OfferingExercisesKey(acc.exercise.OfferingID))
 	return nil
 }
 

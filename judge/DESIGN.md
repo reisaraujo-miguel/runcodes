@@ -1,8 +1,8 @@
 # Judge service — design & contract
 
-The judge is the execution engine for run.codes submissions. It replaces the
-legacy Python `compiler-engine` (see `tmp/compiler-engine` for reference) and
-runs the language images from `tmp/compiler-images` with **rootless podman**.
+The judge is the execution engine for RunCodes submissions. It replaces the
+legacy Python `compiler-engine` and runs the language images from `runners/`
+(published as `ghcr.io/runcodes-icmc/runcodes-runner-<language>`) with **rootless podman**.
 
 ## Responsibility split (agreed)
 
@@ -107,23 +107,117 @@ Event types (SSE `event:` field):
 Authenticated download of the generated output zip (monitor output, per-case
 stdout/stderr), if produced. The backend may fetch this and store it in S3.
 
-## Container contract (from `github.com/runcodes-icmc/compiler-images`)
+## Container contract (from `runners/`)
 
 The per-run workspace is bind-mounted at `/root`; the image's `CMD
 /usr/bin/runcodes` sources `container.config` there. The judge writes:
 
 ```
-monitor_max_fs = 5242880
-monitor_max_ms = 268435456
-compilation_timeout = 10
-src_file = 'submission.c'
-t_<case_id> = 5
+monitor_max_fs=5242880        # only when JUDGE_MONITOR_MAX_FILE_SIZE is set
+monitor_max_ms=268435456      # only when JUDGE_MONITOR_MAX_MEM_SIZE is set
+compilation_timeout=10        # only when JUDGE_DEFAULT_COMPILATION_TIMEOUT is set
+run_nonce='7f3c…'
+src_file='submission.c'
+t_<case_id>=5        # wall clock seconds for the case
+ms_<case_id>=67108864   # address space, only when the exercise sets one
+fs_<case_id>=1048576    # file size, only when the exercise sets one
+stack_<case_id>=1048576 # stack, only when the exercise sets one
 ```
 
 and expects these log milestones: `compilation.start` / `compilation.done` (only
 for compilable languages — the base script skips `compile` otherwise) and
-`run.start` / `run.done`. Outputs are read from the shared workspace afterwards
-(`compilation.out/.err`, `<id>.output/.error/.monitor_out`).
+`run.start` / `run.done`. Each milestone is printed as `<name> <run_nonce>`.
+
+These globals override the image's own defaults. The language script is appended
+to the base script and sets `monitor_max_fs` / `monitor_max_ms` /
+`compilation_timeout` as plain assignments (the Python image asks for 1GB), which
+would otherwise silently replace what the judge sent; the harness snapshots the
+values it read before the language script runs and prefers them
+(`limit_fs` / `limit_ms` / `limit_compilation_seconds`).
+
+That is why those three keys are written **only when the deployment sets them**:
+the per-language default belongs to the image, the per-case limit belongs to the
+exercise, and `JUDGE_MONITOR_MAX_*` / `JUDGE_DEFAULT_COMPILATION_TIMEOUT` are
+operator overrides for a deployment that wants one value for every language.
+
+Compilation is bounded twice, and the two numbers measure different things. The
+image's `compilation_timeout` is the container's limit: the harness runs the
+compiler under `timeout --signal=SIGKILL`, so the container kills it and reports
+the `compilation.*` milestones. `JUDGE_COMPILATION_WAIT` is the judge's patience
+with the log stream, and has to outlast the first one (plus container startup),
+otherwise the judge gives up on a compilation that the container is still
+allowed to run and reports a milestone timeout. When both are configured the
+pairing is validated at startup.
+
+Memory is bounded twice, and the two bounds must be ordered: the image's limit
+(the monitor reports exceeding it) sits below `JUDGE_CONTAINER_MEMORY_BYTES` (the
+cgroup cap, which the runtime reports only as a killed process).
+
+### The user a run executes as
+
+Every language image runs as an unprivileged `runcodes` user and never as root,
+and the harness inherits that identity: the submission is compiled and executed
+with exactly the permissions the harness itself has, and neither can change the
+image they are being graded in — `/usr/bin/runcodes` and `/usr/bin/monitor`
+included. What a run may write is what the workspace lets it write.
+
+The judge does not depend on the uid the images pick, only on the shape: a
+non-root user whose home directory is `/root`, because `/root` is where the
+workspace is mounted and where the toolchains look for `$HOME` to place their
+caches. See `runners/README.md` for how the images build it.
+
+### Why the nonce
+
+The milestones travel on the container's log stream, which also carries the
+submission's own output, so a program could print `run.done` itself and send the
+judge off to grade whatever happens to be on disk. The harness therefore reads
+`run_nonce` from `container.config`, **deletes that file**, and appends the nonce
+to every milestone; the judge only accepts an exact `<name> <nonce>` line. Deleting
+the file before the compilation command matters because a Makefile submission can
+execute arbitrary code while "compiling". A milestone without the nonce is logged
+as a warning (the usual cause is an image older than the judge) and ignored.
+
+### Outputs and trust
+
+The judge reads `compilation.out/.err` and, per case, `<id>.output`, `<id>.error`
+and `<id>.monitor_out` from the shared workspace. Everything except the monitor
+report is the submission's own product:
+
+- Expected answers are downloaded to a **private** directory next to the
+  workspace, never into the mount, and the judge refuses to read anything from the
+  workspace that is not a regular file (no symlinks).
+- The monitor report is written by the monitor itself _after_ it has killed the
+  command's process group, and is renamed into place, so it cannot be pre-created
+  or written through.
+- The harness kills the container's remaining processes after each case and after
+  compilation, so a daemonised program cannot rewrite results the judge reads next.
+- The judge stops the container **before** grading.
+- A run harness that exits non-zero after `run.done` is reported as `server_error`
+  instead of having its half-collected outputs graded.
+
+The report carries `exit_status`, `signal` and `time`. It does **not** carry
+memory usage: the monitor is not the program's parent (the harness runs it through
+`timeout`), so `mem_usage` in the results is recorded as `-1` (unknown) rather than
+as a number the judge cannot stand behind.
+
+### Isolation outside the container
+
+The container the submission runs in is created from a spec that `internal/podman`
+builds and `spec_test.go` asserts. Beyond the resource limits above, a graded run
+has its own PID, UTS and IPC namespaces, **no network namespace**, and
+`no-new-privileges`, which stops a setuid binary or a file capability in a
+language image from giving the submission rights the monitor does not hold. The
+only mount is the run's workspace, at `/root`.
+
+The run also starts with a **zero umask**, because the container's uid is not the
+judge's: rootless podman maps the image's unprivileged user to a subuid, so the
+files a run creates are owned by an identity the judge may read but not chmod.
+With the default umask, the harness's own `outputfiles` directory and every build
+tree a compiler leaves behind would be 0755 and owned by that subuid — the judge
+could read them but never remove them, so the workspace would be impossible to
+clean up and the shared exec directory would grow without bound. The workspace is
+0777 and belongs to one run at a time, so none of it was private from the
+container to begin with.
 
 ## Configuration
 

@@ -63,6 +63,15 @@ CREATE TABLE allowed_file_types (
   is_available boolean DEFAULT TRUE NOT NULL
 );
 
+-- Platform settings the admin edits from the admin panel. They used to be baked
+-- into the frontend build (VITE_CONTACT_*), which made changing the contact
+-- address a redeploy; storing them here lets the admin change them at runtime.
+CREATE TABLE platform_settings (
+  key text PRIMARY KEY,
+  value text NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+);
+
 CREATE TYPE exercise_type_t AS ENUM ('programming');
 
 CREATE TABLE exercises (
@@ -196,3 +205,42 @@ CREATE TABLE user_messages (
   template text,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
 );
+
+-- Indexes.
+--
+-- PostgreSQL indexes primary keys and UNIQUE constraints, and nothing else. A
+-- foreign key gets no index automatically, so without these every lookup by
+-- parent id is a sequential scan, and so is the check PostgreSQL runs for each
+-- ON DELETE CASCADE.
+CREATE INDEX idx_offerings_owner_id ON offerings (owner_id);
+CREATE INDEX idx_alerts_offering_id ON alerts (offering_id);
+CREATE INDEX idx_alerts_user_id ON alerts (user_id);
+-- The enrollments PK is (user_id, offering_id), which a lookup by offering alone
+-- cannot use.
+CREATE INDEX idx_enrollments_offering_id ON enrollments (offering_id);
+CREATE INDEX idx_exercises_offering_id ON exercises (offering_id);
+CREATE INDEX idx_exercises_creator_id ON exercises (creator_id);
+CREATE INDEX idx_exercises_attached_files_exercise_id ON exercises_attached_files (exercise_id);
+CREATE INDEX idx_exercises_compilation_files_exercise_id ON exercises_compilation_files (exercise_id);
+-- The join table's PK is (exercise_id, allowed_file_type_id), so only the second
+-- column needs an index of its own.
+CREATE INDEX idx_exercises_allowed_file_types_type_id ON exercises_allowed_file_types (allowed_file_type_id);
+CREATE INDEX idx_exercises_test_cases_exercise_id ON exercises_test_cases (exercise_id);
+CREATE INDEX idx_exercises_test_cases_files_case_id ON exercises_test_cases_files (exercise_test_case_id);
+CREATE INDEX idx_commits_user_id ON commits (user_id);
+CREATE INDEX idx_commits_exercise_id ON commits (exercise_id);
+-- The results PK is (commit_id, exercise_test_case_id): commit_id is covered, the
+-- case id is not.
+CREATE INDEX idx_results_exercise_test_case_id ON commits_exercise_test_cases_results (exercise_test_case_id);
+CREATE INDEX idx_system_logs_user_id ON system_logs (user_id);
+CREATE INDEX idx_user_messages_user_id ON user_messages (user_id);
+
+-- The judge's claim loop runs continuously against the fastest-growing table in
+-- the schema:
+--
+--   SELECT ... FROM commits WHERE status = 'queued' ORDER BY created_at LIMIT 1
+--
+-- The partial index serves both the filter and the ORDER BY, and stays small as
+-- the backlog drains. On an existing database, create it (and the indexes above)
+-- with CREATE INDEX CONCURRENTLY to avoid holding a write lock on commits.
+CREATE INDEX idx_commits_queued ON commits (created_at) WHERE status = 'queued';

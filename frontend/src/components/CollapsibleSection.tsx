@@ -34,8 +34,11 @@ export function CollapsibleSection({
           <CardAction>
             <CollapsibleTrigger
               className={buttonVariants({ variant: "ghost", size: "icon" })}
+              // The trigger shows only an icon, so it needs an explicit name for
+              // a screen reader to announce.
+              aria-label={`Alternar ${label}`}
             >
-              <ChevronsUpDown />
+              <ChevronsUpDown aria-hidden="true" />
             </CollapsibleTrigger>
           </CardAction>
         </CardHeader>

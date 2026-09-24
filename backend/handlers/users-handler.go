@@ -5,18 +5,16 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
+	"github.com/runcodes-icmc/runcodes/config"
 	"github.com/runcodes-icmc/runcodes/models"
 	"github.com/runcodes-icmc/runcodes/services"
 	"github.com/runcodes-icmc/runcodes/validation"
 
 	"github.com/go-chi/jwtauth/v5"
 )
-
-const debugModeEnv string = "DEBUG_MODE"
 
 func SignUp(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -159,13 +157,38 @@ func setSessionCookie(w http.ResponseWriter, tokenString string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "jwt",
 		Value:    tokenString,
-		HttpOnly: true,                              // JS cannot access it
-		Secure:   os.Getenv(debugModeEnv) != "true", // HTTPS only (disabled in local dev)
+		HttpOnly: true,                // JS cannot access it
+		Secure:   !config.Get().Debug, // HTTPS only (disabled in local dev)
 		SameSite: http.SameSiteStrictMode,
 		Path:     "/",
 		MaxAge:   int(validation.SessionTTL.Seconds()),
 		Expires:  time.Now().Add(validation.SessionTTL),
 	})
+}
+
+/*
+LogOut clears the session cookie.
+
+There is no server-side session store, so the token itself stays valid until it
+expires: this ends the browser's session (the credential is dropped, so the next
+request is unauthenticated) rather than revoking the token. Changing a password
+or rotating RUNCODES_JWT_SECRET is what invalidates an issued token.
+*/
+func LogOut(w http.ResponseWriter, _ *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "jwt",
+		Value:    "",
+		HttpOnly: true,
+		Secure:   !config.Get().Debug,
+		SameSite: http.SameSiteStrictMode,
+		Path:     "/",
+		// A negative MaxAge deletes the cookie; Expires in the past covers
+		// clients that only look at that attribute.
+		MaxAge:  -1,
+		Expires: time.Unix(1, 0),
+	})
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 /*

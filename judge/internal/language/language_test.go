@@ -73,7 +73,7 @@ func TestImageFormat(t *testing.T) {
 	if lang == nil {
 		t.Fatal("cpp not found")
 	}
-	if got := lang.Image(DefaultImageFormat); got != "ghcr.io/runcodes-icmc/compiler-images-cpp:latest" {
+	if got := lang.Image(DefaultImageFormat); got != "ghcr.io/runcodes-icmc/runcodes-runner-cpp:latest" {
 		t.Fatalf("unexpected image: %s", got)
 	}
 }

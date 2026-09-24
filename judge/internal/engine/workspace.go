@@ -3,6 +3,8 @@ package engine
 import (
 	"archive/zip"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -16,19 +18,52 @@ import (
 
 // workspace is everything needed to run one commit.
 type workspace struct {
-	BaseDir    string
-	RemoteDir  string
-	SourceDir  string
+	BaseDir   string
+	RemoteDir string
+	SourceDir string
+	// ExpectedDir holds the expected outputs downloaded from S3. It lives
+	// OUTSIDE BaseDir on purpose: BaseDir is bind-mounted read-write into the
+	// graded container, so anything inside it can be read, replaced or symlinked
+	// by the submission. The judge reads the expected output from here to grade.
+	ExpectedDir string
+	// RunNonce authenticates the progress milestones the image prints. It is kept
+	// with the workspace only until it has been written to the container config;
+	// it never appears in the judge's log or events.
+	RunNonce   string
 	Language   *language.Language
 	Extension  string
 	Compilable bool
 	TestCases  []model.TestCase
 }
 
+// newRunNonce returns the random value the image echoes back with every
+// milestone.
+//
+// The milestones are plain log lines, so without a secret a submission could
+// print "run.done" itself and send the judge off to grade whatever happens to be
+// on disk. The harness reads the nonce from container.config and deletes that
+// file before any submitted code runs, so the value never reaches the code being
+// graded — including a Makefile, which executes during compilation.
+func newRunNonce() (string, error) {
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", fmt.Errorf("generate run nonce: %w", err)
+	}
+
+	return hex.EncodeToString(raw[:]), nil
+}
+
 // mkdirWorld creates dir (and parents) and forces mode 0777 regardless of the
-// process umask. The container runs under a user namespace where its root maps
-// to a subuid, so the workspace must be world-writable for it to compile and
-// write outputs.
+// process umask. The graded container runs as an unprivileged system user (see
+// runners/README.md), which rootless podman maps to a subuid — an
+// identity of its own, never the judge's — so the workspace must be
+// world-writable for it to compile and write outputs.
+//
+// The reverse, the judge deleting what the container wrote, is what the run's
+// umask is for (see podman.containerUmask).
+//
+// Only call this for paths the container is meant to write. Anything the judge
+// alone reads stays private: see prepareWorkspace's expected dir.
 func mkdirWorld(dir string) error {
 	if err := os.MkdirAll(dir, 0o777); err != nil {
 		return err
@@ -37,9 +72,15 @@ func mkdirWorld(dir string) error {
 	return os.Chmod(dir, 0o777)
 }
 
+// workspaceName is the run directory name for a commit, shared by the workspace
+// and its expected-output directory so both can be found and cleaned up together.
+func workspaceName(commitID int64) string {
+	return fmt.Sprintf("commit_%d", commitID)
+}
+
 // prepareWorkspace creates the run directory and downloads every input.
 func (e *Engine) prepareWorkspace(ctx context.Context, commit *model.Commit) (*workspace, error) {
-	name := fmt.Sprintf("commit_%d", commit.ID)
+	name := workspaceName(commit.ID)
 	baseDir := filepath.Join(e.cfg.ExecDir, name)
 	remoteDir := filepath.Join(e.cfg.ExecDirRemote, name)
 
@@ -59,7 +100,20 @@ func (e *Engine) prepareWorkspace(ctx context.Context, commit *model.Commit) (*w
 		return nil, fmt.Errorf("create source dir: %w", err)
 	}
 
-	ws := &workspace{BaseDir: baseDir, RemoteDir: remoteDir, SourceDir: srcDir}
+	expectedDir, err := e.prepareExpectedDir(commit.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	nonce, err := newRunNonce()
+	if err != nil {
+		return nil, err
+	}
+
+	ws := &workspace{
+		BaseDir: baseDir, RemoteDir: remoteDir, SourceDir: srcDir,
+		ExpectedDir: expectedDir, RunNonce: nonce,
+	}
 
 	fname := commit.Filename()
 
@@ -92,6 +146,33 @@ func (e *Engine) prepareWorkspace(ctx context.Context, commit *model.Commit) (*w
 	}
 
 	return ws, nil
+}
+
+// expectedOutputPath is where the expected output of a test case is stored: in
+// the private expected directory, never in the container-visible workspace.
+func (ws *workspace) expectedOutputPath(caseID int64) string {
+	return filepath.Join(ws.ExpectedDir, fmt.Sprintf("%d.out", caseID))
+}
+
+// prepareExpectedDir creates the private directory that holds a run's expected
+// outputs, replacing anything left over from a previous attempt.
+//
+// It is a sibling of the workspace, never a child: the workspace is bind-mounted
+// read-write into the graded container, so an expected answer stored inside it
+// could be read, overwritten or symlinked by the submission being graded. Mode
+// 0700 also keeps answers away from the other users of the shared exec directory.
+func (e *Engine) prepareExpectedDir(commitID int64) (string, error) {
+	dir := filepath.Join(e.cfg.ExecDir, fmt.Sprintf("expected_%d", commitID))
+
+	if err := os.RemoveAll(dir); err != nil {
+		return "", fmt.Errorf("clean expected dir: %w", err)
+	}
+
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("create expected dir: %w", err)
+	}
+
+	return dir, nil
 }
 
 // resolveLanguage derives the language from the file name, extracting archives.
@@ -188,27 +269,62 @@ func (e *Engine) fetchTestCases(ctx context.Context, ws *workspace) error {
 	return nil
 }
 
-// writeContainerConfig writes the container configuration file, including timeouts and test case settings.
+// writeContainerConfig writes the container configuration file: the milestone
+// nonce, the global monitor settings and the per-case limits and timeouts.
+//
+// The values are read by the image's harness with bash's `source`, so every
+// string is quoted as a single-quoted shell word and anything that could start a
+// new statement is rejected rather than escaped.
 func (e *Engine) writeContainerConfig(commit *model.Commit, ws *workspace) error {
 	defaultCase := int(e.cfg.DefaultCaseTimeout.Seconds())
 
 	var b strings.Builder
 
-	// Write the container configuration settings to the builder.
-	fmt.Fprintf(&b, "monitor_max_fs=%d\n", e.cfg.MonitorMaxFileSize)
-	fmt.Fprintf(&b, "monitor_max_ms=%d\n", e.cfg.MonitorMaxMemSize)
-	fmt.Fprintf(&b, "compilation_timeout=%d\n", int(e.cfg.CompilationTimeout.Seconds()))
-	fmt.Fprintf(&b, "src_file='%s'\n", shellSingleQuote(commit.Filename()))
+	// The global limits are only written when the operator configured them: every
+	// image carries its own per-language default (`monitor_max_ms` is 1GB for the
+	// Python image, and the JVM images set no limit at all), and the harness lets a
+	// value the judge sent win over them. Writing the judge's default for every
+	// language would flatten those defaults — capping the Rust or Go compiler at
+	// 256MB, for one. 0 therefore means "use the image's default", and an explicit
+	// value is an override for the whole deployment. `compilation_timeout` works the
+	// same way, and `JUDGE_COMPILATION_WAIT` is what bounds the judge's own patience
+	// (see config), so the two are independent numbers.
+	if e.cfg.MonitorMaxFileSize > 0 {
+		fmt.Fprintf(&b, "monitor_max_fs=%d\n", e.cfg.MonitorMaxFileSize)
+	}
+	if e.cfg.MonitorMaxMemSize > 0 {
+		fmt.Fprintf(&b, "monitor_max_ms=%d\n", e.cfg.MonitorMaxMemSize)
+	}
+	if e.cfg.CompilationTimeout > 0 {
+		fmt.Fprintf(&b, "compilation_timeout=%d\n", int(e.cfg.CompilationTimeout.Seconds()))
+	}
+	fmt.Fprintf(&b, "run_nonce='%s'\n", shellSingleQuote(ws.RunNonce))
 
-	// Write the CPU time limit for each test case, using the default if not specified.
+	srcFile, err := shellWord(commit.Filename())
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(&b, "src_file='%s'\n", srcFile)
+
+	// Write the per-case settings, omitting the ones the exercise leaves unset so
+	// the image's own defaults apply. A limit the exercise did not author is not
+	// the same as a limit of zero.
 	for _, tc := range ws.TestCases {
 		timeout := tc.CPUTimeLimit
-
 		if timeout <= 0 {
 			timeout = defaultCase
 		}
-
 		fmt.Fprintf(&b, "t_%d=%d\n", tc.ID, timeout)
+
+		if tc.MemUsageLimit > 0 {
+			fmt.Fprintf(&b, "ms_%d=%d\n", tc.ID, tc.MemUsageLimit)
+		}
+		if tc.FileSizeLimit > 0 {
+			fmt.Fprintf(&b, "fs_%d=%d\n", tc.ID, tc.FileSizeLimit)
+		}
+		if tc.StackLimit > 0 {
+			fmt.Fprintf(&b, "stack_%d=%d\n", tc.ID, tc.StackLimit)
+		}
 	}
 
 	return os.WriteFile(filepath.Join(ws.BaseDir, "container.config"), []byte(b.String()), 0o644)
@@ -217,6 +333,20 @@ func (e *Engine) writeContainerConfig(commit *model.Commit, ws *workspace) error
 // shellSingleQuote escapes a value for use inside single quotes.
 func shellSingleQuote(s string) string {
 	return strings.ReplaceAll(s, "'", `'\''`)
+}
+
+// shellWord validates a value for the single-quoted assignment the harness reads.
+//
+// A line break would end the assignment and turn the rest of the value into an
+// instruction for the harness, which runs with the image's own privileges and
+// prints the milestones the judge trusts: the file name comes from the
+// submitted object's key, so it is rejected rather than escaped.
+func shellWord(value string) (string, error) {
+	if strings.ContainsAny(value, "\n\r\x00") {
+		return "", fmt.Errorf("invalid file name %q for the container config", value)
+	}
+
+	return shellSingleQuote(value), nil
 }
 
 // extractZip unpacks an archive into dest, rejecting entries that escape it or

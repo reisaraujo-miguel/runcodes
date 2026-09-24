@@ -8,6 +8,14 @@ export interface AuthContextValue {
   isAuthenticated: boolean;
   /** Re-fetches the session from the API and updates the auth state. */
   refreshAuth: () => Promise<void>;
+  /**
+   * Renews the session token and reloads the user from the API, so claims that
+   * changed in the database (name, email, role) are reflected in the UI. Use it
+   * after an update the current token still describes the old way.
+   */
+  reloadSession: () => Promise<void>;
+  /** Clears the session cookie and the local user, ending the session. */
+  signOut: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextValue | undefined>(

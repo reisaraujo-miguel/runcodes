@@ -1,7 +1,16 @@
-import { API_BASE_URL, isRecord, readApiBody, readApiError } from "./client";
+import { isTerminalStatus } from "../submission-status";
+import {
+  API_BASE_URL,
+  isRecord,
+  readApiBody,
+  readApiError,
+  requestSignal,
+  UPLOAD_TIMEOUT_MS,
+} from "./client";
 
-/** Lifecycle of a commit, mirroring the backend's commit status enum. */
+/** Lifecycle of a commit, mirroring the backend's `commit_status_t` enum. */
 export type CommitStatus =
+  | "pending"
   | "queued"
   | "compiling"
   | "running"
@@ -9,12 +18,19 @@ export type CommitStatus =
   | "uncompleted"
   | "compilation_error"
   | "server_error"
+  | "plagiarism"
   | "timeout";
 
-/** Terminal statuses reported by the `finished` event. */
+/** Terminal statuses reported by the `finished` event. `plagiarism` is terminal
+ * too: it is written by the legacy migration, so it can arrive in a snapshot. */
 export type FinishedStatus = Extract<
   CommitStatus,
-  "completed" | "uncompleted" | "compilation_error" | "server_error" | "timeout"
+  | "completed"
+  | "uncompleted"
+  | "compilation_error"
+  | "server_error"
+  | "plagiarism"
+  | "timeout"
 >;
 
 /** Per-test-case result, mirroring the backend's case status enum. */
@@ -154,6 +170,23 @@ const SSE_EVENT_NAMES = [
   "error",
 ] as const;
 
+/** `EventSource.CLOSED`, spelled out so an injected transport needs no global. */
+const EVENT_SOURCE_CLOSED = 2;
+
+/**
+ * Builds the SSE transport. Injectable so the stream lifecycle can be tested
+ * without a live server.
+ */
+export type EventSourceFactory = (
+  url: string,
+  init?: EventSourceInit,
+) => EventSource;
+
+export interface SubscribeOptions {
+  /** Defaults to the platform's `EventSource`. */
+  createEventSource?: EventSourceFactory;
+}
+
 /**
  * Uploads a single source file for `exerciseId`. Uses `fetch` directly
  * (rather than `apiRequest`) and deliberately omits `Content-Type` so the
@@ -171,6 +204,9 @@ export async function createSubmission(
     method: "POST",
     credentials: "include",
     body: form,
+    // An upload of a full-size source file needs a longer budget than a JSON
+    // call, but it must still fail rather than hang on "Enviando…" forever.
+    signal: requestSignal(undefined, UPLOAD_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -207,8 +243,13 @@ function parseSubmissionEvent(value: unknown): SubmissionEvent | null {
 export function subscribeSubmissionEvents(
   commitId: number,
   handlers: SubmissionEventHandlers,
+  options: SubscribeOptions = {},
 ): () => void {
-  const source = new EventSource(
+  const createEventSource =
+    options.createEventSource ??
+    ((url: string, init?: EventSourceInit) => new EventSource(url, init));
+
+  const source = createEventSource(
     `${API_BASE_URL}/api/v1/submissions/${String(commitId)}/events`,
     { withCredentials: true },
   );
@@ -222,6 +263,10 @@ export function subscribeSubmissionEvents(
   };
 
   const handleFrame = (event: Event) => {
+    // Closing ends the subscription: a frame delivered after a terminal event (or
+    // after the caller unsubscribed) must not reach a handler, which would
+    // otherwise append a second terminal state to a finished run.
+    if (closed) return;
     if (!(event instanceof MessageEvent)) return;
     const data: unknown = event.data;
     if (typeof data !== "string") return;
@@ -239,6 +284,11 @@ export function subscribeSubmissionEvents(
     switch (submissionEvent.type) {
       case "snapshot":
         handlers.onSnapshot?.(submissionEvent);
+        // The backend replays the persisted state and then ends the response for
+        // a commit that has already settled, so the source must be closed here:
+        // EventSource treats a server-closed stream as "reconnect", which would
+        // otherwise retry against a stream that keeps closing, forever.
+        if (isTerminalStatus(submissionEvent.commit.status)) close();
         break;
       case "status":
         handlers.onStatus?.(submissionEvent);
@@ -270,7 +320,7 @@ export function subscribeSubmissionEvents(
   source.addEventListener("message", handleFrame);
 
   source.addEventListener("error", () => {
-    if (!closed && source.readyState === EventSource.CLOSED) {
+    if (!closed && source.readyState === EVENT_SOURCE_CLOSED) {
       closed = true;
       handlers.onConnectionError?.();
     }

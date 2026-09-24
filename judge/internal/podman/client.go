@@ -4,7 +4,10 @@ package podman
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +23,7 @@ import (
 // Client talks to a rootless podman service over its socket.
 type Client struct {
 	uri     string
+	limits  Limits
 	mu      sync.Mutex
 	ensured map[string]bool
 }
@@ -27,13 +31,62 @@ type Client struct {
 // New creates a client for the given connection URI (e.g.
 // "unix:///run/user/1000/podman/podman.sock"). An empty URI lets the bindings
 // fall back to $CONTAINER_HOST or the default socket.
-func New(uri string) *Client {
-	return &Client{uri: uri, ensured: make(map[string]bool)}
+//
+// limits are applied to every container the client creates; pass Limits{} to
+// leave the runtime defaults in place (not recommended outside development).
+func New(uri string, limits Limits) *Client {
+	return &Client{uri: uri, limits: limits, ensured: make(map[string]bool)}
 }
 
 // Connect returns a context carrying the podman connection.
 func (c *Client) Connect(ctx context.Context) (context.Context, error) {
-	return bindings.NewConnection(ctx, c.uri)
+	conn, err := bindings.NewConnection(ctx, c.uri)
+	if err != nil {
+		return nil, fmt.Errorf("connect to podman: %w%s", err, socketAdvice(c.uri))
+	}
+	return conn, nil
+}
+
+/*
+socketAdvice explains a failed unix-socket connection in terms of the state an
+operator has to fix, or returns "" when there is nothing to add.
+
+The judge reaches podman through a socket that Compose bind-mounts into this
+container when the container is created, and a bind mount pins whatever it
+pointed at. A socket created after the container is therefore not visible (the
+mount is a directory), and one that was recreated afterwards is an inode nothing
+listens on any more. Both are reported as "connection refused" from inside the
+container, so the path's own state is what tells them apart.
+*/
+func socketAdvice(uri string) string {
+	path, ok := strings.CutPrefix(uri, "unix://")
+	if !ok || path == "" {
+		return ""
+	}
+
+	info, err := os.Stat(path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return fmt.Sprintf(": %s does not exist in this container. Start the socket on the host "+
+			"(systemctl --user start podman.socket) and recreate the judge container "+
+			"(docker compose up -d --force-recreate judge)", path)
+	case err != nil:
+		return ""
+	case info.IsDir():
+		return fmt.Sprintf(": %s is a directory, not a socket: this container was created before "+
+			"the socket existed, so the mount never saw it. Start the socket on the host "+
+			"(systemctl --user start podman.socket) and recreate the judge container "+
+			"(docker compose up -d --force-recreate judge)", path)
+	case info.Mode()&fs.ModeSocket == 0:
+		return fmt.Sprintf(": %s is not a socket (%s). Start the socket on the host and "+
+			"recreate the judge container (docker compose up -d --force-recreate judge)",
+			path, info.Mode().Type())
+	}
+
+	return fmt.Sprintf(": %s exists but refuses connections, which is how a socket that was "+
+		"restarted after this container was created looks from inside it (the mount still "+
+		"points at the old one). Recreate the judge container "+
+		"(docker compose up -d --force-recreate judge)", path)
 }
 
 // Ready reports whether the podman service responds (used by /readyz).
@@ -138,7 +191,35 @@ func (c *Client) Create(ctx context.Context, rc RunConfig) (*Container, error) {
 		return nil, err
 	}
 
-	// generate the container spec
+	// create the container with the spec
+	resp, err := containers.CreateWithSpec(conn, specFor(rc, c.limits), nil)
+	if err != nil {
+		return nil, fmt.Errorf("create container: %w", err)
+	}
+
+	return &Container{ID: resp.ID, cfg: rc, conn: conn}, nil
+}
+
+// containerUmask is the umask every graded run starts with.
+//
+// The run's image is non-root (see `runners/README.md`): it runs as a
+// system user, which rootless podman maps to a subuid — a different uid from
+// the judge's, and one the judge is not allowed to chmod. Everything a run
+// creates therefore has to be world-writable for the judge to be able to grade
+// and delete it. With the default umask, the harness's own `outputfiles`
+// directory, a compiler's build tree and the caches the toolchains put in
+// $HOME are all 0755 and owned by that subuid: the judge can read them but not
+// unlink inside them, so removing the workspace fails (a retried run then
+// aborts at "clean workspace") and the shared exec directory grows without
+// bound. The workspace is 0777 and belongs to a single run at a time, so
+// nothing here was private from the container to begin with.
+const containerUmask = "0000"
+
+// specFor renders the spec of a graded run's container. Everything that keeps a
+// submission inside it — namespaces, the missing network, the cgroup limits, the
+// mount options — is decided here, and the function is separate from Create so
+// those decisions can be asserted without a podman daemon.
+func specFor(rc RunConfig, limits Limits) *specgen.SpecGenerator {
 	s := specgen.NewSpecGenerator(rc.Image, false)
 	s.Name = rc.Name
 	s.Labels = rc.Labels
@@ -147,23 +228,34 @@ func (c *Client) Create(ctx context.Context, rc RunConfig) (*Container, error) {
 	s.PidNS = specgen.Namespace{NSMode: specgen.Private}
 	s.UtsNS = specgen.Namespace{NSMode: specgen.Private}
 	s.IpcNS = specgen.Namespace{NSMode: specgen.Private}
+	// Graded code is untrusted, so it gets no network at all: the default
+	// namespace would let a submission reach the internet (mining, exfiltrating
+	// test-case inputs, fetching reference answers) and the services on the
+	// compose network, including Postgres and SeaweedFS.
+	s.NetNS = specgen.Namespace{NSMode: specgen.NoNetwork}
+	// PR_SET_NO_NEW_PRIVS, which is inherited by everything the harness starts.
+	// Without it a setuid binary or a file capability in any language image
+	// would hand the submission privileges the monitor does not have — the
+	// premise the whole in-container limit story rests on being false.
+	noNewPrivileges := true
+	s.NoNewPrivileges = &noNewPrivileges
+	// Bound memory, PIDs and CPU from outside the container; the in-container
+	// monitor is advisory because the submission shares its privileges.
+	s.ResourceLimits = limits.Resources()
+	// See containerUmask: without it the judge cannot clean up what the run
+	// wrote, because the container's uid is not the judge's.
+	s.Umask = containerUmask
 	s.Mounts = []spec.Mount{{
 		Type:        "bind",
 		Source:      rc.MountSource,
 		Destination: "/root",
 		// "z" relabels the workspace for container access (required on
-		// SELinux hosts, ignored elsewhere); without it a rootless
-		// container's root cannot write to the bind mount even at 0777.
+		// SELinux hosts, ignored elsewhere); without it the container's
+		// user cannot write to the bind mount even at 0777.
 		Options: []string{"rw", "z"},
 	}}
 
-	// create the container with the spec
-	resp, err := containers.CreateWithSpec(conn, s, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create container: %w", err)
-	}
-
-	return &Container{ID: resp.ID, cfg: rc, conn: conn}, nil
+	return s
 }
 
 // Start starts the container.
@@ -232,33 +324,69 @@ func (ls *LogStream) Close() {
 	}
 }
 
-// emitLines splits arbitrary chunks into complete lines.
+const (
+	// maxLineBytes bounds a single container log line. The output is produced by
+	// untrusted code: without a bound, one program writing gigabytes to stdout
+	// without a newline would grow the judge's heap until the process is killed,
+	// taking every other concurrent run down with it.
+	maxLineBytes = 64 * 1024
+
+	// truncatedMarker replaces the tail of an over-long line, so a run's log says
+	// what happened instead of silently showing a shortened line.
+	truncatedMarker = "...[truncated]"
+)
+
+// emitLines splits arbitrary chunks into complete lines, emitting at most
+// maxLineBytes per line and discarding the remainder of an over-long one.
 func emitLines(in <-chan string, out chan<- string) {
-	var buf strings.Builder
+	// buf holds the current partial line; it is reused between lines so the
+	// splitting stays linear in the number of bytes received.
+	var buf []byte
+	// truncated is set once the current line overflowed, until its newline
+	// arrives: the rest of that line is dropped rather than buffered.
+	truncated := false
+
+	emit := func(line []byte) {
+		out <- strings.TrimRight(string(line), "\r")
+	}
 
 	for chunk := range in {
-		buf.WriteString(chunk)
-
-		// split the buffer into lines and send them to the output channel
-		for {
-			s := buf.String()
-			i := strings.IndexByte(s, '\n') // find the next newline
-
+		for len(chunk) > 0 {
+			i := strings.IndexByte(chunk, '\n') // find the next newline
 			if i < 0 {
-				break // no complete line left in the buffer
+				// No complete line in this chunk: buffer it, unless the line is
+				// already over the bound and only waiting for its newline.
+				if !truncated {
+					buf = append(buf, chunk...)
+					if len(buf) > maxLineBytes {
+						emit(append(buf[:maxLineBytes:maxLineBytes], truncatedMarker...))
+						truncated = true
+					}
+				}
+				break
 			}
 
-			out <- strings.TrimRight(s[:i], "\r") // send the line without trailing CR
+			// A complete line ends at i.
+			switch {
+			case truncated:
+				// The head of this line was already reported and its tail dropped.
+			case len(buf)+i > maxLineBytes:
+				buf = append(buf, chunk[:i]...)
+				emit(append(buf[:maxLineBytes:maxLineBytes], truncatedMarker...))
+			default:
+				emit(append(buf, chunk[:i]...))
+			}
 
-			// remove the emitted line from the buffer and continue
-			buf.Reset()
-			buf.WriteString(s[i+1:])
+			buf = buf[:0]
+			truncated = false
+			chunk = chunk[i+1:]
 		}
 	}
 
-	// send any remaining partial line in the buffer
-	if rem := buf.String(); rem != "" {
-		out <- strings.TrimRight(rem, "\r")
+	// Send any remaining partial line in the buffer, unless it was already
+	// reported as truncated.
+	if !truncated && len(buf) > 0 {
+		emit(buf)
 	}
 }
 

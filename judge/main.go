@@ -51,6 +51,18 @@ func run() error {
 		return err
 	}
 
+	cfg.LogInsecureTransportWarnings()
+
+	if cfg.AuthToken == "" {
+		if cfg.AllowInsecureAPI {
+			logger.Warn("JUDGE_AUTH_TOKEN is not set: the /v1 API is unauthenticated " +
+				"(JUDGE_ALLOW_INSECURE=true); do not expose this instance to a network")
+		} else {
+			logger.Error("JUDGE_AUTH_TOKEN is not set: every /v1 request will be refused. " +
+				"Set the token, or JUDGE_ALLOW_INSECURE=true for a local instance")
+		}
+	}
+
 	// Listen for SIGINT and SIGTERM to gracefully shut down the server.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -73,9 +85,25 @@ func run() error {
 		return err
 	}
 
-	pc := podman.New(cfg.PodmanURI)
+	pc := podman.New(cfg.PodmanURI, podman.Limits{
+		MemoryBytes: cfg.ContainerMemoryBytes,
+		PidsLimit:   cfg.ContainerPidsLimit,
+		CPUQuota:    cfg.ContainerCPUQuota,
+	})
+
+	// Probe podman once at startup. The judge still starts without it (the service
+	// may come up later), but a socket this container cannot reach — one created or
+	// restarted after the container was, most often — otherwise shows up only as a
+	// refused submission long after the operator stopped looking at these logs.
+	probeCtx, cancelProbe := context.WithTimeout(ctx, 5*time.Second)
+	if err := pc.Ready(probeCtx); err != nil {
+		logger.Warn("podman is not reachable: submissions are refused until it is",
+			"error", err,
+		)
+	}
+	cancelProbe()
 	hub := events.New(cfg.EventRetention)
-	eng := engine.New(cfg, st, s3, pc, hub, logger)
+	eng := engine.New(cfg, st, s3, engine.PodmanRuntime(pc), hub, logger)
 	pool := worker.New(cfg, st, eng, logger)
 
 	// run the worker pool in a separate goroutine, which will process queued commits.

@@ -1,8 +1,11 @@
 # RunCodes — Judge
 
-The execution engine for run.codes submissions. It is the successor to the
-legacy Python `compiler-engine` (`tmp/compiler-engine`) and runs the language
-images from `tmp/compiler-images` with **rootless podman** instead of Docker.
+The execution engine for RunCodes submissions. It is the successor to the
+legacy Python `compiler-engine` and runs the language images from `runners/`
+with **rootless podman** instead of Docker.
+The image a run uses is `ghcr.io/runcodes-icmc/runcodes-runner-<language>`
+(`JUDGE_IMAGE_FORMAT` overrides the format), built together with the in-container
+monitor from `monitor/` — the three parts are released as one contract.
 
 The judge is **compute-only**: it claims queued commits from PostgreSQL, reads
 its inputs from S3, runs the container, grades the outputs and streams the
@@ -62,10 +65,111 @@ mkdir -p ./exec && chmod 0777 ./exec
 
 All configuration is via environment variables; see `.env.example`.
 
+**API authentication.** `JUDGE_AUTH_TOKEN` (or `RUNCODES_JUDGE_TOKEN`) is the
+shared bearer token the backend presents. While it is unset the judge refuses
+every `/v1` request instead of serving them to anyone who can reach the port,
+because that API exposes other people's submissions and outputs. A local
+instance that is not reachable from anywhere else can opt out with
+`JUDGE_ALLOW_INSECURE=true`, which logs a warning at startup.
+
+**Container limits.** Graded code is untrusted, so every container is capped from
+outside with cgroup limits, independently of the in-container monitor (which the
+submission shares privileges with and can defeat):
+
+| Variable                       | Default  | Purpose                                 |
+| ------------------------------ | -------- | --------------------------------------- |
+| `JUDGE_CONTAINER_MEMORY_BYTES` | 1536 MiB | memory and swap cap, per concurrent run |
+| `JUDGE_CONTAINER_PIDS_LIMIT`   | 256      | process/thread cap (fork bombs)         |
+| `JUDGE_CONTAINER_CPU_QUOTA`    | 100000   | CPU per 100 ms period (1 full core)     |
+
+The memory cap is deliberately above the largest default a language image sets
+(1 GiB, for the memory-hungry toolchains): a run that reaches the image's own
+limit is reported as exceeding it, while one that reaches the cgroup cap is only
+seen as a process killed by a signal. It applies per concurrent run, so
+`JUDGE_CONCURRENCY` multiplies it.
+
+The equivalent limits _inside_ the container are the image's business. The judge
+writes `monitor_max_fs` / `monitor_max_ms` / `compilation_timeout` into
+`container.config` only when `JUDGE_MONITOR_MAX_FILE_SIZE` /
+`JUDGE_MONITOR_MAX_MEM_SIZE` / `JUDGE_DEFAULT_COMPILATION_TIMEOUT` are set (all
+default to 0, which sends nothing and leaves each language image's own value in
+place — `monitor_max_ms` is 1 GiB for Python and unset for the JVM images, and Go
+and C# compile with a 60 s timeout). An operator who sets one overrides every
+language, which is what those variables are for.
+
+The judge's own patience for the compilation phase is a separate number:
+`JUDGE_COMPILATION_WAIT` (default 2m) is how long it waits for the
+`compilation.*` milestones. It has to outlast the image's compilation timeout
+plus container startup, or the judge abandons a compilation the container is
+still allowed to finish and reports a milestone timeout instead of the
+compiler's error. The two are validated against each other when both are set.
+
+Containers are also created with **no network namespace**, so submitted code
+cannot reach the internet or the other services on the compose network, and with
+**no-new-privileges**, so a setuid binary or a file capability in any language
+image cannot hand a submission rights the monitor does not have. Both are
+asserted in `internal/podman/spec_test.go`, together with the namespaces and the
+workspace mount: the entire boundary between a submission and the rest of the
+platform is that spec.
+
+**Read bounds.** Expected outputs are downloaded into a private directory beside
+the workspace (never into it), and the two files a case is graded from are read
+under `JUDGE_MAX_COMPARE_FILE_BYTES` (default 16 MiB). An output larger than that
+is a failed case rather than a truncation. The published output archive is capped
+by `JUDGE_MAX_ARTIFACT_BYTES` (default 64 MiB).
+
+**Run budget.** `JUDGE_MAX_RUN_DURATION` (default 30m) bounds one claimed commit
+end to end, so a stalled image pull, container create or S3 read cannot pin a
+worker slot forever. Keep it above the longest legitimate run and aligned with
+the backend's `RUNCODES_JUDGE_STALE_TIMEOUT`.
+
+**Container images.** The judge writes `run_nonce` into `container.config` and only
+accepts progress milestones that carry it, and it sends the exercise's per-case
+limits as `ms_<id>` / `fs_<id>` / `stack_<id>`. Both are part of the contract in
+`DESIGN.md`, so the language images must be rebuilt from `runners/`
+together with the judge: an image built from an older base script prints bare
+milestones, which the judge logs as a warning and ignores (the run then times
+out).
+
 Zip submissions are unpacked with a per-entry limit
 (`JUDGE_MAX_EXTRACT_FILE_BYTES`, default 64 MiB) and a total expanded-size limit
 (`JUDGE_MAX_EXTRACT_BYTES`, default 256 MiB) so an archive cannot fill the
 shared execution directory.
+
+## Troubleshooting
+
+**`readiness: podman unavailable` … `dial unix /run/podman/podman.sock: connect:
+connection refused`.** Nothing is accepting connections on that path _inside the
+container_. The judge reaches podman through a socket Compose bind-mounts when
+the container is created, and a bind mount pins whatever it pointed at:
+
+- the container was created **before** the socket existed, so the mount is a
+  directory (Docker creates the missing source path) — a fresh `docker compose up`
+  started before `systemctl --user start podman.socket` leaves exactly this;
+- or `podman.socket` was **restarted** afterwards, which creates a new socket, so
+  the container still holds the old one and every connect is refused.
+
+Either way the fix is on the host, and the container has to be recreated (a
+restart re-uses it, mounts included):
+
+```sh
+systemctl --user status podman.socket              # is it active?
+docker compose up -d --force-recreate judge
+docker compose exec judge ls -l /run/podman/podman.sock  # must be an 's', not a 'd'
+curl -s http://localhost:9000/readyz               # {"status":"ok"}
+```
+
+The judge logs the same diagnosis at startup and on every readiness probe. While
+podman is unreachable the backend refuses submissions with `503`, so nothing is
+queued or lost.
+
+**`could not claim commit: begin claim tx: context deadline exceeded`.** The
+judge could not get a database connection within its 10 s claim budget, which is
+what a database container that was recreated under a running judge looks like:
+the pool's old connections point at an address that no longer answers. The poll
+loop retries every `JUDGE_POLL_INTERVAL`, so a single occurrence clears itself;
+the fix for a persistent one is the same as above — recreate the judge container
+along with the database.
 
 ## Endpoints
 
@@ -77,8 +181,8 @@ shared execution directory.
 | GET    | `/v1/runs/{id}/events` | SSE event stream (`?from=<seq>` to resume)      |
 | GET    | `/v1/runs/{id}/output` | the generated output archive                    |
 
-`/v1` endpoints require `Authorization: Bearer $JUDGE_AUTH_TOKEN` when the token
-is set.
+`/v1` endpoints require `Authorization: Bearer $JUDGE_AUTH_TOKEN`. Without a
+configured token they return `503` unless `JUDGE_ALLOW_INSECURE=true` is set.
 
 ## Limitations
 

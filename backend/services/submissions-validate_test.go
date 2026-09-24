@@ -6,11 +6,13 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/runcodes-icmc/runcodes/database"
+
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 )
 
-// newMockDB swaps the package-level DB for a sqlmock handle and restores the
-// previous handle when the test finishes.
+// newMockDB swaps the package-level database.DB for a sqlmock handle and
+// restores the previous handle when the test finishes.
 func newMockDB(t *testing.T) sqlmock.Sqlmock {
 	t.Helper()
 
@@ -19,10 +21,10 @@ func newMockDB(t *testing.T) sqlmock.Sqlmock {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
 
-	previous := DB
-	DB = db
+	previous := database.DB
+	database.DB = db
 	t.Cleanup(func() {
-		DB = previous
+		database.DB = previous
 		db.Close()
 	})
 
@@ -30,12 +32,15 @@ func newMockDB(t *testing.T) sqlmock.Sqlmock {
 }
 
 // expectValidateExercise queues the authorization query used by validateExercise.
-// The expected pattern includes the "NOT en.banned" clause so that dropping it
+// The expected pattern includes the "NOT en.banned" clauses so that dropping one
 // (letting banned enrollments submit) fails the test.
-func expectValidateExercise(mock sqlmock.Sqlmock, expired, enrolled bool) {
+func expectValidateExercise(
+	mock sqlmock.Sqlmock, expired, enrolled, owner bool, role string,
+) {
 	mock.ExpectQuery(`AND NOT en\.banned`).
-		WillReturnRows(sqlmock.NewRows([]string{"expired", "enrolled"}).
-			AddRow(expired, enrolled))
+		WillReturnRows(sqlmock.NewRows(
+			[]string{"expired", "enrolled", "is_owner", "role"}).
+			AddRow(expired, enrolled, owner, role))
 }
 
 func TestValidateExerciseAuthorization(t *testing.T) {
@@ -43,18 +48,25 @@ func TestValidateExerciseAuthorization(t *testing.T) {
 		name     string
 		expired  bool
 		enrolled bool
+		owner    bool
+		role     string
 		wantErr  error
 	}{
-		{"enrolled and open", false, true, nil},
-		{"not enrolled", false, false, ErrNotEnrolled},
-		{"banned enrollment", false, false, ErrNotEnrolled},
-		{"deadline passed", true, true, ErrDeadlinePassed},
+		{"enrolled and open", false, true, false, EnrollmentRoleStudent, nil},
+		{"not enrolled", false, false, false, "", ErrNotEnrolled},
+		{"banned enrollment", false, false, false, "", ErrNotEnrolled},
+		{"deadline passed for a student", true, true, false, EnrollmentRoleStudent, ErrDeadlinePassed},
+		{"deadline passed for a monitor", true, true, false, EnrollmentRoleMonitor, ErrDeadlinePassed},
+		// The owner and the professors assigned to the class teach it: the
+		// deadline is a rule for the students who are being graded.
+		{"deadline passed for the owner", true, false, true, "", nil},
+		{"deadline passed for a co-professor", true, true, false, EnrollmentRoleProfessor, nil},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mock := newMockDB(t)
-			expectValidateExercise(mock, tt.expired, tt.enrolled)
+			expectValidateExercise(mock, tt.expired, tt.enrolled, tt.owner, tt.role)
 
 			err := validateExercise(context.Background(), 1, 2)
 			if !errors.Is(err, tt.wantErr) {

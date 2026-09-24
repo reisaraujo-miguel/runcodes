@@ -22,19 +22,57 @@ import (
 	"github.com/runcodes-icmc/judge/internal/store"
 )
 
+// ContainerRuntime is the slice of podman the engine drives. It exists so the run
+// phase can be exercised without a container engine.
+type ContainerRuntime interface {
+	EnsureImage(ctx context.Context, image string) error
+	RemoveByName(ctx context.Context, name string) error
+	Create(ctx context.Context, rc podman.RunConfig) (RuntimeContainer, error)
+}
+
+// RuntimeContainer is a created container.
+type RuntimeContainer interface {
+	Start(ctx context.Context) error
+	Logs(ctx context.Context) *podman.LogStream
+	Wait(timeout time.Duration) (int32, error)
+	Kill(ctx context.Context) error
+	Remove(ctx context.Context) error
+}
+
+// PodmanRuntime adapts a podman client to the interface the engine drives. The
+// adapter exists because Go has no covariant return types: *podman.Client.Create
+// returns a concrete container and so cannot satisfy ContainerRuntime directly.
+func PodmanRuntime(client *podman.Client) ContainerRuntime {
+	return podmanAdapter{client: client}
+}
+
+type podmanAdapter struct{ client *podman.Client }
+
+func (a podmanAdapter) EnsureImage(ctx context.Context, image string) error {
+	return a.client.EnsureImage(ctx, image)
+}
+
+func (a podmanAdapter) RemoveByName(ctx context.Context, name string) error {
+	return a.client.RemoveByName(ctx, name)
+}
+
+func (a podmanAdapter) Create(ctx context.Context, rc podman.RunConfig) (RuntimeContainer, error) {
+	return a.client.Create(ctx, rc)
+}
+
 // Engine holds the collaborators needed to process a commit.
 type Engine struct {
 	cfg    *config.Config
 	store  *store.Store
 	s3     *storage.S3
-	podman *podman.Client
+	podman ContainerRuntime
 	hub    *events.Hub
 	logger *slog.Logger
 }
 
 // New builds an Engine.
-func New(cfg *config.Config, st *store.Store, s3 *storage.S3, pc *podman.Client, hub *events.Hub, logger *slog.Logger) *Engine {
-	return &Engine{cfg: cfg, store: st, s3: s3, podman: pc, hub: hub, logger: logger}
+func New(cfg *config.Config, st *store.Store, s3 *storage.S3, rt ContainerRuntime, hub *events.Hub, logger *slog.Logger) *Engine {
+	return &Engine{cfg: cfg, store: st, s3: s3, podman: rt, hub: hub, logger: logger}
 }
 
 // ArtifactPath is where a commit's output archive lives (and is served from).
@@ -70,10 +108,14 @@ func (e *Engine) Process(ctx context.Context, commit *model.Commit) {
 			e.hub.Finished(commit.ID, string(model.RunServerError), 0, 0, "", "", startedAt, time.Now())
 		}
 
-		// Clean up the workspace if it was created and the configuration does not require keeping workspaces.
+		// Clean up the workspace and the private expected-output directory if they
+		// were created and the configuration does not require keeping workspaces.
 		if ws != nil && !e.cfg.KeepWorkspaces {
 			if err := os.RemoveAll(ws.BaseDir); err != nil {
 				logger.Warn("workspace cleanup failed", "error", err)
+			}
+			if err := os.RemoveAll(ws.ExpectedDir); err != nil {
+				logger.Warn("expected output cleanup failed", "error", err)
 			}
 		}
 	}()
@@ -171,17 +213,32 @@ func (e *Engine) runContainer(ctx context.Context, commit *model.Commit, ws *wor
 	}
 
 	stream := ct.Logs(ctx)
-	defer e.stopContainer(ct, stream)
+
+	// The container must be stopped before grading, not after: it runs the
+	// untrusted submission, so while it is alive it can still rewrite the output
+	// files the judge is about to read (and, because the milestones below are
+	// plain log lines, it can claim the execution phase is over and keep running).
+	// stopped tracks whether stopContainer already ran, so the deferred call only
+	// covers the error paths that return before it.
+	stopped := false
+	defer func() {
+		if !stopped {
+			_, _ = e.stopContainer(ct, stream)
+		}
+	}()
 
 	// Await milestones from the container's log stream to determine the progress of compilation and execution.
 	if ws.Compilable {
 		// If the language requires compilation, wait for the compilation start and done milestones.
-		if err := e.awaitLine(stream, "compilation.start", e.cfg.CompilationTimeout); err != nil {
+		// CompilationWait, not the container's compilation timeout: the judge has to
+		// outwait the container's own limit, or it abandons runs the image was still
+		// compiling (and reports a timeout instead of the compiler's error).
+		if err := e.awaitLine(stream, "compilation.start", ws.RunNonce, e.cfg.CompilationWait); err != nil {
 			return outcome, err
 		}
 
 		// Await the compilation done milestone, which indicates that the compilation phase has completed.
-		if err := e.awaitLine(stream, "compilation.done", e.cfg.CompilationTimeout); err != nil {
+		if err := e.awaitLine(stream, "compilation.done", ws.RunNonce, e.cfg.CompilationWait); err != nil {
 			return outcome, err
 		}
 
@@ -202,15 +259,28 @@ func (e *Engine) runContainer(ctx context.Context, commit *model.Commit, ws *wor
 
 	// Await the run start milestone, which indicates that the execution phase has begun.
 	timeout := e.executionTimeout(ws.TestCases)
-	if err := e.awaitLine(stream, "run.start", timeout); err != nil {
+	if err := e.awaitLine(stream, "run.start", ws.RunNonce, timeout); err != nil {
 		return outcome, err
 	}
 
 	// Report to the event hub that the run phase is now running.
 	e.hub.Status(commit.ID, "running", time.Now())
 
-	if err := e.awaitLine(stream, "run.done", timeout); err != nil {
+	if err := e.awaitLine(stream, "run.done", ws.RunNonce, timeout); err != nil {
 		return outcome, err
+	}
+
+	// Execution is over: kill and remove the container before reading anything it
+	// produced, so no process of the submission's can still be running while the
+	// judge grades it. The exit status is the harness's own verdict on itself.
+	exitCode, exited := e.stopContainer(ct, stream)
+	stopped = true
+
+	// A harness that failed after reporting the run as done — a broken image, a
+	// container killed from outside, a full disk — has not finished collecting its
+	// outputs, so grading them would invent a result.
+	if exited && exitCode != 0 {
+		return outcome, fmt.Errorf("the container's run harness exited with status %d", exitCode)
 	}
 
 	results, err := e.gradeAll(ctx, commit, ws)
@@ -246,9 +316,11 @@ func (e *Engine) executionTimeout(cases []model.TestCase) time.Duration {
 func classify(err error) model.RunStatus {
 	var timedOut *timeoutError
 
-	if errors.As(err, &timedOut) ||
-		errors.Is(err, context.DeadlineExceeded) ||
-		errors.Is(err, context.Canceled) {
+	// Only the phase timeouts the runner imposed itself are the submission's own
+	// timeout. A cancelled or expired run context belongs to the judge's lifecycle
+	// (shutdown, or the per-run budget), so reporting it as the student's TLE would
+	// penalize them for an infrastructure event.
+	if errors.As(err, &timedOut) {
 		return model.RunTimeout
 	}
 
@@ -257,6 +329,11 @@ func classify(err error) model.RunStatus {
 
 // buildArtifact zips the container's `outputfiles` directory, if any. It
 // returns "" when there is nothing to archive.
+//
+// The directory is written by the untrusted submission, so the walk only follows
+// regular files (never a symlink, which would otherwise publish the contents of
+// any file the judge can read) and stops once the archive reaches
+// MaxArtifactBytes, so a submission cannot fill the shared execution directory.
 func (e *Engine) buildArtifact(commitID int64, baseDir string) (string, error) {
 	outputDir := filepath.Join(baseDir, "outputfiles")
 
@@ -280,6 +357,8 @@ func (e *Engine) buildArtifact(commitID int64, baseDir string) (string, error) {
 	zw := zip.NewWriter(f)
 
 	// Walk the output directory and add each file to the zip archive.
+	var archived int64
+
 	walkErr := filepath.Walk(outputDir, func(p string, fi os.FileInfo, openErr error) error {
 		if openErr != nil {
 			return openErr
@@ -288,6 +367,19 @@ func (e *Engine) buildArtifact(commitID int64, baseDir string) (string, error) {
 		// Skip directories; we only want to add files to the zip archive.
 		if fi.IsDir() {
 			return nil
+		}
+
+		// filepath.Walk reports the entry itself (lstat), so a symlink is visible
+		// here: skip anything that is not a regular file instead of opening it and
+		// following the link out of the workspace.
+		if !fi.Mode().IsRegular() {
+			e.logger.Warn("skipping non-regular output file",
+				"commit_id", commitID, "name", filepath.Base(p))
+			return nil
+		}
+
+		if archived+fi.Size() > e.cfg.MaxArtifactBytes {
+			return fmt.Errorf("output archive exceeds the %d byte limit", e.cfg.MaxArtifactBytes)
 		}
 
 		// Compute the relative path of the file to be added to the zip archive.
@@ -303,16 +395,21 @@ func (e *Engine) buildArtifact(commitID int64, baseDir string) (string, error) {
 		}
 
 		// Open the source file for reading and copy its contents to the zip archive.
-		src, err := os.Open(p)
+		// openRegular refuses a symlink swapped in since the walk lstat'ed it.
+		src, err := openRegular(p)
 		if err != nil {
 			return err
 		}
 
-		defer src.Close()
+		written, err := io.Copy(w, src)
+		src.Close()
+		if err != nil {
+			return err
+		}
 
-		_, err = io.Copy(w, src)
+		archived += written
 
-		return err
+		return nil
 	})
 
 	if err := zw.Close(); err != nil && walkErr == nil {

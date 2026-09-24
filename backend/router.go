@@ -3,9 +3,9 @@ package main
 import (
 	"log/slog"
 	"net/http"
-	"os"
 	"time"
 
+	"github.com/runcodes-icmc/runcodes/config"
 	"github.com/runcodes-icmc/runcodes/handlers"
 	"github.com/runcodes-icmc/runcodes/validation"
 
@@ -26,6 +26,10 @@ func createRoutes(router *chi.Mux) {
 	router.Group(func(r chi.Router) {
 		r.Post("/api/v1/user/signup", handlers.SignUp)
 		r.Post("/api/v1/user/login", handlers.LogIn)
+
+		// The contact information the login page shows. It is public by
+		// design: a visitor must be able to read it before signing in.
+		r.Get("/api/v1/settings/public", handlers.GetPublicSettings)
 	})
 
 	// protected routes
@@ -35,6 +39,19 @@ func createRoutes(router *chi.Mux) {
 
 		r.Get("/api/v1/auth", handlers.GetAuth)
 		r.Post("/api/v1/auth/refresh", handlers.RefreshAuth)
+		r.Post("/api/v1/user/logout", handlers.LogOut)
+
+		// the caller's own account
+		r.Get("/api/v1/user/profile", handlers.GetProfile)
+		r.Put("/api/v1/user/profile", handlers.UpdateProfile)
+		r.Put("/api/v1/user/password", handlers.ChangePassword)
+
+		// the caller's own classes and open exercises (home page)
+		r.Get("/api/v1/user/offerings", handlers.ListMyOfferings)
+		r.Get("/api/v1/user/exercises", handlers.ListMyOpenExercises)
+
+		r.Post("/api/v1/offerings/enroll", handlers.Enroll)
+		r.Delete("/api/v1/offerings/{id}/enrollment", handlers.Unenroll)
 
 		r.Post("/api/v1/submissions", handlers.CreateSubmission)
 		r.Get("/api/v1/submissions/{id}/events", handlers.StreamSubmissionEvents)
@@ -63,12 +80,37 @@ func createRoutes(router *chi.Mux) {
 		r.Post("/api/v1/exercises/{id}/attached-files", handlers.CreateAttachedFile)
 		r.Delete("/api/v1/exercises/{id}/attached-files/{fileId}", handlers.DeleteAttachedFile)
 
-		// professor and admin routes
+		// professor and admin routes: own classes and the people in them
 		r.Group(func(r chi.Router) {
 			r.Use(validation.RequireRole("professor", "admin"))
 
+			r.Get("/api/v1/offerings", handlers.ListOfferings)
 			r.Post("/api/v1/offerings/create", handlers.CreateOffering)
 			r.Get("/api/v1/offerings/{id}", handlers.GetOffering)
+			r.Put("/api/v1/offerings/{id}", handlers.UpdateOffering)
+			r.Delete("/api/v1/offerings/{id}", handlers.DeleteOffering)
+
+			r.Get("/api/v1/offerings/{id}/members", handlers.ListOfferingMembers)
+			r.Post("/api/v1/offerings/{id}/members", handlers.AddOfferingMember)
+			r.Put("/api/v1/offerings/{id}/members/{userId}", handlers.UpdateOfferingMember)
+			r.Delete("/api/v1/offerings/{id}/members/{userId}", handlers.RemoveOfferingMember)
+		})
+
+		// admin panel
+		r.Group(func(r chi.Router) {
+			r.Use(validation.RequireRole("admin"))
+
+			r.Get("/api/v1/admin/users", handlers.AdminListUsers)
+			r.Put("/api/v1/admin/users/{id}", handlers.AdminUpdateUser)
+			r.Delete("/api/v1/admin/users/{id}", handlers.AdminDeleteUser)
+
+			r.Get("/api/v1/admin/offerings", handlers.AdminListOfferings)
+			r.Put("/api/v1/admin/offerings/{id}", handlers.AdminUpdateOffering)
+			r.Delete("/api/v1/admin/offerings/{id}", handlers.AdminDeleteOffering)
+			r.Get("/api/v1/admin/offerings/{id}/members", handlers.AdminListOfferingMembers)
+
+			r.Get("/api/v1/admin/settings", handlers.GetSettings)
+			r.Put("/api/v1/admin/settings", handlers.UpdateSettings)
 		})
 	})
 }
@@ -76,21 +118,27 @@ func createRoutes(router *chi.Mux) {
 /*
 configureMiddleware configures traceid, RequestLogger, Recoverer and cors.handler
 */
-func configureMiddleware(router *chi.Mux) {
+func configureMiddleware(router *chi.Mux, cfg *config.Config) {
 	router.Use(traceid.Middleware)
+
+	// Bodies (and, on a rejected payload, a replayable curl command) are only
+	// logged when the caller asks for them and the server runs in debug mode.
+	logBody := func(r *http.Request) bool {
+		return cfg.Debug && r.Header.Get("Debug") == "reveal-body-logs"
+	}
 
 	router.Use(httplog.RequestLogger(Logger, &httplog.Options{
 		Level:              slog.LevelInfo,
 		Schema:             LogFormat,
 		LogRequestHeaders:  []string{"Origin"},
 		LogResponseHeaders: []string{},
-		LogRequestBody:     isDebugHeaderSet,
-		LogResponseBody:    isDebugHeaderSet,
+		LogRequestBody:     logBody,
+		LogResponseBody:    logBody,
 		// Log all requests with invalid payload as curl command.
 		LogExtraAttrs: func(
 			req *http.Request, reqBody string, respStatus int,
 		) []slog.Attr {
-			if !isDebugHeaderSet(req) ||
+			if !logBody(req) ||
 				(respStatus != http.StatusBadRequest &&
 					respStatus != http.StatusUnprocessableEntity) {
 				return nil
@@ -107,13 +155,8 @@ func configureMiddleware(router *chi.Mux) {
 	// calls the API with `credentials: "include"`. Cross-origin credentialed
 	// requests require `AllowCredentials` and an explicit origin list — the
 	// wildcard origin is not allowed by browsers when credentials are used.
-	frontendOrigin := os.Getenv("FRONTEND_ORIGIN")
-	if frontendOrigin == "" {
-		frontendOrigin = "http://localhost:5173"
-	}
-
 	router.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{frontendOrigin},
+		AllowedOrigins:   []string{cfg.FrontendOrigin},
 		AllowedMethods:   []string{"GET", "PUT", "POST", "DELETE", "HEAD", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		ExposedHeaders:   []string{"Link"},
@@ -134,9 +177,4 @@ func configureMiddleware(router *chi.Mux) {
 // clientIPKey returns the canonicalized client IP address for rate limiting
 func clientIPKey(r *http.Request) (string, error) {
 	return httprate.CanonicalizeIP(middleware.GetClientIP(r.Context())), nil
-}
-
-// isDebugHeaderSet returns if the debug header is set on the request
-func isDebugHeaderSet(r *http.Request) bool {
-	return os.Getenv(debugModeEnv) == "true" && r.Header.Get("Debug") == "reveal-body-logs"
 }

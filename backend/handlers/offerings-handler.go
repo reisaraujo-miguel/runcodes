@@ -1,12 +1,9 @@
-// Package handlers defines the HTTP handlers for the application.
 package handlers
 
 import (
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -14,7 +11,6 @@ import (
 	"github.com/runcodes-icmc/runcodes/services"
 	"github.com/runcodes-icmc/runcodes/validation"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/jwtauth/v5"
 )
 
@@ -46,7 +42,9 @@ func CreateOffering(w http.ResponseWriter, r *http.Request) {
 	req.Name = strings.TrimSpace(req.Name)
 	req.EndDate = strings.TrimSpace(req.EndDate)
 
-	if err := validation.ValidateRequiredString(req.Name, 100); err != nil {
+	if err := validation.ValidateRequiredString(
+		req.Name, services.MaxOfferingNameLength,
+	); err != nil {
 		slog.InfoContext(ctx,
 			"user tried to create an offering with an invalid name",
 			slog.Any("user_id", claims["id"]),
@@ -105,7 +103,7 @@ func GetOffering(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	offeringID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	offeringID, err := pathID(r, "id")
 	if err != nil {
 		WriteResponse(w, http.StatusBadRequest,
 			models.Error{Message: "invalid offering id"},
@@ -115,22 +113,349 @@ func GetOffering(w http.ResponseWriter, r *http.Request) {
 
 	var offering *models.Offering
 	if offering, err = services.GetOffering(ctx, offeringID, claims); err != nil {
-		if errors.Is(err, services.ErrOfferingNotFound) {
-			WriteResponse(w, http.StatusNotFound,
-				models.Error{Message: services.ErrOfferingNotFound.Error()},
-			)
-			return
-		}
-		slog.ErrorContext(ctx,
-			"error fetching offering",
-			slog.String("error", err.Error()),
-			slog.Any("user_id", claims["id"]),
-		)
-		WriteResponse(w, http.StatusInternalServerError,
-			models.Error{Message: services.ErrServer.Error()},
-		)
+		writeServiceError(ctx, w, err)
 		return
 	}
 
 	WriteResponse(w, http.StatusOK, offering)
+}
+
+/*
+ListOfferings lists the classes the requesting professor manages: the ones they
+own and the ones they were assigned to teach.
+*/
+func ListOfferings(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	claims, ok := tokenClaims(w, r)
+	if !ok {
+		return
+	}
+
+	offerings, err := services.ListOwnedOfferings(ctx, claims)
+	if err != nil {
+		writeServiceError(ctx, w, err)
+		return
+	}
+
+	WriteResponse(w, http.StatusOK, offerings)
+}
+
+/*
+UpdateOffering edits a class owned by the requesting professor.
+*/
+func UpdateOffering(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	claims, ok := tokenClaims(w, r)
+	if !ok {
+		return
+	}
+
+	offeringID, err := pathID(r, "id")
+	if err != nil || offeringID <= 0 {
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "invalid offering id"},
+		)
+		return
+	}
+
+	var req models.UpdateOfferingRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "Invalid offering update request"},
+		)
+		return
+	}
+
+	offering, err := services.UpdateOffering(ctx, offeringID, &req, claims)
+	if err != nil {
+		slog.ErrorContext(ctx, "error updating offering",
+			slog.String("error", err.Error()),
+			slog.Int64("offering_id", offeringID),
+			slog.Any("user_id", claims["id"]),
+		)
+		writeServiceError(ctx, w, err)
+		return
+	}
+
+	WriteResponse(w, http.StatusOK, offering)
+}
+
+/*
+DeleteOffering removes a class owned by the requesting professor.
+*/
+func DeleteOffering(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	claims, ok := tokenClaims(w, r)
+	if !ok {
+		return
+	}
+
+	offeringID, err := pathID(r, "id")
+	if err != nil || offeringID <= 0 {
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "invalid offering id"},
+		)
+		return
+	}
+
+	if err := services.DeleteOffering(ctx, offeringID, claims); err != nil {
+		slog.ErrorContext(ctx, "error deleting offering",
+			slog.String("error", err.Error()),
+			slog.Int64("offering_id", offeringID),
+			slog.Any("user_id", claims["id"]),
+		)
+		writeServiceError(ctx, w, err)
+		return
+	}
+
+	WriteResponse(w, http.StatusNoContent, nil)
+}
+
+/*
+Enroll adds the requesting user to the class the enrollment code belongs to.
+*/
+func Enroll(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	claims, ok := tokenClaims(w, r)
+	if !ok {
+		return
+	}
+
+	var req models.EnrollRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "Invalid enrollment request"},
+		)
+		return
+	}
+
+	enrollment, err := services.Enroll(ctx, &req, claims)
+	if err != nil {
+		writeServiceError(ctx, w, err)
+		return
+	}
+
+	WriteResponse(w, http.StatusCreated, enrollment)
+}
+
+/*
+Unenroll removes the requesting user from a class they joined.
+*/
+func Unenroll(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	claims, ok := tokenClaims(w, r)
+	if !ok {
+		return
+	}
+
+	offeringID, err := pathID(r, "id")
+	if err != nil || offeringID <= 0 {
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "invalid offering id"},
+		)
+		return
+	}
+
+	if err := services.Unenroll(ctx, offeringID, claims); err != nil {
+		writeServiceError(ctx, w, err)
+		return
+	}
+
+	WriteResponse(w, http.StatusNoContent, nil)
+}
+
+/*
+ListMyOfferings lists the classes the requesting user belongs to, for the home
+page.
+*/
+func ListMyOfferings(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	claims, ok := tokenClaims(w, r)
+	if !ok {
+		return
+	}
+
+	offerings, err := services.ListUserOfferings(ctx, claims)
+	if err != nil {
+		writeServiceError(ctx, w, err)
+		return
+	}
+
+	WriteResponse(w, http.StatusOK, offerings)
+}
+
+/*
+ListMyOpenExercises lists the exercises that are open right now in the classes
+the requesting user belongs to, for the home page.
+*/
+func ListMyOpenExercises(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	claims, ok := tokenClaims(w, r)
+	if !ok {
+		return
+	}
+
+	exercises, err := services.ListUserOpenExercises(ctx, claims)
+	if err != nil {
+		writeServiceError(ctx, w, err)
+		return
+	}
+
+	WriteResponse(w, http.StatusOK, exercises)
+}
+
+/*
+ListOfferingMembers lists the members of a class owned by the requesting user.
+*/
+func ListOfferingMembers(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	claims, ok := tokenClaims(w, r)
+	if !ok {
+		return
+	}
+
+	offeringID, err := pathID(r, "id")
+	if err != nil || offeringID <= 0 {
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "invalid offering id"},
+		)
+		return
+	}
+
+	members, err := services.ListOfferingMembers(ctx, offeringID, claims)
+	if err != nil {
+		writeServiceError(ctx, w, err)
+		return
+	}
+
+	WriteResponse(w, http.StatusOK, members)
+}
+
+/*
+AddOfferingMember assigns a monitor or a co-professor to a class owned by the
+requesting user.
+*/
+func AddOfferingMember(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	claims, ok := tokenClaims(w, r)
+	if !ok {
+		return
+	}
+
+	offeringID, err := pathID(r, "id")
+	if err != nil || offeringID <= 0 {
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "invalid offering id"},
+		)
+		return
+	}
+
+	var req models.AddMemberRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "Invalid member request"},
+		)
+		return
+	}
+
+	member, err := services.AddOfferingMember(ctx, offeringID, &req, claims)
+	if err != nil {
+		writeServiceError(ctx, w, err)
+		return
+	}
+
+	WriteResponse(w, http.StatusCreated, member)
+}
+
+/*
+UpdateOfferingMember changes the role of a member of a class owned by the
+requesting user, or bans and unbans them.
+*/
+func UpdateOfferingMember(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	claims, ok := tokenClaims(w, r)
+	if !ok {
+		return
+	}
+
+	offeringID, err := pathID(r, "id")
+	if err != nil || offeringID <= 0 {
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "invalid offering id"},
+		)
+		return
+	}
+
+	memberID, err := pathID(r, "userId")
+	if err != nil || memberID <= 0 {
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "invalid user id"},
+		)
+		return
+	}
+
+	var req models.UpdateMemberRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "Invalid member request"},
+		)
+		return
+	}
+
+	member, err := services.UpdateOfferingMember(
+		ctx, offeringID, memberID, &req, claims,
+	)
+	if err != nil {
+		writeServiceError(ctx, w, err)
+		return
+	}
+
+	WriteResponse(w, http.StatusOK, member)
+}
+
+/*
+RemoveOfferingMember drops a member from a class owned by the requesting user.
+*/
+func RemoveOfferingMember(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	claims, ok := tokenClaims(w, r)
+	if !ok {
+		return
+	}
+
+	offeringID, err := pathID(r, "id")
+	if err != nil || offeringID <= 0 {
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "invalid offering id"},
+		)
+		return
+	}
+
+	memberID, err := pathID(r, "userId")
+	if err != nil || memberID <= 0 {
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "invalid user id"},
+		)
+		return
+	}
+
+	if err := services.RemoveOfferingMember(
+		ctx, offeringID, memberID, claims,
+	); err != nil {
+		writeServiceError(ctx, w, err)
+		return
+	}
+
+	WriteResponse(w, http.StatusNoContent, nil)
 }

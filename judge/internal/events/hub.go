@@ -23,9 +23,18 @@ const (
 const (
 	// maxFrames bounds the replay buffer per commit.
 	maxFrames = 1024
+	// maxTopicBytes bounds the total retained payload per commit. A frame count
+	// alone is not enough: a `case_result` carries the submission's own output, so
+	// 1024 of them can pin hundreds of megabytes per commit, and a burst of large
+	// frames also stalls subscribers, which are served while the topic is locked.
+	maxTopicBytes = 16 << 20
 	// subBuffer is the per-subscriber channel capacity; slow subscribers are
-	// dropped rather than stalling the run (they recover from the backlog).
+	// dropped rather than stalling the run (they recover from the replay buffer).
 	subBuffer = 64
+	// terminalSendTimeout is how long the terminal frame waits for a stalled
+	// subscriber before being dropped with the rest. It is bounded so one slow
+	// reader cannot hold up the run it is watching.
+	terminalSendTimeout = 2 * time.Second
 )
 
 // Frame is one serialized event.
@@ -56,9 +65,26 @@ type topic struct {
 	mu     sync.Mutex
 	next   int64
 	frames []Frame
+	bytes  int
 	subs   map[chan Frame]struct{}
 	done   bool
 	evict  *time.Timer
+}
+
+// appendFrame adds a frame to the replay buffer, evicting the oldest frames while
+// either bound is exceeded. At least one frame is always kept, so a single
+// oversized frame cannot push out the terminal event that follows it.
+func (t *topic) appendFrame(frame Frame) {
+	t.frames = append(t.frames, frame)
+	t.bytes += len(frame.Data)
+
+	for len(t.frames) > 1 && (len(t.frames) > maxFrames || t.bytes > maxTopicBytes) {
+		t.bytes -= len(t.frames[0].Data)
+		// Clear the slot so the evicted payload can be collected: the slice keeps
+		// referencing the backing array.
+		t.frames[0] = Frame{}
+		t.frames = t.frames[1:]
+	}
 }
 
 // topic returns the topic for a commit, creating it if needed.
@@ -109,17 +135,30 @@ func (h *Hub) publish(id int64, name string, payload any) {
 	// Create a new Frame with the assigned sequence number, event name, and JSON data.
 	frame := Frame{Seq: t.next, Name: name, Data: data}
 
-	// If the replay buffer is full, drop the oldest frame to make room for the new one.
-	if len(t.frames) >= maxFrames {
-		t.frames = t.frames[1:]
-	}
+	// Append the new frame to the replay buffer, evicting the oldest frames if it
+	// no longer fits within the frame-count or byte budget.
+	t.appendFrame(frame)
 
-	// Append the new frame to the replay buffer.
-	t.frames = append(t.frames, frame)
+	// Notify the subscribers of the new frame. A full channel means a subscriber is
+	// behind: the frame is dropped for it, and it recovers from the replay buffer.
+	//
+	// The terminal frame is the exception: it is the one frame a client cannot
+	// reconstruct from anything else, so it waits for room for a bounded time
+	// instead of being lost. The wait is bounded because the topic lock is held
+	// here and the run must not be held up by a stalled reader.
+	terminal := name == NameFinished || name == NameError
 
-	// Notify all subscribers of the new frame. If a subscriber's channel is full,
-	// we drop the frame for that subscriber.
 	for ch := range t.subs {
+		if terminal {
+			select {
+			case ch <- frame:
+			case <-time.After(terminalSendTimeout):
+				// Still delivered through the replay buffer, and the topic closes
+				// right below, so a client that reconnects reads the result then.
+			}
+			continue
+		}
+
 		select {
 		case ch <- frame:
 		default:
@@ -127,9 +166,22 @@ func (h *Hub) publish(id int64, name string, payload any) {
 		}
 	}
 
-	// If the event is a terminal event (finished or error), mark the topic as done,
+	// Only `finished` terminates the topic: it is the event that carries the
+	// authoritative result. `error` carries a message and is always followed by a
+	// `finished`, so treating it as terminal would silently drop the terminal
+	// status — and with it the real verdict, e.g. turning a timeout into a server
+	// error on the backend.
+	//
+	// An error still arms the eviction timer, so a topic that somehow never gets
+	// its `finished` (the process dying between the two publishes is the only way)
+	// is reclaimed after the retention period instead of being kept forever.
+	if name == NameError && t.evict == nil {
+		t.evict = time.AfterFunc(h.retention, func() { h.evictTopic(id, t) })
+	}
+
+	// If the event is a terminal event (finished), mark the topic as done,
 	// close all subscriber channels, and schedule eviction after the retention period.
-	if name == NameFinished || name == NameError {
+	if name == NameFinished {
 		t.done = true
 		// Close every subscriber so SSE handlers return on their own; a
 		// late subscriber gets the backlog from the closed-channel path in

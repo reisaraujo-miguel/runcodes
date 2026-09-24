@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/runcodes-icmc/runcodes/judge"
 	"github.com/runcodes-icmc/runcodes/models"
 	"github.com/runcodes-icmc/runcodes/services"
 
@@ -235,16 +236,16 @@ func StreamSubmissionEvents(w http.ResponseWriter, r *http.Request) {
 		)
 		return
 	}
-	if _, err := w.Write(services.FormatSSEFrame("snapshot", 0, snapshotJSON)); err != nil {
+	if _, err := w.Write(judge.FormatSSEFrame("snapshot", 0, snapshotJSON)); err != nil {
 		return
 	}
 	flusher.Flush()
 
-	if services.IsTerminalStatus(snapshot.Commit.Status) {
+	if judge.IsTerminalStatus(snapshot.Commit.Status) {
 		return
 	}
 
-	subscription, err := services.SubscribeCommit(commitID)
+	subscription, err := judge.Subscribe(commitID)
 	if err != nil {
 		return
 	}

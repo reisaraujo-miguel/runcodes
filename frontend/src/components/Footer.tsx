@@ -1,6 +1,8 @@
 import Github from "@/assets/svg-icons/github.svg?react";
 
-import { Button } from "./ui/button";
+import { buttonVariants } from "./ui/button";
+
+const REPOSITORY_URL = "https://github.com/reisaraujo-miguel/runcodes-react";
 
 export function Footer() {
   return (
@@ -12,21 +14,15 @@ export function Footer() {
           </p>
         </div>
         <div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground hover:text-foreground"
+          <a
+            href={REPOSITORY_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={buttonVariants({ variant: "ghost", size: "sm" })}
           >
-            <a
-              href="https://github.com/reisaraujo-miguel/runcodes-react"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2"
-            >
-              <Github className="h-7 w-7" />
-              <span>GitHub</span>
-            </a>
-          </Button>
+            <Github className="h-7 w-7" aria-hidden="true" />
+            <span>GitHub</span>
+          </a>
         </div>
       </div>
     </footer>

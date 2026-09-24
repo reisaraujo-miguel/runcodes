@@ -19,9 +19,10 @@ to the new schema (`database/schema/02-schema.sql`).
 
 1. A fresh instance of the **new** database (build the `database` image, or
    apply `database/schema/01-init.sql` + `02-schema.sql`).
-2. Optional but recommended: apply `database/schema/04-seeding.sql` first
-   (default admin user + default languages). The migration reuses those rows
-   instead of duplicating them.
+2. Optional but recommended: apply `database/schema/03-seed-data.sql` first
+   (default languages + the admin account, which the seed creates **without a
+   password** — run `database/bootstrap-admin.sh` to set one). The migration
+   reuses those rows instead of duplicating them.
 3. `psql` client; connection env vars (`PGHOST`, `PGPORT`, `PGUSER`,
    `PGPASSWORD`, `PGDATABASE`) pointing at that instance, as the database
    owner (`runcodes`).
@@ -44,6 +45,12 @@ cd database/migration
 PGHOST=127.0.0.1 PGPORT=5432 PGUSER=runcodes PGPASSWORD=... PGDATABASE=runcodes \
   ./migrate.sh ../old_schema/schema.old.sql /path/to/old-data.sql
 ```
+
+The migration connects as the **owner** (`runcodes`), not as `runcodes_app`: it
+creates the `old` schema, tables and indexes, and the application role is
+forbidden from doing any of that. Tables the migration leaves behind are covered
+by the default privileges `database/schema/05-app-role.sh` set up, so the services
+can read them without another grant.
 
 The script (see `migrate.sh` for details):
 

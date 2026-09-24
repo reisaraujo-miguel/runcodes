@@ -107,7 +107,15 @@ func (p *Pool) drain(ctx context.Context, sem chan struct{}, wg *sync.WaitGroup)
 		// Process the claimed commit in a new goroutine, releasing the semaphore slot when done.
 		wg.Go(func() {
 			defer func() { <-sem }()
-			p.processor.Process(ctx, commit)
+
+			// Bound the whole run. Without a deadline a stalled image pull, a wedged
+			// container create or an S3 read that never answers would pin this worker
+			// slot for the lifetime of the process, permanently reducing the queue's
+			// capacity. On shutdown the pool's context still cancels first.
+			runCtx, cancel := context.WithTimeout(ctx, p.cfg.MaxRunDuration)
+			defer cancel()
+
+			p.processor.Process(runCtx, commit)
 		})
 	}
 }

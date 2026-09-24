@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/runcodes-icmc/runcodes/database"
 	"github.com/runcodes-icmc/runcodes/models"
+	"github.com/runcodes-icmc/runcodes/storage"
 
 	"github.com/lib/pq"
 )
@@ -164,7 +166,7 @@ func ResolveTestCaseInput(
 		}
 	case IOTypeFile:
 		if in.InputFile != nil {
-			res.Input = fileBasename(in.InputFile.Filename)
+			res.Input = storage.FileBasename(in.InputFile.Filename)
 			res.InputObject = in.InputFile
 		} else if existing == nil || existing.InputType != IOTypeFile {
 			return nil, fmt.Errorf("%w: input_file is required for file input", ErrInvalidTestCase)
@@ -182,7 +184,7 @@ func ResolveTestCaseInput(
 		}
 	case IOTypeFile:
 		if in.ExpectedOutputFile != nil {
-			res.ExpectedOutput = fileBasename(in.ExpectedOutputFile.Filename)
+			res.ExpectedOutput = storage.FileBasename(in.ExpectedOutputFile.Filename)
 			res.OutputObject = in.ExpectedOutputFile
 		} else if existing == nil || existing.ExpectedOutputType != IOTypeFile {
 			return nil, fmt.Errorf("%w: expected_output_file is required for file output", ErrInvalidTestCase)
@@ -227,7 +229,7 @@ func ResolveTestCaseInput(
 		res.Files = make([]resolvedFile, 0, len(in.Files))
 		seen := make(map[string]struct{}, len(in.Files))
 		for _, f := range in.Files {
-			name := fileBasename(f.Filename)
+			name := storage.FileBasename(f.Filename)
 			if _, ok := seen[name]; ok {
 				continue
 			}
@@ -298,7 +300,7 @@ func loadTestCase(
 	ctx context.Context, caseID, exerciseID int64,
 ) (*models.TestCase, error) {
 	tc := models.TestCase{}
-	err := DB.QueryRowContext(ctx, `
+	err := database.DB.QueryRowContext(ctx, `
 		SELECT id, exercise_id, input, input_type::text, show_input,
 		       expected_output, expected_output_type::text,
 		       show_expected_output, show_user_output, cpu_time_limit_seconds,
@@ -336,7 +338,7 @@ func loadTestCaseFiles(
 		return files, nil
 	}
 
-	rows, err := DB.QueryContext(ctx, `
+	rows, err := database.DB.QueryContext(ctx, `
 		SELECT id, exercise_test_case_id, path
 		FROM exercises_test_cases_files
 		WHERE exercise_test_case_id = ANY($1)
@@ -384,7 +386,7 @@ func ListTestCases(
 	if err != nil {
 		return nil, err
 	}
-	if !acc.isOwner {
+	if !acc.canAuthor {
 		if !acc.isEnrolled {
 			return nil, ErrNotEnrolled
 		}
@@ -395,7 +397,7 @@ func ListTestCases(
 
 	authoringID := acc.authoringExerciseID()
 
-	rows, err := DB.QueryContext(ctx, `
+	rows, err := database.DB.QueryContext(ctx, `
 		SELECT id, exercise_id, input, input_type::text, show_input,
 		       expected_output, expected_output_type::text,
 		       show_expected_output, show_user_output, cpu_time_limit_seconds,
@@ -445,7 +447,7 @@ func ListTestCases(
 		}
 	}
 
-	if !acc.isOwner {
+	if !acc.canAuthor {
 		for i := range cases {
 			if !cases[i].ShowInput {
 				cases[i].Input = ""
@@ -467,7 +469,7 @@ uploaded, and only then is the transaction committed.
 func CreateTestCase(
 	ctx context.Context, exerciseID int64, in *TestCaseInput, claims map[string]any,
 ) (*models.TestCase, error) {
-	acc, err := requireExerciseOwner(ctx, exerciseID, claims)
+	acc, err := requireExerciseAuthor(ctx, exerciseID, claims)
 	if err != nil {
 		return nil, err
 	}
@@ -478,7 +480,7 @@ func CreateTestCase(
 		return nil, err
 	}
 
-	tx, err := DB.BeginTx(ctx, nil)
+	tx, err := database.DB.BeginTx(ctx, nil)
 	if err != nil {
 		slog.ErrorContext(ctx, "error initializing test case transaction",
 			slog.String("error", err.Error()),
@@ -513,7 +515,7 @@ func CreateTestCase(
 	uploaded := make([]string, 0, 4)
 
 	upload := func(key string, obj *UploadedFile) error {
-		if err := PutCaseObject(
+		if err := storage.PutCaseObject(
 			ctx, key, bytes.NewReader(obj.Data), int64(len(obj.Data)), obj.ContentType,
 		); err != nil {
 			return err
@@ -522,7 +524,7 @@ func CreateTestCase(
 		return nil
 	}
 
-	if err := upload(CaseInputKey(caseID), res.InputObject); err != nil {
+	if err := upload(storage.CaseInputKey(caseID), res.InputObject); err != nil {
 		slog.ErrorContext(ctx, "failed to upload test case input",
 			slog.Int64("test_case_id", caseID),
 			slog.String("error", err.Error()),
@@ -530,7 +532,7 @@ func CreateTestCase(
 		deleteCaseObjectsBestEffort(ctx, uploaded)
 		return nil, ErrServer
 	}
-	if err := upload(CaseOutputKey(caseID), res.OutputObject); err != nil {
+	if err := upload(storage.CaseOutputKey(caseID), res.OutputObject); err != nil {
 		slog.ErrorContext(ctx, "failed to upload test case output",
 			slog.Int64("test_case_id", caseID),
 			slog.String("error", err.Error()),
@@ -541,7 +543,7 @@ func CreateTestCase(
 
 	files := make([]models.TestCaseFile, 0, len(res.Files))
 	for _, f := range res.Files {
-		key := CaseFileKey(caseID, f.Name)
+		key := storage.CaseFileKey(caseID, f.Name)
 		if err := upload(key, &UploadedFile{
 			Filename: f.Name, ContentType: f.ContentType, Data: f.Data,
 		}); err != nil {
@@ -589,7 +591,7 @@ func UpdateTestCase(
 	ctx context.Context, exerciseID, caseID int64, in *TestCaseInput,
 	claims map[string]any,
 ) (*models.TestCase, error) {
-	acc, err := requireExerciseOwner(ctx, exerciseID, claims)
+	acc, err := requireExerciseAuthor(ctx, exerciseID, claims)
 	if err != nil {
 		return nil, err
 	}
@@ -619,7 +621,7 @@ func UpdateTestCase(
 		newFiles = oldFiles
 	}
 
-	tx, err := DB.BeginTx(ctx, nil)
+	tx, err := database.DB.BeginTx(ctx, nil)
 	if err != nil {
 		slog.ErrorContext(ctx, "error initializing test case update transaction",
 			slog.String("error", err.Error()),
@@ -651,25 +653,25 @@ func UpdateTestCase(
 
 	// Objects are replaced in place, but the replacer backs up their previous
 	// content first so a failure before the transaction commits can restore it.
-	replacer := newObjectReplacer(ctx, caseObjectOps)
+	replacer := storage.NewObjectReplacer(ctx, storage.CaseOps)
 
 	if res.InputObject != nil {
-		if err := replacer.replace(CaseInputKey(caseID), res.InputObject.Data, res.InputObject.ContentType); err != nil {
+		if err := replacer.Replace(storage.CaseInputKey(caseID), res.InputObject.Data, res.InputObject.ContentType); err != nil {
 			slog.ErrorContext(ctx, "failed to upload test case input",
 				slog.Int64("test_case_id", caseID),
 				slog.String("error", err.Error()),
 			)
-			replacer.restore()
+			replacer.Restore()
 			return nil, ErrServer
 		}
 	}
 	if res.OutputObject != nil {
-		if err := replacer.replace(CaseOutputKey(caseID), res.OutputObject.Data, res.OutputObject.ContentType); err != nil {
+		if err := replacer.Replace(storage.CaseOutputKey(caseID), res.OutputObject.Data, res.OutputObject.ContentType); err != nil {
 			slog.ErrorContext(ctx, "failed to upload test case output",
 				slog.Int64("test_case_id", caseID),
 				slog.String("error", err.Error()),
 			)
-			replacer.restore()
+			replacer.Restore()
 			return nil, ErrServer
 		}
 	}
@@ -683,19 +685,19 @@ func UpdateTestCase(
 				slog.Int64("test_case_id", caseID),
 				slog.String("error", err.Error()),
 			)
-			replacer.restore()
+			replacer.Restore()
 			return nil, ErrServer
 		}
 
 		newFiles = make([]models.TestCaseFile, 0, len(res.Files))
 		for _, f := range res.Files {
-			key := CaseFileKey(caseID, f.Name)
-			if err := replacer.replace(key, f.Data, f.ContentType); err != nil {
+			key := storage.CaseFileKey(caseID, f.Name)
+			if err := replacer.Replace(key, f.Data, f.ContentType); err != nil {
 				slog.ErrorContext(ctx, "failed to upload test case file",
 					slog.Int64("test_case_id", caseID),
 					slog.String("error", err.Error()),
 				)
-				replacer.restore()
+				replacer.Restore()
 				return nil, ErrServer
 			}
 
@@ -709,7 +711,7 @@ func UpdateTestCase(
 					slog.Int64("test_case_id", caseID),
 					slog.String("error", err.Error()),
 				)
-				replacer.restore()
+				replacer.Restore()
 				return nil, ErrServer
 			}
 			newFiles = append(newFiles, models.TestCaseFile{ID: fileID, Path: f.Name})
@@ -721,12 +723,12 @@ func UpdateTestCase(
 			slog.Int64("test_case_id", caseID),
 			slog.String("error", err.Error()),
 		)
-		replacer.restore()
+		replacer.Restore()
 		return nil, ErrServer
 	}
 
 	// The transaction is durable, so the backups are no longer needed.
-	replacer.discard()
+	replacer.Discard()
 
 	if res.FilesChanged {
 		// The old files are no longer referenced; drop their objects, but keep
@@ -739,7 +741,7 @@ func UpdateTestCase(
 			if _, ok := keep[f.Path]; ok {
 				continue
 			}
-			deleteCaseObjectsBestEffort(ctx, []string{CaseFileKey(caseID, f.Path)})
+			deleteCaseObjectsBestEffort(ctx, []string{storage.CaseFileKey(caseID, f.Path)})
 		}
 	}
 
@@ -752,7 +754,7 @@ DeleteTestCase removes a test case and best-effort deletes its S3 objects.
 func DeleteTestCase(
 	ctx context.Context, exerciseID, caseID int64, claims map[string]any,
 ) error {
-	acc, err := requireExerciseOwner(ctx, exerciseID, claims)
+	acc, err := requireExerciseAuthor(ctx, exerciseID, claims)
 	if err != nil {
 		return err
 	}
@@ -763,7 +765,7 @@ func DeleteTestCase(
 		return err
 	}
 
-	result, err := DB.ExecContext(ctx, `
+	result, err := database.DB.ExecContext(ctx, `
 		DELETE FROM exercises_test_cases
 		WHERE id = $1 AND exercise_id = $2`, caseID, authoringID)
 	if err != nil {
@@ -782,9 +784,9 @@ func DeleteTestCase(
 		return ErrTestCaseNotFound
 	}
 
-	keys := []string{CaseInputKey(caseID), CaseOutputKey(caseID)}
+	keys := []string{storage.CaseInputKey(caseID), storage.CaseOutputKey(caseID)}
 	for _, f := range files[caseID] {
-		keys = append(keys, CaseFileKey(caseID, f.Path))
+		keys = append(keys, storage.CaseFileKey(caseID, f.Path))
 	}
 	deleteCaseObjectsBestEffort(ctx, keys)
 
@@ -821,7 +823,7 @@ returning) failures.
 */
 func deleteCaseObjectsBestEffort(ctx context.Context, keys []string) {
 	for _, key := range keys {
-		if err := DeleteCaseObject(ctx, key); err != nil {
+		if err := storage.DeleteCaseObject(ctx, key); err != nil {
 			slog.ErrorContext(ctx, "failed to clean up case object",
 				slog.String("s3_key", key),
 				slog.String("error", err.Error()),
@@ -836,7 +838,7 @@ ListCompilationFiles returns the compilation files of an exercise (owner only).
 func ListCompilationFiles(
 	ctx context.Context, exerciseID int64, claims map[string]any,
 ) ([]models.CompilationFile, error) {
-	acc, err := requireExerciseOwner(ctx, exerciseID, claims)
+	acc, err := requireExerciseAuthor(ctx, exerciseID, claims)
 	if err != nil {
 		return nil, err
 	}
@@ -846,7 +848,7 @@ func ListCompilationFiles(
 func queryCompilationFiles(
 	ctx context.Context, exerciseID int64,
 ) ([]models.CompilationFile, error) {
-	rows, err := DB.QueryContext(ctx, `
+	rows, err := database.DB.QueryContext(ctx, `
 		SELECT id, exercise_id, path
 		FROM exercises_compilation_files
 		WHERE exercise_id = $1
@@ -881,13 +883,13 @@ GetCompilationFile returns a single compilation file (owner only).
 func GetCompilationFile(
 	ctx context.Context, exerciseID, fileID int64, claims map[string]any,
 ) (*models.CompilationFile, error) {
-	acc, err := requireExerciseOwner(ctx, exerciseID, claims)
+	acc, err := requireExerciseAuthor(ctx, exerciseID, claims)
 	if err != nil {
 		return nil, err
 	}
 
 	var f models.CompilationFile
-	err = DB.QueryRowContext(ctx, `
+	err = database.DB.QueryRowContext(ctx, `
 		SELECT id, exercise_id, path
 		FROM exercises_compilation_files
 		WHERE id = $1 AND exercise_id = $2`,
@@ -914,16 +916,16 @@ caller. A file with the same path is replaced.
 func CreateCompilationFile(
 	ctx context.Context, exerciseID int64, file UploadedFile, claims map[string]any,
 ) (*models.CompilationFile, error) {
-	acc, err := requireExerciseOwner(ctx, exerciseID, claims)
+	acc, err := requireExerciseAuthor(ctx, exerciseID, claims)
 	if err != nil {
 		return nil, err
 	}
 	authoringID := acc.authoringExerciseID()
 
-	name := fileBasename(file.Filename)
-	key := CompilationFileKey(authoringID, name)
+	name := storage.FileBasename(file.Filename)
+	key := storage.CompilationFileKey(authoringID, name)
 
-	tx, err := DB.BeginTx(ctx, nil)
+	tx, err := database.DB.BeginTx(ctx, nil)
 	if err != nil {
 		slog.ErrorContext(ctx, "error initializing compilation file transaction",
 			slog.String("error", err.Error()),
@@ -956,14 +958,14 @@ func CreateCompilationFile(
 
 	// A file with this path may already exist and share the key; the replacer
 	// backs up the previous object so the transaction can be rolled back.
-	replacer := newObjectReplacer(ctx, fileObjectOps)
+	replacer := storage.NewObjectReplacer(ctx, storage.FileOps)
 
-	if err := replacer.replace(key, file.Data, file.ContentType); err != nil {
+	if err := replacer.Replace(key, file.Data, file.ContentType); err != nil {
 		slog.ErrorContext(ctx, "failed to upload compilation file",
 			slog.String("s3_key", key),
 			slog.String("error", err.Error()),
 		)
-		replacer.restore()
+		replacer.Restore()
 		return nil, ErrServer
 	}
 
@@ -971,11 +973,11 @@ func CreateCompilationFile(
 		slog.ErrorContext(ctx, "error committing compilation file",
 			slog.String("error", err.Error()),
 		)
-		replacer.restore()
+		replacer.Restore()
 		return nil, ErrServer
 	}
 
-	replacer.discard()
+	replacer.Discard()
 
 	return &models.CompilationFile{ID: fileID, ExerciseID: authoringID, Path: name, Filename: name}, nil
 }
@@ -986,14 +988,14 @@ DeleteCompilationFile removes a compilation file (row and S3 object).
 func DeleteCompilationFile(
 	ctx context.Context, exerciseID, fileID int64, claims map[string]any,
 ) error {
-	acc, err := requireExerciseOwner(ctx, exerciseID, claims)
+	acc, err := requireExerciseAuthor(ctx, exerciseID, claims)
 	if err != nil {
 		return err
 	}
 	authoringID := acc.authoringExerciseID()
 
 	var path string
-	err = DB.QueryRowContext(ctx, `
+	err = database.DB.QueryRowContext(ctx, `
 		DELETE FROM exercises_compilation_files
 		WHERE id = $1 AND exercise_id = $2
 		RETURNING path`, fileID, authoringID,
@@ -1009,12 +1011,12 @@ func DeleteCompilationFile(
 		return ErrServer
 	}
 
-	deleteFileObjectBestEffort(ctx, CompilationFileKey(authoringID, path))
+	deleteFileObjectBestEffort(ctx, storage.CompilationFileKey(authoringID, path))
 	return nil
 }
 
 func deleteFileObjectBestEffort(ctx context.Context, key string) {
-	if err := DeleteFileObject(ctx, key); err != nil {
+	if err := storage.DeleteFileObject(ctx, key); err != nil {
 		slog.ErrorContext(ctx, "failed to clean up file object",
 			slog.String("s3_key", key),
 			slog.String("error", err.Error()),
@@ -1037,7 +1039,7 @@ func ListAttachedFiles(
 	if err != nil {
 		return nil, err
 	}
-	if !acc.isOwner && !acc.isEnrolled {
+	if !acc.canAuthor && !acc.isEnrolled {
 		return nil, ErrNotEnrolled
 	}
 	return queryAttachedFiles(ctx, exerciseID)
@@ -1046,7 +1048,7 @@ func ListAttachedFiles(
 func queryAttachedFiles(
 	ctx context.Context, exerciseID int64,
 ) ([]models.AttachedFile, error) {
-	rows, err := DB.QueryContext(ctx, `
+	rows, err := database.DB.QueryContext(ctx, `
 		SELECT id, exercise_id, path
 		FROM exercises_attached_files
 		WHERE exercise_id = $1
@@ -1082,14 +1084,14 @@ under the files bucket (`attachments/<exercise_id>/<basename>`).
 func CreateAttachedFile(
 	ctx context.Context, exerciseID int64, file UploadedFile, claims map[string]any,
 ) (*models.AttachedFile, error) {
-	if _, err := requireExerciseOwner(ctx, exerciseID, claims); err != nil {
+	if _, err := requireExerciseAuthor(ctx, exerciseID, claims); err != nil {
 		return nil, err
 	}
 
-	name := fileBasename(file.Filename)
-	key := AttachmentKey(exerciseID, name)
+	name := storage.FileBasename(file.Filename)
+	key := storage.AttachmentKey(exerciseID, name)
 
-	tx, err := DB.BeginTx(ctx, nil)
+	tx, err := database.DB.BeginTx(ctx, nil)
 	if err != nil {
 		slog.ErrorContext(ctx, "error initializing attached file transaction",
 			slog.String("error", err.Error()),
@@ -1122,14 +1124,14 @@ func CreateAttachedFile(
 
 	// An attachment with this name may already exist and share the key; the
 	// replacer backs up the previous object so the transaction can be rolled back.
-	replacer := newObjectReplacer(ctx, fileObjectOps)
+	replacer := storage.NewObjectReplacer(ctx, storage.FileOps)
 
-	if err := replacer.replace(key, file.Data, file.ContentType); err != nil {
+	if err := replacer.Replace(key, file.Data, file.ContentType); err != nil {
 		slog.ErrorContext(ctx, "failed to upload attached file",
 			slog.String("s3_key", key),
 			slog.String("error", err.Error()),
 		)
-		replacer.restore()
+		replacer.Restore()
 		return nil, ErrServer
 	}
 
@@ -1137,11 +1139,11 @@ func CreateAttachedFile(
 		slog.ErrorContext(ctx, "error committing attached file",
 			slog.String("error", err.Error()),
 		)
-		replacer.restore()
+		replacer.Restore()
 		return nil, ErrServer
 	}
 
-	replacer.discard()
+	replacer.Discard()
 
 	return &models.AttachedFile{ID: fileID, ExerciseID: exerciseID, Path: name, Filename: name}, nil
 }
@@ -1152,12 +1154,12 @@ DeleteAttachedFile removes an attachment (row and S3 object).
 func DeleteAttachedFile(
 	ctx context.Context, exerciseID, fileID int64, claims map[string]any,
 ) error {
-	if _, err := requireExerciseOwner(ctx, exerciseID, claims); err != nil {
+	if _, err := requireExerciseAuthor(ctx, exerciseID, claims); err != nil {
 		return err
 	}
 
 	var path string
-	err := DB.QueryRowContext(ctx, `
+	err := database.DB.QueryRowContext(ctx, `
 		DELETE FROM exercises_attached_files
 		WHERE id = $1 AND exercise_id = $2
 		RETURNING path`, fileID, exerciseID,
@@ -1173,6 +1175,6 @@ func DeleteAttachedFile(
 		return ErrServer
 	}
 
-	deleteFileObjectBestEffort(ctx, AttachmentKey(exerciseID, path))
+	deleteFileObjectBestEffort(ctx, storage.AttachmentKey(exerciseID, path))
 	return nil
 }

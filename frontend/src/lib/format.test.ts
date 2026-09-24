@@ -5,6 +5,7 @@ import {
   formatBytes,
   formatCpuTime,
   formatDateTime,
+  formatLimit,
 } from "./format";
 
 describe("formatBytes", () => {
@@ -35,6 +36,18 @@ describe("formatCpuTime", () => {
   test("renders unavailable values as a dash", () => {
     expect(formatCpuTime(-1)).toBe("—");
     expect(formatCpuTime(Number.NaN)).toBe("—");
+  });
+});
+
+describe("formatLimit", () => {
+  test("renders an unset limit as the platform default", () => {
+    expect(formatLimit(0, formatBytes)).toBe("padrão");
+    expect(formatLimit(0, formatCpuTime)).toBe("padrão");
+  });
+
+  test("renders a set limit with the given formatter", () => {
+    expect(formatLimit(1024, formatBytes)).toBe("1.0 KB");
+    expect(formatLimit(5, formatCpuTime)).toBe("5.000 s");
   });
 });
 
