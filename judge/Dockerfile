@@ -12,7 +12,7 @@ COPY . .
 ARG TAGS="remote containers_image_openpgp exclude_graphdriver_btrfs exclude_graphdriver_overlay exclude_graphdriver_devicemapper exclude_graphdriver_zfs btrfs_noversion"
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -tags "$TAGS" -o judge .
 
-FROM alpine:3.23 AS runner
+FROM alpine:3.24 AS runner
 
 RUN apk add --no-cache ca-certificates && \
   addgroup -S runcodes && adduser -S runcodes -G runcodes
