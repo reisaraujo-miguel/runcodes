@@ -90,6 +90,77 @@ The submission endpoints require a running judge and S3-compatible storage
   `<prefix>-commits`, `<prefix>-cases`, `<prefix>-files` and
   `<prefix>-outputfiles` buckets.
 
+## Classes, enrollments and accounts
+
+Every route below requires the session cookie (`POST /api/v1/user/login`) unless
+it is marked public.
+
+| Route                                                  | Who              | What                                              |
+| ------------------------------------------------------ | ---------------- | ------------------------------------------------- |
+| `GET /api/v1/settings/public`                          | public           | contact address and disclaimer for the login page |
+| `GET`/`PUT /api/v1/user/profile`                       | signed-in user   | own name, email and organization id               |
+| `PUT /api/v1/user/password`                            | signed-in user   | change the password (the current one is required) |
+| `POST /api/v1/offerings/enroll`                        | signed-in user   | join a class with its enrollment code             |
+| `DELETE /api/v1/offerings/{id}/enrollment`             | signed-in user   | leave a class                                     |
+| `GET /api/v1/user/offerings`                           | signed-in user   | classes the caller belongs to or owns             |
+| `GET /api/v1/user/exercises`                           | signed-in user   | exercises open right now in those classes         |
+| `GET /api/v1/offerings`                                | professor, admin | classes the caller owns or teaches                |
+| `PUT`/`DELETE /api/v1/offerings/{id}`                  | class owner      | edit or delete a class                            |
+| `GET`/`POST /api/v1/offerings/{id}/members`            | class owner      | list, add monitors and co-professors              |
+| `PUT`/`DELETE /api/v1/offerings/{id}/members/{userId}` | class owner      | change a role, ban, unban or remove a member      |
+| `GET /api/v1/admin/users`                              | admin            | search accounts                                   |
+| `PUT`/`DELETE /api/v1/admin/users/{id}`                | admin            | change a role or delete an account                |
+| `GET`/`PUT /api/v1/admin/offerings`                    | admin            | list, edit and transfer any class                 |
+| `DELETE /api/v1/admin/offerings/{id}`                  | admin            | delete any class                                  |
+| `GET /api/v1/admin/offerings/{id}/members`             | admin            | list the members of any class                     |
+| `GET`/`PUT /api/v1/admin/settings`                     | admin            | contact address and disclaimer                    |
+
+Enrollments carry a role (`student`, `monitor`, `professor`). Students join
+with the class code; the owner assigns the other two. Access is decided by
+`offeringRelation` in `services/offerings-service.go`:
+
+- the **owner** (`offerings.owner_id`, a professor or admin account) may do
+  everything with the class, including deleting it and assigning its members;
+- a **co-professor** (an enrolled `professor`) authors the class: exercises, test
+  cases and files. The member list stays owner-only;
+- a **monitor** and an **enrolled student** read the class and its exercises
+  (students only the visible ones) and submit solutions;
+- a **banned** member keeps their role and loses the access that goes with it;
+- the **admin panel** acts on classes it does not own.
+
+A class owner (or a co-professor) also submits to its exercises without being
+enrolled, and after the deadline: the deadline is a rule for the students being
+graded, and staff need to try an exercise before handing it out.
+
+## Platform settings
+
+The contact address and the disclaimer shown on the login page live in the
+`platform_settings` key/value table rather than in the frontend build. The table
+is created by `database/schema/02-schema.sql` and seeded by
+`03-seed-data.sql`; an admin edits it in the admin panel (`/admin/settings`),
+and the public route above serves it. The frontend keeps the build-time
+`VITE_CONTACT_EMAIL` / `VITE_CONTACT_DISCLAIMER_HTML` values as the fallback for
+the moment before that request answers.
+
+The disclaimer is HTML and is sanitized with DOMPurify in the browser before it
+is rendered. An empty disclaimer is valid: it hides the paragraph instead of
+falling back to the default.
+
+`docker compose` only runs `database/schema/*` on an empty data volume. To add
+the table to a database that was provisioned before this feature, apply:
+
+```sql
+CREATE TABLE IF NOT EXISTS platform_settings (
+  key text PRIMARY KEY,
+  value text NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+);
+GRANT SELECT, INSERT, UPDATE, DELETE ON platform_settings TO runcodes_app;
+INSERT INTO platform_settings (key, value)
+VALUES ('contact_email', 'contact@example.com')
+ON CONFLICT (key) DO NOTHING;
+```
+
 ### Migrated (legacy) users
 
 Users imported from the old database by `database/migration/` keep a legacy

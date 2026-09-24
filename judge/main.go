@@ -90,6 +90,18 @@ func run() error {
 		PidsLimit:   cfg.ContainerPidsLimit,
 		CPUQuota:    cfg.ContainerCPUQuota,
 	})
+
+	// Probe podman once at startup. The judge still starts without it (the service
+	// may come up later), but a socket this container cannot reach — one created or
+	// restarted after the container was, most often — otherwise shows up only as a
+	// refused submission long after the operator stopped looking at these logs.
+	probeCtx, cancelProbe := context.WithTimeout(ctx, 5*time.Second)
+	if err := pc.Ready(probeCtx); err != nil {
+		logger.Warn("podman is not reachable: submissions are refused until it is",
+			"error", err,
+		)
+	}
+	cancelProbe()
 	hub := events.New(cfg.EventRetention)
 	eng := engine.New(cfg, st, s3, engine.PodmanRuntime(pc), hub, logger)
 	pool := worker.New(cfg, st, eng, logger)

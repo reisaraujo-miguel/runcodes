@@ -75,6 +75,13 @@ export interface NewTestCase {
   files?: File[];
 }
 
+/**
+ * Values accepted when updating a test case. Every field is optional: the ones
+ * left out keep their stored value, which is what the backend's partial update
+ * does with an absent multipart field.
+ */
+export type TestCasePatch = Partial<NewTestCase>;
+
 /** A compilation file attached to an exercise. */
 export interface CompilationFile {
   id: number;
@@ -141,14 +148,29 @@ function appendWhenDefined(
   }
 }
 
-/** Create a test case. Text fields and file fields are mutually optional. */
-export function createTestCase(
-  exerciseId: number,
-  testCase: NewTestCase,
-): Promise<TestCase> {
+/**
+ * Builds the multipart body of a test case. The create path sends the required
+ * type fields; the update path sends only what changed.
+ */
+function buildTestCaseForm(
+  testCase: TestCasePatch,
+  partial: boolean,
+): FormData {
   const form = new FormData();
-  form.append("input_type", testCase.input_type);
-  form.append("expected_output_type", testCase.expected_output_type);
+  if (!partial) {
+    form.append("input_type", testCase.input_type ?? "text");
+    form.append(
+      "expected_output_type",
+      testCase.expected_output_type ?? "text",
+    );
+  } else {
+    appendWhenDefined(form, "input_type", testCase.input_type);
+    appendWhenDefined(
+      form,
+      "expected_output_type",
+      testCase.expected_output_type,
+    );
+  }
   appendWhenDefined(form, "input", testCase.input);
   appendWhenDefined(form, "expected_output", testCase.expected_output);
   appendWhenDefined(form, "show_input", testCase.show_input);
@@ -182,9 +204,32 @@ export function createTestCase(
     form.append("files", file);
   }
 
+  return form;
+}
+
+/** Create a test case. Text fields and file fields are mutually optional. */
+export function createTestCase(
+  exerciseId: number,
+  testCase: NewTestCase,
+): Promise<TestCase> {
   return apiRequest<TestCase>(
     `/api/v1/exercises/${String(exerciseId)}/test-cases`,
-    { method: "POST", body: form },
+    { method: "POST", body: buildTestCaseForm(testCase, false) },
+  );
+}
+
+/**
+ * Update a test case. Only the fields present in the patch are sent, so the rest
+ * keep their stored value (including their uploaded files).
+ */
+export function updateTestCase(
+  exerciseId: number,
+  caseId: number,
+  patch: TestCasePatch,
+): Promise<TestCase> {
+  return apiRequest<TestCase>(
+    `/api/v1/exercises/${String(exerciseId)}/test-cases/${String(caseId)}`,
+    { method: "PUT", body: buildTestCaseForm(patch, true) },
   );
 }
 

@@ -44,6 +44,18 @@ func ValidateRequiredString(name string, maxSize int) error {
 	return nil
 }
 
+/*
+ValidateOptionalString validates a value that may be empty, such as a disclaimer
+an admin chose to clear, and only bounds its length.
+*/
+func ValidateOptionalString(value string, maxSize int) error {
+	if utf8.RuneCountInString(value) > maxSize {
+		return ErrInputTooLong
+	}
+
+	return nil
+}
+
 func ValidateDate(ctx context.Context, dateStr string) (*time.Time, error) {
 	if dateStr == "" {
 		return nil, ErrRequiredField

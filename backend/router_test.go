@@ -14,13 +14,30 @@ func TestCreateRoutes(t *testing.T) {
 
 	want := []string{
 		"/api/v1/user/logout",
+		"/api/v1/user/profile",
+		"/api/v1/user/password",
+		"/api/v1/user/offerings",
+		"/api/v1/user/exercises",
+		"/api/v1/settings/public",
 		"/api/v1/allowed-file-types",
+		"/api/v1/offerings",
+		"/api/v1/offerings/enroll",
+		"/api/v1/offerings/{id}",
+		"/api/v1/offerings/{id}/enrollment",
+		"/api/v1/offerings/{id}/members",
+		"/api/v1/offerings/{id}/members/{userId}",
 		"/api/v1/offerings/{offeringId}/exercises",
 		"/api/v1/exercises/{id}",
 		"/api/v1/exercises/{id}/test-cases",
 		"/api/v1/exercises/{id}/test-cases/{caseId}",
 		"/api/v1/exercises/{id}/compilation-files",
 		"/api/v1/exercises/{id}/compilation-files/{fileId}",
+		"/api/v1/admin/users",
+		"/api/v1/admin/users/{id}",
+		"/api/v1/admin/offerings",
+		"/api/v1/admin/offerings/{id}",
+		"/api/v1/admin/offerings/{id}/members",
+		"/api/v1/admin/settings",
 	}
 
 	for _, path := range want {

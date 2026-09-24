@@ -386,7 +386,7 @@ func ListTestCases(
 	if err != nil {
 		return nil, err
 	}
-	if !acc.isOwner {
+	if !acc.canAuthor {
 		if !acc.isEnrolled {
 			return nil, ErrNotEnrolled
 		}
@@ -447,7 +447,7 @@ func ListTestCases(
 		}
 	}
 
-	if !acc.isOwner {
+	if !acc.canAuthor {
 		for i := range cases {
 			if !cases[i].ShowInput {
 				cases[i].Input = ""
@@ -469,7 +469,7 @@ uploaded, and only then is the transaction committed.
 func CreateTestCase(
 	ctx context.Context, exerciseID int64, in *TestCaseInput, claims map[string]any,
 ) (*models.TestCase, error) {
-	acc, err := requireExerciseOwner(ctx, exerciseID, claims)
+	acc, err := requireExerciseAuthor(ctx, exerciseID, claims)
 	if err != nil {
 		return nil, err
 	}
@@ -591,7 +591,7 @@ func UpdateTestCase(
 	ctx context.Context, exerciseID, caseID int64, in *TestCaseInput,
 	claims map[string]any,
 ) (*models.TestCase, error) {
-	acc, err := requireExerciseOwner(ctx, exerciseID, claims)
+	acc, err := requireExerciseAuthor(ctx, exerciseID, claims)
 	if err != nil {
 		return nil, err
 	}
@@ -754,7 +754,7 @@ DeleteTestCase removes a test case and best-effort deletes its S3 objects.
 func DeleteTestCase(
 	ctx context.Context, exerciseID, caseID int64, claims map[string]any,
 ) error {
-	acc, err := requireExerciseOwner(ctx, exerciseID, claims)
+	acc, err := requireExerciseAuthor(ctx, exerciseID, claims)
 	if err != nil {
 		return err
 	}
@@ -838,7 +838,7 @@ ListCompilationFiles returns the compilation files of an exercise (owner only).
 func ListCompilationFiles(
 	ctx context.Context, exerciseID int64, claims map[string]any,
 ) ([]models.CompilationFile, error) {
-	acc, err := requireExerciseOwner(ctx, exerciseID, claims)
+	acc, err := requireExerciseAuthor(ctx, exerciseID, claims)
 	if err != nil {
 		return nil, err
 	}
@@ -883,7 +883,7 @@ GetCompilationFile returns a single compilation file (owner only).
 func GetCompilationFile(
 	ctx context.Context, exerciseID, fileID int64, claims map[string]any,
 ) (*models.CompilationFile, error) {
-	acc, err := requireExerciseOwner(ctx, exerciseID, claims)
+	acc, err := requireExerciseAuthor(ctx, exerciseID, claims)
 	if err != nil {
 		return nil, err
 	}
@@ -916,7 +916,7 @@ caller. A file with the same path is replaced.
 func CreateCompilationFile(
 	ctx context.Context, exerciseID int64, file UploadedFile, claims map[string]any,
 ) (*models.CompilationFile, error) {
-	acc, err := requireExerciseOwner(ctx, exerciseID, claims)
+	acc, err := requireExerciseAuthor(ctx, exerciseID, claims)
 	if err != nil {
 		return nil, err
 	}
@@ -988,7 +988,7 @@ DeleteCompilationFile removes a compilation file (row and S3 object).
 func DeleteCompilationFile(
 	ctx context.Context, exerciseID, fileID int64, claims map[string]any,
 ) error {
-	acc, err := requireExerciseOwner(ctx, exerciseID, claims)
+	acc, err := requireExerciseAuthor(ctx, exerciseID, claims)
 	if err != nil {
 		return err
 	}
@@ -1039,7 +1039,7 @@ func ListAttachedFiles(
 	if err != nil {
 		return nil, err
 	}
-	if !acc.isOwner && !acc.isEnrolled {
+	if !acc.canAuthor && !acc.isEnrolled {
 		return nil, ErrNotEnrolled
 	}
 	return queryAttachedFiles(ctx, exerciseID)
@@ -1084,7 +1084,7 @@ under the files bucket (`attachments/<exercise_id>/<basename>`).
 func CreateAttachedFile(
 	ctx context.Context, exerciseID int64, file UploadedFile, claims map[string]any,
 ) (*models.AttachedFile, error) {
-	if _, err := requireExerciseOwner(ctx, exerciseID, claims); err != nil {
+	if _, err := requireExerciseAuthor(ctx, exerciseID, claims); err != nil {
 		return nil, err
 	}
 
@@ -1154,7 +1154,7 @@ DeleteAttachedFile removes an attachment (row and S3 object).
 func DeleteAttachedFile(
 	ctx context.Context, exerciseID, fileID int64, claims map[string]any,
 ) error {
-	if _, err := requireExerciseOwner(ctx, exerciseID, claims); err != nil {
+	if _, err := requireExerciseAuthor(ctx, exerciseID, claims); err != nil {
 		return err
 	}
 

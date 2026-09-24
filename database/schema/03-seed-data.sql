@@ -32,6 +32,14 @@ VALUES
   ('Zig', 'zig', TRUE, TRUE);
 
 
+-- Platform settings. These are the defaults the admin panel starts from; the
+-- frontend build-time VITE_CONTACT_* values are only a fallback for a client
+-- that cannot reach the API.
+INSERT INTO platform_settings (key, value)
+VALUES
+  ('contact_email', 'contact@example.com'),
+  ('contact_disclaimer_html', 'Em caso de eventuais problemas com a plataforma, entre em contato com <a href="mailto:contact@example.com">contact@example.com</a>');
+
 -- The platform needs an owner, and the seed creates the account — but not a
 -- password. A hash committed to this repository is a published credential: this
 -- file used to ship `admin@admin.com` with a fixed bcrypt hash and its plaintext

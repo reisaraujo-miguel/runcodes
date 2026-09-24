@@ -38,6 +38,13 @@ export const router = createBrowserRouter([
             },
           },
           {
+            path: "/profile",
+            lazy: async () => {
+              const { ProfilePage } = await import("./routes/profile/page.tsx");
+              return { Component: ProfilePage };
+            },
+          },
+          {
             path: "/exercises/:exerciseId/submit",
             lazy: async () => {
               const { SubmitPage } =
@@ -64,6 +71,30 @@ export const router = createBrowserRouter([
                       return { Component: Dashboard };
                     },
                   },
+                  {
+                    path: "courses",
+                    lazy: async () => {
+                      const { AdminCoursesPage } =
+                        await import("./routes/admin/courses/page.tsx");
+                      return { Component: AdminCoursesPage };
+                    },
+                  },
+                  {
+                    path: "users",
+                    lazy: async () => {
+                      const { AdminUsersPage } =
+                        await import("./routes/admin/users/page.tsx");
+                      return { Component: AdminUsersPage };
+                    },
+                  },
+                  {
+                    path: "settings",
+                    lazy: async () => {
+                      const { AdminSettingsPage } =
+                        await import("./routes/admin/settings/page.tsx");
+                      return { Component: AdminSettingsPage };
+                    },
+                  },
                 ],
               },
             ],
@@ -79,6 +110,14 @@ export const router = createBrowserRouter([
                   return { Component: ProfessorTools };
                 },
                 children: [
+                  {
+                    index: true,
+                    lazy: async () => {
+                      const { ProfessorClassesPage } =
+                        await import("./routes/professor/page.tsx");
+                      return { Component: ProfessorClassesPage };
+                    },
+                  },
                   {
                     path: "class/:offeringId",
                     lazy: async () => {

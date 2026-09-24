@@ -157,14 +157,21 @@ func deleteSourceBestEffort(ctx context.Context, key string) {
 }
 
 /*
-validateExercise checks the exercise exists, is not removed and belongs to an
-offering the user is enrolled in (and not banned from), and that its deadline
-has not passed.
+validateExercise checks the exercise exists and is not removed, that the user may
+submit to it, and that its deadline has not passed.
+
+A submission is allowed to an enrolled, non-banned participant. The class owner
+and the professors assigned to it are the exception: they hold the class, so
+they can submit to their own exercises without enrolling and without being
+stopped by the deadline, which is what makes it possible to try an exercise
+before handing it to the class (and to check a broken one after the deadline).
 */
 func validateExercise(ctx context.Context, exerciseID, userID int64) error {
 	var (
-		expired  bool
-		enrolled bool
+		expired    bool
+		enrolled   bool
+		isOwner    bool
+		enrollRole string
 	)
 
 	err := database.DB.QueryRowContext(ctx,
@@ -173,11 +180,18 @@ func validateExercise(ctx context.Context, exerciseID, userID int64) error {
 		            SELECT 1 FROM enrollments en
 		            WHERE en.offering_id = e.offering_id AND en.user_id = $2
 		              AND NOT en.banned
-		        ) AS enrolled
+		        ) AS enrolled,
+		        COALESCE(o.owner_id = $2, FALSE) AS is_owner,
+		        COALESCE((
+		            SELECT en.role::text FROM enrollments en
+		            WHERE en.offering_id = e.offering_id AND en.user_id = $2
+		              AND NOT en.banned
+		        ), '') AS enroll_role
 		 FROM exercises e
+		 JOIN offerings o ON o.id = e.offering_id
 		 WHERE e.id = $1 AND e.removed = FALSE`,
 		exerciseID, userID,
-	).Scan(&expired, &enrolled)
+	).Scan(&expired, &enrolled, &isOwner, &enrollRole)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -190,11 +204,14 @@ func validateExercise(ctx context.Context, exerciseID, userID int64) error {
 		return ErrServer
 	}
 
-	if !enrolled {
+	// Professors assigned to the class teach it: they are staff, not students.
+	staff := isOwner || enrollRole == EnrollmentRoleProfessor
+
+	if !enrolled && !isOwner {
 		return ErrNotEnrolled
 	}
 
-	if expired {
+	if expired && !staff {
 		return ErrDeadlinePassed
 	}
 

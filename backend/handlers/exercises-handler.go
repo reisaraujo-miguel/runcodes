@@ -47,15 +47,37 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, err error) {
 		errors.Is(err, services.ErrExerciseNotFound),
 		errors.Is(err, services.ErrTestCaseNotFound),
 		errors.Is(err, services.ErrCompilationFileNotFound),
-		errors.Is(err, services.ErrAttachedFileNotFound):
+		errors.Is(err, services.ErrAttachedFileNotFound),
+		errors.Is(err, services.ErrUserNotFound),
+		errors.Is(err, services.ErrMemberNotFound),
+		errors.Is(err, services.ErrInvalidEnrollmentCode):
 		WriteResponse(w, http.StatusNotFound, models.Error{Message: err.Error()})
 	case errors.Is(err, services.ErrInvalidFileType),
 		errors.Is(err, services.ErrInvalidTestCase),
 		errors.Is(err, services.ErrInvalidExercise),
+		errors.Is(err, services.ErrInvalidMemberRole),
+		errors.Is(err, services.ErrInvalidRole),
 		errors.Is(err, validation.ErrRequiredField),
 		errors.Is(err, validation.ErrInputTooLong),
 		errors.Is(err, validation.ErrParsingField):
 		WriteResponse(w, http.StatusBadRequest, models.Error{Message: err.Error()})
+	case errors.Is(err, services.ErrNotAProfessor):
+		// The request is well formed; it is the account that cannot hold the
+		// role, which the admin panel can fix by promoting it.
+		WriteResponse(w, http.StatusUnprocessableEntity,
+			models.Error{Message: err.Error()},
+		)
+	case errors.Is(err, services.ErrEmailExists),
+		errors.Is(err, services.ErrOrgIDExists),
+		errors.Is(err, services.ErrEnrollmentClosed),
+		errors.Is(err, services.ErrEnrollmentBanned),
+		errors.Is(err, services.ErrOfferingEnded),
+		errors.Is(err, services.ErrOfferingOwned),
+		errors.Is(err, services.ErrOwnerCannotUnenroll),
+		errors.Is(err, services.ErrCannotBanOwner),
+		errors.Is(err, services.ErrAlreadyMember),
+		errors.Is(err, services.ErrSelfManagement):
+		WriteResponse(w, http.StatusConflict, models.Error{Message: err.Error()})
 	default:
 		slog.ErrorContext(ctx, "unhandled service error",
 			slog.String("error", err.Error()),

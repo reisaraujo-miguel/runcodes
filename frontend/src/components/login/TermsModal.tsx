@@ -1,3 +1,5 @@
+import { usePlatformSettings } from "@/hooks/use-platform-settings";
+
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -13,8 +15,6 @@ interface TermsModalProps {
   onClose: () => void;
 }
 
-const CONTACT_EMAIL = import.meta.env.VITE_CONTACT_EMAIL ?? "";
-
 /**
  * The platform's terms of use.
  *
@@ -24,6 +24,10 @@ const CONTACT_EMAIL = import.meta.env.VITE_CONTACT_EMAIL ?? "";
  * dialog primitive provides and a plain overlay does not.
  */
 export function TermsModal({ isOpen, onClose }: TermsModalProps) {
+  // The address is admin-editable, so it comes from the API; the hook falls
+  // back to the build-time value while the request is in flight.
+  const { contact_email: contactEmail } = usePlatformSettings();
+
   return (
     <Dialog
       open={isOpen}
@@ -155,8 +159,8 @@ export function TermsModal({ isOpen, onClose }: TermsModalProps) {
           <p>
             Em caso de dúvidas sobre estes termos, entre em contato através do
             email{" "}
-            <a href={`mailto:${CONTACT_EMAIL}`} className="underline">
-              {CONTACT_EMAIL}
+            <a href={`mailto:${contactEmail}`} className="underline">
+              {contactEmail}
             </a>
           </p>
         </div>

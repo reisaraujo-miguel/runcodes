@@ -35,6 +35,10 @@ const (
 	ExercisesTTL = 30 * time.Second
 	// AllowedFileTypesTTL is how long the allowed file type catalog is cached.
 	AllowedFileTypesTTL = 5 * time.Minute
+
+	// SettingsTTL is how long the platform settings are cached. They are read on
+	// the public login page, so the entry is dropped on every admin write.
+	SettingsTTL = 1 * time.Minute
 )
 
 /*
@@ -207,6 +211,9 @@ Keys. Kept here so producers and invalidators cannot drift apart.
 
 // KeyAllowedFileTypes caches the catalog of allowed file types.
 const KeyAllowedFileTypes = "allowed_file_types"
+
+// KeyPlatformSettings caches the platform settings shown on the login page.
+const KeyPlatformSettings = "platform_settings"
 
 // OfferingKey caches a single offering.
 func OfferingKey(id int64) string {

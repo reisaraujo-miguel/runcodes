@@ -1,95 +1,60 @@
-import { useState } from "react";
+import { Fragment } from "react";
+import { NavLink } from "react-router";
 
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Sidebar, SidebarContent } from "@/components/ui/sidebar";
 
-const ItemType = {
-  Dashboard: "dashboard",
-  Turmas: "turmas",
-  SystemLogs: "system-logs",
-  Settings: "settings",
-} as const;
+import { cn } from "@/lib/utils";
 
-type ItemKey = (typeof ItemType)[keyof typeof ItemType];
+interface AdminNavItem {
+  /** Route the entry navigates to. */
+  to: string;
+  label: string;
+  /** Match the path exactly, so the dashboard is not active on the other pages. */
+  end?: boolean;
+  /** Draws a separator above the entry. */
+  separated?: boolean;
+}
 
+const NAV_ITEMS: AdminNavItem[] = [
+  { to: "/admin", label: "Dashboard", end: true },
+  { to: "/admin/courses", label: "Turmas Cadastradas" },
+  { to: "/admin/users", label: "Usuários", separated: true },
+  { to: "/admin/settings", label: "Configurações", separated: true },
+];
+
+/** Sidebar with the admin panel's sections, highlighting the current route. */
 export function AdminSidebar() {
-  const [selectedItem, setSelectedItem] = useState<ItemKey>("dashboard");
-
-  const handleItemClick = (item: ItemKey) => {
-    setSelectedItem(item);
-  };
-
   return (
     <Sidebar className="top-16">
       <SidebarContent className="bg-background">
         <div className="flex flex-col p-2 space-y-2">
-          <Button
-            variant={
-              selectedItem === ItemType.Dashboard ? "secondary" : "ghost"
-            }
-            size="lg"
-            className="justify-start"
-            style={{
-              cursor: "pointer",
-              color: "inherit",
-              textDecoration: "none",
-            }}
-            onClick={() => {
-              handleItemClick(ItemType.Dashboard);
-            }}
-          >
-            Dashboard
-          </Button>
-          <Button
-            variant={selectedItem === ItemType.Turmas ? "secondary" : "ghost"}
-            size="lg"
-            className="justify-start"
-            style={{
-              cursor: "pointer",
-              color: "inherit",
-              textDecoration: "none",
-            }}
-            onClick={() => {
-              handleItemClick(ItemType.Turmas);
-            }}
-          >
-            Turmas Cadastradas
-          </Button>
-          <Separator />
-          <Button
-            variant={
-              selectedItem === ItemType.SystemLogs ? "secondary" : "ghost"
-            }
-            size="lg"
-            className="justify-start"
-            style={{
-              cursor: "pointer",
-              color: "inherit",
-              textDecoration: "none",
-            }}
-            onClick={() => {
-              handleItemClick(ItemType.SystemLogs);
-            }}
-          >
-            System Logs
-          </Button>
-          <Separator />
-          <Button
-            variant={selectedItem === ItemType.Settings ? "secondary" : "ghost"}
-            size="lg"
-            className="justify-start"
-            style={{
-              cursor: "pointer",
-              color: "inherit",
-              textDecoration: "none",
-            }}
-            onClick={() => {
-              handleItemClick(ItemType.Settings);
-            }}
-          >
-            Settings
-          </Button>
+          {NAV_ITEMS.map((item) => (
+            <Fragment key={item.to}>
+              {item.separated === true && <Separator />}
+              <NavLink
+                to={item.to}
+                end={item.end === true}
+                className={({ isActive }) =>
+                  cn(
+                    buttonVariants({
+                      variant: isActive ? "secondary" : "ghost",
+                      size: "lg",
+                    }),
+                    "justify-start",
+                  )
+                }
+                style={{
+                  cursor: "pointer",
+                  color: "inherit",
+                  textDecoration: "none",
+                }}
+              >
+                {item.label}
+              </NavLink>
+            </Fragment>
+          ))}
         </div>
       </SidebarContent>
     </Sidebar>

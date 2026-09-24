@@ -34,6 +34,21 @@ export interface ApiError {
   error_msg: string;
 }
 
+/**
+ * A failed API request. It carries the HTTP status alongside the message the
+ * API sent, so a caller can react to the reason (a 403 is not a 404) without
+ * matching the message text.
+ */
+export class ApiRequestError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+  }
+}
+
 /** True for non-null objects, used to narrow parsed JSON safely. */
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -93,7 +108,7 @@ export async function apiRequest<T>(
   }
 
   if (!response.ok) {
-    throw new Error(await readApiError(response));
+    throw new ApiRequestError(await readApiError(response), response.status);
   }
 
   return readApiBody<T>(response);

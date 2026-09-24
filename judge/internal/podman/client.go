@@ -4,7 +4,10 @@ package podman
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -37,7 +40,53 @@ func New(uri string, limits Limits) *Client {
 
 // Connect returns a context carrying the podman connection.
 func (c *Client) Connect(ctx context.Context) (context.Context, error) {
-	return bindings.NewConnection(ctx, c.uri)
+	conn, err := bindings.NewConnection(ctx, c.uri)
+	if err != nil {
+		return nil, fmt.Errorf("connect to podman: %w%s", err, socketAdvice(c.uri))
+	}
+	return conn, nil
+}
+
+/*
+socketAdvice explains a failed unix-socket connection in terms of the state an
+operator has to fix, or returns "" when there is nothing to add.
+
+The judge reaches podman through a socket that Compose bind-mounts into this
+container when the container is created, and a bind mount pins whatever it
+pointed at. A socket created after the container is therefore not visible (the
+mount is a directory), and one that was recreated afterwards is an inode nothing
+listens on any more. Both are reported as "connection refused" from inside the
+container, so the path's own state is what tells them apart.
+*/
+func socketAdvice(uri string) string {
+	path, ok := strings.CutPrefix(uri, "unix://")
+	if !ok || path == "" {
+		return ""
+	}
+
+	info, err := os.Stat(path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return fmt.Sprintf(": %s does not exist in this container. Start the socket on the host "+
+			"(systemctl --user start podman.socket) and recreate the judge container "+
+			"(docker compose up -d --force-recreate judge)", path)
+	case err != nil:
+		return ""
+	case info.IsDir():
+		return fmt.Sprintf(": %s is a directory, not a socket: this container was created before "+
+			"the socket existed, so the mount never saw it. Start the socket on the host "+
+			"(systemctl --user start podman.socket) and recreate the judge container "+
+			"(docker compose up -d --force-recreate judge)", path)
+	case info.Mode()&fs.ModeSocket == 0:
+		return fmt.Sprintf(": %s is not a socket (%s). Start the socket on the host and "+
+			"recreate the judge container (docker compose up -d --force-recreate judge)",
+			path, info.Mode().Type())
+	}
+
+	return fmt.Sprintf(": %s exists but refuses connections, which is how a socket that was "+
+		"restarted after this container was created looks from inside it (the mount still "+
+		"points at the old one). Recreate the judge container "+
+		"(docker compose up -d --force-recreate judge)", path)
 }
 
 // Ready reports whether the podman service responds (used by /readyz).

@@ -63,6 +63,15 @@ CREATE TABLE allowed_file_types (
   is_available boolean DEFAULT TRUE NOT NULL
 );
 
+-- Platform settings the admin edits from the admin panel. They used to be baked
+-- into the frontend build (VITE_CONTACT_*), which made changing the contact
+-- address a redeploy; storing them here lets the admin change them at runtime.
+CREATE TABLE platform_settings (
+  key text PRIMARY KEY,
+  value text NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+);
+
 CREATE TYPE exercise_type_t AS ENUM ('programming');
 
 CREATE TABLE exercises (

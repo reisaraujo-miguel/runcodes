@@ -136,6 +136,41 @@ Zip submissions are unpacked with a per-entry limit
 (`JUDGE_MAX_EXTRACT_BYTES`, default 256 MiB) so an archive cannot fill the
 shared execution directory.
 
+## Troubleshooting
+
+**`readiness: podman unavailable` … `dial unix /run/podman/podman.sock: connect:
+connection refused`.** Nothing is accepting connections on that path _inside the
+container_. The judge reaches podman through a socket Compose bind-mounts when
+the container is created, and a bind mount pins whatever it pointed at:
+
+- the container was created **before** the socket existed, so the mount is a
+  directory (Docker creates the missing source path) — a fresh `docker compose up`
+  started before `systemctl --user start podman.socket` leaves exactly this;
+- or `podman.socket` was **restarted** afterwards, which creates a new socket, so
+  the container still holds the old one and every connect is refused.
+
+Either way the fix is on the host, and the container has to be recreated (a
+restart re-uses it, mounts included):
+
+```sh
+systemctl --user status podman.socket              # is it active?
+docker compose up -d --force-recreate judge
+docker compose exec judge ls -l /run/podman/podman.sock  # must be an 's', not a 'd'
+curl -s http://localhost:9000/readyz               # {"status":"ok"}
+```
+
+The judge logs the same diagnosis at startup and on every readiness probe. While
+podman is unreachable the backend refuses submissions with `503`, so nothing is
+queued or lost.
+
+**`could not claim commit: begin claim tx: context deadline exceeded`.** The
+judge could not get a database connection within its 10 s claim budget, which is
+what a database container that was recreated under a running judge looks like:
+the pool's old connections point at an address that no longer answers. The poll
+loop retries every `JUDGE_POLL_INTERVAL`, so a single occurrence clears itself;
+the fix for a persistent one is the same as above — recreate the judge container
+along with the database.
+
 ## Endpoints
 
 | Method | Path                   | Description                                     |

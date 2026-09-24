@@ -26,6 +26,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
+  /**
+   * Renews the session token (which re-reads the user from the database) and
+   * publishes the result. Exposed as `reloadSession` so a page that changed the
+   * account's name or email can make the session claims match it; the sliding
+   * expiration below uses the same call.
+   */
   const refreshUser = useCallback(async () => {
     try {
       setUser(await refreshSession());
@@ -84,8 +90,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [user, refreshUser]);
 
   const auth = useMemo(
-    () => ({ user, isAuthenticated: user !== null, refreshAuth, signOut }),
-    [user, refreshAuth, signOut],
+    () => ({
+      user,
+      isAuthenticated: user !== null,
+      refreshAuth,
+      reloadSession: refreshUser,
+      signOut,
+    }),
+    [user, refreshAuth, refreshUser, signOut],
   );
 
   // Show a loader while checking auth to prevent "flickering" or redirects

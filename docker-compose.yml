@@ -8,6 +8,9 @@ services:
       args:
         # Same-origin: the SPA calls the relative /api path through Caddy.
         VITE_API_ENDPOINT: ""
+        # Fallbacks for the login page. The contact values are stored in the
+        # database (platform_settings) and edited by an admin in the admin panel;
+        # these are only used until the API answers.
         VITE_CONTACT_DISCLAIMER_HTML: '${CONTACT_DISCLAIMER:-Em caso de eventuais problemas com a plataforma, entre em contato com <a href="mailto:contact@example.com">contact@example.com</a>}'
         VITE_CONTACT_EMAIL: '${CONTACT_EMAIL:-contact@example.com}'
     restart: unless-stopped

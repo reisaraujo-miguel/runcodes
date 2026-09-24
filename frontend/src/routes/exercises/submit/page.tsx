@@ -31,6 +31,7 @@ import {
   type Exercise,
   type SubmissionStatusEvent,
 } from "@/lib/api";
+import { ApiRequestError } from "@/lib/api/client";
 import { formatDateTime } from "@/lib/format";
 import { isTerminalStatus } from "@/lib/submission-status";
 import {
@@ -43,6 +44,31 @@ import {
 } from "@/lib/submission-view";
 
 const INITIAL_STATUS: CommitStatus = "queued";
+
+/**
+ * Translates a refused submission. The API answers in English, and the status is
+ * what identifies the case: an unreachable judge (everything the backend can see
+ * about it, including a podman the judge cannot reach) is a 503, not a problem
+ * with the file the student picked.
+ */
+function submitErrorMessage(error: unknown): string {
+  if (error instanceof ApiRequestError) {
+    switch (error.status) {
+      case 400:
+        return "Tipo de arquivo não permitido para este exercício.";
+      case 403:
+        return "Você não está matriculado nesta turma.";
+      case 422:
+        return "O prazo deste exercício já passou.";
+      case 503:
+        return "O corretor está indisponível no momento. Tente novamente em alguns instantes.";
+    }
+  }
+
+  return error instanceof Error
+    ? error.message
+    : "Erro ao enviar a submissão. Tente novamente.";
+}
 
 function commitStorageKey(exerciseId: number): string {
   return `runcodes:submission:${String(exerciseId)}`;
@@ -295,11 +321,7 @@ export function SubmitPage() {
         resetRunState();
         setCommitId(queued.commit_id);
       } catch (error) {
-        setSubmitError(
-          error instanceof Error
-            ? error.message
-            : "Erro ao enviar a submissão. Tente novamente.",
-        );
+        setSubmitError(submitErrorMessage(error));
       } finally {
         setSubmitting(false);
       }

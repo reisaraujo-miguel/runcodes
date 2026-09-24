@@ -89,13 +89,7 @@ function DropDownMenu(props: {
   return (
     <div>
       <div>
-        <DropdownMenuItem
-          style={{
-            cursor: "pointer",
-            color: "inherit",
-            textDecoration: "none",
-          }}
-        >
+        <DropdownMenuItem render={<NavLink to="/profile" />}>
           Perfil
         </DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -112,13 +106,7 @@ function DropDownMenu(props: {
             >
               Criar Nova Turma
             </DropdownMenuItem>
-            <DropdownMenuItem
-              style={{
-                cursor: "pointer",
-                color: "inherit",
-                textDecoration: "none",
-              }}
-            >
+            <DropdownMenuItem render={<NavLink to="/professor" />}>
               Gerenciar Turmas
             </DropdownMenuItem>
             <DropdownMenuSeparator />

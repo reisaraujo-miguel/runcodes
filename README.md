@@ -84,7 +84,12 @@ The whole stack runs with Docker Compose. The judge additionally needs a
 automatically, so no manual setup is required there:
 
 ```bash
-# Rootless podman API socket used by the judge.
+# Rootless podman API socket used by the judge. Start it *before* `docker compose
+# up`: the socket is bind-mounted into the judge container when the container is
+# created, so a container created first keeps a dead mount (submit a solution and
+# the judge logs "podman unavailable" instead of running it). If you restart the
+# socket later, recreate the judge: `docker compose up -d --force-recreate judge`.
+# See judge/README.md.
 systemctl --user start podman.socket
 
 # Required secrets. Compose refuses to start without them: a deployment that

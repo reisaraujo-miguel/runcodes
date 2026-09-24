@@ -1,20 +1,26 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import DOMPurify from "dompurify";
 
+import { usePlatformSettings } from "@/hooks/use-platform-settings";
+
 import { TermsModal } from "./TermsModal";
-
-const CONTACT_DISCLAIMER_HTML =
-  import.meta.env.VITE_CONTACT_DISCLAIMER_HTML ?? "";
-
-// Sanitized once at module scope rather than on every render: the value is a
-// build-time constant.
-const SANITIZED_CONTACT_DISCLAIMER = DOMPurify.sanitize(
-  CONTACT_DISCLAIMER_HTML,
-);
 
 export function AboutSection() {
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
+  const { contact_disclaimer_html: contactDisclaimerHtml } =
+    usePlatformSettings();
+
+  // The disclaimer is admin-editable content that arrives from the API, so it
+  // is sanitized whenever it changes rather than once at module scope.
+  const sanitizedContactDisclaimer = useMemo(
+    () => DOMPurify.sanitize(contactDisclaimerHtml),
+    [contactDisclaimerHtml],
+  );
+
+  // An admin may clear the disclaimer, in which case the paragraph is omitted
+  // instead of rendering empty.
+  const hasContactDisclaimer = sanitizedContactDisclaimer.trim() !== "";
 
   const openTermsModal = () => {
     setIsTermsModalOpen(true);
@@ -51,16 +57,18 @@ export function AboutSection() {
           </p>
         </div>
 
-        <div className="pt-4">
-          <p
-            className="text-sm text-muted-foreground [&_a]:text-foreground"
-            // Content is sanitized with DOMPurify before being inserted.
-            // eslint-disable-next-line react-dom/no-dangerously-set-innerhtml
-            dangerouslySetInnerHTML={{
-              __html: SANITIZED_CONTACT_DISCLAIMER,
-            }}
-          />
-        </div>
+        {hasContactDisclaimer && (
+          <div className="pt-4">
+            <p
+              className="text-sm text-muted-foreground [&_a]:text-foreground"
+              // Content is sanitized with DOMPurify before being inserted.
+              // eslint-disable-next-line react-dom/no-dangerously-set-innerhtml
+              dangerouslySetInnerHTML={{
+                __html: sanitizedContactDisclaimer,
+              }}
+            />
+          </div>
+        )}
       </div>
 
       <TermsModal isOpen={isTermsModalOpen} onClose={closeTermsModal} />

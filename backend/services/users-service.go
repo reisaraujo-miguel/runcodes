@@ -26,6 +26,10 @@ const (
 	// legacyPasswordPrefix marks password hashes carried over from the old
 	// system by the database migration: 'legacy-sha1$' + hex(SHA-1(salt + plaintext)).
 	legacyPasswordPrefix = "legacy-sha1$"
+
+	// MaxUserNameLength and MaxOrgIDLength bound the profile fields.
+	MaxUserNameLength = 100
+	MaxOrgIDLength    = 64
 )
 
 /*
@@ -184,6 +188,157 @@ func CheckEmailExistence(ctx context.Context, email string) error {
 	}
 
 	return ErrEmailExists
+}
+
+/*
+GetProfile returns the caller's own account.
+*/
+func GetProfile(ctx context.Context, userID int) (*models.Profile, error) {
+	var profile models.Profile
+	err := database.DB.QueryRowContext(ctx, `
+		SELECT id, name, email, COALESCE(org_id, ''), role, confirmed, created_at
+		FROM users
+		WHERE id = $1`, userID,
+	).Scan(
+		&profile.ID, &profile.Name, &profile.Email, &profile.OrgID,
+		&profile.Role, &profile.Confirmed, &profile.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		slog.ErrorContext(ctx, "error fetching profile",
+			slog.Int("user_id", userID),
+			slog.String("error", err.Error()),
+		)
+		return nil, ErrServer
+	}
+
+	return &profile, nil
+}
+
+/*
+UpdateProfile applies a partial update to the caller's own account. The role is
+deliberately not updatable here: only an admin can grant one.
+*/
+func UpdateProfile(
+	ctx context.Context, userID int, req *models.UpdateProfileRequest,
+) (*models.Profile, error) {
+	profile, err := GetProfile(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Name != nil {
+		profile.Name = strings.TrimSpace(*req.Name)
+		if err := validation.ValidateRequiredString(
+			profile.Name, MaxUserNameLength,
+		); err != nil {
+			return nil, err
+		}
+	}
+	if req.Email != nil {
+		profile.Email = strings.TrimSpace(*req.Email)
+		if err := validation.ValidateEmailFormat(ctx, profile.Email); err != nil {
+			return nil, err
+		}
+	}
+	if req.OrgID != nil {
+		// Cleared on purpose: org_id is nullable, so an empty value removes it.
+		profile.OrgID = strings.TrimSpace(*req.OrgID)
+		if err := validation.ValidateOptionalString(
+			profile.OrgID, MaxOrgIDLength,
+		); err != nil {
+			return nil, err
+		}
+	}
+
+	if _, err := database.DB.ExecContext(ctx, `
+		UPDATE users
+		SET name = $1, email = $2, org_id = NULLIF($3, ''), updated_at = now()
+		WHERE id = $4`,
+		profile.Name, profile.Email, profile.OrgID, userID,
+	); err != nil {
+		if pgErr, ok := err.(*pq.Error); ok &&
+			pgErr.Code == pqerror.UniqueViolation {
+			switch pgErr.Constraint {
+			case "users_email_key":
+				return nil, ErrEmailExists
+			case "users_org_id_key":
+				return nil, ErrOrgIDExists
+			}
+		}
+		slog.ErrorContext(ctx, "error updating profile",
+			slog.Int("user_id", userID),
+			slog.String("error", err.Error()),
+		)
+		return nil, ErrServer
+	}
+
+	slog.InfoContext(ctx, "profile updated", slog.Int("user_id", userID))
+
+	return profile, nil
+}
+
+/*
+ChangePassword replaces the caller's password after checking the current one.
+
+The session cookie is a stateless JWT with no server-side revocation list, so
+tokens issued before the change stay valid until they expire; the browser's
+session ends only because the client re-authenticates with the new password.
+*/
+func ChangePassword(
+	ctx context.Context, userID int, req *models.ChangePasswordRequest,
+) error {
+	var stored string
+	err := database.DB.QueryRowContext(ctx,
+		"SELECT password_hash FROM users WHERE id = $1", userID,
+	).Scan(&stored)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrUserNotFound
+		}
+		slog.ErrorContext(ctx, "error fetching password hash",
+			slog.Int("user_id", userID),
+			slog.String("error", err.Error()),
+		)
+		return ErrServer
+	}
+
+	if strings.HasPrefix(stored, legacyPasswordPrefix) {
+		if err := verifyAndUpgradeLegacyPassword(
+			ctx, userID, req.CurrentPassword, stored,
+		); err != nil {
+			return err
+		}
+	} else if err := verifyBcryptPassword(
+		ctx, req.CurrentPassword, stored,
+	); err != nil {
+		return err
+	}
+
+	hashed, err := hashPassword(req.NewPassword)
+	if err != nil {
+		slog.ErrorContext(ctx, "error hashing password",
+			slog.String("error", err.Error()),
+		)
+		return ErrServer
+	}
+
+	if _, err := database.DB.ExecContext(ctx,
+		"UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2",
+		hashed, userID,
+	); err != nil {
+		slog.ErrorContext(ctx, "error updating password",
+			slog.Int("user_id", userID),
+			slog.String("error", err.Error()),
+		)
+		return ErrServer
+	}
+
+	slog.InfoContext(ctx, "password changed", slog.Int("user_id", userID))
+
+	return nil
 }
 
 /*

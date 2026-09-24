@@ -1,6 +1,8 @@
 import { useEffect, useState, type ChangeEvent } from "react";
 import { Link, useParams } from "react-router";
 
+import { EditExerciseForm } from "@/components/professor/EditExerciseForm";
+import { EditTestCaseForm } from "@/components/professor/EditTestCaseForm";
 import { NewTestCaseForm } from "@/components/professor/NewTestCaseForm";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -57,6 +59,8 @@ export function ExercisePage() {
     null,
   );
   const [uploading, setUploading] = useState(false);
+  const [editingExercise, setEditingExercise] = useState(false);
+  const [editingCaseId, setEditingCaseId] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -161,6 +165,7 @@ export function ExercisePage() {
         setTestCases((previous) =>
           previous.filter((testCase) => testCase.id !== caseId),
         );
+        setEditingCaseId((previous) => (previous === caseId ? null : previous));
       } catch (deleteError) {
         setActionError(
           deleteError instanceof Error
@@ -206,7 +211,17 @@ export function ExercisePage() {
           {exercise.description && (
             <CardDescription>{exercise.description}</CardDescription>
           )}
-          <CardAction>
+          <CardAction className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={editingExercise ? "outline" : "default"}
+              onClick={() => {
+                setEditingExercise((previous) => !previous);
+              }}
+            >
+              {editingExercise ? "Fechar" : "Editar exercício"}
+            </Button>
             <Link
               to={`/professor/class/${String(exercise.offering_id)}`}
               className={buttonVariants({ variant: "outline", size: "sm" })}
@@ -226,6 +241,19 @@ export function ExercisePage() {
           </div>
         </CardContent>
       </Card>
+
+      {editingExercise && (
+        <EditExerciseForm
+          exercise={exercise}
+          onCancel={() => {
+            setEditingExercise(false);
+          }}
+          onSaved={(updated) => {
+            setExercise(updated);
+            setEditingExercise(false);
+          }}
+        />
+      )}
 
       {actionError && <p className="text-destructive text-sm">{actionError}</p>}
 
@@ -314,76 +342,107 @@ export function ExercisePage() {
             </p>
           ) : (
             <ul className="space-y-3">
-              {testCases.map((testCase) => (
-                <li
-                  key={testCase.id}
-                  className="space-y-2 rounded-lg border p-3"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-medium">
-                      Caso #{String(testCase.id)}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline">
-                        entrada: {testCase.input_type}
-                      </Badge>
-                      <Badge variant="outline">
-                        saída: {testCase.expected_output_type}
-                      </Badge>
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="xs"
-                        onClick={() => {
-                          handleDeleteTestCase(testCase.id);
-                        }}
-                      >
-                        Remover
-                      </Button>
+              {testCases.map((testCase) =>
+                editingCaseId === testCase.id ? (
+                  <li key={testCase.id}>
+                    <EditTestCaseForm
+                      exerciseId={exercise.id}
+                      testCase={testCase}
+                      onCancel={() => {
+                        setEditingCaseId(null);
+                      }}
+                      onSaved={(updated) => {
+                        setTestCases((previous) =>
+                          previous.map((item) =>
+                            item.id === updated.id ? updated : item,
+                          ),
+                        );
+                        setEditingCaseId(null);
+                      }}
+                    />
+                  </li>
+                ) : (
+                  <li
+                    key={testCase.id}
+                    className="space-y-2 rounded-lg border p-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-medium">
+                        Caso #{String(testCase.id)}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline">
+                          entrada: {testCase.input_type}
+                        </Badge>
+                        <Badge variant="outline">
+                          saída: {testCase.expected_output_type}
+                        </Badge>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="xs"
+                          onClick={() => {
+                            setEditingCaseId(testCase.id);
+                          }}
+                        >
+                          Editar
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="xs"
+                          onClick={() => {
+                            handleDeleteTestCase(testCase.id);
+                          }}
+                        >
+                          Remover
+                        </Button>
+                      </div>
                     </div>
-                  </div>
 
-                  <p className="text-muted-foreground text-xs">
-                    Tempo:{" "}
-                    {formatLimit(
-                      testCase.cpu_time_limit_seconds,
-                      formatCpuTime,
-                    )}{" "}
-                    · Memória:{" "}
-                    {formatLimit(testCase.mem_usage_limit_bytes, formatBytes)} ·
-                    Arquivos: {String(testCase.files.length)}
-                  </p>
+                    <p className="text-muted-foreground text-xs">
+                      Tempo:{" "}
+                      {formatLimit(
+                        testCase.cpu_time_limit_seconds,
+                        formatCpuTime,
+                      )}{" "}
+                      · Memória:{" "}
+                      {formatLimit(testCase.mem_usage_limit_bytes, formatBytes)}{" "}
+                      · Arquivos: {String(testCase.files.length)}
+                    </p>
 
-                  <div className="text-muted-foreground text-xs">
-                    Visibilidade: entrada{" "}
-                    {testCase.show_input ? "visível" : "oculta"}, saída esperada{" "}
-                    {testCase.show_expected_output ? "visível" : "oculta"},
-                    saída do aluno{" "}
-                    {testCase.show_user_output ? "visível" : "oculta"}
-                  </div>
+                    <div className="text-muted-foreground text-xs">
+                      Visibilidade: entrada{" "}
+                      {testCase.show_input ? "visível" : "oculta"}, saída
+                      esperada{" "}
+                      {testCase.show_expected_output ? "visível" : "oculta"},
+                      saída do aluno{" "}
+                      {testCase.show_user_output ? "visível" : "oculta"}
+                    </div>
 
-                  {testCase.input && (
-                    <details>
-                      <summary className="cursor-pointer text-sm select-none">
-                        Ver entrada
-                      </summary>
-                      <pre className="bg-muted mt-2 max-h-48 overflow-auto rounded-lg p-3 text-xs whitespace-pre-wrap">
-                        {testCase.input}
-                      </pre>
-                    </details>
-                  )}
-                  {testCase.expected_output && (
-                    <details>
-                      <summary className="cursor-pointer text-sm select-none">
-                        Ver saída esperada
-                      </summary>
-                      <pre className="bg-muted mt-2 max-h-48 overflow-auto rounded-lg p-3 text-xs whitespace-pre-wrap">
-                        {testCase.expected_output}
-                      </pre>
-                    </details>
-                  )}
-                </li>
-              ))}
+                    {testCase.input && (
+                      <details>
+                        <summary className="cursor-pointer text-sm select-none">
+                          Ver entrada
+                        </summary>
+                        <pre className="bg-muted mt-2 max-h-48 overflow-auto rounded-lg p-3 text-xs whitespace-pre-wrap">
+                          {testCase.input}
+                        </pre>
+                      </details>
+                    )}
+                    {testCase.expected_output && (
+                      <details>
+                        <summary className="cursor-pointer text-sm select-none">
+                          Ver saída esperada
+                        </summary>
+                        <pre className="bg-muted mt-2 max-h-48 overflow-auto rounded-lg p-3 text-xs whitespace-pre-wrap">
+                          {testCase.expected_output}
+                        </pre>
+                      </details>
+                    )}
+                  </li>
+                ),
+              )}
             </ul>
           )}
         </CardContent>
