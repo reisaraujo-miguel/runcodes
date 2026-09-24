@@ -35,6 +35,7 @@ jobs:
           scan-type: fs
           scan-ref: .
           trivy-config: trivy.yaml
+          trivyignores: .trivyignore.yaml
           # Report-only: findings are uploaded to the Security tab instead of
           # failing the workflow (see trivy.yaml for the blocking defaults).
           exit-code: "0"

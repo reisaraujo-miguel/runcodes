@@ -62,7 +62,7 @@ jobs:
           scan-type: image
           image-ref: runcodes-${{ matrix.service }}:ci
           trivy-config: trivy.yaml
-          trivyignores: trivy-ignore.yaml
+          trivyignores: .trivyignore.yaml
           # Focus the image gate on the shipped artifact. `misconfig` is included
           # because trivy.yaml enables it: without it here, the only scan whose
           # findings can fail the pipeline would ignore Dockerfile and compose
