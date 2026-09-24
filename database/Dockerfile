@@ -1,4 +1,4 @@
-FROM postgres:18.6-alpine3.23
+FROM postgres:18.6-alpine3.24
 
 COPY schema/01-init.sql /docker-entrypoint-initdb.d/01-init.sql
 COPY schema/02-schema.sql /docker-entrypoint-initdb.d/02-schema.sql

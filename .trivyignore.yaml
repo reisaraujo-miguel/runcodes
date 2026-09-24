@@ -1,0 +1,138 @@
+# Trivy ignore file — findings listed here are skipped by all scans.
+# Lines starting with `#` are comments. Add one finding ID per line, e.g.:
+#
+#   CVE-2024-12345  # reason for ignoring
+#   AVD-DS-0002     # reason for ignoring
+
+vulnerabilities:
+  - id: CVE-2025-68121
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "False positive. crypto/tls session resumption bug. gosu performs no TLS operations."
+    expired_at: 2027-01-01
+
+  - id: CVE-2025-61726
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "False positive. net/url query parsing DoS. gosu does not parse URLs."
+    expired_at: 2027-01-01
+
+  - id: CVE-2025-61729
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "False positive. crypto/x509 DoS via crafted certs. gosu does not validate certificates."
+    expired_at: 2027-01-01
+
+  - id: CVE-2026-25679
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "False positive. net/url IPv6 host literal parsing. gosu does not parse URLs."
+    expired_at: 2027-01-01
+
+  - id: CVE-2026-27145
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "False positive. crypto/x509 DNS processing DoS. gosu performs no X.509 or DNS work."
+    expired_at: 2027-01-01
+
+  - id: CVE-2026-32280
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "False positive. crypto/x509/crypto/tls chain building DoS. Unreachable from gosu."
+    expired_at: 2027-01-01
+
+  - id: CVE-2026-32281
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "False positive. crypto/x509 chain validation DoS. Unreachable from gosu."
+    expired_at: 2027-01-01
+
+  - id: CVE-2026-32283
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "False positive. crypto/tls 1.3 KeyUpdate DoS. gosu performs no TLS."
+    expired_at: 2027-01-01
+
+  - id: CVE-2026-33811
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "False positive. net package CNAME response DoS. gosu performs no DNS lookups."
+    expired_at: 2027-01-01
+
+  - id: CVE-2026-33814
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "False positive. HTTP/2 SETTINGS_MAX_FRAME_SIZE DoS. gosu does not speak HTTP/2."
+    expired_at: 2027-01-01
+
+  - id: CVE-2026-33818
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "False positive. encoding/asn1 recursion DoS. gosu does not decode ASN.1."
+    expired_at: 2027-01-01
+
+  - id: CVE-2026-39820
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "False positive. net/mail parsing DoS. gosu does not parse email."
+    expired_at: 2027-01-01
+
+  - id: CVE-2026-39821
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "False positive. x/net/idna Punycode handling. gosu does not process IDNA names."
+    expired_at: 2027-01-01
+
+  - id: CVE-2026-39822
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "False positive. os.Root symlink traversal. gosu does not use os.Root."
+    expired_at: 2027-01-01
+
+  - id: CVE-2026-39836
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "False positive. net package NUL byte DoS. gosu performs no network I/O."
+    expired_at: 2027-01-01
+
+  - id: CVE-2026-42499
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "False positive. net/mail pathological address parsing DoS. Unreachable from gosu."
+    expired_at: 2027-01-01
+
+  - id: CVE-2026-42504
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "False positive. mime header parsing DoS. gosu does not parse MIME headers."
+    expired_at: 2027-01-01
+
+  - id: CVE-2026-56853
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "False positive. net/http unencrypted HTTP/2 DoS. gosu does not use net/http."
+    expired_at: 2027-01-01
+
+  - id: CVE-2026-56858
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "False positive. html/template XSS via pathological input. gosu renders no templates."
+    expired_at: 2027-01-01
+
+  - id: CVE-2026-56859
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "False positive. encoding/xml recursion DoS. gosu does not decode XML."
+    expired_at: 2027-01-01
+
+  - id: CVE-2026-56860
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "False positive. net/url path parsing quadratic complexity. gosu does not parse URLs."
+    expired_at: 2027-01-01
+
+  - id: CVE-2026-56862
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "False positive. crypto/tls KeyUpdate message DoS. gosu performs no TLS."
+    expired_at: 2027-01-01
