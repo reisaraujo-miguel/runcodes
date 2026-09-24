@@ -1,4 +1,4 @@
-FROM oven/bun:slim AS builder
+FROM oven/bun:1.4.2-alpine AS builder
 
 WORKDIR /app
 
@@ -14,10 +14,8 @@ ENV VITE_CONTACT_EMAIL=$VITE_CONTACT_EMAIL
 COPY . .
 RUN bun install --frozen-lockfile && bun run build
 
-FROM caddy:2.11-alpine AS dist
+FROM caddy:2.11.4-alpine AS dist
 
-# Upstream caddy images no longer ship a "caddy" user (they run as root).
-# Create it ourselves so the container can keep running unprivileged.
 RUN addgroup -S caddy && adduser -S caddy -G caddy
 
 # The unprivileged user needs CAP_NET_BIND_SERVICE to bind Caddy's privileged
@@ -34,7 +32,5 @@ COPY Caddyfile /etc/caddy/Caddyfile
 EXPOSE 80
 EXPOSE 443
 
-# Probe Caddy's admin API rather than the site itself: it answers regardless of
-# the configured site address (HTTP locally, HTTPS with a real domain).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD wget -q -O /dev/null "http://127.0.0.1:2019/config/" || exit 1
