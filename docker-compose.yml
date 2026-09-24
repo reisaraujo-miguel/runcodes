@@ -62,7 +62,7 @@ services:
   # 1000) cannot create its per-commit workspaces in; this one-shot init chmods
   # it automatically so no manual host setup is required.
   judge-exec-init:
-    image: alpine:3.23
+    image: alpine:3.24
     user: "0:0"
     restart: "no"
     command: ["sh", "-c", "mkdir -p /exec && chmod 0777 /exec"]
@@ -158,7 +158,7 @@ services:
   ###########
 
   seaweed:
-    image: chrislusf/seaweedfs:4.46
+    image: chrislusf/seaweedfs:4.47
     ports:
       - 8333:8333
     environment:
