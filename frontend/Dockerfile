@@ -11,8 +11,11 @@ ENV VITE_API_ENDPOINT=$VITE_API_ENDPOINT
 ENV VITE_CONTACT_DISCLAIMER_HTML=$VITE_CONTACT_DISCLAIMER_HTML
 ENV VITE_CONTACT_EMAIL=$VITE_CONTACT_EMAIL
 
+COPY bun.lock package.json ./
+RUN bun install --frozen-lockfile
+
 COPY . .
-RUN bun install --frozen-lockfile && bun run build
+RUN bun run build
 
 FROM caddy:2.11.4-alpine AS dist
 
