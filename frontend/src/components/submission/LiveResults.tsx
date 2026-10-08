@@ -1,16 +1,18 @@
-import { CircleAlert, Clock, Loader2 } from "lucide-react";
-
-import { Badge } from "@/components/ui/badge";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  CheckCircle2Icon,
+  CircleAlertIcon,
+  ClockIcon,
+  DownloadIcon,
+  Loader2Icon,
+} from "lucide-react";
+
+import { SectionCard } from "@/components/app/SectionCard";
+import { StatusBadge } from "@/components/app/StatusBadge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import type {
   CommitStatus,
+  SubmissionArtifactEvent,
   SubmissionStatusEvent,
 } from "@/lib/api/submissions";
 import { formatBytes, formatCpuTime } from "@/lib/format";
@@ -19,7 +21,6 @@ import {
   commitStatus,
   finishedStatus,
   isPendingStatus,
-  type StatusTone,
 } from "@/lib/submission-status";
 import type {
   CaseResultView,
@@ -27,24 +28,20 @@ import type {
   FinalSummary,
 } from "@/lib/submission-view";
 
-const TONE_VARIANT: Record<
-  StatusTone,
-  "secondary" | "destructive" | "success" | "warning" | "info"
-> = {
-  neutral: "secondary",
-  info: "info",
-  success: "success",
-  warning: "warning",
-  danger: "destructive",
-};
+/** Whether a case's user output may be shown to this viewer. */
+export interface CaseVisibility {
+  showUserOutput: boolean;
+}
 
-interface LiveResultsProps {
+export interface LiveResultsProps {
   status: CommitStatus;
   history: SubmissionStatusEvent[];
   compilation: CompilationInfo | null;
   results: CaseResultView[];
   final: FinalSummary | null;
   streamError: string | null;
+  artifacts?: SubmissionArtifactEvent[];
+  visibility?: Map<number, CaseVisibility>;
 }
 
 function formatEventTime(at: string): string {
@@ -57,7 +54,7 @@ function formatEventTime(at: string): string {
   });
 }
 
-/** Live judging results: timeline, compilation, per-case output and score. */
+/** Live judging results: timeline, compilation, per-case output and artifacts. */
 export function LiveResults({
   status,
   history,
@@ -65,138 +62,134 @@ export function LiveResults({
   results,
   final,
   streamError,
+  artifacts = [],
+  visibility,
 }: LiveResultsProps) {
   const overall = final ? finishedStatus(final.status) : commitStatus(status);
   const pending = final === null && isPendingStatus(status);
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            {pending && <Loader2 className="size-4 animate-spin" />}
-            {!pending && <Clock className="size-4 text-muted-foreground" />}
+      <SectionCard
+        title={
+          <span className="flex items-center gap-2">
+            {pending ? (
+              <Loader2Icon className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <CheckCircle2Icon className="size-4 text-success" aria-hidden />
+            )}
             Resultados da correção
-            <Badge variant={TONE_VARIANT[overall.tone]}>{overall.label}</Badge>
-          </CardTitle>
-          <CardDescription>
-            {pending
-              ? "A sua submissão está a ser processada. Os resultados aparecem à medida que ficam prontos."
-              : "Correção finalizada."}
-          </CardDescription>
-        </CardHeader>
-
-        {final && (
-          <CardContent className="space-y-3">
-            <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+            <StatusBadge value={overall} />
+          </span>
+        }
+        description={
+          pending
+            ? "A sua submissão está sendo processada. Os resultados aparecem conforme ficam prontos."
+            : "Correção finalizada."
+        }
+      >
+        {final ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4 sm:max-w-sm">
               <div>
                 <p className="text-muted-foreground text-sm">Nota</p>
-                <p className="text-3xl font-semibold">
+                <p className="text-3xl font-semibold tabular-nums">
                   {final.score.toFixed(2)}
                 </p>
               </div>
               <div>
                 <p className="text-muted-foreground text-sm">Casos corretos</p>
-                <p className="text-3xl font-semibold">
+                <p className="text-3xl font-semibold tabular-nums">
                   {String(final.numCorrectCases)}
                 </p>
               </div>
             </div>
-            {final.status === "server_error" && (
-              <p className="text-destructive text-sm">
-                O serviço de correção falhou ao processar a sua submissão. Tente
-                enviar novamente em alguns instantes.
-              </p>
-            )}
-            {final.status === "timeout" && (
-              <p className="text-destructive text-sm">
-                A sua submissão excedeu o tempo máximo de execução.
-              </p>
-            )}
-            {final.compilationError && (
+
+            {final.status === "server_error" ? (
+              <Alert variant="destructive">
+                <AlertDescription>
+                  O serviço de correção falhou ao processar a sua submissão.
+                  Tente enviar novamente em alguns instantes.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            {final.status === "timeout" ? (
+              <Alert variant="destructive">
+                <AlertDescription>
+                  A sua submissão excedeu o tempo máximo de execução.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            {final.compilationError ? (
               <pre className="bg-destructive/10 text-destructive overflow-x-auto rounded-lg p-3 text-sm whitespace-pre-wrap">
                 {final.compilationError}
               </pre>
-            )}
-          </CardContent>
+            ) : null}
+          </div>
+        ) : (
+          <p className="text-muted-foreground text-sm">
+            Assim que a correção terminar, a nota e o número de casos corretos
+            aparecem aqui.
+          </p>
         )}
-      </Card>
+      </SectionCard>
 
-      {streamError && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-destructive flex items-center gap-2">
-              <CircleAlert className="size-4" />
-              Falha na transmissão de resultados
-            </CardTitle>
-            <CardDescription>{streamError}</CardDescription>
-          </CardHeader>
-        </Card>
-      )}
+      {streamError ? (
+        <Alert variant="destructive">
+          <CircleAlertIcon aria-hidden />
+          <AlertTitle>Falha na transmissão de resultados</AlertTitle>
+          <AlertDescription>{streamError}</AlertDescription>
+        </Alert>
+      ) : null}
 
-      {compilation && (compilation.error || compilation.message) && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Compilação</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {compilation.error ? (
-              <pre className="bg-destructive/10 text-destructive overflow-x-auto rounded-lg p-3 text-sm whitespace-pre-wrap">
-                {compilation.error}
-              </pre>
-            ) : (
-              <p className="text-sm">{compilation.message}</p>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Progresso</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {history.length === 0 ? (
-            <p className="text-muted-foreground text-sm">
-              A aguardar o início da correção…
-            </p>
+      {compilation && (compilation.error || compilation.message) ? (
+        <SectionCard title="Compilação">
+          {compilation.error ? (
+            <pre className="bg-destructive/10 text-destructive overflow-x-auto rounded-lg p-3 text-sm whitespace-pre-wrap">
+              {compilation.error}
+            </pre>
           ) : (
-            <ol className="space-y-2">
-              {history.map((event) => {
-                const value = commitStatus(event.status);
-                return (
-                  <li
-                    key={event.seq}
-                    className="flex items-center justify-between gap-4 text-sm"
-                  >
-                    <Badge variant={TONE_VARIANT[value.tone]}>
-                      {value.label}
-                    </Badge>
-                    <span className="text-muted-foreground font-mono text-xs">
-                      {formatEventTime(event.at)}
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
+            <p className="text-sm">{compilation.message}</p>
           )}
-        </CardContent>
-      </Card>
+        </SectionCard>
+      ) : null}
 
-      {results.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Casos de teste</CardTitle>
-            <CardDescription>
-              {String(results.length)} caso(s) reportado(s)
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+      <SectionCard title="Progresso">
+        {history.length === 0 ? (
+          <p className="text-muted-foreground flex items-center gap-2 text-sm">
+            <ClockIcon className="size-4" aria-hidden />
+            Aguardando o início da correção…
+          </p>
+        ) : (
+          <ol className="space-y-2">
+            {history.map((event) => (
+              <li
+                key={event.seq}
+                className="flex items-center justify-between gap-4 text-sm"
+              >
+                <StatusBadge value={commitStatus(event.status)} />
+                <span className="text-muted-foreground font-mono text-xs">
+                  {formatEventTime(event.at)}
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </SectionCard>
+
+      {results.length > 0 ? (
+        <SectionCard
+          title="Casos de teste"
+          description={`${String(results.length)} caso(s) reportado(s)`}
+        >
+          <div className="space-y-4">
             {results.map((result, index) => {
               const value = caseStatus(result.status);
+              const canShowOutput =
+                visibility?.get(result.testCaseId)?.showUserOutput ?? true;
               return (
                 <div key={result.testCaseId} className="space-y-2">
-                  {index > 0 && <Separator />}
+                  {index > 0 ? <Separator /> : null}
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="font-medium">
                       Caso #{String(result.testCaseId)}
@@ -206,22 +199,20 @@ export function LiveResults({
                         CPU {formatCpuTime(result.cpuTime)} · Memória{" "}
                         {formatBytes(result.memUsage)}
                       </span>
-                      <Badge variant={TONE_VARIANT[value.tone]}>
-                        {value.label}
-                      </Badge>
+                      <StatusBadge value={value} />
                     </span>
                   </div>
-                  {result.statusMessage && (
+                  {result.statusMessage ? (
                     <p className="text-muted-foreground text-sm">
                       {result.statusMessage}
                     </p>
-                  )}
-                  {result.errorMessage && (
+                  ) : null}
+                  {result.errorMessage ? (
                     <pre className="bg-destructive/10 text-destructive overflow-x-auto rounded-lg p-3 text-xs whitespace-pre-wrap">
                       {result.errorMessage}
                     </pre>
-                  )}
-                  {result.userOutput && (
+                  ) : null}
+                  {canShowOutput && result.userOutput ? (
                     <details>
                       <summary className="text-muted-foreground cursor-pointer text-sm select-none">
                         Ver saída do programa
@@ -230,13 +221,33 @@ export function LiveResults({
                         {result.userOutput}
                       </pre>
                     </details>
-                  )}
+                  ) : null}
                 </div>
               );
             })}
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        </SectionCard>
+      ) : null}
+
+      {artifacts.length > 0 ? (
+        <SectionCard title="Artefatos gerados">
+          <ul className="space-y-2">
+            {artifacts.map((artifact) => (
+              <li key={artifact.seq}>
+                <a
+                  href={artifact.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary inline-flex items-center gap-2 text-sm hover:underline"
+                >
+                  <DownloadIcon className="size-4" aria-hidden />
+                  <span className="font-medium">{artifact.kind}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      ) : null}
     </div>
   );
 }
