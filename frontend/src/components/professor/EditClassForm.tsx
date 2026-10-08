@@ -1,93 +1,95 @@
-import { useState, type SubmitEvent } from "react";
+import { useState } from "react";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
+import { useSubmit } from "@/hooks/use-submit";
 import { updateOffering, type Offering } from "@/lib/api";
-import { dateInputToTimestamp } from "@/lib/format";
+import { dateInputToTimestamp, formatDateInput } from "@/lib/format";
 
-interface EditClassFormProps {
-  offering: Offering;
-  onSaved: (offering: Offering) => void;
-  onCancel: () => void;
-}
-
-/**
- * Converts an API timestamp into the `YYYY-MM-DD` value a date input expects.
- * Local getters keep the calendar day the professor picked: the API stores the
- * end of that day in the same timezone, so the round trip is stable.
- */
-function toDateInputValue(timestamp: string): string {
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return "";
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${String(date.getFullYear())}-${month}-${day}`;
-}
-
-/** Inline form that edits the details of a class the caller owns. */
+/** Modal form to edit a class the caller owns. */
 export function EditClassForm({
   offering,
+  onClose,
   onSaved,
-  onCancel,
-}: EditClassFormProps) {
+}: {
+  offering: Offering;
+  onClose: () => void;
+  onSaved: (offering: Offering) => void;
+}) {
   const [name, setName] = useState(offering.name);
   const [description, setDescription] = useState(offering.description);
   const [endDate, setEndDate] = useState(() =>
-    toDateInputValue(offering.end_date),
+    formatDateInput(offering.end_date),
   );
   const [visibleToEnroll, setVisibleToEnroll] = useState(
     offering.visible_to_enroll,
   );
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const { pending, error, setError, run } = useSubmit(
+    "Não foi possível salvar a turma.",
+  );
 
-  function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function handleSubmit() {
     const trimmedName = name.trim();
     if (!trimmedName) {
-      setError("O nome da turma é obrigatório");
+      setError("O nome da turma é obrigatório.");
       return;
     }
     const endDateIso = dateInputToTimestamp(endDate, "end");
     if (!endDateIso) {
-      setError("Informe a data limite da turma");
+      setError("Informe a data limite da turma.");
       return;
     }
 
-    setSubmitting(true);
-    setError(null);
-    void (async () => {
-      try {
-        const updated = await updateOffering(offering.id, {
-          name: trimmedName,
-          description: description.trim(),
-          end_date: endDateIso,
-          visible_to_enroll: visibleToEnroll,
-        });
-        onSaved(updated);
-      } catch (submitError) {
-        setError(
-          submitError instanceof Error
-            ? submitError.message
-            : "Erro ao salvar a turma",
-        );
-      } finally {
-        setSubmitting(false);
-      }
-    })();
+    void run(async () => {
+      const updated = await updateOffering(offering.id, {
+        name: trimmedName,
+        description: description.trim(),
+        end_date: endDateIso,
+        visible_to_enroll: visibleToEnroll,
+      });
+      onSaved(updated);
+    });
   }
 
   return (
-    <Card size="sm">
-      <CardContent>
-        <form className="space-y-4" onSubmit={handleSubmit}>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Editar turma</DialogTitle>
+          <DialogDescription>
+            Atualize os dados da turma. O código de matrícula não muda.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleSubmit();
+          }}
+        >
           <div className="space-y-2">
-            <Label htmlFor="class-name">Nome da turma</Label>
+            <Label htmlFor="edit-class-name">Nome da turma</Label>
             <Input
-              id="class-name"
+              id="edit-class-name"
               value={name}
               onChange={(event) => {
                 setName(event.target.value);
@@ -98,22 +100,21 @@ export function EditClassForm({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="class-description">Descrição</Label>
+            <Label htmlFor="edit-class-description">Descrição</Label>
             <Textarea
-              id="class-description"
+              id="edit-class-description"
               value={description}
               onChange={(event) => {
                 setDescription(event.target.value);
               }}
               placeholder="Descrição da turma (opcional)"
-              className="font-sans"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="class-end-date">Disponível até</Label>
+            <Label htmlFor="edit-class-end-date">Disponível até</Label>
             <Input
-              id="class-end-date"
+              id="edit-class-end-date"
               type="date"
               value={endDate}
               onChange={(event) => {
@@ -123,35 +124,39 @@ export function EditClassForm({
             />
           </div>
 
-          <label className="flex items-start gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="accent-primary mt-0.5 size-4"
+          <Label className="font-normal" htmlFor="edit-class-visible">
+            <Checkbox
+              id="edit-class-visible"
               checked={visibleToEnroll}
-              onChange={(event) => {
-                setVisibleToEnroll(event.target.checked);
+              onCheckedChange={(checked) => {
+                setVisibleToEnroll(checked);
               }}
             />
             Permitir que novos alunos se matriculem com o código
-          </label>
+          </Label>
 
-          {error && <p className="text-destructive text-sm">{error}</p>}
+          {error ? (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
 
-          <div className="flex gap-2">
-            <Button type="submit" disabled={submitting}>
-              {submitting ? "Salvando…" : "Salvar alterações"}
-            </Button>
+          <DialogFooter>
             <Button
               type="button"
               variant="outline"
-              disabled={submitting}
-              onClick={onCancel}
+              disabled={pending}
+              onClick={onClose}
             >
               Cancelar
             </Button>
-          </div>
+            <Button type="submit" disabled={pending}>
+              {pending ? <Spinner className="size-4" /> : null}
+              Salvar alterações
+            </Button>
+          </DialogFooter>
         </form>
-      </CardContent>
-    </Card>
+      </DialogContent>
+    </Dialog>
   );
 }

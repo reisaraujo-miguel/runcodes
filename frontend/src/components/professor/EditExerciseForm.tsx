@@ -1,27 +1,24 @@
-import { useEffect, useState, type SubmitEvent } from "react";
+import { useState } from "react";
 
+import { AllowedFileTypesField } from "@/components/professor/AllowedFileTypesField";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  getAllowedFileTypes,
-  updateExercise,
-  type AllowedFileType,
-  type Exercise,
-  type ExercisePayload,
-} from "@/lib/api";
-import { dateInputToTimestamp } from "@/lib/format";
-
-/** Converts an RFC3339 timestamp into the YYYY-MM-DD value a date input expects. */
-function toDateInputValue(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${String(date.getFullYear())}-${month}-${day}`;
-}
+import { useSubmit } from "@/hooks/use-submit";
+import { updateExercise, type Exercise, type ExercisePayload } from "@/lib/api";
+import { dateInputToTimestamp, formatDateInput } from "@/lib/format";
 
 /** Compares two sets of file type ids, ignoring their order. */
 function sameIds(left: number[], right: number[]): boolean {
@@ -31,25 +28,23 @@ function sameIds(left: number[], right: number[]): boolean {
   return sortedLeft.every((id, index) => id === sortedRight[index]);
 }
 
-interface EditExerciseFormProps {
-  exercise: Exercise;
-  onSaved: (exercise: Exercise) => void;
-  onCancel: () => void;
-}
-
-/** Inline form to edit an exercise's data, dates and allowed file types. */
+/** Modal form to edit an exercise's data, dates and allowed file types. */
 export function EditExerciseForm({
   exercise,
+  onClose,
   onSaved,
-  onCancel,
-}: EditExerciseFormProps) {
+}: {
+  exercise: Exercise;
+  onClose: () => void;
+  onSaved: (exercise: Exercise) => void;
+}) {
   const [title, setTitle] = useState(exercise.title);
   const [description, setDescription] = useState(exercise.description);
   const [openDate, setOpenDate] = useState(() =>
-    toDateInputValue(exercise.open_date),
+    formatDateInput(exercise.open_date),
   );
   const [deadline, setDeadline] = useState(() =>
-    toDateInputValue(exercise.deadline),
+    formatDateInput(exercise.deadline),
   );
   const [showBeforeOpenDate, setShowBeforeOpenDate] = useState(
     exercise.show_before_open_date,
@@ -57,60 +52,35 @@ export function EditExerciseForm({
   const [selectedTypes, setSelectedTypes] = useState<number[]>(
     exercise.allowed_file_type_ids ?? [],
   );
-  const [allowedTypes, setAllowedTypes] = useState<AllowedFileType[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const { pending, error, setError, run } = useSubmit(
+    "Não foi possível salvar o exercício.",
+  );
 
-  useEffect(() => {
-    let cancelled = false;
-    void getAllowedFileTypes()
-      .then((types) => {
-        if (!cancelled) setAllowedTypes(types);
-      })
-      .catch(() => {
-        // The allowed-type list is optional when editing an exercise.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  function toggleType(id: number) {
-    setSelectedTypes((previous) =>
-      previous.includes(id)
-        ? previous.filter((value) => value !== id)
-        : [...previous, id],
-    );
-  }
-
-  function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
-
+  function handleSubmit() {
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
-      setError("O título do exercício é obrigatório");
+      setError("O título do exercício é obrigatório.");
       return;
     }
     const openDateIso = dateInputToTimestamp(openDate, "start");
     const deadlineIso = dateInputToTimestamp(deadline, "end");
     if (!openDateIso || !deadlineIso) {
-      setError("Informe as datas de abertura e de prazo");
+      setError("Informe as datas de abertura e de prazo.");
       return;
     }
 
     // Only the fields the professor actually changed are sent.
     const payload: Partial<ExercisePayload> = {};
-    if (trimmedTitle !== exercise.title) {
-      payload.title = trimmedTitle;
-    }
+    if (trimmedTitle !== exercise.title) payload.title = trimmedTitle;
+
     const trimmedDescription = description.trim();
     if (trimmedDescription !== exercise.description) {
       payload.description = trimmedDescription;
     }
-    if (openDate !== toDateInputValue(exercise.open_date)) {
+    if (openDate !== formatDateInput(exercise.open_date)) {
       payload.open_date = openDateIso;
     }
-    if (deadline !== toDateInputValue(exercise.deadline)) {
+    if (deadline !== formatDateInput(exercise.deadline)) {
       payload.deadline = deadlineIso;
     }
     if (showBeforeOpenDate !== exercise.show_before_open_date) {
@@ -125,34 +95,33 @@ export function EditExerciseForm({
       return;
     }
 
-    setSubmitting(true);
-    setError(null);
-    void (async () => {
-      try {
-        const updated = await updateExercise(exercise.id, payload);
-        onSaved(updated);
-      } catch (submitError) {
-        setError(
-          submitError instanceof Error
-            ? submitError.message
-            : "Erro ao salvar o exercício",
-        );
-      } finally {
-        setSubmitting(false);
-      }
-    })();
+    void run(async () => {
+      onSaved(await updateExercise(exercise.id, payload));
+    });
   }
 
-  // A currently selected type stays listed even when it is no longer available,
-  // so editing another field never drops it silently.
-  const selectableTypes = allowedTypes.filter(
-    (type) => type.is_available || selectedTypes.includes(type.id),
-  );
-
   return (
-    <Card size="sm">
-      <CardContent>
-        <form className="space-y-4" onSubmit={handleSubmit}>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Editar exercício</DialogTitle>
+          <DialogDescription>
+            Altere o enunciado, o período de entrega e os tipos aceitos.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleSubmit();
+          }}
+        >
           <div className="space-y-2">
             <Label htmlFor="edit-exercise-title">Título</Label>
             <Input
@@ -175,7 +144,6 @@ export function EditExerciseForm({
                 setDescription(event.target.value);
               }}
               placeholder="Enunciado do exercício (opcional)"
-              className="font-sans"
             />
           </div>
 
@@ -206,56 +174,45 @@ export function EditExerciseForm({
             </div>
           </div>
 
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="accent-primary size-4"
+          <Label className="font-normal" htmlFor="edit-exercise-show-before">
+            <Checkbox
+              id="edit-exercise-show-before"
               checked={showBeforeOpenDate}
-              onChange={(event) => {
-                setShowBeforeOpenDate(event.target.checked);
+              onCheckedChange={(checked) => {
+                setShowBeforeOpenDate(checked);
               }}
             />
-            Mostrar antes da data de abertura
-          </label>
+            Mostrar o exercício antes da data de abertura
+          </Label>
 
-          {selectableTypes.length > 0 && (
-            <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">
-                Tipos de arquivo permitidos
-              </legend>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {selectableTypes.map((type) => (
-                  <label
-                    key={type.id}
-                    className="flex items-center gap-2 text-sm"
-                  >
-                    <input
-                      type="checkbox"
-                      className="accent-primary size-4"
-                      checked={selectedTypes.includes(type.id)}
-                      onChange={() => {
-                        toggleType(type.id);
-                      }}
-                    />
-                    {type.name} ({type.extension})
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-          )}
+          <AllowedFileTypesField
+            idPrefix="edit-exercise"
+            selected={selectedTypes}
+            onChange={setSelectedTypes}
+          />
 
-          {error && <p className="text-destructive text-sm">{error}</p>}
+          {error ? (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
 
-          <div className="flex gap-2">
-            <Button type="submit" disabled={submitting}>
-              {submitting ? "Salvando…" : "Salvar"}
-            </Button>
-            <Button type="button" variant="outline" onClick={onCancel}>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={pending}
+              onClick={onClose}
+            >
               Cancelar
             </Button>
-          </div>
+            <Button type="submit" disabled={pending}>
+              {pending ? <Spinner className="size-4" /> : null}
+              Salvar alterações
+            </Button>
+          </DialogFooter>
         </form>
-      </CardContent>
-    </Card>
+      </DialogContent>
+    </Dialog>
   );
 }

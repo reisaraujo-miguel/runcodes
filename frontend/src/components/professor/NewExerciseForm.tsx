@@ -1,110 +1,99 @@
-import { useEffect, useState, type SubmitEvent } from "react";
+import { useState } from "react";
 
+import { AllowedFileTypesField } from "@/components/professor/AllowedFileTypesField";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  createExercise,
-  getAllowedFileTypes,
-  type AllowedFileType,
-  type Exercise,
-} from "@/lib/api";
+import { useSubmit } from "@/hooks/use-submit";
+import { createExercise, type Exercise } from "@/lib/api";
 import { dateInputToTimestamp } from "@/lib/format";
 
-interface NewExerciseFormProps {
-  offeringId: number;
-  onCreated: (exercise: Exercise) => void;
-  onCancel: () => void;
-}
-
-/** Inline form that creates an exercise inside an offering. */
+/** Modal form to create an exercise inside a class. */
 export function NewExerciseForm({
   offeringId,
+  onClose,
   onCreated,
-  onCancel,
-}: NewExerciseFormProps) {
+}: {
+  offeringId: number;
+  onClose: () => void;
+  onCreated: (exercise: Exercise) => void;
+}) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [deadline, setDeadline] = useState("");
   const [openDate, setOpenDate] = useState("");
+  const [deadline, setDeadline] = useState("");
+  const [showBeforeOpenDate, setShowBeforeOpenDate] = useState(false);
   const [selectedTypes, setSelectedTypes] = useState<number[]>([]);
-  const [allowedTypes, setAllowedTypes] = useState<AllowedFileType[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const { pending, error, setError, run } = useSubmit(
+    "Não foi possível criar o exercício.",
+  );
 
-  useEffect(() => {
-    let cancelled = false;
-    void getAllowedFileTypes()
-      .then((types) => {
-        if (!cancelled) setAllowedTypes(types);
-      })
-      .catch(() => {
-        // The allowed-type list is optional for creating an exercise.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  function toggleType(id: number) {
-    setSelectedTypes((previous) =>
-      previous.includes(id)
-        ? previous.filter((value) => value !== id)
-        : [...previous, id],
-    );
-  }
-
-  function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const deadlineIso = dateInputToTimestamp(deadline, "end");
+  function handleSubmit() {
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
+      setError("O título do exercício é obrigatório.");
+      return;
+    }
     const openDateIso = dateInputToTimestamp(openDate, "start");
-    if (!title.trim()) {
-      setError("O título do exercício é obrigatório");
-      return;
-    }
-    if (!deadlineIso || !openDateIso) {
-      setError("Informe as datas de abertura e de prazo");
+    const deadlineIso = dateInputToTimestamp(deadline, "end");
+    if (!openDateIso || !deadlineIso) {
+      setError("Informe as datas de abertura e de prazo.");
       return;
     }
 
-    setSubmitting(true);
-    setError(null);
-    void (async () => {
-      try {
-        const exercise = await createExercise(offeringId, {
-          title: title.trim(),
-          description: description.trim(),
-          deadline: deadlineIso,
-          open_date: openDateIso,
-          ...(selectedTypes.length > 0
-            ? { allowed_file_type_ids: selectedTypes }
-            : {}),
-        });
-        onCreated(exercise);
-      } catch (submitError) {
-        setError(
-          submitError instanceof Error
-            ? submitError.message
-            : "Erro ao criar o exercício",
-        );
-      } finally {
-        setSubmitting(false);
-      }
-    })();
+    void run(async () => {
+      const exercise = await createExercise(offeringId, {
+        title: trimmedTitle,
+        description: description.trim(),
+        open_date: openDateIso,
+        deadline: deadlineIso,
+        show_before_open_date: showBeforeOpenDate,
+        ...(selectedTypes.length > 0
+          ? { allowed_file_type_ids: selectedTypes }
+          : {}),
+      });
+      onCreated(exercise);
+    });
   }
-
-  const availableTypes = allowedTypes.filter((type) => type.is_available);
 
   return (
-    <Card size="sm">
-      <CardContent>
-        <form className="space-y-4" onSubmit={handleSubmit}>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Novo exercício</DialogTitle>
+          <DialogDescription>
+            Defina o período de abertura e o prazo de entrega.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleSubmit();
+          }}
+        >
           <div className="space-y-2">
-            <Label htmlFor="exercise-title">Título</Label>
+            <Label htmlFor="new-exercise-title">Título</Label>
             <Input
-              id="exercise-title"
+              id="new-exercise-title"
               value={title}
               onChange={(event) => {
                 setTitle(event.target.value);
@@ -115,23 +104,22 @@ export function NewExerciseForm({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="exercise-description">Descrição</Label>
+            <Label htmlFor="new-exercise-description">Descrição</Label>
             <Textarea
-              id="exercise-description"
+              id="new-exercise-description"
               value={description}
               onChange={(event) => {
                 setDescription(event.target.value);
               }}
               placeholder="Enunciado do exercício (opcional)"
-              className="font-sans"
             />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="exercise-open-date">Abertura</Label>
+              <Label htmlFor="new-exercise-open-date">Abertura</Label>
               <Input
-                id="exercise-open-date"
+                id="new-exercise-open-date"
                 type="date"
                 value={openDate}
                 onChange={(event) => {
@@ -141,9 +129,9 @@ export function NewExerciseForm({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="exercise-deadline">Prazo</Label>
+              <Label htmlFor="new-exercise-deadline">Prazo</Label>
               <Input
-                id="exercise-deadline"
+                id="new-exercise-deadline"
                 type="date"
                 value={deadline}
                 onChange={(event) => {
@@ -154,44 +142,45 @@ export function NewExerciseForm({
             </div>
           </div>
 
-          {availableTypes.length > 0 && (
-            <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">
-                Tipos de arquivo permitidos
-              </legend>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {availableTypes.map((type) => (
-                  <label
-                    key={type.id}
-                    className="flex items-center gap-2 text-sm"
-                  >
-                    <input
-                      type="checkbox"
-                      className="accent-primary size-4"
-                      checked={selectedTypes.includes(type.id)}
-                      onChange={() => {
-                        toggleType(type.id);
-                      }}
-                    />
-                    {type.name} ({type.extension})
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-          )}
+          <Label className="font-normal" htmlFor="new-exercise-show-before">
+            <Checkbox
+              id="new-exercise-show-before"
+              checked={showBeforeOpenDate}
+              onCheckedChange={(checked) => {
+                setShowBeforeOpenDate(checked);
+              }}
+            />
+            Mostrar o exercício antes da data de abertura
+          </Label>
 
-          {error && <p className="text-destructive text-sm">{error}</p>}
+          <AllowedFileTypesField
+            idPrefix="new-exercise"
+            selected={selectedTypes}
+            onChange={setSelectedTypes}
+          />
 
-          <div className="flex gap-2">
-            <Button type="submit" disabled={submitting}>
-              {submitting ? "Criando…" : "Criar exercício"}
-            </Button>
-            <Button type="button" variant="outline" onClick={onCancel}>
+          {error ? (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={pending}
+              onClick={onClose}
+            >
               Cancelar
             </Button>
-          </div>
+            <Button type="submit" disabled={pending}>
+              {pending ? <Spinner className="size-4" /> : null}
+              Criar exercício
+            </Button>
+          </DialogFooter>
         </form>
-      </CardContent>
-    </Card>
+      </DialogContent>
+    </Dialog>
   );
 }

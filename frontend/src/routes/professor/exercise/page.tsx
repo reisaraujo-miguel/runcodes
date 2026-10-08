@@ -1,452 +1,206 @@
-import { useEffect, useState, type ChangeEvent } from "react";
-import { Link, useParams } from "react-router";
+import { useState } from "react";
 
+import { PencilIcon, Trash2Icon } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router";
+
+import { ConfirmButton } from "@/components/app/ConfirmDialog";
+import { PageHeader } from "@/components/app/PageHeader";
+import { SectionCard } from "@/components/app/SectionCard";
+import { ErrorState, LoadingState } from "@/components/app/states";
+import { AttachedFilesCard } from "@/components/professor/AttachedFilesCard";
+import { CompilationFilesCard } from "@/components/professor/CompilationFilesCard";
 import { EditExerciseForm } from "@/components/professor/EditExerciseForm";
-import { EditTestCaseForm } from "@/components/professor/EditTestCaseForm";
-import { NewTestCaseForm } from "@/components/professor/NewTestCaseForm";
+import { TestCasesCard } from "@/components/professor/TestCasesCard";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
-import {
-  createCompilationFile,
-  deleteCompilationFile,
-  deleteTestCase,
-  getCompilationFiles,
-  getExercise,
-  getExerciseTestCases,
-  type CompilationFile,
-  type Exercise,
-  type TestCase,
-} from "@/lib/api";
-import {
-  formatBytes,
-  formatCpuTime,
-  formatDateTime,
-  formatLimit,
-} from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { useAsync } from "@/hooks/use-async";
+import { deleteExercise, getExercise } from "@/lib/api";
+import { errorMessage } from "@/lib/errors";
+import { formatDateTime } from "@/lib/format";
 
-function compilationFileName(file: CompilationFile): string {
-  const name = file.filename ?? file.name;
-  return name && name !== "" ? name : `Arquivo #${String(file.id)}`;
-}
-
-/** Professor page to manage an exercise's test cases and compilation files. */
+/**
+ * Page to manage a single exercise: its data, test cases, compilation files and
+ * attached materials. Deleting an exercise is a soft delete, so it must be
+ * confirmed before navigating back to the class.
+ */
 export function ExercisePage() {
   const { exerciseId } = useParams();
-  const numericExerciseId = Number(exerciseId);
+  const navigate = useNavigate();
+  const id = Number(exerciseId);
+  const valid = Number.isInteger(id) && id > 0;
 
-  const [exercise, setExercise] = useState<Exercise | null>(null);
-  const [testCases, setTestCases] = useState<TestCase[]>([]);
-  const [compilationFiles, setCompilationFiles] = useState<CompilationFile[]>(
-    [],
+  const exercise = useAsync(
+    () =>
+      valid
+        ? getExercise(id)
+        : Promise.reject(new Error("Exercício inválido.")),
+    `exercise-${exerciseId ?? ""}`,
+    "Exercício não encontrado.",
   );
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [casesError, setCasesError] = useState<string | null>(null);
-  const [filesError, setFilesError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
 
-  const [newCompilationFile, setNewCompilationFile] = useState<File | null>(
-    null,
-  );
-  const [uploading, setUploading] = useState(false);
-  const [editingExercise, setEditingExercise] = useState(false);
-  const [editingCaseId, setEditingCaseId] = useState<number | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  const current = exercise.data;
 
-    async function loadExercise() {
-      if (!Number.isInteger(numericExerciseId) || numericExerciseId <= 0) {
-        setError("Exercício inválido");
-        setLoading(false);
-        return;
-      }
+  if (exercise.loading && current === null) return <LoadingState />;
 
-      try {
-        const data = await getExercise(numericExerciseId);
-        if (!cancelled) setExercise(data);
-      } catch {
-        if (!cancelled) {
-          setError("Exercício não encontrado");
-          setLoading(false);
-        }
-        return;
-      }
-
-      try {
-        const cases = await getExerciseTestCases(numericExerciseId);
-        if (!cancelled) setTestCases(cases);
-      } catch {
-        if (!cancelled) {
-          setCasesError("Não foi possível carregar os casos de teste.");
-        }
-      }
-
-      try {
-        const files = await getCompilationFiles(numericExerciseId);
-        if (!cancelled) setCompilationFiles(files);
-      } catch {
-        if (!cancelled) {
-          setFilesError("Não foi possível carregar os arquivos de compilação.");
-        }
-      }
-
-      if (!cancelled) setLoading(false);
-    }
-
-    void loadExercise();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [numericExerciseId]);
-
-  function handleCompilationFileChange(event: ChangeEvent<HTMLInputElement>) {
-    setNewCompilationFile(event.target.files?.item(0) ?? null);
-  }
-
-  function handleUploadCompilationFile() {
-    if (!newCompilationFile) return;
-    setUploading(true);
-    setActionError(null);
-    void (async () => {
-      try {
-        const uploaded = await createCompilationFile(
-          numericExerciseId,
-          newCompilationFile,
-        );
-        setCompilationFiles((previous) => [...previous, uploaded]);
-        setNewCompilationFile(null);
-      } catch (uploadError) {
-        setActionError(
-          uploadError instanceof Error
-            ? uploadError.message
-            : "Erro ao enviar o arquivo de compilação",
-        );
-      } finally {
-        setUploading(false);
-      }
-    })();
-  }
-
-  function handleDeleteCompilationFile(fileId: number) {
-    setActionError(null);
-    void (async () => {
-      try {
-        await deleteCompilationFile(numericExerciseId, fileId);
-        setCompilationFiles((previous) =>
-          previous.filter((file) => file.id !== fileId),
-        );
-      } catch (deleteError) {
-        setActionError(
-          deleteError instanceof Error
-            ? deleteError.message
-            : "Erro ao remover o arquivo de compilação",
-        );
-      }
-    })();
-  }
-
-  function handleDeleteTestCase(caseId: number) {
-    setActionError(null);
-    void (async () => {
-      try {
-        await deleteTestCase(numericExerciseId, caseId);
-        setTestCases((previous) =>
-          previous.filter((testCase) => testCase.id !== caseId),
-        );
-        setEditingCaseId((previous) => (previous === caseId ? null : previous));
-      } catch (deleteError) {
-        setActionError(
-          deleteError instanceof Error
-            ? deleteError.message
-            : "Erro ao remover o caso de teste",
-        );
-      }
-    })();
-  }
-
-  if (loading) {
+  if (!current) {
     return (
-      <div className="flex justify-center p-12">
-        <div
-          aria-label="Carregando"
-          className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground"
-          role="status"
+      <div className="space-y-6">
+        <PageHeader
+          title="Exercício"
+          breadcrumb={
+            <Link
+              to="/professor"
+              className="text-muted-foreground text-sm hover:underline"
+            >
+              ← Gerenciar turmas
+            </Link>
+          }
+        />
+        <ErrorState
+          description={
+            exercise.error ?? "Não foi possível carregar este exercício."
+          }
+          onRetry={exercise.reload}
         />
       </div>
     );
   }
 
-  if (!exercise) {
-    return (
-      <div className="mx-auto max-w-3xl p-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Exercício não encontrado</CardTitle>
-            <CardDescription>
-              {error ?? "Não foi possível carregar este exercício."}
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-    );
+  const classLink = `/professor/class/${String(current.offering_id)}`;
+  const currentId = current.id;
+
+  async function handleDelete() {
+    setDeleteError(null);
+    try {
+      await deleteExercise(currentId);
+      void navigate(classLink);
+    } catch (error) {
+      setDeleteError(errorMessage(error, "Erro ao excluir o exercício."));
+    }
   }
+
+  const allowedLabels = current.allowed_file_types?.map(
+    (type) => `${type.name} (${type.extension})`,
+  );
+  const allowedSummary =
+    allowedLabels && allowedLabels.length > 0
+      ? allowedLabels.join(", ")
+      : current.allowed_file_type_ids &&
+          current.allowed_file_type_ids.length > 0
+        ? `${String(current.allowed_file_type_ids.length)} tipo(s) específico(s)`
+        : "Qualquer tipo disponível";
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 p-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-2xl">{exercise.title}</CardTitle>
-          {exercise.description && (
-            <CardDescription>{exercise.description}</CardDescription>
-          )}
-          <CardAction className="flex items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant={editingExercise ? "outline" : "default"}
-              onClick={() => {
-                setEditingExercise((previous) => !previous);
-              }}
-            >
-              {editingExercise ? "Fechar" : "Editar exercício"}
-            </Button>
-            <Link
-              to={`/professor/class/${String(exercise.offering_id)}`}
-              className={buttonVariants({ variant: "outline", size: "sm" })}
-            >
-              Voltar para a turma
-            </Link>
-          </CardAction>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
-          <div>
-            <p className="text-muted-foreground">Abertura</p>
-            <p>{formatDateTime(exercise.open_date)}</p>
-          </div>
-          <div>
-            <p className="text-muted-foreground">Prazo</p>
-            <p>{formatDateTime(exercise.deadline)}</p>
-          </div>
-        </CardContent>
-      </Card>
+    <div className="space-y-6">
+      <PageHeader
+        title={current.title}
+        description={current.description || undefined}
+        breadcrumb={
+          <Link
+            to={classLink}
+            className="text-muted-foreground text-sm hover:underline"
+          >
+            ← Voltar para a turma
+          </Link>
+        }
+        actions={
+          current.removed ? (
+            <Badge variant="destructive">Removido</Badge>
+          ) : undefined
+        }
+      />
 
-      {editingExercise && (
+      <SectionCard
+        title="Detalhes do exercício"
+        action={
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setEditing(true);
+            }}
+          >
+            <PencilIcon />
+            Editar exercício
+          </Button>
+        }
+      >
+        <dl className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <dt className="text-muted-foreground text-sm">Abertura</dt>
+            <dd className="mt-1">{formatDateTime(current.open_date)}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground text-sm">Prazo</dt>
+            <dd className="mt-1">{formatDateTime(current.deadline)}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground text-sm">Antes da abertura</dt>
+            <dd className="mt-1">
+              <Badge
+                variant={
+                  current.show_before_open_date ? "success" : "secondary"
+                }
+              >
+                {current.show_before_open_date ? "Visível" : "Oculto"}
+              </Badge>
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground text-sm">
+              Tipos de arquivo permitidos
+            </dt>
+            <dd className="mt-1 text-sm">{allowedSummary}</dd>
+          </div>
+        </dl>
+      </SectionCard>
+
+      <TestCasesCard exerciseId={current.id} />
+
+      <CompilationFilesCard exerciseId={current.id} />
+
+      <AttachedFilesCard exerciseId={current.id} />
+
+      <SectionCard
+        title="Excluir exercício"
+        description="O exercício deixa de aparecer para os alunos; os casos de teste, arquivos e submissões são preservados para consulta."
+      >
+        <div className="space-y-3">
+          {deleteError ? (
+            <Alert variant="destructive">
+              <AlertDescription>{deleteError}</AlertDescription>
+            </Alert>
+          ) : null}
+          <ConfirmButton
+            destructive
+            variant="destructive"
+            title="Excluir exercício"
+            description={`Excluir “${current.title}”? Os alunos deixarão de vê-lo.`}
+            confirmLabel="Excluir exercício"
+            onConfirm={handleDelete}
+          >
+            <Trash2Icon />
+            Excluir exercício
+          </ConfirmButton>
+        </div>
+      </SectionCard>
+
+      {editing ? (
         <EditExerciseForm
-          exercise={exercise}
-          onCancel={() => {
-            setEditingExercise(false);
+          exercise={current}
+          onClose={() => {
+            setEditing(false);
           }}
-          onSaved={(updated) => {
-            setExercise(updated);
-            setEditingExercise(false);
+          onSaved={() => {
+            setEditing(false);
+            exercise.reload();
           }}
         />
-      )}
-
-      {actionError && <p className="text-destructive text-sm">{actionError}</p>}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Arquivos de compilação</CardTitle>
-          <CardDescription>
-            Arquivos auxiliares usados na compilação (headers, bibliotecas).
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-64 flex-1 space-y-2">
-              <Input
-                type="file"
-                aria-label="Arquivo de compilação"
-                onChange={handleCompilationFileChange}
-              />
-            </div>
-            <Button
-              type="button"
-              disabled={!newCompilationFile || uploading}
-              onClick={handleUploadCompilationFile}
-            >
-              {uploading ? "Enviando…" : "Enviar arquivo"}
-            </Button>
-          </div>
-
-          {filesError && (
-            <p className="text-destructive text-sm">{filesError}</p>
-          )}
-
-          {compilationFiles.length === 0 ? (
-            <p className="text-muted-foreground text-sm">
-              Nenhum arquivo de compilação.
-            </p>
-          ) : (
-            <ul className="space-y-2">
-              {compilationFiles.map((file, index) => (
-                <li key={file.id}>
-                  {index > 0 && <Separator className="mb-2" />}
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="font-mono text-sm break-all">
-                      {compilationFileName(file)}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="xs"
-                      onClick={() => {
-                        handleDeleteCompilationFile(file.id);
-                      }}
-                    >
-                      Remover
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Casos de teste</CardTitle>
-          <CardDescription>
-            Entradas e saídas esperadas usadas na correção.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <NewTestCaseForm
-            exerciseId={exercise.id}
-            onCreated={(testCase) => {
-              setTestCases((previous) => [...previous, testCase]);
-            }}
-          />
-
-          {casesError && (
-            <p className="text-destructive text-sm">{casesError}</p>
-          )}
-
-          {testCases.length === 0 ? (
-            <p className="text-muted-foreground text-sm">
-              Nenhum caso de teste cadastrado.
-            </p>
-          ) : (
-            <ul className="space-y-3">
-              {testCases.map((testCase) =>
-                editingCaseId === testCase.id ? (
-                  <li key={testCase.id}>
-                    <EditTestCaseForm
-                      exerciseId={exercise.id}
-                      testCase={testCase}
-                      onCancel={() => {
-                        setEditingCaseId(null);
-                      }}
-                      onSaved={(updated) => {
-                        setTestCases((previous) =>
-                          previous.map((item) =>
-                            item.id === updated.id ? updated : item,
-                          ),
-                        );
-                        setEditingCaseId(null);
-                      }}
-                    />
-                  </li>
-                ) : (
-                  <li
-                    key={testCase.id}
-                    className="space-y-2 rounded-lg border p-3"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-medium">
-                        Caso #{String(testCase.id)}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline">
-                          entrada: {testCase.input_type}
-                        </Badge>
-                        <Badge variant="outline">
-                          saída: {testCase.expected_output_type}
-                        </Badge>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="xs"
-                          onClick={() => {
-                            setEditingCaseId(testCase.id);
-                          }}
-                        >
-                          Editar
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          size="xs"
-                          onClick={() => {
-                            handleDeleteTestCase(testCase.id);
-                          }}
-                        >
-                          Remover
-                        </Button>
-                      </div>
-                    </div>
-
-                    <p className="text-muted-foreground text-xs">
-                      Tempo:{" "}
-                      {formatLimit(
-                        testCase.cpu_time_limit_seconds,
-                        formatCpuTime,
-                      )}{" "}
-                      · Memória:{" "}
-                      {formatLimit(testCase.mem_usage_limit_bytes, formatBytes)}{" "}
-                      · Arquivos: {String(testCase.files.length)}
-                    </p>
-
-                    <div className="text-muted-foreground text-xs">
-                      Visibilidade: entrada{" "}
-                      {testCase.show_input ? "visível" : "oculta"}, saída
-                      esperada{" "}
-                      {testCase.show_expected_output ? "visível" : "oculta"},
-                      saída do aluno{" "}
-                      {testCase.show_user_output ? "visível" : "oculta"}
-                    </div>
-
-                    {testCase.input && (
-                      <details>
-                        <summary className="cursor-pointer text-sm select-none">
-                          Ver entrada
-                        </summary>
-                        <pre className="bg-muted mt-2 max-h-48 overflow-auto rounded-lg p-3 text-xs whitespace-pre-wrap">
-                          {testCase.input}
-                        </pre>
-                      </details>
-                    )}
-                    {testCase.expected_output && (
-                      <details>
-                        <summary className="cursor-pointer text-sm select-none">
-                          Ver saída esperada
-                        </summary>
-                        <pre className="bg-muted mt-2 max-h-48 overflow-auto rounded-lg p-3 text-xs whitespace-pre-wrap">
-                          {testCase.expected_output}
-                        </pre>
-                      </details>
-                    )}
-                  </li>
-                ),
-              )}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+      ) : null}
     </div>
   );
 }

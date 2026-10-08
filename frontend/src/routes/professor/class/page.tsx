@@ -1,368 +1,398 @@
-import { useEffect, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router";
+import { useState } from "react";
 
+import {
+  BookOpenIcon,
+  CopyIcon,
+  PencilIcon,
+  PlusIcon,
+  Trash2Icon,
+} from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router";
+
+import { ConfirmButton } from "@/components/app/ConfirmDialog";
+import { PageHeader } from "@/components/app/PageHeader";
+import { SectionCard } from "@/components/app/SectionCard";
+import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
 import { ClassMembersCard } from "@/components/professor/ClassMembersCard";
 import { EditClassForm } from "@/components/professor/EditClassForm";
 import { NewExerciseForm } from "@/components/professor/NewExerciseForm";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { useAsync } from "@/hooks/use-async";
 import {
   deleteOffering,
   getOffering,
   getOfferingExercises,
-  type Exercise,
-  type Offering,
+  listOfferings,
 } from "@/lib/api";
-import { ApiRequestError } from "@/lib/api/client";
+import { errorMessage } from "@/lib/errors";
 import { formatDateTime } from "@/lib/format";
 
-/**
- * The class page is reachable by a co-professor too, for whom deleting is
- * forbidden: the API answers 403 and this reports it as a permission problem
- * instead of showing a failure.
- */
-function deleteErrorMessage(error: unknown): string {
-  if (error instanceof ApiRequestError && error.status === 403) {
-    return "Apenas o professor responsável pela turma pode excluí-la.";
+const breadcrumb = (
+  <Link
+    to="/professor"
+    className="text-muted-foreground text-sm hover:underline"
+  >
+    ← Gerenciar turmas
+  </Link>
+);
+
+/** The enrollment code with a copy affordance, so the professor can share it. */
+function EnrollmentCode({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      window.setTimeout(() => {
+        setCopied(false);
+      }, 2000);
+    } catch {
+      // The clipboard is unavailable (insecure context); the code stays visible.
+    }
   }
-  return error instanceof Error ? error.message : "Erro ao excluir a turma";
+
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      <code className="bg-muted rounded-md px-2 py-1 font-mono text-base tracking-widest">
+        {code}
+      </code>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        onClick={() => {
+          void handleCopy();
+        }}
+      >
+        <CopyIcon />
+        {copied ? "Copiado" : "Copiar"}
+      </Button>
+    </span>
+  );
 }
 
 /**
- * Page for a class offering. After creating a class, the offering is passed
- * through navigation state to avoid a loading flash; the page always
- * (re)fetches from the API so it also works on refresh/direct visits.
+ * Page for a single class: its details, exercises and members. A co-professor
+ * reaches the page too, but every owner-only action (editing, deleting, member
+ * management) is hidden for them; the API enforces the same rule.
  */
 export function ClassPage() {
-  const location = useLocation();
-  const navigate = useNavigate();
   const { offeringId } = useParams();
-  const initialOffering = (location.state as Offering | null) ?? null;
-  const [offering, setOffering] = useState<Offering | null>(initialOffering);
-  const [loading, setLoading] = useState(initialOffering === null);
-  const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const id = Number(offeringId);
+  const valid = Number.isInteger(id) && id > 0;
+  const key = offeringId ?? "";
 
-  const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [exercisesLoading, setExercisesLoading] = useState(true);
-  const [exercisesError, setExercisesError] = useState<string | null>(null);
-  const [showNewExercise, setShowNewExercise] = useState(false);
-  const [showEditClass, setShowEditClass] = useState(false);
+  const data = useAsync(
+    async () => {
+      if (!valid) throw new Error("Turma inválida.");
+      const [offering, managed] = await Promise.all([
+        getOffering(id),
+        listOfferings(),
+      ]);
+      const mine = managed.find((item) => item.id === id) ?? null;
+      return {
+        offering,
+        isOwner: mine?.is_owner ?? false,
+        ownerId: mine?.owner_id ?? null,
+        memberCount: mine?.member_count ?? null,
+        exerciseCount: mine?.exercise_count ?? null,
+      };
+    },
+    `offering-${key}`,
+    "Não foi possível carregar esta turma.",
+  );
 
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const exercises = useAsync(
+    () => (valid ? getOfferingExercises(id) : Promise.resolve([])),
+    `offering-exercises-${key}`,
+    "Não foi possível carregar os exercícios.",
+  );
+
+  const [editing, setEditing] = useState(false);
+  const [creatingExercise, setCreatingExercise] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const offeringIdNumber = Number(offeringId);
+  const info = data.data;
 
-  useEffect(() => {
-    let cancelled = false;
-    const id = offeringIdNumber;
-
-    async function loadOffering() {
-      if (!Number.isInteger(id) || id <= 0) {
-        setError("Turma inválida");
-        setLoading(false);
-        return;
-      }
-      try {
-        const data = await getOffering(id);
-        if (!cancelled) setOffering(data);
-      } catch {
-        if (!cancelled) setError("Turma não encontrada");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    void loadOffering();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [offeringIdNumber]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadExercises() {
-      if (!Number.isInteger(offeringIdNumber) || offeringIdNumber <= 0) {
-        setExercisesLoading(false);
-        return;
-      }
-      try {
-        const data = await getOfferingExercises(offeringIdNumber);
-        if (!cancelled) setExercises(data);
-      } catch {
-        if (!cancelled) {
-          setExercisesError("Não foi possível carregar os exercícios.");
-        }
-      } finally {
-        if (!cancelled) setExercisesLoading(false);
-      }
-    }
-
-    void loadExercises();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [offeringIdNumber]);
-
-  /**
-   * Deletes the class and everything in it. The API is the only thing that can
-   * confirm the deletion, so the page navigates back to the class list once it
-   * answers and only reports the failure otherwise.
-   */
-  function handleDeleteClass(id: number) {
-    setDeleting(true);
+  async function handleDeleteClass() {
     setDeleteError(null);
-    void (async () => {
-      try {
-        await deleteOffering(id);
-        void navigate("/professor");
-      } catch (apiError) {
-        setDeleteError(deleteErrorMessage(apiError));
-        setDeleting(false);
-      }
-    })();
+    try {
+      await deleteOffering(id);
+      void navigate("/professor");
+    } catch (error) {
+      setDeleteError(errorMessage(error, "Erro ao excluir a turma."));
+    }
   }
 
-  if (loading) {
+  if (data.loading && info === null) return <LoadingState />;
+
+  if (!info) {
     return (
-      <div className="flex justify-center p-12">
-        <div
-          aria-label="Carregando"
-          className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground"
-          role="status"
+      <div className="space-y-6">
+        <PageHeader title="Turma" breadcrumb={breadcrumb} />
+        <ErrorState
+          description={data.error ?? "Não foi possível carregar esta turma."}
+          onRetry={data.reload}
         />
       </div>
     );
   }
 
-  if (!offering) {
-    return (
-      <div className="mx-auto max-w-3xl p-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Turma não encontrada</CardTitle>
-            <CardDescription>
-              {error ?? "Não foi possível carregar os dados desta turma."}
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-    );
-  }
-
-  const parsedEndDate = offering.end_date ? new Date(offering.end_date) : null;
-  const endDate =
-    parsedEndDate && !Number.isNaN(parsedEndDate.getTime())
-      ? parsedEndDate.toLocaleString(undefined, {
-          dateStyle: "long",
-          timeStyle: "short",
-        })
-      : null;
+  const { offering, isOwner, ownerId, memberCount, exerciseCount } = info;
+  const exerciseList = exercises.data ?? [];
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 p-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-2xl">{offering.name}</CardTitle>
-          {offering.description && (
-            <CardDescription>{offering.description}</CardDescription>
-          )}
-          <CardAction>
+    <div className="space-y-6">
+      <PageHeader
+        title={offering.name}
+        description={offering.description || undefined}
+        breadcrumb={breadcrumb}
+        actions={
+          isOwner ? (
+            <Badge variant="default">Responsável</Badge>
+          ) : (
+            <Badge variant="info">Professor convidado</Badge>
+          )
+        }
+      />
+
+      <SectionCard
+        title="Detalhes da turma"
+        action={
+          isOwner ? (
             <Button
               size="sm"
-              variant={showEditClass ? "outline" : "default"}
+              variant="outline"
               onClick={() => {
-                setShowEditClass((previous) => !previous);
+                setEditing(true);
               }}
             >
-              {showEditClass ? "Fechar" : "Editar turma"}
+              <PencilIcon />
+              Editar turma
             </Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent className="space-y-6">
+          ) : undefined
+        }
+      >
+        <dl className="grid gap-4 sm:grid-cols-2">
           <div>
-            <p className="text-sm text-muted-foreground">Código de matrícula</p>
-            <p className="font-mono text-lg tracking-widest">
-              {offering.enrollment_code}
-            </p>
+            <dt className="text-muted-foreground text-sm">
+              Código de matrícula
+            </dt>
+            <dd className="mt-1">
+              <EnrollmentCode code={offering.enrollment_code} />
+            </dd>
           </div>
-          {endDate && (
-            <div>
-              <p className="text-sm text-muted-foreground">Disponível até</p>
-              <p>{endDate}</p>
-            </div>
-          )}
+          <div>
+            <dt className="text-muted-foreground text-sm">Disponível até</dt>
+            <dd className="mt-1">{formatDateTime(offering.end_date)}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground text-sm">Matrícula</dt>
+            <dd className="mt-1">
+              <Badge
+                variant={offering.visible_to_enroll ? "success" : "secondary"}
+              >
+                {offering.visible_to_enroll ? "Aberta" : "Encerrada"}
+              </Badge>
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground text-sm">Resumo</dt>
+            <dd className="mt-1 text-sm">
+              {memberCount ?? "—"} participante(s) · {exerciseCount ?? "—"}{" "}
+              exercício(s)
+            </dd>
+          </div>
+        </dl>
+      </SectionCard>
 
-          {showEditClass && (
-            <EditClassForm
-              offering={offering}
-              onSaved={(updated) => {
-                setOffering(updated);
-                setShowEditClass(false);
-              }}
-              onCancel={() => {
-                setShowEditClass(false);
-              }}
-            />
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Exercícios</CardTitle>
-          <CardDescription>
-            Crie e gerencie os exercícios desta turma.
-          </CardDescription>
-          <CardAction>
-            <Button
-              size="sm"
-              variant={showNewExercise ? "outline" : "default"}
-              onClick={() => {
-                setShowNewExercise((previous) => !previous);
-              }}
-            >
-              {showNewExercise ? "Fechar" : "Novo exercício"}
-            </Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {showNewExercise && (
-            <NewExerciseForm
-              offeringId={offering.id}
-              onCancel={() => {
-                setShowNewExercise(false);
-              }}
-              onCreated={(exercise) => {
-                setExercises((previous) => [exercise, ...previous]);
-                setShowNewExercise(false);
-              }}
-            />
-          )}
-
-          {exercisesLoading && (
-            <p className="text-muted-foreground text-sm">
-              Carregando exercícios…
-            </p>
-          )}
-
-          {exercisesError && (
-            <p className="text-destructive text-sm">{exercisesError}</p>
-          )}
-
-          {!exercisesLoading && !exercisesError && exercises.length === 0 && (
-            <p className="text-muted-foreground text-sm">
-              Nenhum exercício cadastrado ainda.
-            </p>
-          )}
-
-          {exercises.length > 0 && (
-            <ul className="space-y-3">
-              {exercises.map((exercise) => (
-                <li
-                  key={exercise.id}
-                  className="flex flex-wrap items-start justify-between gap-3 rounded-lg border p-3"
-                >
-                  <div className="min-w-0 space-y-1">
-                    <p className="font-medium">{exercise.title}</p>
-                    {exercise.description && (
-                      <p className="text-muted-foreground text-sm">
+      <SectionCard
+        title="Exercícios"
+        description="Crie e gerencie os exercícios desta turma."
+        action={
+          <Button
+            size="sm"
+            onClick={() => {
+              setCreatingExercise(true);
+            }}
+          >
+            <PlusIcon />
+            Novo exercício
+          </Button>
+        }
+      >
+        {exercises.loading && exercises.data === null ? (
+          <LoadingState className="py-8" />
+        ) : exercises.error ? (
+          <ErrorState
+            description={exercises.error}
+            onRetry={exercises.reload}
+          />
+        ) : exerciseList.length === 0 ? (
+          <EmptyState
+            icon={BookOpenIcon}
+            title="Nenhum exercício ainda"
+            description="Crie o primeiro exercício e defina o período de entrega."
+            action={
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setCreatingExercise(true);
+                }}
+              >
+                <PlusIcon />
+                Novo exercício
+              </Button>
+            }
+          />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Exercício</TableHead>
+                <TableHead>Abertura</TableHead>
+                <TableHead>Prazo</TableHead>
+                <TableHead>Situação</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {exerciseList.map((exercise) => (
+                <TableRow key={exercise.id}>
+                  <TableCell>
+                    <p
+                      className={
+                        exercise.removed
+                          ? "font-medium line-through"
+                          : "font-medium"
+                      }
+                    >
+                      {exercise.title}
+                    </p>
+                    {exercise.description ? (
+                      <p className="text-muted-foreground line-clamp-1 text-xs">
                         {exercise.description}
                       </p>
+                    ) : null}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground whitespace-nowrap text-xs">
+                    {formatDateTime(exercise.open_date)}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground whitespace-nowrap text-xs">
+                    {formatDateTime(exercise.deadline)}
+                  </TableCell>
+                  <TableCell>
+                    {exercise.removed ? (
+                      <Badge variant="destructive">Removido</Badge>
+                    ) : exercise.show_before_open_date ? (
+                      <Badge variant="outline">Visível antes da abertura</Badge>
+                    ) : (
+                      <Badge variant="secondary">Publicado</Badge>
                     )}
-                    <p className="text-muted-foreground text-xs">
-                      Prazo: {formatDateTime(exercise.deadline)}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 gap-2">
-                    <Link
-                      to={`/exercises/${String(exercise.id)}/submit`}
-                      className={buttonVariants({
-                        variant: "outline",
-                        size: "sm",
-                      })}
-                    >
-                      Enviar solução
-                    </Link>
-                    <Link
-                      to={`/professor/exercise/${String(exercise.id)}`}
-                      className={buttonVariants({
-                        variant: "secondary",
-                        size: "sm",
-                      })}
-                    >
-                      Gerenciar
-                    </Link>
-                  </div>
-                </li>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        render={
+                          <Link
+                            to={`/exercises/${String(exercise.id)}/submit`}
+                          />
+                        }
+                      >
+                        Enviar solução
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        render={
+                          <Link
+                            to={`/professor/exercise/${String(exercise.id)}`}
+                          />
+                        }
+                      >
+                        Gerenciar
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
               ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+            </TableBody>
+          </Table>
+        )}
+      </SectionCard>
 
-      <ClassMembersCard offeringId={offering.id} />
+      <ClassMembersCard
+        offeringId={offering.id}
+        isOwner={isOwner}
+        ownerId={ownerId}
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Excluir turma</CardTitle>
-          <CardDescription>
-            Excluir a turma apaga também os exercícios, os casos de teste e as
-            submissões dos alunos. Esta ação não pode ser desfeita.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {deleteError && (
-            <p className="text-destructive text-sm">{deleteError}</p>
-          )}
-
-          {confirmingDelete ? (
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="destructive"
-                disabled={deleting}
-                onClick={() => {
-                  handleDeleteClass(offering.id);
-                }}
-              >
-                {deleting ? "Excluindo…" : "Confirmar exclusão"}
-              </Button>
-              <Button
-                variant="outline"
-                disabled={deleting}
-                onClick={() => {
-                  setConfirmingDelete(false);
-                  setDeleteError(null);
-                }}
-              >
-                Cancelar
-              </Button>
-            </div>
-          ) : (
-            <Button
+      {isOwner ? (
+        <SectionCard
+          title="Excluir turma"
+          description="Excluir a turma apaga também os exercícios, os casos de teste e as submissões dos alunos. Esta ação não pode ser desfeita."
+        >
+          <div className="space-y-3">
+            {deleteError ? (
+              <Alert variant="destructive">
+                <AlertDescription>{deleteError}</AlertDescription>
+              </Alert>
+            ) : null}
+            <ConfirmButton
+              destructive
               variant="destructive"
-              onClick={() => {
-                setConfirmingDelete(true);
-                setDeleteError(null);
-              }}
+              title="Excluir turma"
+              description={`Excluir “${offering.name}” e todo o seu conteúdo?`}
+              confirmLabel="Excluir turma"
+              onConfirm={handleDeleteClass}
             >
+              <Trash2Icon />
               Excluir turma
-            </Button>
-          )}
-        </CardContent>
-      </Card>
+            </ConfirmButton>
+          </div>
+        </SectionCard>
+      ) : null}
+
+      {editing ? (
+        <EditClassForm
+          offering={offering}
+          onClose={() => {
+            setEditing(false);
+          }}
+          onSaved={() => {
+            setEditing(false);
+            data.reload();
+          }}
+        />
+      ) : null}
+
+      {creatingExercise ? (
+        <NewExerciseForm
+          offeringId={offering.id}
+          onClose={() => {
+            setCreatingExercise(false);
+          }}
+          onCreated={() => {
+            setCreatingExercise(false);
+            exercises.reload();
+          }}
+        />
+      ) : null}
     </div>
   );
 }
