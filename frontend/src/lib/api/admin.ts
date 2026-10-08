@@ -1,4 +1,5 @@
 import { apiDelete, apiGet, apiPut } from "./client";
+import type { OfferingMember } from "./offerings";
 import type { PlatformSettings } from "./settings";
 
 /** A user as listed and edited from the admin panel. */
@@ -56,16 +57,19 @@ export const USER_ROLES = ["student", "professor", "admin", "dev"] as const;
  */
 export const ADMIN_PAGE_LIMIT = 200;
 
-function listQuery(query: string): string {
-  const params = new URLSearchParams({ limit: String(ADMIN_PAGE_LIMIT) });
+function listQuery(query: string, offset: number): string {
+  const params = new URLSearchParams({
+    limit: String(ADMIN_PAGE_LIMIT),
+    offset: String(Math.max(0, offset)),
+  });
   const trimmed = query.trim();
   if (trimmed !== "") params.set("query", trimmed);
   return `?${params.toString()}`;
 }
 
 /** List the platform's users, optionally filtered by a search term. */
-export function adminListUsers(query = ""): Promise<AdminUser[]> {
-  return apiGet<AdminUser[]>(`/api/v1/admin/users${listQuery(query)}`);
+export function adminListUsers(query = "", offset = 0): Promise<AdminUser[]> {
+  return apiGet<AdminUser[]>(`/api/v1/admin/users${listQuery(query, offset)}`);
 }
 
 /** Update any user of the platform. */
@@ -82,8 +86,22 @@ export function adminDeleteUser(id: number): Promise<void> {
 }
 
 /** List every class on the platform, optionally filtered by a search term. */
-export function adminListOfferings(query = ""): Promise<AdminOffering[]> {
-  return apiGet<AdminOffering[]>(`/api/v1/admin/offerings${listQuery(query)}`);
+export function adminListOfferings(
+  query = "",
+  offset = 0,
+): Promise<AdminOffering[]> {
+  return apiGet<AdminOffering[]>(
+    `/api/v1/admin/offerings${listQuery(query, offset)}`,
+  );
+}
+
+/** List the members of any class, from the admin panel. */
+export function adminListOfferingMembers(
+  offeringId: number,
+): Promise<OfferingMember[]> {
+  return apiGet<OfferingMember[]>(
+    `/api/v1/admin/offerings/${String(offeringId)}/members`,
+  );
 }
 
 /** Update any class on the platform, including transferring its ownership. */
