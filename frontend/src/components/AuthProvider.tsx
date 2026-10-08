@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { Spinner } from "@/components/ui/spinner";
 import { AuthContext } from "@/hooks/use-auth";
 import {
   checkAuth,
@@ -100,8 +101,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     [user, refreshAuth, refreshUser, signOut],
   );
 
-  // Show a loader while checking auth to prevent "flickering" or redirects
-  if (loading) return null;
+  // Show a loader while the session is checked, instead of a blank screen, so
+  // the first paint is never an empty page.
+  if (loading) {
+    return (
+      <div className="bg-background flex min-h-svh items-center justify-center">
+        <Spinner
+          className="text-muted-foreground size-6"
+          label="Verificando a sessão"
+        />
+      </div>
+    );
+  }
 
   return <AuthContext value={auth}>{children}</AuthContext>;
 };
