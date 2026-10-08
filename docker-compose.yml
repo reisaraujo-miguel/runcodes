@@ -64,16 +64,20 @@ services:
       database:
         condition: service_started
 
-  # Ensures the host's ./exec directory exists and is writable by the
-  # unprivileged judge before it starts. On a fresh checkout Docker creates a
-  # missing bind-mount source as a root-owned directory, which the judge (UID
-  # 1000) cannot create its per-commit workspaces in; this one-shot init chmods
-  # it automatically so no manual host setup is required.
+  # Prepares the host's ./exec directory before the judge starts. The directory
+  # is tracked in the repository (exec/.gitkeep) because podman, unlike Docker,
+  # refuses to create a missing bind-mount source: without it, container
+  # creation fails with "crun: cannot stat .../exec: No such file or directory".
+  # This one-shot then makes it writable by the judge (UID 1000) so it can create
+  # its per-commit workspaces, without any manual host setup.
   judge-exec-init:
     image: alpine:3.24
     user: "0:0"
     restart: "no"
-    command: ["sh", "-c", "mkdir -p /exec && chmod 0777 /exec"]
+    # Best effort: if the chmod is denied (an unusual userns mapping), the judge
+    # still starts, since the directory is owned by the judge's UID. It must not
+    # fail the `service_completed_successfully` gate below.
+    command: ["sh", "-c", "mkdir -p /exec && chmod 0777 /exec || true"]
     volumes:
       - ./exec:/exec
     networks:

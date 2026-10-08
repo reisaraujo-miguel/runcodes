@@ -78,10 +78,11 @@ nonce and the per-case limits) is in the same file.
 
 ## Getting started
 
-The whole stack runs with Docker Compose. The judge additionally needs a
-**rootless podman** API socket on the host and a directory shared with it (see
-[`judge/README.md`](judge/README.md)); Compose creates and prepares `./exec`
-automatically, so no manual setup is required there:
+The whole stack runs with Docker Compose (or `podman compose`). The judge
+additionally needs a **rootless podman** API socket on the host and a directory
+shared with it (see [`judge/README.md`](judge/README.md)); the repository ships
+`./exec` and the one-shot `judge-exec-init` service prepares it, so no manual
+setup is required there:
 
 ```bash
 # Rootless podman API socket used by the judge. Start it *before* `docker compose

@@ -12,7 +12,12 @@ dist
 dist-ssr
 *.local
 
-exec
+# Judge's shared execution directory (mounted at /exec). Keep the directory
+# itself tracked via .gitkeep so a fresh checkout already has it: podman, unlike
+# Docker, refuses to create a missing bind-mount source. Everything the judge
+# writes inside is ignored.
+/exec/*
+!/exec/.gitkeep
 
 # Editor directories and files
 .vscode/*
