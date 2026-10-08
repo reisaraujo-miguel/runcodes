@@ -6,6 +6,7 @@ import { usePlatformSettings } from "@/hooks/use-platform-settings";
 
 import { TermsModal } from "./TermsModal";
 
+/** The marketing panel shown beside the sign-in card. */
 export function AboutSection() {
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
   const { contact_disclaimer_html: contactDisclaimerHtml } =
@@ -22,56 +23,48 @@ export function AboutSection() {
   // instead of rendering empty.
   const hasContactDisclaimer = sanitizedContactDisclaimer.trim() !== "";
 
-  const openTermsModal = () => {
-    setIsTermsModalOpen(true);
-  };
-  const closeTermsModal = () => {
-    setIsTermsModalOpen(false);
-  };
-
   return (
-    <>
-      <div className="flex flex-col justify-center space-y-6">
-        <div className="space-y-2">
-          <h1 className="text-4xl font-bold tracking-tight">
-            Bem-vindo ao RunCodes ICMC
-          </h1>
-          <p className="text-xl text-muted-foreground">
-            O RunCodes é um sistema de submissão e correção automática de
-            exercícios de programação, com suporte a diversas linguagens como
-            C/C++, Python, Java, Haskell, GoLang, dentre outras.
-          </p>
-        </div>
-
-        <div className="pt-4">
-          <p className="text-sm text-muted-foreground">
-            Ao navegar no RunCodes você concorda com os{" "}
-            <button
-              type="button"
-              onClick={openTermsModal}
-              className="cursor-pointer text-foreground underline underline-offset-4"
-            >
-              termos de uso
-            </button>
-            .
-          </p>
-        </div>
-
-        {hasContactDisclaimer && (
-          <div className="pt-4">
-            <p
-              className="text-sm text-muted-foreground [&_a]:text-foreground"
-              // Content is sanitized with DOMPurify before being inserted.
-              // eslint-disable-next-line react-dom/no-dangerously-set-innerhtml
-              dangerouslySetInnerHTML={{
-                __html: sanitizedContactDisclaimer,
-              }}
-            />
-          </div>
-        )}
+    <div className="flex flex-col justify-center space-y-6">
+      <div className="space-y-3">
+        <h1 className="text-3xl font-semibold tracking-tight text-balance lg:text-4xl">
+          Bem-vindo ao RunCodes ICMC
+        </h1>
+        <p className="text-muted-foreground text-lg text-balance">
+          Um sistema de submissão e correção automática de exercícios de
+          programação, com suporte a diversas linguagens como C/C++, Python,
+          Java, Haskell e Go.
+        </p>
       </div>
 
-      <TermsModal isOpen={isTermsModalOpen} onClose={closeTermsModal} />
-    </>
+      <p className="text-muted-foreground text-sm">
+        Ao navegar no RunCodes você concorda com os{" "}
+        <button
+          type="button"
+          onClick={() => {
+            setIsTermsModalOpen(true);
+          }}
+          className="text-foreground font-medium underline underline-offset-4"
+        >
+          termos de uso
+        </button>
+        .
+      </p>
+
+      {hasContactDisclaimer ? (
+        <p
+          className="text-muted-foreground text-sm [&_a]:text-foreground [&_a]:underline"
+          // Content is sanitized with DOMPurify before being inserted.
+          // eslint-disable-next-line react-dom/no-dangerously-set-innerhtml
+          dangerouslySetInnerHTML={{ __html: sanitizedContactDisclaimer }}
+        />
+      ) : null}
+
+      <TermsModal
+        isOpen={isTermsModalOpen}
+        onClose={() => {
+          setIsTermsModalOpen(false);
+        }}
+      />
+    </div>
   );
 }

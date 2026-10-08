@@ -43,7 +43,7 @@ export function TermsModal({ isOpen, onClose }: TermsModalProps) {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="prose prose-sm max-w-none">
+        <div className="space-y-3 text-sm [&_h3]:mt-4 [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_a]:underline">
           <h3 className="font-bold">1. Aceitação dos Termos</h3>
           <p>
             Ao acessar e utilizar o RunCodes, você concorda com estes Termos de
