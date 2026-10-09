@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -27,30 +28,46 @@ function initials(name: string): string {
  * The account control pinned to the bottom of the sidebar: the signed-in user,
  * a shortcut to their profile and the way out.
  */
-export function UserMenu({ className }: { className?: string }) {
+export function UserMenu({
+  className,
+  collapsed = false,
+}: {
+  className?: string;
+  /** Compact rail: the avatar alone, with the name as its accessible label. */
+  collapsed?: boolean;
+}) {
   const { user, signOut } = useAuth();
   if (!user) return null;
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
+        aria-label={collapsed ? user.name : undefined}
+        title={collapsed ? user.name : undefined}
         className={cn(
-          "hover:bg-accent data-open:bg-accent flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left outline-none transition-colors",
+          "hover:bg-accent data-open:bg-accent flex w-full items-center rounded-lg text-left outline-none transition-colors",
+          collapsed ? "justify-center py-2" : "gap-3 px-2 py-2",
           className,
         )}
       >
         <Avatar className="size-9">
           <AvatarFallback>{initials(user.name)}</AvatarFallback>
         </Avatar>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{user.name}</p>
-          <p className="text-muted-foreground truncate text-xs">{user.email}</p>
-        </div>
+        {collapsed ? null : (
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">{user.name}</p>
+            <p className="text-muted-foreground truncate text-xs">
+              {user.email}
+            </p>
+          </div>
+        )}
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="start" className="w-60">
-        <DropdownMenuLabel>
-          {platformRoleLabel(user.role)}
-        </DropdownMenuLabel>
+        {/* Base UI's group label only works inside a group, so the role header
+            is wrapped in one. */}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>{platformRoleLabel(user.role)}</DropdownMenuLabel>
+        </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem render={<NavLink to="/profile" />}>
           <UserRoundIcon />

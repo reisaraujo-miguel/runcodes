@@ -1,31 +1,56 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router";
 
-import { MenuIcon } from "lucide-react";
+import { MenuIcon, PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react";
 
 import { Brand } from "@/components/app/Brand";
 import { UserMenu } from "@/components/app/UserMenu";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import type { NavSection } from "@/lib/nav";
 import { navSectionsFor } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
+const SIDEBAR_COLLAPSED_KEY = "sidebar-collapsed";
+
+/** The persisted compact-rail preference, defaulting to expanded. */
+function readSidebarCollapsed(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true";
+  } catch {
+    // localStorage may be unavailable (e.g., in private browsing)
+    return false;
+  }
+}
+
 /** The sidebar links, shared by the desktop rail and the mobile drawer. */
 function SidebarNav({
   sections,
+  collapsed = false,
   onNavigate,
 }: {
   sections: NavSection[];
+  /** Icon-only rail: labels are hidden and shown as a title on hover. */
+  collapsed?: boolean;
   onNavigate?: () => void;
 }) {
   return (
-    <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-4">
+    <nav
+      className={cn(
+        "flex-1 space-y-6 overflow-y-auto py-4",
+        collapsed ? "px-2" : "px-3",
+      )}
+    >
       {sections.map((section, index) => (
         <div key={section.label ?? `section-${String(index)}`}>
-          {section.label ? (
+          {section.label && !collapsed ? (
             <p className="text-muted-foreground px-3 pb-2 text-xs font-semibold tracking-wider uppercase">
               {section.label}
             </p>
@@ -37,9 +62,13 @@ function SidebarNav({
                   to={item.to}
                   end={item.end}
                   onClick={onNavigate}
+                  // The label is the only accessible name once it is hidden.
+                  aria-label={collapsed ? item.label : undefined}
+                  title={collapsed ? item.label : undefined}
                   className={({ isActive }) =>
                     cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                      "flex items-center gap-3 rounded-lg text-sm font-medium transition-colors",
+                      collapsed ? "justify-center px-2 py-2" : "px-3 py-2",
                       isActive
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -47,7 +76,7 @@ function SidebarNav({
                   }
                 >
                   <item.icon className="size-4.5 shrink-0" aria-hidden />
-                  {item.label}
+                  {collapsed ? null : item.label}
                 </NavLink>
               </li>
             ))}
@@ -61,19 +90,63 @@ function SidebarNav({
 /** The full sidebar body: brand, navigation and the account control. */
 function SidebarBody({
   sections,
+  collapsed = false,
+  onToggleCollapsed,
   onNavigate,
 }: {
   sections: NavSection[];
+  collapsed?: boolean;
+  /** Provided only for the desktop rail; the mobile drawer cannot collapse. */
+  onToggleCollapsed?: () => void;
   onNavigate?: () => void;
 }) {
   return (
     <div className="bg-sidebar flex h-full flex-col">
-      <div className="flex h-16 items-center border-b px-5">
-        <Brand />
+      <div
+        className={cn(
+          "flex h-16 items-center border-b",
+          collapsed ? "justify-center px-2" : "justify-between px-5",
+        )}
+      >
+        {collapsed ? null : <Brand />}
+        {onToggleCollapsed ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-muted-foreground shrink-0"
+                  aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
+                  onClick={onToggleCollapsed}
+                />
+              }
+            >
+              {collapsed ? <PanelLeftOpenIcon /> : <PanelLeftCloseIcon />}
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              {collapsed ? "Expandir menu" : "Recolher menu"}
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
       </div>
-      <SidebarNav sections={sections} onNavigate={onNavigate} />
-      <div className="space-y-1 border-t p-3">
-        <UserMenu />
+      <SidebarNav
+        sections={sections}
+        collapsed={collapsed}
+        onNavigate={onNavigate}
+      />
+      <div className={cn("border-t", collapsed ? "p-2" : "p-3")}>
+        {collapsed ? (
+          <div className="flex flex-col items-center gap-1">
+            <ThemeToggle />
+            <UserMenu collapsed />
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <UserMenu className="min-w-0 flex-1" />
+            <ThemeToggle />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -87,12 +160,32 @@ function SidebarBody({
 export function AppShell() {
   const { user } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(readSidebarCollapsed);
   const sections = navSectionsFor(user?.role ?? "student");
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed));
+    } catch {
+      // localStorage may be unavailable (e.g., in private browsing)
+    }
+  }, [collapsed]);
 
   return (
     <div className="bg-muted/30 min-h-svh">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r lg:block">
-        <SidebarBody sections={sections} />
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-40 hidden border-r transition-[width] duration-200 ease-out lg:block",
+          collapsed ? "w-16" : "w-64",
+        )}
+      >
+        <SidebarBody
+          sections={sections}
+          collapsed={collapsed}
+          onToggleCollapsed={() => {
+            setCollapsed((value) => !value);
+          }}
+        />
       </aside>
 
       <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
@@ -111,7 +204,12 @@ export function AppShell() {
         </SheetContent>
       </Sheet>
 
-      <div className="lg:pl-64">
+      <div
+        className={cn(
+          "transition-[padding] duration-200 ease-out",
+          collapsed ? "lg:pl-16" : "lg:pl-64",
+        )}
+      >
         <header className="bg-background/80 sticky top-0 z-30 flex h-16 items-center gap-2 border-b px-4 backdrop-blur lg:hidden">
           <Button
             variant="ghost"
