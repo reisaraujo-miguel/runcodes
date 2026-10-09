@@ -17,7 +17,7 @@ RUN bun install --frozen-lockfile
 COPY . .
 RUN bun run build
 
-FROM caddy:2.11.4-alpine AS dist
+FROM caddy:2.11.6-alpine AS dist
 
 RUN addgroup -S caddy && adduser -S caddy -G caddy
 
