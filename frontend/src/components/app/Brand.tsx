@@ -1,7 +1,7 @@
 import { NavLink } from "react-router";
 
-import logoDark from "@/assets/runcodes-logo/logoblue.png";
-import logoLight from "@/assets/runcodes-logo/logo.png";
+import logoDark from "@/assets/runcodes-logo/runcodes-logo-dark.svg";
+import logoLight from "@/assets/runcodes-logo/runcodes-logo-light.svg";
 import { cn } from "@/lib/utils";
 
 /**
@@ -19,9 +19,9 @@ export function Brand({ className }: { className?: string }) {
       )}
       aria-label="RunCodes — início"
     >
-      <img src={logoDark} alt="RunCodes" className="h-7 w-auto dark:hidden" />
+      <img src={logoLight} alt="RunCodes" className="h-7 w-auto dark:hidden" />
       <img
-        src={logoLight}
+        src={logoDark}
         alt="RunCodes"
         className="hidden h-7 w-auto dark:block"
       />
