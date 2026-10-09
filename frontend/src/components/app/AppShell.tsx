@@ -17,6 +17,7 @@ import { useAuth } from "@/hooks/use-auth";
 import type { NavSection } from "@/lib/nav";
 import { navSectionsFor } from "@/lib/nav";
 import { cn } from "@/lib/utils";
+import { GitHubLink } from "./GitHubLink";
 
 const SIDEBAR_COLLAPSED_KEY = "sidebar-collapsed";
 
@@ -105,7 +106,7 @@ function SidebarBody({
       <div
         className={cn(
           "flex h-16 items-center border-b",
-          collapsed ? "justify-center px-2" : "justify-between px-5",
+          collapsed ? "justify-center px-2" : "justify-between px-5 gap-4",
         )}
       >
         {collapsed ? null : <Brand />}
@@ -138,6 +139,7 @@ function SidebarBody({
       <div className={cn("border-t", collapsed ? "p-2" : "p-3")}>
         {collapsed ? (
           <div className="flex flex-col items-center gap-1">
+            <GitHubLink />
             <ThemeToggle />
             <UserMenu collapsed />
           </div>
@@ -145,6 +147,7 @@ function SidebarBody({
           <div className="flex items-center gap-2">
             <UserMenu className="min-w-0 flex-1" />
             <ThemeToggle />
+            <GitHubLink />
           </div>
         )}
       </div>
@@ -222,8 +225,9 @@ export function AppShell() {
             <MenuIcon />
           </Button>
           <Brand />
-          <div className="ml-auto">
+          <div className="ml-auto flex gap-2 items-center">
             <ThemeToggle />
+            <GitHubLink />
           </div>
         </header>
 
