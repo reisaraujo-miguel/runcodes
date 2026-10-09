@@ -5,7 +5,6 @@ import {
   LayoutDashboardIcon,
   SettingsIcon,
   SquarePenIcon,
-  UserRoundIcon,
   UsersIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -82,9 +81,7 @@ export function navSectionsFor(role: UserRole): NavSection[] {
     });
   }
 
-  sections.push({
-    items: [{ to: "/profile", label: "Meu Perfil", icon: UserRoundIcon }],
-  });
-
+  // The profile page is reached from the account menu (UserMenu), not the
+  // sidebar, so it is not a nav item.
   return sections;
 }
