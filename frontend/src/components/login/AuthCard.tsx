@@ -35,7 +35,10 @@ const signUpSchema = z
       .string()
       .min(1, "Informe o seu nome")
       .max(100, "O nome deve ter no máximo 100 caracteres"),
-    email: z.string().min(1, "Informe o seu email").pipe(z.email("Email inválido")),
+    email: z
+      .string()
+      .min(1, "Informe o seu email")
+      .pipe(z.email("Email inválido")),
     password: z
       .string()
       .min(8, "A senha deve ter no mínimo 8 caracteres")
@@ -79,11 +82,12 @@ function LoginForm() {
   if (done) return <Navigate to="/" replace />;
 
   return (
-    <Card className="w-full max-w-sm">
-      <form
-        onSubmit={(...args) => void form.handleSubmit(onSubmit)(...args)}
-        noValidate
-      >
+    <form
+      className="w-full max-w-sm"
+      onSubmit={(...args) => void form.handleSubmit(onSubmit)(...args)}
+      noValidate
+    >
+      <Card>
         <CardHeader>
           <CardTitle>Entrar na sua conta</CardTitle>
           <CardDescription>
@@ -130,7 +134,9 @@ function LoginForm() {
             className="w-full"
             disabled={form.formState.isSubmitting}
           >
-            {form.formState.isSubmitting ? <Spinner className="size-4" /> : null}
+            {form.formState.isSubmitting ? (
+              <Spinner className="size-4" />
+            ) : null}
             Entrar
           </Button>
           <p className="text-muted-foreground text-sm">
@@ -143,8 +149,8 @@ function LoginForm() {
             </Link>
           </p>
         </CardFooter>
-      </form>
-    </Card>
+      </Card>
+    </form>
   );
 }
 
@@ -186,11 +192,12 @@ function SignUpForm() {
   const errors = form.formState.errors;
 
   return (
-    <Card className="w-full max-w-sm">
-      <form
-        onSubmit={(...args) => void form.handleSubmit(onSubmit)(...args)}
-        noValidate
-      >
+    <form
+      className="w-full max-w-sm"
+      onSubmit={(...args) => void form.handleSubmit(onSubmit)(...args)}
+      noValidate
+    >
+      <Card>
         <CardHeader>
           <CardTitle>Criar uma conta</CardTitle>
           <CardDescription>
@@ -233,18 +240,14 @@ function SignUpForm() {
             <FieldError errors={[errors.password]} />
           </Field>
 
-          <Field
-            data-invalid={errors.passwordConfirmation ? true : undefined}
-          >
+          <Field data-invalid={errors.passwordConfirmation ? true : undefined}>
             <FieldLabel htmlFor="passwordConfirmation">
               Confirmar senha
             </FieldLabel>
             <PasswordInput
               id="passwordConfirmation"
               autoComplete="new-password"
-              aria-invalid={
-                errors.passwordConfirmation ? true : undefined
-              }
+              aria-invalid={errors.passwordConfirmation ? true : undefined}
               {...form.register("passwordConfirmation")}
             />
             <FieldError errors={[errors.passwordConfirmation]} />
@@ -263,7 +266,9 @@ function SignUpForm() {
             className="w-full"
             disabled={form.formState.isSubmitting}
           >
-            {form.formState.isSubmitting ? <Spinner className="size-4" /> : null}
+            {form.formState.isSubmitting ? (
+              <Spinner className="size-4" />
+            ) : null}
             Criar conta
           </Button>
           <p className="text-muted-foreground text-sm">
@@ -276,8 +281,8 @@ function SignUpForm() {
             </Link>
           </p>
         </CardFooter>
-      </form>
-    </Card>
+      </Card>
+    </form>
   );
 }
 
