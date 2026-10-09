@@ -26,12 +26,12 @@ export function Brand({ className }: { className?: string }) {
       <LogoLight
         role="img"
         aria-label="RunCodes"
-        className="h-40 w-auto dark:hidden"
+        className="h-8 w-auto dark:hidden"
       />
       <LogoDark
         role="img"
         aria-label="RunCodes"
-        className="hidden h-40 w-auto dark:block"
+        className="hidden h-8 w-auto dark:block"
       />
     </NavLink>
   );

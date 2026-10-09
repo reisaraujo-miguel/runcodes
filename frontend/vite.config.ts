@@ -40,7 +40,7 @@ export default defineConfig({
           ],
         },
         memo: true,
-        icon: true,
+        //icon: true,
         replaceAttrValues: {
           "#000": "currentColor",
           "#000000": "currentColor",
