@@ -1,13 +1,17 @@
 import { NavLink } from "react-router";
 
-import logoDark from "@/assets/runcodes-logo/runcodes-logo-dark.svg";
-import logoLight from "@/assets/runcodes-logo/runcodes-logo-light.svg";
+import LogoDark from "@/assets/runcodes-logo/runcodes-logo-dark.svg?react";
+import LogoLight from "@/assets/runcodes-logo/runcodes-logo-light.svg?react";
 import { cn } from "@/lib/utils";
 
 /**
  * The RunCodes wordmark. Two source images exist — a dark-blue wordmark for light
  * surfaces and a white one for dark surfaces — so the right one is shown per
  * theme without recoloring the artwork.
+ *
+ * The wordmarks are imported as React components (the `?react` query) so Vite
+ * runs them through SVGR/SVGO at build time; importing them as plain URLs would
+ * bypass the optimisation entirely.
  */
 export function Brand({ className }: { className?: string }) {
   return (
@@ -19,11 +23,15 @@ export function Brand({ className }: { className?: string }) {
       )}
       aria-label="RunCodes — início"
     >
-      <img src={logoLight} alt="RunCodes" className="h-7 w-auto dark:hidden" />
-      <img
-        src={logoDark}
-        alt="RunCodes"
-        className="hidden h-7 w-auto dark:block"
+      <LogoLight
+        role="img"
+        aria-label="RunCodes"
+        className="h-40 w-auto dark:hidden"
+      />
+      <LogoDark
+        role="img"
+        aria-label="RunCodes"
+        className="hidden h-40 w-auto dark:block"
       />
     </NavLink>
   );
