@@ -25,29 +25,24 @@ export function AdminSettingsPage() {
         description="Dados de contato exibidos publicamente na página de login."
       />
 
-      <div className="max-w-2xl">
-        <SectionCard
-          title="Contato"
-          description="O email e o aviso mostrados na página de login."
-        >
-          {settings.loading ? (
-            <LoadingState />
-          ) : settings.error ? (
-            <ErrorState
-              description={settings.error}
-              onRetry={settings.reload}
-            />
-          ) : settings.data ? (
-            <SettingsForm settings={settings.data} />
-          ) : (
-            <EmptyState
-              icon={SettingsIcon}
-              title="Sem configurações"
-              description="Não há configurações para exibir."
-            />
-          )}
-        </SectionCard>
-      </div>
+      <SectionCard
+        title="Contato"
+        description="O email e o aviso mostrados na página de login."
+      >
+        {settings.loading ? (
+          <LoadingState />
+        ) : settings.error ? (
+          <ErrorState description={settings.error} onRetry={settings.reload} />
+        ) : settings.data ? (
+          <SettingsForm settings={settings.data} />
+        ) : (
+          <EmptyState
+            icon={SettingsIcon}
+            title="Sem configurações"
+            description="Não há configurações para exibir."
+          />
+        )}
+      </SectionCard>
     </div>
   );
 }
