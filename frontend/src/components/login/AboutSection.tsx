@@ -27,7 +27,7 @@ export function AboutSection() {
     <div className="flex flex-col justify-center space-y-6">
       <div className="space-y-3">
         <h1 className="text-3xl font-semibold tracking-tight text-balance lg:text-4xl">
-          Bem-vindo ao RunCodes ICMC
+          Bem-vinde ao RunCodes
         </h1>
         <p className="text-muted-foreground text-lg text-balance">
           Um sistema de submissão e correção automática de exercícios de
