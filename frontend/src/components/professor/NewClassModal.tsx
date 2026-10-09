@@ -1,9 +1,6 @@
-import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { useNavigate } from "react-router";
-import { z } from "zod";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,73 +10,53 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { createOffering } from "@/lib/api/offerings";
-
-const formSchema = z.object({
-  Name: z.string().min(1, "O nome da turma é obrigatório"),
-  EndDate: z.string().min(1, "A data limite é obrigatória"),
-  Description: z.string().optional(),
-});
-
-/**
- * Converts a date-only value (YYYY-MM-DD) from a date input into an ISO 8601
- * timestamp representing the end of that day in the user's local timezone.
- * Sending the instant (instead of a date-only string) lets the backend store
- * a timezone-aware end date that can be shown in other users' timezones.
- */
-function toEndOfDayTimestamp(dateOnly: string): string {
-  const [year, month, day] = dateOnly.split("-");
-  if (!year || !month || !day) {
-    throw new Error(`invalid date value: ${dateOnly}`);
-  }
-  return new Date(
-    Number(year),
-    Number(month) - 1,
-    Number(day),
-    23,
-    59,
-    59,
-  ).toISOString();
-}
+import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
+import { useSubmit } from "@/hooks/use-submit";
+import { createOffering, type Offering } from "@/lib/api";
+import { dateInputToTimestamp } from "@/lib/format";
 
 /**
- * Modal for creating a new class offering. Rendered on top of the current
- * page (no route navigation) and navigates to the new class page on success.
+ * Modal to create a new class. Owns the form but not the navigation: the page
+ * receives the created class and decides what to do next.
  */
-export function NewClassModal({ onClose }: { onClose: () => void }) {
-  const navigate = useNavigate();
-  const [apiError, setApiError] = useState<string | null>(null);
+export function NewClassModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (offering: Offering) => void;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const { pending, error, setError, run } = useSubmit(
+    "Não foi possível criar a turma.",
+  );
 
-  const form = useForm({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      Name: "",
-      EndDate: "",
-      Description: "",
-    },
-  });
-
-  const onSubmit = async (data: z.infer<typeof formSchema>) => {
-    try {
-      setApiError(null);
-      const offering = await createOffering({
-        name: data.Name,
-        end_date: toEndOfDayTimestamp(data.EndDate),
-        description: data.Description,
-      });
-      // Open the newly created class page.
-      void navigate(`/professor/class/${String(offering.id)}`, {
-        state: offering,
-      });
-      onClose();
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Erro ao criar a turma";
-      setApiError(message);
+  function handleSubmit() {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setError("O nome da turma é obrigatório.");
+      return;
     }
-  };
+    const endDateIso = dateInputToTimestamp(endDate, "end");
+    if (!endDateIso) {
+      setError("Informe a data limite da turma.");
+      return;
+    }
+
+    void run(async () => {
+      const offering = await createOffering({
+        name: trimmedName,
+        end_date: endDateIso,
+        description: description.trim(),
+      });
+      onCreated(offering);
+    });
+  }
 
   return (
     <Dialog
@@ -88,63 +65,78 @@ export function NewClassModal({ onClose }: { onClose: () => void }) {
         if (!open) onClose();
       }}
     >
-      <DialogContent className="sm:max-w-2xl max-h-[calc(100vh-2rem)] overflow-y-auto">
+      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Criar Nova Turma</DialogTitle>
+          <DialogTitle>Nova turma</DialogTitle>
           <DialogDescription>
-            Preencha os dados para criar uma nova turma.
+            Crie uma disciplina e compartilhe o código de matrícula com a turma.
           </DialogDescription>
         </DialogHeader>
 
         <form
-          onSubmit={(...args) => void form.handleSubmit(onSubmit)(...args)}
           className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleSubmit();
+          }}
         >
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="Name">Nome da Turma</FieldLabel>
-              <Input
-                id="Name"
-                placeholder="Digite o nome da turma"
-                {...form.register("Name")}
-                required
-              />
-            </Field>
+          <div className="space-y-2">
+            <Label htmlFor="new-class-name">Nome da turma</Label>
+            <Input
+              id="new-class-name"
+              value={name}
+              onChange={(event) => {
+                setName(event.target.value);
+              }}
+              placeholder="Ex.: Algoritmos — Turma A"
+              required
+            />
+          </div>
 
-            <Field>
-              <FieldLabel htmlFor="EndDate">Disponível até</FieldLabel>
-              <Input
-                id="EndDate"
-                type="date"
-                {...form.register("EndDate")}
-                required
-              />
-              {form.formState.errors.EndDate && (
-                <p className="text-sm text-destructive">
-                  {form.formState.errors.EndDate.message}
-                </p>
-              )}
-            </Field>
+          <div className="space-y-2">
+            <Label htmlFor="new-class-description">Descrição</Label>
+            <Textarea
+              id="new-class-description"
+              value={description}
+              onChange={(event) => {
+                setDescription(event.target.value);
+              }}
+              placeholder="Descrição da turma (opcional)"
+            />
+          </div>
 
-            <Field>
-              <FieldLabel htmlFor="Description">Descrição</FieldLabel>
-              <Input
-                id="Description"
-                placeholder="Digite uma descrição (opcional)"
-                {...form.register("Description")}
-              />
-            </Field>
-          </FieldGroup>
+          <div className="space-y-2">
+            <Label htmlFor="new-class-end-date">Disponível até</Label>
+            <Input
+              id="new-class-end-date"
+              type="date"
+              value={endDate}
+              onChange={(event) => {
+                setEndDate(event.target.value);
+              }}
+              required
+            />
+          </div>
 
-          {apiError && (
-            <p className="text-sm text-destructive text-center">{apiError}</p>
-          )}
+          {error ? (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
 
           <DialogFooter>
-            <Button type="button" variant="destructive" onClick={onClose}>
-              Fechar
+            <Button
+              type="button"
+              variant="outline"
+              disabled={pending}
+              onClick={onClose}
+            >
+              Cancelar
             </Button>
-            <Button type="submit">Criar Turma</Button>
+            <Button type="submit" disabled={pending}>
+              {pending ? <Spinner className="size-4" /> : null}
+              Criar turma
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

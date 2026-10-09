@@ -1,235 +1,93 @@
-import { useEffect, useState, type SubmitEvent } from "react";
+import { useState, type SubmitEvent } from "react";
 
+import {
+  GraduationCapIcon,
+  PencilIcon,
+  SearchIcon,
+  Trash2Icon,
+  UsersIcon,
+} from "lucide-react";
+
+import { OfferingEditDialog } from "@/components/admin/OfferingEditDialog";
+import { OfferingMembersDialog } from "@/components/admin/OfferingMembersDialog";
+import { useAdminList } from "@/components/admin/use-admin-list";
+import { ConfirmButton } from "@/components/app/ConfirmDialog";
+import { PageHeader } from "@/components/app/PageHeader";
+import { SectionCard } from "@/components/app/SectionCard";
+import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Spinner } from "@/components/ui/spinner";
 import {
-  ADMIN_PAGE_LIMIT,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   adminDeleteOffering,
   adminListOfferings,
-  adminUpdateOffering,
   type AdminOffering,
-  type UpdateAdminOfferingPayload,
 } from "@/lib/api";
-import { dateInputToTimestamp, formatDateTime } from "@/lib/format";
-
-/** The API message of a failed request, or a fallback for unexpected errors. */
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback;
-}
+import { errorMessage } from "@/lib/errors";
+import { formatDate } from "@/lib/format";
 
 /**
- * Converts an ISO timestamp into the YYYY-MM-DD value a date input expects.
- * Returns an empty string when the timestamp cannot be parsed.
- */
-function toDateInputValue(timestamp: string): string {
-  if (!timestamp) return "";
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return "";
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${String(date.getFullYear()).padStart(4, "0")}-${month}-${day}`;
-}
-
-/**
- * Admin page that lists every class of the platform, edits it (including
- * transferring its ownership to another professor) and deletes it.
+ * Lists every class on the platform. An admin can edit its data, transfer
+ * ownership, inspect its members or delete it (with its exercises and
+ * submissions).
  */
 export function AdminCoursesPage() {
-  const [search, setSearch] = useState("");
-  const [query, setQuery] = useState("");
-  const [reloadToken, setReloadToken] = useState(0);
-
-  const [offerings, setOfferings] = useState<AdminOffering[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  const [notice, setNotice] = useState<string | null>(null);
-  const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
-  const [pendingId, setPendingId] = useState<number | null>(null);
-  const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(
-    null,
+  const list = useAdminList(
+    adminListOfferings,
+    "admin-offerings",
+    "Não foi possível carregar as turmas.",
   );
 
-  const [edited, setEdited] = useState<AdminOffering | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editDescription, setEditDescription] = useState("");
-  const [editEndDate, setEditEndDate] = useState("");
-  const [editVisibleToEnroll, setEditVisibleToEnroll] = useState(true);
-  const [editOwnerId, setEditOwnerId] = useState("");
-  const [editError, setEditError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadOfferings() {
-      try {
-        const data = await adminListOfferings(query);
-        if (cancelled) return;
-        setOfferings(data);
-        setLoadError(null);
-      } catch (error) {
-        if (!cancelled) {
-          setLoadError(
-            errorMessage(error, "Não foi possível carregar as turmas."),
-          );
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    void loadOfferings();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [query, reloadToken]);
-
-  /** Re-reads the current search from the API, e.g. after a mutation. */
-  function reload() {
-    setLoading(true);
-    setReloadToken((previous) => previous + 1);
-  }
+  const [search, setSearch] = useState("");
+  const [editing, setEditing] = useState<AdminOffering | null>(null);
+  const [viewingMembers, setViewingMembers] = useState<AdminOffering | null>(
+    null,
+  );
+  const [notice, setNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   function handleSearchSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setNotice(null);
-    setLoading(true);
-    const next = search.trim();
-    // An unchanged term must still re-run the request, which the token forces.
-    if (next === query) {
-      setReloadToken((previous) => previous + 1);
-      return;
-    }
-    setQuery(next);
-  }
-
-  function setRowError(id: number, message: string) {
-    setRowErrors((previous) => ({ ...previous, [id]: message }));
-  }
-
-  /** Opens the editor dialog with the row's current values. */
-  function openEditor(offering: AdminOffering) {
-    setEditName(offering.name);
-    setEditDescription(offering.description);
-    setEditEndDate(toDateInputValue(offering.end_date));
-    setEditVisibleToEnroll(offering.visible_to_enroll);
-    setEditOwnerId("");
-    setEditError(null);
-    setEdited(offering);
-  }
-
-  function closeEditor() {
-    setEdited(null);
-    setEditError(null);
-  }
-
-  function handleEditSubmit(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const current = edited;
-    if (current === null) return;
-
-    const name = editName.trim();
-    if (name === "") {
-      setEditError("O nome da turma é obrigatório.");
-      return;
-    }
-
-    const endDateIso = dateInputToTimestamp(editEndDate, "end");
-    if (endDateIso === null) {
-      setEditError("Informe uma data de encerramento válida.");
-      return;
-    }
-
-    const payload: UpdateAdminOfferingPayload = {
-      name,
-      description: editDescription.trim(),
-      end_date: endDateIso,
-      visible_to_enroll: editVisibleToEnroll,
-    };
-
-    const ownerIdInput = editOwnerId.trim();
-    if (ownerIdInput !== "") {
-      const ownerId = Number(ownerIdInput);
-      if (!Number.isInteger(ownerId) || ownerId <= 0) {
-        setEditError("Informe um ID de responsável válido.");
-        return;
-      }
-      payload.owner_id = ownerId;
-    }
-
-    setSaving(true);
-    setEditError(null);
-
-    void (async () => {
-      try {
-        const updated = await adminUpdateOffering(current.id, payload);
-        // The API answers with the stored row, so it replaces the listed one.
-        setOfferings((previous) =>
-          previous === null
-            ? previous
-            : previous.map((offering) =>
-                offering.id === updated.id ? updated : offering,
-              ),
-        );
-        setNotice(`Turma ${updated.name} atualizada.`);
-        setRowError(current.id, "");
-        setEdited(null);
-      } catch (error) {
-        setEditError(errorMessage(error, "Erro ao atualizar a turma."));
-      } finally {
-        setSaving(false);
-      }
-    })();
+    setActionError(null);
+    list.search(search);
   }
 
   async function handleDelete(offering: AdminOffering) {
-    setPendingId(offering.id);
-    setNotice(null);
-    setRowError(offering.id, "");
-
     try {
       await adminDeleteOffering(offering.id);
-      setConfirmingDeleteId(null);
+      list.remove(offering.id);
+      setActionError(null);
       setNotice(`Turma ${offering.name} excluída.`);
-      reload();
     } catch (error) {
-      setRowError(offering.id, errorMessage(error, "Erro ao excluir a turma."));
-    } finally {
-      setPendingId(null);
+      setNotice(null);
+      setActionError(errorMessage(error, "Erro ao excluir a turma."));
     }
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 p-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-2xl">Turmas Cadastradas</CardTitle>
-          <CardDescription>
-            Busque por nome da turma ou pelo responsável para editar os dados,
-            trocar o responsável ou excluir a turma.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+    <div className="space-y-6">
+      <PageHeader
+        title="Turmas"
+        description="Busque por nome da turma ou pelo responsável para editar, transferir a responsabilidade ou excluir."
+      />
+
+      <SectionCard
+        title="Todas as turmas"
+        description="Cada turma reúne os exercícios e as matrículas dos alunos."
+      >
+        <div className="space-y-4">
           <form
             className="flex flex-wrap items-end gap-2"
             onSubmit={handleSearchSubmit}
@@ -242,298 +100,205 @@ export function AdminCoursesPage() {
                 onChange={(event) => {
                   setSearch(event.target.value);
                 }}
-                placeholder="Nome da turma ou responsável"
+                placeholder="Nome da turma, responsável ou email"
               />
             </div>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={list.loading}>
+              <SearchIcon />
               Buscar
             </Button>
           </form>
 
-          {notice && (
-            <p className="text-sm text-emerald-600 dark:text-emerald-400">
-              {notice}
-            </p>
-          )}
+          {notice ? (
+            <Alert variant="success">
+              <AlertDescription>{notice}</AlertDescription>
+            </Alert>
+          ) : null}
+          {actionError ? (
+            <Alert variant="destructive">
+              <AlertDescription>{actionError}</AlertDescription>
+            </Alert>
+          ) : null}
 
-          {loadError && <p className="text-destructive text-sm">{loadError}</p>}
+          {list.loading ? (
+            <LoadingState />
+          ) : list.error && list.items.length === 0 ? (
+            <ErrorState description={list.error} onRetry={list.reload} />
+          ) : list.items.length === 0 ? (
+            <EmptyState
+              icon={GraduationCapIcon}
+              title="Nenhuma turma encontrada"
+              description={
+                list.query === ""
+                  ? "Ainda não há turmas cadastradas."
+                  : "Nenhuma turma corresponde à busca."
+              }
+            />
+          ) : (
+            <div className="space-y-4">
+              {list.error ? (
+                <Alert variant="destructive">
+                  <AlertDescription>
+                    <div>{list.error}</div>
+                    <Button variant="outline" size="sm" onClick={list.retry}>
+                      Tentar novamente
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              ) : null}
 
-          {loading && offerings === null && (
-            <div className="flex justify-center p-12">
-              <div
-                aria-label="Carregando"
-                className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground"
-                role="status"
-              />
-            </div>
-          )}
-
-          {loading && offerings !== null && (
-            <p className="text-muted-foreground text-sm">Atualizando…</p>
-          )}
-
-          {offerings !== null && offerings.length === 0 && (
-            <p className="text-muted-foreground text-sm">
-              Nenhuma turma encontrada.
-            </p>
-          )}
-
-          {offerings !== null && offerings.length >= ADMIN_PAGE_LIMIT && (
-            <p className="text-muted-foreground text-sm">
-              Mostrando as primeiras {String(ADMIN_PAGE_LIMIT)} turmas. Refine a
-              busca para ver as demais.
-            </p>
-          )}
-
-          {offerings !== null && offerings.length > 0 && (
-            <div className="overflow-x-auto rounded-lg border">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-muted-foreground">
-                  <tr className="text-left">
-                    <th className="px-3 py-2 font-medium">ID</th>
-                    <th className="px-3 py-2 font-medium">Nome</th>
-                    <th className="px-3 py-2 font-medium">Responsável</th>
-                    <th className="px-3 py-2 font-medium">Encerramento</th>
-                    <th className="px-3 py-2 font-medium">Matriculados</th>
-                    <th className="px-3 py-2 font-medium">Exercícios</th>
-                    <th className="px-3 py-2 font-medium">Matrícula</th>
-                    <th className="px-3 py-2 font-medium">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {offerings.map((offering) => {
-                    const busy = pendingId === offering.id;
-                    const rowError = rowErrors[offering.id];
-
-                    return (
-                      <tr key={offering.id} className="border-t align-top">
-                        <td className="px-3 py-2 font-mono">{offering.id}</td>
-                        <td className="px-3 py-2">
-                          <p className="font-medium">{offering.name}</p>
-                          {offering.description !== "" && (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead scope="col">Turma</TableHead>
+                    <TableHead scope="col">Responsável</TableHead>
+                    <TableHead scope="col">Membros</TableHead>
+                    <TableHead scope="col">Exercícios</TableHead>
+                    <TableHead scope="col">Matrícula</TableHead>
+                    <TableHead scope="col">Encerramento</TableHead>
+                    <TableHead scope="col" className="text-right">
+                      Ações
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {list.items.map((offering) => (
+                    <TableRow key={offering.id}>
+                      <TableCell>
+                        <p className="font-medium">{offering.name}</p>
+                        {offering.description ? (
+                          <p className="text-muted-foreground text-xs">
+                            {offering.description}
+                          </p>
+                        ) : null}
+                        <p className="text-muted-foreground text-xs">
+                          #{offering.id}
+                        </p>
+                      </TableCell>
+                      <TableCell>
+                        {offering.owner_id === null ? (
+                          <span className="text-muted-foreground">
+                            Sem responsável
+                          </span>
+                        ) : (
+                          <>
+                            <p>{offering.owner_name || "—"}</p>
                             <p className="text-muted-foreground text-xs">
-                              {offering.description}
+                              {offering.owner_email || "—"}
                             </p>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          {offering.owner_id === null ? (
-                            <span className="text-muted-foreground">—</span>
-                          ) : (
-                            <>
-                              <p>{offering.owner_name || "—"}</p>
-                              <p className="text-muted-foreground text-xs">
-                                {offering.owner_email || "—"}
-                              </p>
-                            </>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          {formatDateTime(offering.end_date)}
-                        </td>
-                        <td className="px-3 py-2">{offering.member_count}</td>
-                        <td className="px-3 py-2">{offering.exercise_count}</td>
-                        <td className="px-3 py-2">
-                          <Badge
-                            variant={
-                              offering.visible_to_enroll
-                                ? "success"
-                                : "secondary"
-                            }
+                          </>
+                        )}
+                      </TableCell>
+                      <TableCell className="tabular-nums">
+                        {offering.member_count}
+                      </TableCell>
+                      <TableCell className="tabular-nums">
+                        {offering.exercise_count}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            offering.visible_to_enroll ? "success" : "secondary"
+                          }
+                        >
+                          {offering.visible_to_enroll
+                            ? "Matrícula aberta"
+                            : "Matrícula fechada"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{formatDate(offering.end_date)}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setActionError(null);
+                              setEditing(offering);
+                            }}
                           >
-                            {offering.visible_to_enroll
-                              ? "Matrícula aberta"
-                              : "Matrícula fechada"}
-                          </Badge>
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={busy}
-                              onClick={() => {
-                                openEditor(offering);
-                              }}
-                            >
-                              Editar
-                            </Button>
-                            {confirmingDeleteId === offering.id ? (
+                            <PencilIcon />
+                            Editar
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setViewingMembers(offering);
+                            }}
+                          >
+                            <UsersIcon />
+                            Ver membros
+                          </Button>
+                          <ConfirmButton
+                            variant="destructive"
+                            size="sm"
+                            destructive
+                            title="Excluir turma"
+                            confirmLabel="Excluir"
+                            description={
                               <>
-                                <Button
-                                  variant="destructive"
-                                  size="sm"
-                                  disabled={busy}
-                                  onClick={() => {
-                                    void handleDelete(offering);
-                                  }}
-                                >
-                                  Confirmar exclusão
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => {
-                                    setConfirmingDeleteId(null);
-                                  }}
-                                >
-                                  Cancelar
-                                </Button>
+                                Excluir esta turma também apaga os exercícios
+                                dela e as submissões dos alunos. Esta ação não
+                                pode ser desfeita.
                               </>
-                            ) : (
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                disabled={busy}
-                                onClick={() => {
-                                  setRowError(offering.id, "");
-                                  setConfirmingDeleteId(offering.id);
-                                }}
-                              >
-                                Excluir
-                              </Button>
-                            )}
-                          </div>
-                          {confirmingDeleteId === offering.id && (
-                            <p className="text-destructive text-sm">
-                              Excluir esta turma também apaga os exercícios dela
-                              e as submissões dos alunos.
-                            </p>
-                          )}
-                          {rowError && (
-                            <p className="text-destructive text-sm">
-                              {rowError}
-                            </p>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                            }
+                            onConfirm={() => handleDelete(offering)}
+                          >
+                            <Trash2Icon />
+                            Excluir
+                          </ConfirmButton>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-muted-foreground text-sm">
+                  {list.items.length} turma(s) exibida(s).
+                </p>
+                {list.hasMore ? (
+                  <Button
+                    variant="outline"
+                    disabled={list.loadingMore}
+                    onClick={list.loadMore}
+                  >
+                    {list.loadingMore ? <Spinner className="size-4" /> : null}
+                    Carregar mais
+                  </Button>
+                ) : null}
+              </div>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </SectionCard>
 
-      {edited !== null && (
-        <Dialog
-          open
-          onOpenChange={(open) => {
-            if (!open) closeEditor();
+      {editing ? (
+        <OfferingEditDialog
+          key={editing.id}
+          offering={editing}
+          onClose={() => {
+            setEditing(null);
           }}
-        >
-          <DialogContent className="sm:max-w-2xl max-h-[calc(100vh-2rem)] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Editar turma</DialogTitle>
-              <DialogDescription>
-                Altere os dados da turma {edited.name} (id {edited.id}).
-              </DialogDescription>
-            </DialogHeader>
+          onSaved={(updated) => {
+            list.update(updated.id, updated);
+            setNotice(`Turma ${updated.name} atualizada.`);
+            setEditing(null);
+          }}
+        />
+      ) : null}
 
-            <form className="space-y-4" onSubmit={handleEditSubmit}>
-              <div className="space-y-2">
-                <Label htmlFor="admin-course-name">Nome</Label>
-                <Input
-                  id="admin-course-name"
-                  value={editName}
-                  disabled={saving}
-                  onChange={(event) => {
-                    setEditName(event.target.value);
-                  }}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="admin-course-description">Descrição</Label>
-                <Textarea
-                  id="admin-course-description"
-                  value={editDescription}
-                  disabled={saving}
-                  className="min-h-24 font-sans"
-                  onChange={(event) => {
-                    setEditDescription(event.target.value);
-                  }}
-                  placeholder="Descrição da turma (opcional)"
-                />
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="admin-course-end-date">
-                    Data de encerramento
-                  </Label>
-                  <Input
-                    id="admin-course-end-date"
-                    type="date"
-                    value={editEndDate}
-                    disabled={saving}
-                    onChange={(event) => {
-                      setEditEndDate(event.target.value);
-                    }}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="admin-course-owner-id">
-                    ID do novo responsável
-                  </Label>
-                  <Input
-                    id="admin-course-owner-id"
-                    type="number"
-                    min={1}
-                    value={editOwnerId}
-                    disabled={saving}
-                    onChange={(event) => {
-                      setEditOwnerId(event.target.value);
-                    }}
-                    placeholder="Deixe vazio para manter o responsável"
-                  />
-                  <p className="text-muted-foreground text-xs">
-                    Responsável atual:{" "}
-                    {edited.owner_id === null
-                      ? "sem responsável"
-                      : `${edited.owner_name || "—"} (id ${String(edited.owner_id)})`}
-                  </p>
-                </div>
-              </div>
-
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="accent-primary size-4"
-                  checked={editVisibleToEnroll}
-                  disabled={saving}
-                  onChange={(event) => {
-                    setEditVisibleToEnroll(event.target.checked);
-                  }}
-                />
-                Matrícula aberta para os alunos
-              </label>
-
-              {editError && (
-                <p className="text-destructive text-sm">{editError}</p>
-              )}
-
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={saving}
-                  onClick={closeEditor}
-                >
-                  Cancelar
-                </Button>
-                <Button type="submit" disabled={saving}>
-                  {saving ? "Salvando…" : "Salvar"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-      )}
+      {viewingMembers ? (
+        <OfferingMembersDialog
+          key={viewingMembers.id}
+          offering={viewingMembers}
+          onClose={() => {
+            setViewingMembers(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

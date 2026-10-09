@@ -53,9 +53,12 @@ so the language containers can bind-mount it. The directory must exist and be
 writable by the judge's UID.
 
 When running through the root `docker-compose.yml` this is handled
-automatically: the one-shot `judge-exec-init` service creates `./exec` and makes
-it writable before the judge starts, so a fresh checkout needs no manual setup.
-When running the judge directly (outside Compose), create it yourself:
+automatically: the directory is tracked in the repository (`exec/.gitkeep`) and
+the one-shot `judge-exec-init` service makes it writable before the judge
+starts, so a fresh checkout needs no manual setup. Committing the directory
+matters under podman, which — unlike Docker — refuses to create a missing
+bind-mount source. When running the judge directly (outside Compose), create it
+yourself:
 
 ```sh
 mkdir -p ./exec && chmod 0777 ./exec

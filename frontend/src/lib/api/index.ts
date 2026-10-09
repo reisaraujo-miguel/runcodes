@@ -44,6 +44,7 @@ export {
   adminDeleteOffering,
   adminDeleteUser,
   adminGetSettings,
+  adminListOfferingMembers,
   adminListOfferings,
   adminListUsers,
   adminUpdateOffering,
@@ -84,6 +85,13 @@ export type {
   TestCase,
   TestCasePatch,
 } from "./exercises";
+
+export {
+  createAttachedFile,
+  deleteAttachedFile,
+  listAttachedFiles,
+} from "./attached-files";
+export type { AttachedFile } from "./attached-files";
 
 export { createSubmission, subscribeSubmissionEvents } from "./submissions";
 export type {

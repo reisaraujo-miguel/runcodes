@@ -92,7 +92,7 @@ vulnerabilities:
   - id: CVE-2026-39836
     paths:
       - "usr/local/bin/gosu"
-    statement: "False positive. net package NUL byte DoS. gosu performs no network I/O."
+    statement: "False positive. net package NULL byte DoS. gosu performs no network I/O."
     expired_at: 2027-01-01
 
   - id: CVE-2026-42499

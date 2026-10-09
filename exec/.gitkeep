@@ -1,0 +1,3 @@
+# Keeps the judge's shared execution directory (mounted at /exec) in the tree so
+# a fresh checkout already has it. Podman, unlike Docker, refuses to create a
+# missing bind-mount source; see docker-compose.yml. Its contents are ignored.

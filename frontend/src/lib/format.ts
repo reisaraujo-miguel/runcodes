@@ -9,6 +9,27 @@ export function formatDateTime(value: string | null | undefined): string {
   });
 }
 
+/** Formats an RFC3339 timestamp as a date only (no time). */
+export function formatDate(value: string | null | undefined): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, { dateStyle: "long" });
+}
+
+/**
+ * Converts an RFC3339 timestamp to the `YYYY-MM-DD` value a native date input
+ * expects, in the user's local timezone. Returns an empty string for a missing
+ * or unparseable value.
+ */
+export function formatDateInput(value: string | null | undefined): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${String(date.getFullYear())}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 /** Formats a signed byte count; negative values (unavailable) render as "—". */
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return "—";

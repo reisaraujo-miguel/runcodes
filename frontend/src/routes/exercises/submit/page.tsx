@@ -1,4 +1,4 @@
-import { FileUp } from "lucide-react";
+import { FileUpIcon, PaperclipIcon } from "lucide-react";
 import {
   useEffect,
   useMemo,
@@ -6,32 +6,37 @@ import {
   type ChangeEvent,
   type SubmitEvent,
 } from "react";
-import { useParams } from "react-router";
+import { Link, useParams } from "react-router";
 
-import { Footer } from "@/components/Footer";
-import { Navbar } from "@/components/Navbar";
-import { LiveResults } from "@/components/submission/LiveResults";
-import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/app/PageHeader";
+import { SectionCard } from "@/components/app/SectionCard";
+import { ErrorState, LoadingState } from "@/components/app/states";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  LiveResults,
+  type CaseVisibility,
+} from "@/components/submission/LiveResults";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
+import { useAsync } from "@/hooks/use-async";
 import {
   createSubmission,
   getAllowedFileTypes,
   getExercise,
+  getExerciseTestCases,
+  listAttachedFiles,
   subscribeSubmissionEvents,
   type AllowedFileType,
   type CommitStatus,
   type Exercise,
+  type SubmissionArtifactEvent,
   type SubmissionStatusEvent,
 } from "@/lib/api";
 import { ApiRequestError } from "@/lib/api/client";
+import { deadlineInfo } from "@/lib/deadline";
 import { formatDateTime } from "@/lib/format";
 import { isTerminalStatus } from "@/lib/submission-status";
 import {
@@ -45,12 +50,7 @@ import {
 
 const INITIAL_STATUS: CommitStatus = "queued";
 
-/**
- * Translates a refused submission. The API answers in English, and the status is
- * what identifies the case: an unreachable judge (everything the backend can see
- * about it, including a podman the judge cannot reach) is a 503, not a problem
- * with the file the student picked.
- */
+/** Translates a refused submission, keyed on the HTTP status. */
 function submitErrorMessage(error: unknown): string {
   if (error instanceof ApiRequestError) {
     switch (error.status) {
@@ -64,7 +64,6 @@ function submitErrorMessage(error: unknown): string {
         return "O corretor está indisponível no momento. Tente novamente em alguns instantes.";
     }
   }
-
   return error instanceof Error
     ? error.message
     : "Erro ao enviar a submissão. Tente novamente.";
@@ -121,8 +120,6 @@ function resolveAllowedExtensions(
 
   const own = exercise.allowed_file_types;
   if (own) {
-    // An empty array means the exercise configured no restriction; the
-    // backend accepts any file in that case, so skip client-side validation.
     if (own.length === 0) return null;
     const extensions = [
       ...new Set(own.map((type) => normalizeExtension(type.extension))),
@@ -148,76 +145,60 @@ function validateFile(file: File, allowed: string[] | null): string | null {
   return `Extensão não permitida. Tipos aceitos: ${allowed.join(", ")}.`;
 }
 
-/** Student page to submit a solution and watch the live judging results. */
-export function SubmitPage() {
-  const { exerciseId } = useParams();
+/** The submission view for one exercise; remounted when the exercise changes. */
+function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
   const numericExerciseId = Number(exerciseId);
+  const validId = Number.isInteger(numericExerciseId) && numericExerciseId > 0;
 
-  const [exercise, setExercise] = useState<Exercise | null>(null);
-  const [allowedTypes, setAllowedTypes] = useState<AllowedFileType[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const exercise = useAsync(
+    () =>
+      validId
+        ? getExercise(numericExerciseId)
+        : Promise.reject(new Error("Exercício inválido.")),
+    `exercise-${exerciseId ?? ""}`,
+    "Exercício não encontrado.",
+  );
+  const allowedTypes = useAsync(() => getAllowedFileTypes(), "allowed-types");
+  const testCases = useAsync(
+    () =>
+      validId ? getExerciseTestCases(numericExerciseId) : Promise.resolve([]),
+    `test-cases-${exerciseId ?? ""}`,
+  );
+  const attached = useAsync(
+    () =>
+      validId ? listAttachedFiles(numericExerciseId) : Promise.resolve([]),
+    `attached-${exerciseId ?? ""}`,
+  );
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const [commitId, setCommitId] = useState<number | null>(null);
+  const [commitId, setCommitId] = useState<number | null>(() =>
+    validId ? readStoredCommit(numericExerciseId) : null,
+  );
   const [status, setStatus] = useState<CommitStatus>(INITIAL_STATUS);
   const [history, setHistory] = useState<SubmissionStatusEvent[]>([]);
   const [compilation, setCompilation] = useState<CompilationInfo | null>(null);
   const [results, setResults] = useState<CaseResultView[]>([]);
+  const [artifacts, setArtifacts] = useState<SubmissionArtifactEvent[]>([]);
   const [final, setFinal] = useState<FinalSummary | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
 
   const allowedExtensions = useMemo(
-    () => resolveAllowedExtensions(exercise, allowedTypes),
-    [exercise, allowedTypes],
+    () => resolveAllowedExtensions(exercise.data, allowedTypes.data ?? []),
+    [exercise.data, allowedTypes.data],
   );
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadExercise() {
-      if (!Number.isInteger(numericExerciseId) || numericExerciseId <= 0) {
-        setLoadError("Exercício inválido");
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const data = await getExercise(numericExerciseId);
-        if (cancelled) return;
-        setExercise(data);
-        setCommitId(readStoredCommit(numericExerciseId));
-      } catch {
-        if (!cancelled) setLoadError("Exercício não encontrado");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+  // Honor each test case's visibility flags in the student's result view.
+  const visibility = useMemo(() => {
+    const map = new Map<number, CaseVisibility>();
+    for (const testCase of testCases.data ?? []) {
+      map.set(testCase.id, { showUserOutput: testCase.show_user_output });
     }
-
-    void loadExercise();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [numericExerciseId]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void getAllowedFileTypes()
-      .then((types) => {
-        if (!cancelled) setAllowedTypes(types);
-      })
-      .catch(() => {
-        // Validation against allowed types is best-effort.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    return map;
+  }, [testCases.data]);
 
   useEffect(() => {
     if (commitId === null) return;
@@ -258,6 +239,9 @@ export function SubmitPage() {
           upsertCaseResult(previous, viewFromEvent(event)),
         );
       },
+      onArtifact: (event) => {
+        setArtifacts((previous) => [...previous, event]);
+      },
       onFinished: (event) => {
         setStatus(event.status);
         setFinal({
@@ -291,6 +275,7 @@ export function SubmitPage() {
     setHistory([]);
     setCompilation(null);
     setResults([]);
+    setArtifacts([]);
     setFinal(null);
     setStreamError(null);
   }
@@ -301,9 +286,9 @@ export function SubmitPage() {
     setFileError(file ? validateFile(file, allowedExtensions) : null);
   }
 
-  function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
+  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!exercise || !selectedFile) return;
+    if (!exercise.data || !selectedFile) return;
 
     const validation = validateFile(selectedFile, allowedExtensions);
     if (validation) {
@@ -313,23 +298,20 @@ export function SubmitPage() {
 
     setSubmitting(true);
     setSubmitError(null);
-
-    void (async () => {
-      try {
-        const queued = await createSubmission(exercise.id, selectedFile);
-        storeCommit(exercise.id, queued.commit_id);
-        resetRunState();
-        setCommitId(queued.commit_id);
-      } catch (error) {
-        setSubmitError(submitErrorMessage(error));
-      } finally {
-        setSubmitting(false);
-      }
-    })();
+    try {
+      const queued = await createSubmission(exercise.data.id, selectedFile);
+      storeCommit(exercise.data.id, queued.commit_id);
+      resetRunState();
+      setCommitId(queued.commit_id);
+    } catch (error) {
+      setSubmitError(submitErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   function handleNewSubmission() {
-    if (exercise) storeCommit(exercise.id, null);
+    if (exercise.data) storeCommit(exercise.data.id, null);
     resetRunState();
     setCommitId(null);
     setSelectedFile(null);
@@ -337,75 +319,60 @@ export function SubmitPage() {
     setSubmitError(null);
   }
 
-  if (loading) {
+  if (exercise.loading) return <LoadingState />;
+  if (!exercise.data) {
     return (
-      <div>
-        <Navbar />
-        <main className="flex justify-center p-12">
-          <div
-            aria-label="Carregando"
-            className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground"
-            role="status"
-          />
-        </main>
-        <Footer />
-      </div>
+      <ErrorState
+        description={
+          exercise.error ?? "Não foi possível carregar este exercício."
+        }
+      />
     );
   }
 
-  if (!exercise) {
-    return (
-      <div>
-        <Navbar />
-        <main className="mx-auto max-w-3xl p-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Exercício não encontrado</CardTitle>
-              <CardDescription>
-                {loadError ?? "Não foi possível carregar este exercício."}
-              </CardDescription>
-            </CardHeader>
-          </Card>
-        </main>
-        <Footer />
-      </div>
-    );
-  }
+  const current = exercise.data;
+  const info = deadlineInfo(current.deadline);
+  const materials = attached.data ?? [];
 
   return (
-    <div>
-      <Navbar />
-      <main className="mx-auto max-w-3xl space-y-4 p-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-2xl">{exercise.title}</CardTitle>
-            {exercise.description && (
-              <CardDescription>{exercise.description}</CardDescription>
-            )}
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
-            <div>
-              <p className="text-muted-foreground">Abertura</p>
-              <p>{formatDateTime(exercise.open_date)}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">Prazo</p>
-              <p>{formatDateTime(exercise.deadline)}</p>
-            </div>
-          </CardContent>
-        </Card>
+    <div className="space-y-6">
+      <PageHeader
+        title={current.title}
+        description={current.description || undefined}
+        breadcrumb={
+          <Link
+            to="/exercises"
+            className="text-muted-foreground text-sm hover:underline"
+          >
+            ← Exercícios
+          </Link>
+        }
+        actions={
+          <Badge
+            variant={
+              info.expired
+                ? "destructive"
+                : info.tone === "warning"
+                  ? "warning"
+                  : "outline"
+            }
+          >
+            {info.label}
+          </Badge>
+        }
+      />
 
-        {commitId === null ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Enviar solução</CardTitle>
-              <CardDescription>
-                Selecione o arquivo com o código da sua solução e envie para
-                correção.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form className="space-y-4" onSubmit={handleSubmit}>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="space-y-4 lg:col-span-2">
+          {commitId === null ? (
+            <SectionCard
+              title="Enviar solução"
+              description="Selecione o arquivo com o código da sua solução e envie para correção."
+            >
+              <form
+                className="space-y-4"
+                onSubmit={(event) => void handleSubmit(event)}
+              >
                 <div className="space-y-2">
                   <Label htmlFor="submission-file">Arquivo da solução</Label>
                   <Input
@@ -413,47 +380,103 @@ export function SubmitPage() {
                     type="file"
                     accept={allowedExtensions?.join(",")}
                     onChange={handleFileChange}
+                    className="h-auto py-2"
                   />
-                  {allowedExtensions && (
+                  {allowedExtensions ? (
                     <p className="text-muted-foreground text-xs">
                       Tipos aceitos: {allowedExtensions.join(", ")}
                     </p>
+                  ) : (
+                    <p className="text-muted-foreground text-xs">
+                      Nenhuma restrição de tipo configurada neste exercício.
+                    </p>
                   )}
-                  {fileError && (
+                  {fileError ? (
                     <p className="text-destructive text-sm">{fileError}</p>
-                  )}
+                  ) : null}
                 </div>
 
-                {submitError && (
-                  <p className="text-destructive text-sm">{submitError}</p>
-                )}
+                {submitError ? (
+                  <Alert variant="destructive">
+                    <AlertDescription>{submitError}</AlertDescription>
+                  </Alert>
+                ) : null}
 
                 <Button type="submit" disabled={!selectedFile || submitting}>
-                  <FileUp />
+                  {submitting ? <Spinner className="size-4" /> : <FileUpIcon />}
                   {submitting ? "Enviando…" : "Enviar para correção"}
                 </Button>
               </form>
-            </CardContent>
-          </Card>
-        ) : (
-          <>
-            <LiveResults
-              status={status}
-              history={history}
-              compilation={compilation}
-              results={results}
-              final={final}
-              streamError={streamError}
-            />
-            {final && (
-              <Button variant="outline" onClick={handleNewSubmission}>
-                Enviar outra solução
-              </Button>
+            </SectionCard>
+          ) : (
+            <>
+              <LiveResults
+                status={status}
+                history={history}
+                compilation={compilation}
+                results={results}
+                final={final}
+                streamError={streamError}
+                artifacts={artifacts}
+                visibility={visibility}
+              />
+              {final ? (
+                <Button variant="outline" onClick={handleNewSubmission}>
+                  Enviar outra solução
+                </Button>
+              ) : null}
+            </>
+          )}
+        </div>
+
+        <aside className="space-y-6">
+          <SectionCard title="Informações">
+            <dl className="space-y-3 text-sm">
+              <div>
+                <dt className="text-muted-foreground">Abertura</dt>
+                <dd>{formatDateTime(current.open_date)}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Prazo</dt>
+                <dd>{formatDateTime(current.deadline)}</dd>
+              </div>
+            </dl>
+          </SectionCard>
+
+          <SectionCard
+            title="Materiais de apoio"
+            description="Arquivos anexados pelo professor."
+          >
+            {attached.loading ? (
+              <LoadingState className="py-6" />
+            ) : materials.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                Nenhum material anexado a este exercício.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {materials.map((file) => (
+                  <li key={file.id} className="flex items-center gap-2 text-sm">
+                    <PaperclipIcon
+                      className="text-muted-foreground size-4 shrink-0"
+                      aria-hidden
+                    />
+                    <span className="truncate font-mono">{file.filename}</span>
+                  </li>
+                ))}
+              </ul>
             )}
-          </>
-        )}
-      </main>
-      <Footer />
+          </SectionCard>
+        </aside>
+      </div>
     </div>
   );
+}
+
+/** Student page to submit a solution and watch the live judging results. */
+export function SubmitPage() {
+  const { exerciseId } = useParams();
+  // Keyed by exercise so navigating between exercises resets the run state and
+  // re-reads the submission stored for the new exercise.
+  return <SubmitView key={exerciseId} exerciseId={exerciseId} />;
 }
