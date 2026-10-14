@@ -9,7 +9,10 @@
     "lint": "eslint .",
     "test": "bun test",
     "preview": "vite preview",
-    "format": "prettier . --write"
+    "format": "prettier . --write",
+    "optimize-svg": "bun run scripts/optimize-svg.ts",
+    "check-svg": "bun run scripts/optimize-svg.ts --check",
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -51,6 +54,7 @@
     "globals": "^17.13.0",
     "prettier": "^3.9.9",
     "prettier-plugin-organize-imports": "^4.3.0",
+    "svgo": "^3.3.5",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-eslint": "^8.71.1",
     "vite": "^8.3.4",

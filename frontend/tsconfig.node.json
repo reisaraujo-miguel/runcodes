@@ -34,5 +34,5 @@
     /* Environment types */
     "types": ["node"]
   },
-  "include": ["vite.config.ts"]
+  "include": ["vite.config.ts", "svgo.config.ts", "scripts/**/*.ts"]
 }

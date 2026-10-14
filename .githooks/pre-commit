@@ -1,0 +1,26 @@
+#!/bin/sh
+#
+# Pre-commit guard: keep the frontend's source SVGs optimised. Mirrors the
+# "Check SVGs are optimised" step in .github/workflows/tests.yml.
+#
+# Enabled by the frontend `prepare` script on `bun install`. To enable it manually:
+#
+#   git config core.hooksPath .githooks
+#
+set -e
+
+# Git runs hooks from the top level of the working tree.
+cd frontend 2>/dev/null || exit 0
+
+# Skip when Bun or the frontend dependencies are unavailable so contributors who
+# don't touch the frontend aren't blocked.
+if ! command -v bun >/dev/null 2>&1; then
+  echo "pre-commit: bun not found, skipping SVG check" >&2
+  exit 0
+fi
+if [ ! -d node_modules ]; then
+  echo "pre-commit: frontend dependencies missing (run 'bun install'), skipping SVG check" >&2
+  exit 0
+fi
+
+exec bun run check-svg
