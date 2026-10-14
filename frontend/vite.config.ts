@@ -7,7 +7,7 @@ import { optimize, type Config as SvgoConfig } from "svgo";
 import { defineConfig, type Plugin } from "vite";
 import svgr from "vite-plugin-svgr";
 
-import svgoConfig from "./svgo.config";
+import svgoConfig from "./svgo.config.ts";
 
 /**
  * Optimises the SVGs that reach `dist/` as files: assets imported by URL and
