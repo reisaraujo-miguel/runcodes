@@ -15,23 +15,17 @@ const svgoConfig: Config = {
   // keeps changing the files.
   multipass: true,
   floatPrecision: 2,
-  // SVGO drops its defaults as soon as `plugins` is provided, so
-  // `preset-default` must be listed explicitly. Without it none of the standard
-  // optimisations run (metadata/comment removal, id cleanup, path & style
-  // minification, group collapsing, …).
+  // Providing `plugins` replaces SVGO's defaults, so `preset-default` has to be
+  // listed explicitly. It is the standard bundle (metadata/comment removal, id
+  // cleanup, path & style minification, group collapsing, …) and, unlike a
+  // hand-picked list, keeps `viewBox` so the artwork stays resolution
+  // independent.
   plugins: [
-    {
-      name: "preset-default",
-      params: {
-        // Keep `viewBox` so the artwork stays resolution-independent.
-        overrides: { removeViewBox: false },
-      },
-    },
-    // Inkscape exports keep `style="font-family:'…';-inkscape-font-…"` on
-    // vectorised text. `convertStyleToAttrs` hoists the real presentation props
-    // (fill, …) onto attributes; dropping the leftover `style` then removes the
-    // vendor-only declarations that would otherwise turn into invalid JSX such
-    // as `InkscapeFontSpecification`.
+    "preset-default",
+    // Not part of `preset-default`: hoists real presentation props (fill, …)
+    // onto attributes. Inkscape exports keep `style="font-family:…;-inkscape-…"`
+    // on vectorised text, and the leftover `style` is then dropped by the plugin
+    // below so it can't become invalid JSX such as `InkscapeFontSpecification`.
     "convertStyleToAttrs",
     { name: "removeAttrs", params: { attrs: "style" } },
   ],

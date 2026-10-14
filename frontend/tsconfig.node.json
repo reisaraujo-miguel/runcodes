@@ -32,7 +32,12 @@
     "noUncheckedIndexedAccess": true,
 
     /* Environment types */
-    "types": ["node"]
+    "types": ["node", "bun"]
   },
-  "include": ["vite.config.ts", "svgo.config.ts", "scripts/**/*.ts"]
+  "include": [
+    "vite.config.ts",
+    "svgo.config.ts",
+    "svgo.config.test.ts",
+    "scripts/**/*.ts"
+  ]
 }
