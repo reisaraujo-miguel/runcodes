@@ -25,4 +25,10 @@ describe("svgoConfig", () => {
     expect(data).not.toContain("<metadata");
     expect(data).not.toContain("generator");
   });
+
+  test("maps black to currentColor so icons follow the text colour", () => {
+    // Guards the GitHub icon regression: `removeUnknownsAndDefaults` strips an
+    // explicit black `fill`, so it must be turned into `currentColor` first.
+    expect(optimize(svg, svgoConfig).data).toContain('fill="currentColor"');
+  });
 });
