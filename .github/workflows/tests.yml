@@ -108,6 +108,9 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      - name: Check SVGs are optimised
+        run: bun run check-svg
+
       - name: Test
         run: bun test
 

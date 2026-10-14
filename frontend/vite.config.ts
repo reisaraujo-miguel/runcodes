@@ -1,10 +1,59 @@
 import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
-import fs from "node:fs";
+import fs, { type Dirent } from "node:fs";
 import path from "path";
-import { defineConfig } from "vite";
+import { optimize, type Config as SvgoConfig } from "svgo";
+import { defineConfig, type Plugin } from "vite";
 import svgr from "vite-plugin-svgr";
+
+import svgoConfig from "./svgo.config";
+
+/**
+ * Optimises the SVGs that reach `dist/` as files: assets imported by URL and
+ * files copied verbatim from `public/`. The SVGR plugin only handles
+ * `*.svg?react` imports, and neither Vite's asset graph nor `generateBundle`
+ * sees `public/` files, so the emitted `.svg` files are rewritten once the
+ * build has finished writing them.
+ */
+function svgoAssets(config: SvgoConfig): Plugin {
+  let outDir = "";
+  return {
+    name: "svgo-assets",
+    apply: "build",
+    configResolved(resolved) {
+      outDir = path.resolve(resolved.root, resolved.build.outDir);
+    },
+    async closeBundle() {
+      for (const file of await collectSvgFiles(outDir)) {
+        const source = await fs.promises.readFile(file, "utf8");
+        const { data } = optimize(source, config);
+        if (data !== source) {
+          await fs.promises.writeFile(file, data);
+        }
+      }
+    },
+  };
+}
+
+async function collectSvgFiles(dir: string): Promise<string[]> {
+  let entries: Dirent[];
+  try {
+    entries = await fs.promises.readdir(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const found = await Promise.all(
+    entries.map(async (entry) => {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        return collectSvgFiles(full);
+      }
+      return entry.name.endsWith(".svg") ? [full] : [];
+    }),
+  );
+  return found.flat();
+}
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -15,30 +64,7 @@ export default defineConfig({
     svgr({
       svgrOptions: {
         plugins: ["@svgr/plugin-svgo", "@svgr/plugin-jsx"],
-        svgoConfig: {
-          floatPrecision: 2,
-          // SVGO drops its defaults as soon as `plugins` is provided, so
-          // `preset-default` must be listed explicitly. Without it none of the
-          // standard optimisations run (metadata/comment removal, id cleanup,
-          // path & style minification, group collapsing, …).
-          plugins: [
-            {
-              name: "preset-default",
-              params: {
-                // Keep `viewBox` so the artwork stays resolution-independent.
-                overrides: { removeViewBox: false },
-              },
-            },
-            // Inkscape exports keep `style="font-family:'…';-inkscape-font-…"`
-            // on vectorised text. `convertStyleToAttrs` hoists the real
-            // presentation props (fill, …) onto attributes; dropping the
-            // leftover `style` then removes the vendor-only declarations that
-            // would otherwise turn into invalid JSX such as
-            // `InkscapeFontSpecification`.
-            "convertStyleToAttrs",
-            { name: "removeAttrs", params: { attrs: "style" } },
-          ],
-        },
+        svgoConfig,
         memo: true,
         //icon: true,
         replaceAttrValues: {
@@ -47,6 +73,7 @@ export default defineConfig({
         },
       },
     }),
+    svgoAssets(svgoConfig),
     {
       name: "missing-source-map-guard",
       apply: "serve",
