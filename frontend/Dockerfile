@@ -1,4 +1,4 @@
-FROM oven/bun:1.4.2-alpine AS builder
+FROM oven/bun:1.4.3-alpine AS builder
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ RUN bun install --frozen-lockfile
 COPY . .
 RUN bun run build
 
-FROM caddy:2.11.6-alpine AS dist
+FROM caddy:2.11.7-alpine AS dist
 
 RUN addgroup -S caddy && adduser -S caddy -G caddy
 
