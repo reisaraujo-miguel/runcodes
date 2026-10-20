@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiRequest } from "./client";
+import { API_BASE_URL, apiDelete, apiGet, apiRequest } from "./client";
 
 /** A material attached to an exercise (statement, dataset, starter file). */
 export interface AttachedFile {
@@ -13,6 +13,17 @@ export function listAttachedFiles(exerciseId: number): Promise<AttachedFile[]> {
   return apiGet<AttachedFile[]>(
     `/api/v1/exercises/${String(exerciseId)}/attached-files`,
   );
+}
+
+/**
+ * URL that streams an attached material. The endpoint is authenticated by the
+ * session cookie, so it can be used directly as a link or as an iframe source.
+ */
+export function attachedFileDownloadUrl(
+  exerciseId: number,
+  fileId: number,
+): string {
+  return `${API_BASE_URL}/api/v1/exercises/${String(exerciseId)}/attached-files/${String(fileId)}`;
 }
 
 /** Attach a material to an exercise. A same-named file is replaced. */

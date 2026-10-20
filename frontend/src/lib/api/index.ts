@@ -87,6 +87,7 @@ export type {
 } from "./exercises";
 
 export {
+  attachedFileDownloadUrl,
   createAttachedFile,
   deleteAttachedFile,
   listAttachedFiles,
