@@ -4,13 +4,13 @@ PostgreSQL schema, seed data and migrations.
 
 ## Layout
 
-| Path          | Purpose                                                                                                                        |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `schema/`     | Bootstrap applied by the `database` image when its volume is empty: init, schema, seed data, password and the application role. |
-| `migrations/` | Versioned migrations for databases that already exist.                                                                         |
-| `migration/`  | One-shot import of the legacy production schema (see its README).                                                              |
-| `atlas.hcl`   | Atlas project configuration: desired schema, migration directory and revision schema.                                          |
-| `atlas.sh`    | Launcher for the pinned Atlas CLI.                                                                                             |
+| Path                | Purpose                                                                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `schema/`           | Bootstrap applied by the `database` image when its volume is empty: init, schema, seed data, password and the application role. |
+| `migrations/`       | Versioned migrations for databases that already exist.                                                                          |
+| `legacy-migration/` | One-shot import of the legacy production schema (see its README).                                                               |
+| `atlas.hcl`         | Atlas project configuration: desired schema, migration directory and revision schema.                                           |
+| `atlas.sh`          | Launcher for the pinned Atlas CLI.                                                                                              |
 
 `schema/02-schema.sql` is the desired state: it is what a fresh install gets, and
 it is the input Atlas diffs against. `migrations/` holds the SQL that moves an
@@ -31,6 +31,7 @@ change is never committed without its migration.
    `database/.tools/` (gitignored) and verifies its checksum. Atlas replays
    `migrations/` in the dev database and writes
    `migrations/<timestamp>_add_the_column.sql`.
+
 3. Review the generated SQL. Atlas cannot infer data backfills or statements
    that must run outside a transaction; add those yourself and refresh the
    checksum with `./database/atlas.sh migrate hash`. For a change that is not a
