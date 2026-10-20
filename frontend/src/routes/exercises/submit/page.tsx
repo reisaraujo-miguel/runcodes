@@ -1,43 +1,39 @@
 import {
-  CheckCircle2Icon,
+  ArrowLeftIcon,
+  CalendarClockIcon,
+  CircleAlertIcon,
   CodeIcon,
-  DownloadIcon,
+  FileCode2Icon,
   FileUpIcon,
-  Loader2Icon,
-  PaperclipIcon,
+  PanelTopCloseIcon,
+  PanelTopOpenIcon,
+  SendIcon,
 } from "lucide-react";
 import {
   useEffect,
   useMemo,
   useState,
   type ChangeEvent,
+  type CSSProperties,
   type SubmitEvent,
 } from "react";
 import { Link, useParams } from "react-router";
 
-import { PageHeader } from "@/components/app/PageHeader";
-import { SectionCard } from "@/components/app/SectionCard";
 import { ErrorState, LoadingState } from "@/components/app/states";
-import { StatusBadge } from "@/components/app/StatusBadge";
 import { CodeEditor } from "@/components/editor/CodeEditor";
-import {
-  LiveResults,
-  type CaseVisibility,
-} from "@/components/submission/LiveResults";
-import { Markdown } from "@/components/submission/Markdown";
-import { TestCasesPreview } from "@/components/submission/TestCasesPreview";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ResultsPanel } from "@/components/submission/ResultsPanel";
+import { StatementPanel } from "@/components/submission/StatementPanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { DockSplitter } from "@/components/ui/dock-splitter";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { useAsync } from "@/hooks/use-async";
 import { useCodeEditorPreference } from "@/hooks/use-code-editor-preference";
+import { useDockLayout } from "@/hooks/use-dock-layout";
+import { useElementSize } from "@/hooks/use-element-size";
 import {
-  attachedFileDownloadUrl,
   createSubmission,
   getAllowedFileTypes,
   getExercise,
@@ -52,19 +48,19 @@ import {
 } from "@/lib/api";
 import { ApiRequestError } from "@/lib/api/client";
 import { deadlineInfo } from "@/lib/deadline";
+import {
+  DOCK_SPLITTER_SIZE,
+  dockBounds,
+  MIN_EDITOR_HEIGHT,
+  MIN_RESULTS_HEIGHT,
+  MIN_RIGHT_WIDTH,
+  MIN_STATEMENT_WIDTH,
+  STATEMENT_RAIL_WIDTH,
+} from "@/lib/dock-layout";
 import { editorLanguagesFor } from "@/lib/editor/languages";
-import {
-  extensionOf,
-  normalizeExtension,
-  validateFileType,
-} from "@/lib/file-types";
+import { normalizeExtension, validateFileType } from "@/lib/file-types";
 import { formatDateTime } from "@/lib/format";
-import {
-  commitStatus,
-  finishedStatus,
-  isPendingStatus,
-  isTerminalStatus,
-} from "@/lib/submission-status";
+import { isPendingStatus, isTerminalStatus } from "@/lib/submission-status";
 import {
   upsertCaseResult,
   viewFromEvent,
@@ -73,8 +69,10 @@ import {
   type CompilationInfo,
   type FinalSummary,
 } from "@/lib/submission-view";
+import { clamp, cn } from "@/lib/utils";
 
 const INITIAL_STATUS: CommitStatus = "queued";
+const FORM_ID = "submission-form";
 
 /** Translates a refused submission, keyed on the HTTP status. */
 function submitErrorMessage(error: unknown): string {
@@ -183,10 +181,6 @@ function resolveAllowedExtensions(
   return extensions.length > 0 ? extensions : null;
 }
 
-function isPdf(filename: string): boolean {
-  return extensionOf(filename) === ".pdf";
-}
-
 /** The submission view for one exercise; remounted when the exercise changes. */
 function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
   const numericExerciseId = Number(exerciseId);
@@ -212,6 +206,9 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
     `attached-${exerciseId ?? ""}`,
   );
   const preference = useCodeEditorPreference();
+  const [gridRef, gridSize] = useElementSize();
+  const [columnRef, columnSize] = useElementSize();
+  const dockLayout = useDockLayout();
 
   const [modeChoice, setModeChoice] = useState<"editor" | "upload" | null>(
     null,
@@ -264,28 +261,14 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
       ? "upload"
       : (modeChoice ?? (preference.enabled ? "editor" : "upload"));
 
-  // Honor each test case's visibility flags in the student's result view.
-  const visibility = useMemo(() => {
-    const map = new Map<number, CaseVisibility>();
-    for (const testCase of testCases.data ?? []) {
-      map.set(testCase.id, {
-        showUserOutput: testCase.show_user_output,
-        showInput: testCase.show_input,
-        showExpectedOutput: testCase.show_expected_output,
-        input: testCase.input,
-        inputType: testCase.input_type,
-        expectedOutput: testCase.expected_output,
-        expectedOutputType: testCase.expected_output_type,
-      });
-    }
-    return map;
-  }, [testCases.data]);
-
   useEffect(() => {
     if (commitId === null) return;
 
     const unsubscribe = subscribeSubmissionEvents(commitId, {
       onSnapshot: (event) => {
+        // A frame only arrives on a live connection, so any earlier stream
+        // warning is stale.
+        setStreamError(null);
         setStatus(event.commit.status);
         setHistory([]);
         setCompilation({
@@ -307,10 +290,12 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
         }
       },
       onStatus: (event) => {
+        setStreamError(null);
         setStatus(event.status);
         setHistory((previous) => [...previous, event]);
       },
       onCompilation: (event) => {
+        setStreamError(null);
         setCompilation({
           compiled: event.compiled,
           message: event.message,
@@ -318,14 +303,17 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
         });
       },
       onCaseResult: (event) => {
+        setStreamError(null);
         setResults((previous) =>
           upsertCaseResult(previous, viewFromEvent(event)),
         );
       },
       onArtifact: (event) => {
+        setStreamError(null);
         setArtifacts((previous) => [...previous, event]);
       },
       onFinished: (event) => {
+        setStreamError(null);
         setStatus(event.status);
         setFinal({
           status: event.status,
@@ -421,13 +409,9 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
   const current = exercise.data;
   const info = deadlineInfo(current.deadline);
   const materials = attached.data ?? [];
-  const pdfMaterials = materials.filter((file) => isPdf(file.filename));
-  const primaryPdf = pdfMaterials[0];
   const editorAvailable = languages.length > 0;
-
   const pending =
     commitId !== null && final === null && isPendingStatus(status);
-  const overall = final ? finishedStatus(final.status) : commitStatus(status);
   const canSubmit =
     !submitting &&
     !pending &&
@@ -435,323 +419,345 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
       ? editorAvailable && code.trim() !== ""
       : selectedFile !== null);
 
+  const statementCollapsed = dockLayout.layout.collapsed.statement;
+  const editorCollapsed = dockLayout.layout.collapsed.editor;
+  const resultsCollapsed = dockLayout.layout.collapsed.results;
+
+  const horizontalBounds = dockBounds(
+    gridSize.width - DOCK_SPLITTER_SIZE,
+    MIN_STATEMENT_WIDTH,
+    MIN_RIGHT_WIDTH,
+  );
+  const leftRatio = clamp(
+    dockLayout.layout.horizontal,
+    horizontalBounds.min,
+    horizontalBounds.max,
+  );
+  const verticalBounds = dockBounds(
+    columnSize.height - DOCK_SPLITTER_SIZE,
+    MIN_EDITOR_HEIGHT,
+    MIN_RESULTS_HEIGHT,
+  );
+  const editorRatio = clamp(
+    dockLayout.layout.vertical,
+    verticalBounds.min,
+    verticalBounds.max,
+  );
+
+  const dockColumns = statementCollapsed
+    ? `${String(STATEMENT_RAIL_WIDTH)}px minmax(0, 1fr)`
+    : `${leftRatio.toFixed(4)}fr ${String(DOCK_SPLITTER_SIZE)}px ${(1 - leftRatio).toFixed(4)}fr`;
+  const showHorizontalSplitter = !statementCollapsed;
+  const showVerticalSplitter = !editorCollapsed && !resultsCollapsed;
+  const editorGrow = editorCollapsed ? 0 : resultsCollapsed ? 1 : editorRatio;
+  const resultsGrow = resultsCollapsed
+    ? 0
+    : editorCollapsed
+      ? 1
+      : 1 - editorRatio;
+
+  const submitAction = (
+    <Button
+      type="submit"
+      form={FORM_ID}
+      size="sm"
+      disabled={!canSubmit}
+      aria-busy={submitting}
+      title="Enviar a solução para correção"
+    >
+      {submitting ? <Spinner className="size-4" /> : <SendIcon />}
+      {submitting ? "Enviando…" : "Enviar solução"}
+    </Button>
+  );
+
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title={current.title}
-        breadcrumb={
-          <Link
-            to="/exercises"
-            className="text-muted-foreground text-sm hover:underline"
-          >
-            ← Exercícios
-          </Link>
-        }
-        actions={
-          <Badge
-            variant={
-              info.expired
-                ? "destructive"
-                : info.tone === "warning"
-                  ? "warning"
-                  : "outline"
-            }
-          >
-            {info.label}
-          </Badge>
-        }
-      />
+    <div className="flex flex-col gap-3 xl:h-full">
+      <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2">
+        <Link
+          to="/exercises"
+          className="text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1 text-xs font-medium"
+        >
+          <ArrowLeftIcon className="size-3.5" aria-hidden />
+          Exercícios
+        </Link>
+        <span className="bg-border hidden h-4 w-px sm:block" aria-hidden />
+        <h1 className="min-w-0 text-lg font-semibold tracking-tight text-balance">
+          {current.title}
+        </h1>
+        <Badge
+          variant={
+            info.expired
+              ? "destructive"
+              : info.tone === "warning"
+                ? "warning"
+                : "outline"
+          }
+        >
+          {info.label}
+        </Badge>
+        <span className="text-muted-foreground order-last flex w-full items-center gap-1.5 text-xs sm:order-none sm:ml-auto sm:w-auto">
+          <CalendarClockIcon className="size-3.5 shrink-0" aria-hidden />
+          Prazo: {formatDateTime(current.deadline)}
+        </span>
+      </header>
 
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-        <div className="space-y-4 lg:sticky lg:top-24 lg:max-h-[calc(100svh-7rem)] lg:overflow-y-auto lg:pr-1">
-          <SectionCard
-            title="Enunciado"
-            description={`Prazo: ${formatDateTime(current.deadline)}`}
-          >
-            {current.description.trim() ? (
-              <Markdown>{current.description}</Markdown>
-            ) : (
-              <p className="text-muted-foreground text-sm">
-                Este exercício não possui descrição em texto.
-              </p>
+      <div
+        ref={gridRef}
+        style={{ "--dock-columns": dockColumns } as CSSProperties}
+        className={cn(
+          "grid min-h-0 grid-cols-1 gap-3 xl:flex-1 xl:grid-cols-[var(--dock-columns)]",
+          statementCollapsed ? "xl:gap-3" : "xl:gap-0",
+        )}
+      >
+        <StatementPanel
+          exerciseId={current.id}
+          description={current.description}
+          materials={materials}
+          materialsLoading={attached.loading}
+          materialsError={attached.error}
+          collapsed={statementCollapsed}
+          onToggleCollapsed={dockLayout.toggleStatement}
+        />
+
+        {showHorizontalSplitter ? (
+          <DockSplitter
+            orientation="vertical"
+            value={leftRatio}
+            min={horizontalBounds.min}
+            max={horizontalBounds.max}
+            onChange={dockLayout.setHorizontal}
+            onReset={dockLayout.resetHorizontal}
+            label="Redimensionar enunciado e editor"
+            className="hidden xl:flex"
+          />
+        ) : null}
+
+        <div
+          ref={columnRef}
+          style={
+            {
+              "--editor-grow": String(editorGrow),
+              "--results-grow": String(resultsGrow),
+            } as CSSProperties
+          }
+          className={cn(
+            "flex min-h-0 min-w-0 flex-col gap-3",
+            showVerticalSplitter ? "xl:gap-0" : "xl:gap-3",
+          )}
+        >
+          <section
+            className={cn(
+              "bg-card flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border",
+              editorCollapsed
+                ? "xl:basis-auto xl:grow-0 xl:shrink-0"
+                : "xl:basis-0 xl:grow-[var(--editor-grow)]",
             )}
-          </SectionCard>
-
-          {primaryPdf ? (
-            <SectionCard
-              title="Enunciado em PDF"
-              description={primaryPdf.filename}
-              action={
-                <Button
-                  size="sm"
-                  variant="outline"
-                  render={
-                    <a
-                      href={attachedFileDownloadUrl(current.id, primaryPdf.id)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    />
-                  }
-                >
-                  <DownloadIcon />
-                  Abrir
-                </Button>
-              }
-            >
-              <iframe
-                title={`Enunciado em PDF: ${primaryPdf.filename}`}
-                src={attachedFileDownloadUrl(current.id, primaryPdf.id)}
-                className="border-border h-[65vh] w-full rounded-lg border"
-              />
-            </SectionCard>
-          ) : null}
-
-          <SectionCard
-            title="Materiais de apoio"
-            description="Arquivos anexados pelo professor."
-          >
-            {attached.loading ? (
-              <LoadingState className="py-6" />
-            ) : materials.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
-                Nenhum material anexado a este exercício.
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {materials.map((file) => (
-                  <li key={file.id} className="flex items-center gap-2 text-sm">
-                    <PaperclipIcon
-                      className="text-muted-foreground size-4 shrink-0"
-                      aria-hidden
-                    />
-                    <a
-                      href={attachedFileDownloadUrl(current.id, file.id)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary min-w-0 truncate font-mono hover:underline"
-                    >
-                      {file.filename}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </SectionCard>
-        </div>
-
-        <div className="space-y-4">
-          <SectionCard
-            title="Sua solução"
-            description="Escreva o código no editor ou envie um arquivo pronto."
-            action={
-              editorAvailable && preference.enabled ? (
-                <div className="flex rounded-lg border p-0.5">
-                  <Button
-                    size="xs"
-                    variant={effectiveMode === "editor" ? "secondary" : "ghost"}
-                    onClick={() => {
-                      setModeChoice("editor");
-                    }}
-                  >
-                    <CodeIcon />
-                    Editor
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant={effectiveMode === "upload" ? "secondary" : "ghost"}
-                    onClick={() => {
-                      setModeChoice("upload");
-                    }}
-                  >
-                    <FileUpIcon />
-                    Arquivo
-                  </Button>
-                </div>
-              ) : undefined
-            }
           >
             <form
-              className="space-y-4"
+              id={FORM_ID}
+              className="flex min-h-0 flex-col xl:flex-1"
               onSubmit={(event) => void handleSubmit(event)}
             >
-              {effectiveMode === "editor" && selectedLanguage ? (
-                <>
-                  <div className="flex flex-wrap items-end gap-3">
-                    <div className="min-w-44 flex-1 space-y-2">
-                      <Label htmlFor="editor-language">Linguagem</Label>
-                      <Select
-                        id="editor-language"
-                        value={selectedLanguage.id}
-                        onChange={(event) => {
-                          setSelectedLanguageId(event.target.value);
-                          setFilenameDraft(null);
-                        }}
-                      >
-                        {languages.map((language) => (
-                          <option key={language.id} value={language.id}>
-                            {language.label}
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
-                    <div className="min-w-48 flex-1 space-y-2">
-                      <Label htmlFor="editor-filename">Nome do arquivo</Label>
+              <div className="flex min-h-11 shrink-0 flex-wrap items-center gap-2 border-b px-2 py-1.5">
+                {editorAvailable ? (
+                  <div className="bg-muted/50 flex shrink-0 items-center rounded-md border p-0.5">
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant={
+                        effectiveMode === "editor" ? "secondary" : "ghost"
+                      }
+                      aria-pressed={effectiveMode === "editor"}
+                      onClick={() => {
+                        setModeChoice("editor");
+                        setFileError(null);
+                      }}
+                    >
+                      <CodeIcon />
+                      Editor
+                    </Button>
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant={
+                        effectiveMode === "upload" ? "secondary" : "ghost"
+                      }
+                      aria-pressed={effectiveMode === "upload"}
+                      onClick={() => {
+                        setModeChoice("upload");
+                        setFileError(null);
+                      }}
+                    >
+                      <FileUpIcon />
+                      Arquivo
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground shrink-0 px-1 text-xs font-medium">
+                    Arquivo da solução
+                  </p>
+                )}
+
+                {effectiveMode === "editor" && selectedLanguage ? (
+                  <>
+                    <Select
+                      aria-label="Linguagem"
+                      value={selectedLanguage.id}
+                      onChange={(event) => {
+                        setSelectedLanguageId(event.target.value);
+                        setFilenameDraft(null);
+                      }}
+                      className="border-border/70 h-7 w-auto min-w-28 cursor-pointer rounded-md bg-transparent px-2 py-0 text-xs shadow-none"
+                    >
+                      {languages.map((language) => (
+                        <option key={language.id} value={language.id}>
+                          {language.label}
+                        </option>
+                      ))}
+                    </Select>
+                    <div className="flex items-center gap-1.5">
+                      <FileCode2Icon
+                        className="text-muted-foreground size-3.5 shrink-0"
+                        aria-hidden
+                      />
                       <Input
-                        id="editor-filename"
+                        aria-label="Nome do arquivo"
                         value={filename}
                         onChange={(event) => {
                           setFilenameDraft(event.target.value);
                         }}
-                        className="font-mono"
+                        className="border-border/70 h-7 w-36 rounded-md bg-transparent px-2 py-0 font-mono text-xs shadow-none"
                         spellCheck={false}
                       />
                     </div>
-                  </div>
+                  </>
+                ) : null}
 
-                  <CodeEditor
-                    value={code}
-                    onChange={setCode}
-                    language={selectedLanguage}
-                    className="h-[26rem]"
-                  />
-                </>
-              ) : effectiveMode === "editor" ? (
-                <Alert>
-                  <AlertDescription>
-                    Este exercício não possui linguagens de programação
-                    configuradas para o editor. Envie um arquivo.
-                  </AlertDescription>
-                </Alert>
+                <div className="ml-auto flex min-w-0 items-center gap-2">
+                  {effectiveMode === "upload" && selectedFile ? (
+                    <span className="text-muted-foreground min-w-0 truncate text-[11px]">
+                      {selectedFile.name}
+                    </span>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="hidden xl:inline-flex"
+                    aria-label={
+                      editorCollapsed ? "Expandir editor" : "Recolher editor"
+                    }
+                    title={
+                      editorCollapsed ? "Expandir editor" : "Recolher editor"
+                    }
+                    onClick={dockLayout.toggleEditor}
+                  >
+                    {editorCollapsed ? (
+                      <PanelTopOpenIcon className="size-4.5" />
+                    ) : (
+                      <PanelTopCloseIcon className="size-4.5" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {fileError ? (
+                <div
+                  aria-live="polite"
+                  className={cn(
+                    "border-destructive/30 bg-destructive/10 border-b px-3 py-1.5",
+                    editorCollapsed && "xl:hidden",
+                  )}
+                >
+                  <p className="text-destructive flex items-start gap-1.5 text-xs">
+                    <CircleAlertIcon
+                      className="mt-px size-3.5 shrink-0"
+                      aria-hidden
+                    />
+                    {fileError}
+                  </p>
+                </div>
+              ) : null}
+
+              {effectiveMode === "editor" && selectedLanguage ? (
+                <CodeEditor
+                  value={code}
+                  onChange={setCode}
+                  language={selectedLanguage}
+                  className={cn(
+                    "h-80 w-full rounded-none border-0 xl:h-auto xl:min-h-0 xl:flex-1",
+                    editorCollapsed && "xl:hidden",
+                  )}
+                />
               ) : (
-                <div className="space-y-2">
-                  <Label htmlFor="submission-file">Arquivo da solução</Label>
+                <div
+                  className={cn(
+                    "flex min-h-64 flex-1 flex-col items-center justify-center gap-3 px-6 py-8 text-center xl:min-h-0",
+                    editorCollapsed && "xl:hidden",
+                  )}
+                >
+                  <div className="bg-muted text-muted-foreground flex size-10 items-center justify-center rounded-full">
+                    <FileUpIcon className="size-5" aria-hidden />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">
+                      Envie o arquivo da sua solução
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      {allowedExtensions
+                        ? `Tipos aceitos: ${allowedExtensions.join(", ")}`
+                        : "Nenhuma restrição de tipo configurada neste exercício."}
+                    </p>
+                  </div>
                   <Input
                     id="submission-file"
                     type="file"
                     accept={allowedExtensions?.join(",")}
                     onChange={handleFileChange}
-                    className="h-auto py-2"
+                    aria-label="Arquivo da solução"
+                    className="bg-background h-auto max-w-sm cursor-pointer py-1.5 text-xs file:mr-3 file:text-xs"
                   />
-                  {allowedExtensions ? (
-                    <p className="text-muted-foreground text-xs">
-                      Tipos aceitos: {allowedExtensions.join(", ")}
-                    </p>
-                  ) : (
-                    <p className="text-muted-foreground text-xs">
-                      Nenhuma restrição de tipo configurada neste exercício.
-                    </p>
-                  )}
                 </div>
               )}
-
-              {fileError ? (
-                <p className="text-destructive text-sm">{fileError}</p>
-              ) : null}
-
-              {submitError ? (
-                <Alert variant="destructive">
-                  <AlertDescription>{submitError}</AlertDescription>
-                </Alert>
-              ) : null}
-
-              {preference.error ? (
-                <Alert variant="destructive">
-                  <AlertDescription>{preference.error}</AlertDescription>
-                </Alert>
-              ) : null}
-
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <Button type="submit" disabled={!canSubmit}>
-                  {submitting ? <Spinner className="size-4" /> : <FileUpIcon />}
-                  {submitting
-                    ? "Enviando…"
-                    : pending
-                      ? "Correção em andamento"
-                      : "Enviar para correção"}
-                </Button>
-
-                {editorAvailable ? (
-                  <label className="text-muted-foreground flex cursor-pointer items-center gap-2 text-xs">
-                    <Checkbox
-                      checked={preference.enabled}
-                      disabled={preference.saving || preference.loading}
-                      onCheckedChange={(checked) => {
-                        setModeChoice(null);
-                        void preference.setEnabled(checked);
-                      }}
-                    />
-                    Usar editor de código
-                    {preference.saving ? (
-                      <Loader2Icon
-                        className="size-3 animate-spin"
-                        aria-label="Salvando preferência"
-                      />
-                    ) : null}
-                  </label>
-                ) : null}
-              </div>
             </form>
-          </SectionCard>
+          </section>
 
-          {commitId !== null ? (
-            <>
-              <div
-                role="status"
-                aria-live="polite"
-                className="bg-card flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2"
-              >
-                <div className="flex items-center gap-2">
-                  {pending ? (
-                    <Loader2Icon
-                      className="text-muted-foreground size-4 animate-spin"
-                      aria-hidden
-                    />
-                  ) : (
-                    <CheckCircle2Icon
-                      className="text-success size-4"
-                      aria-hidden
-                    />
-                  )}
-                  <span className="text-sm font-medium">
-                    Submissão #{String(commitId)}
-                  </span>
-                  <StatusBadge value={overall} />
-                </div>
-                {final ? (
-                  <span className="text-muted-foreground text-sm">
-                    Nota{" "}
-                    <span className="text-foreground font-medium tabular-nums">
-                      {final.score.toFixed(2)}
-                    </span>{" "}
-                    · {String(final.numCorrectCases)} caso(s) correto(s)
-                  </span>
-                ) : null}
-              </div>
-
-              <LiveResults
-                status={status}
-                history={history}
-                compilation={compilation}
-                results={results}
-                final={final}
-                streamError={streamError}
-                artifacts={artifacts}
-                visibility={visibility}
-              />
-
-              {results.length === 0 ? (
-                <TestCasesPreview
-                  testCases={testCases.data ?? []}
-                  loading={testCases.loading}
-                />
-              ) : null}
-            </>
-          ) : (
-            <TestCasesPreview
-              testCases={testCases.data ?? []}
-              loading={testCases.loading}
+          {showVerticalSplitter ? (
+            <DockSplitter
+              orientation="horizontal"
+              value={editorRatio}
+              min={verticalBounds.min}
+              max={verticalBounds.max}
+              onChange={dockLayout.setVertical}
+              onReset={dockLayout.resetVertical}
+              label="Redimensionar editor e resultados"
+              className="hidden xl:flex"
             />
-          )}
+          ) : null}
+
+          <ResultsPanel
+            commitId={commitId}
+            status={status}
+            history={history}
+            compilation={compilation}
+            results={results}
+            final={final}
+            streamError={streamError}
+            artifacts={artifacts}
+            testCases={testCases.data ?? []}
+            testCasesLoading={testCases.loading}
+            testCasesError={testCases.error}
+            actions={submitAction}
+            actionError={submitError}
+            collapsed={resultsCollapsed}
+            onToggleCollapsed={dockLayout.toggleResults}
+            className={cn(
+              "xl:mt-auto",
+              resultsCollapsed
+                ? "xl:basis-auto xl:grow-0 xl:shrink-0"
+                : "xl:basis-0 xl:grow-[var(--results-grow)]",
+            )}
+          />
         </div>
       </div>
     </div>
