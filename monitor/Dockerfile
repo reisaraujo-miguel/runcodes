@@ -1,6 +1,7 @@
 FROM debian:trixie-slim AS builder
 
-RUN apt-get install -y --no-install-recommends build-essential cmake libboost-all-dev pkg-config ninja-build
+RUN apt-get update &&\
+    apt-get install -y --no-install-recommends build-essential cmake libboost-all-dev pkg-config ninja-build
 
 RUN mkdir /build
 WORKDIR /build
