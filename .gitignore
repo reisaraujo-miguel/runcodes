@@ -39,3 +39,5 @@ bin/
 
 # Atlas CLI downloaded by database/atlas.sh (pinned, verified by checksum).
 database/.tools/
+
+.dsh-preview
