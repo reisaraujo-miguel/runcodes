@@ -380,3 +380,45 @@ func FileObjectExists(ctx context.Context, key string) (bool, error) {
 
 	return objectExists(ctx, buckets.Files, key)
 }
+
+// FileObject is an object read from the files bucket.
+type FileObject struct {
+	Body        io.ReadCloser
+	ContentType string
+	Size        int64
+}
+
+/*
+GetFileObject opens an object from the files bucket (compilation files and
+exercise attachments) for streaming to a client. The caller must close Body.
+*/
+func GetFileObject(ctx context.Context, key string) (*FileObject, error) {
+	client, buckets, err := Client()
+	if err != nil {
+		return nil, err
+	}
+
+	output, err := client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(buckets.Files),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("getting file object: %w", err)
+	}
+
+	contentType := "application/octet-stream"
+	if output.ContentType != nil && *output.ContentType != "" {
+		contentType = *output.ContentType
+	}
+
+	size := int64(-1)
+	if output.ContentLength != nil {
+		size = *output.ContentLength
+	}
+
+	return &FileObject{
+		Body:        output.Body,
+		ContentType: contentType,
+		Size:        size,
+	}, nil
+}

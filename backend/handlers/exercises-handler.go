@@ -5,11 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"math"
+	"mime"
 	"mime/multipart"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -861,6 +864,75 @@ func ListAttachedFiles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteResponse(w, http.StatusOK, files)
+}
+
+/*
+GetAttachedFile handles GET /api/v1/exercises/{id}/attached-files/{fileId}.
+It streams the stored attachment so students can read it in the browser; PDFs
+are served inline so they can be embedded on the submission page.
+*/
+func GetAttachedFile(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	claims, ok := tokenClaims(w, r)
+	if !ok {
+		return
+	}
+
+	exerciseID, err := pathID(r, "id")
+	if err != nil || exerciseID <= 0 {
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "invalid exercise id"},
+		)
+		return
+	}
+	fileID, err := pathID(r, "fileId")
+	if err != nil || fileID <= 0 {
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "invalid file id"},
+		)
+		return
+	}
+
+	file, err := services.GetAttachedFile(ctx, exerciseID, fileID, claims)
+	if err != nil {
+		writeServiceError(ctx, w, err)
+		return
+	}
+	defer file.Body.Close()
+
+	extension := strings.ToLower(filepath.Ext(file.Filename))
+	contentType := file.ContentType
+	if extension == ".pdf" {
+		// The statement must render in the embedded viewer even when the upload
+		// was stored with a generic content type.
+		contentType = "application/pdf"
+	} else if contentType == "" || contentType == "application/octet-stream" {
+		if inferred := mime.TypeByExtension(extension); inferred != "" {
+			contentType = inferred
+		}
+	}
+
+	disposition := "attachment"
+	if extension == ".pdf" || contentType == "application/pdf" {
+		disposition = "inline"
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition",
+		fmt.Sprintf("%s; filename=%q", disposition, file.Filename),
+	)
+	if file.Size >= 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(file.Size, 10))
+	}
+	w.WriteHeader(http.StatusOK)
+
+	if _, err := io.Copy(w, file.Body); err != nil {
+		slog.ErrorContext(ctx, "failed to stream attached file",
+			slog.Int64("attached_file_id", fileID),
+			slog.String("error", err.Error()),
+		)
+	}
 }
 
 /*

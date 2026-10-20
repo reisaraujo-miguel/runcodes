@@ -77,6 +77,7 @@ func createRoutes(router *chi.Mux) {
 		r.Delete("/api/v1/exercises/{id}/compilation-files/{fileId}", handlers.DeleteCompilationFile)
 
 		r.Get("/api/v1/exercises/{id}/attached-files", handlers.ListAttachedFiles)
+		r.Get("/api/v1/exercises/{id}/attached-files/{fileId}", handlers.GetAttachedFile)
 		r.Post("/api/v1/exercises/{id}/attached-files", handlers.CreateAttachedFile)
 		r.Delete("/api/v1/exercises/{id}/attached-files/{fileId}", handlers.DeleteAttachedFile)
 

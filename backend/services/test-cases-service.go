@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 
 	"github.com/runcodes-icmc/runcodes/database"
@@ -1075,6 +1076,70 @@ func queryAttachedFiles(
 		return nil, ErrServer
 	}
 	return files, nil
+}
+
+// AttachedFileObject is an attachment opened for download.
+type AttachedFileObject struct {
+	Filename    string
+	ContentType string
+	Size        int64
+	Body        io.ReadCloser
+}
+
+/*
+GetAttachedFile opens an exercise attachment for streaming. Owners and enrolled
+students may read it, matching the listing endpoint.
+*/
+func GetAttachedFile(
+	ctx context.Context, exerciseID, fileID int64, claims map[string]any,
+) (*AttachedFileObject, error) {
+	userID, role, err := claimsUserID(claims)
+	if err != nil {
+		return nil, err
+	}
+	acc, err := loadExerciseAccess(ctx, exerciseID, userID, role)
+	if err != nil {
+		return nil, err
+	}
+	if !acc.canAuthor && !acc.isEnrolled {
+		return nil, ErrNotEnrolled
+	}
+
+	var path string
+	err = database.DB.QueryRowContext(ctx, `
+		SELECT path
+		FROM exercises_attached_files
+		WHERE id = $1 AND exercise_id = $2`,
+		fileID, exerciseID,
+	).Scan(&path)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrAttachedFileNotFound
+		}
+		slog.ErrorContext(ctx, "error fetching attached file",
+			slog.Int64("attached_file_id", fileID),
+			slog.String("error", err.Error()),
+		)
+		return nil, ErrServer
+	}
+
+	object, err := storage.GetFileObject(
+		ctx, storage.AttachmentKey(exerciseID, path),
+	)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to open attached file object",
+			slog.Int64("attached_file_id", fileID),
+			slog.String("error", err.Error()),
+		)
+		return nil, ErrServer
+	}
+
+	return &AttachedFileObject{
+		Filename:    path,
+		ContentType: object.ContentType,
+		Size:        object.Size,
+		Body:        object.Body,
+	}, nil
 }
 
 /*
