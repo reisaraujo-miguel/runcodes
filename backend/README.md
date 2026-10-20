@@ -40,6 +40,37 @@ for requests that ask for them with the `Debug: reveal-body-logs` header.
 `RUNCODES_DB_SSLMODE` (default `disable`) exists for a database that requires
 TLS; the Compose setup reaches PostgreSQL over the internal network.
 
+Account verification email is sent through `RUNCODES_SMTP_HOST`,
+`RUNCODES_SMTP_PORT` (default `587`), `RUNCODES_SMTP_FROM` and, for a relay that
+requires authentication, `RUNCODES_SMTP_USERNAME` / `RUNCODES_SMTP_PASSWORD`.
+STARTTLS is used automatically when the server advertises it. The link in the
+message is built from `RUNCODES_PUBLIC_URL`, the browser-facing origin of the
+frontend; it must be an absolute `http(s)` origin without a path.
+`RUNCODES_SMTP_HOST`, `RUNCODES_SMTP_FROM` and `RUNCODES_PUBLIC_URL` are
+required, so a deployment that forgets them fails at startup rather than
+creating accounts nobody can activate. The port defaults to `587`. The Compose
+stack points all of them at the bundled smtp4dev catcher; see the root
+[`README.md`](../README.md#account-verification) for the local flow.
+
+## Account verification
+
+Signing up (`POST /api/v1/user/signup`) creates an unconfirmed account and sends
+a link to `RUNCODES_PUBLIC_URL/verify-email?token=...`. Only the SHA-256 of the
+token is stored (`email_verification_tokens`); the link expires after 24 hours
+and reissuing one invalidates the previous link. `POST /api/v1/user/login`
+refuses an unconfirmed account with `403`, and every protected route checks the
+account's `confirmed` flag, so a session issued before an admin unconfirmed the
+account stops working too (the logout route is deliberately exempt).
+
+| Route                                     | Who    | What                                                     |
+| ----------------------------------------- | ------ | -------------------------------------------------------- |
+| `POST /api/v1/user/verify-email`          | public | consume the token and confirm the account                |
+| `POST /api/v1/user/resend-verification`   | public | send a new link; always the same answer                  |
+
+The resend endpoint always answers `202`, whether or not the address has an
+account, so it cannot be used to enumerate users. Both routes are rate limited
+per client IP.
+
 ## Submissions & live judging
 
 Submit source code (multipart form with `exercise_id` and `file`, max 10 MiB):
@@ -146,8 +177,13 @@ The disclaimer is HTML and is sanitized with DOMPurify in the browser before it
 is rendered. An empty disclaimer is valid: it hides the paragraph instead of
 falling back to the default.
 
-`docker compose` only runs `database/schema/*` on an empty data volume. To add
-the table to a database that was provisioned before this feature, apply:
+`docker compose` only runs `database/schema/*` on an empty data volume. New
+schema changes are generated as versioned Atlas migrations (see
+[`database/README.md`](../database/README.md)); the manual SQL below is the
+historical change that predates that tooling, kept for databases provisioned
+before `platform_settings` existed.
+
+To add the table to a database that was provisioned before this feature, apply:
 
 ```sql
 CREATE TABLE IF NOT EXISTS platform_settings (

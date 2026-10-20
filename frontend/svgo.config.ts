@@ -21,7 +21,21 @@ const svgoConfig: Config = {
   // hand-picked list, keeps `viewBox` so the artwork stays resolution
   // independent.
   plugins: [
-    "preset-default",
+    {
+      name: "preset-default",
+      params: {
+        overrides: {
+          // Surface pure black as `currentColor` so monochrome icons follow the
+          // surrounding text colour. `preset-default` also runs
+          // `removeUnknownsAndDefaults`, which strips `fill="#000000"` as the
+          // SVG default *before* SVGR's `replaceAttrValues` can rewrite it —
+          // leaving the icon stuck on black. `convertColors` runs earlier in the
+          // preset, so converting here wins. Only exact blacks match, so the
+          // coloured RunCodes artwork is untouched.
+          convertColors: { currentColor: /^(?:#000000|#000|black)$/i },
+        },
+      },
+    },
     // Not part of `preset-default`: hoists real presentation props (fill, …)
     // onto attributes. Inkscape exports keep `style="font-family:…;-inkscape-…"`
     // on vectorised text, and the leftover `style` is then dropped by the plugin

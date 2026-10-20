@@ -24,7 +24,7 @@ export function AboutSection() {
   const hasContactDisclaimer = sanitizedContactDisclaimer.trim() !== "";
 
   return (
-    <div className="flex flex-col justify-center space-y-6">
+    <div className="flex-col justify-center space-y-6">
       <div className="space-y-3">
         <h1 className="text-3xl font-semibold tracking-tight text-balance lg:text-4xl">
           Bem-vinde ao RunCodes
@@ -43,7 +43,7 @@ export function AboutSection() {
           onClick={() => {
             setIsTermsModalOpen(true);
           }}
-          className="text-foreground font-medium underline underline-offset-4"
+          className="text-foreground font-medium hover:underline underline-offset-4"
         >
           termos de uso
         </button>
@@ -52,7 +52,7 @@ export function AboutSection() {
 
       {hasContactDisclaimer ? (
         <p
-          className="text-muted-foreground text-sm [&_a]:text-foreground [&_a]:underline"
+          className="text-muted-foreground text-sm [&_a]:text-foreground [&_a]:hover:underline"
           // Content is sanitized with DOMPurify before being inserted.
           // eslint-disable-next-line react-dom/no-dangerously-set-innerhtml
           dangerouslySetInnerHTML={{ __html: sanitizedContactDisclaimer }}

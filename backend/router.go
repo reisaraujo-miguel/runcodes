@@ -27,6 +27,17 @@ func createRoutes(router *chi.Mux) {
 		r.Post("/api/v1/user/signup", handlers.SignUp)
 		r.Post("/api/v1/user/login", handlers.LogIn)
 
+		// Account verification is public: the link arrives by email and may be
+		// opened in a browser that has no session. Both routes are limited more
+		// tightly than the API as a whole because they send mail and accept a
+		// secret from an unauthenticated caller.
+		r.Group(func(r chi.Router) {
+			r.Use(httprate.LimitBy(10, time.Minute, clientIPKey))
+
+			r.Post("/api/v1/user/verify-email", handlers.VerifyEmail)
+			r.Post("/api/v1/user/resend-verification", handlers.ResendVerification)
+		})
+
 		// The contact information the login page shows. It is public by
 		// design: a visitor must be able to read it before signing in.
 		r.Get("/api/v1/settings/public", handlers.GetPublicSettings)
@@ -37,80 +48,91 @@ func createRoutes(router *chi.Mux) {
 		r.Use(jwtauth.Verifier(validation.TokenAuth))
 		r.Use(jwtauth.Authenticator(validation.TokenAuth))
 
-		r.Get("/api/v1/auth", handlers.GetAuth)
-		r.Post("/api/v1/auth/refresh", handlers.RefreshAuth)
+		// Signing out stays available to an account that is no longer verified:
+		// it is how the browser drops a session cookie that cannot be used.
 		r.Post("/api/v1/user/logout", handlers.LogOut)
 
-		// the caller's own account
-		r.Get("/api/v1/user/profile", handlers.GetProfile)
-		r.Put("/api/v1/user/profile", handlers.UpdateProfile)
-		r.Put("/api/v1/user/password", handlers.ChangePassword)
-
-		// the caller's own classes and open exercises (home page)
-		r.Get("/api/v1/user/offerings", handlers.ListMyOfferings)
-		r.Get("/api/v1/user/exercises", handlers.ListMyOpenExercises)
-
-		r.Post("/api/v1/offerings/enroll", handlers.Enroll)
-		r.Delete("/api/v1/offerings/{id}/enrollment", handlers.Unenroll)
-
-		r.Post("/api/v1/submissions", handlers.CreateSubmission)
-		r.Get("/api/v1/submissions/{id}/events", handlers.StreamSubmissionEvents)
-
-		// exercise & test-case authoring (access is enforced in the services)
-		r.Get("/api/v1/allowed-file-types", handlers.ListAllowedFileTypes)
-
-		r.Post("/api/v1/offerings/{offeringId}/exercises", handlers.CreateExercise)
-		r.Get("/api/v1/offerings/{offeringId}/exercises", handlers.ListOfferingExercises)
-
-		r.Get("/api/v1/exercises/{id}", handlers.GetExercise)
-		r.Put("/api/v1/exercises/{id}", handlers.UpdateExercise)
-		r.Delete("/api/v1/exercises/{id}", handlers.DeleteExercise)
-
-		r.Get("/api/v1/exercises/{id}/test-cases", handlers.ListTestCases)
-		r.Post("/api/v1/exercises/{id}/test-cases", handlers.CreateTestCase)
-		r.Put("/api/v1/exercises/{id}/test-cases/{caseId}", handlers.UpdateTestCase)
-		r.Delete("/api/v1/exercises/{id}/test-cases/{caseId}", handlers.DeleteTestCase)
-
-		r.Get("/api/v1/exercises/{id}/compilation-files", handlers.ListCompilationFiles)
-		r.Post("/api/v1/exercises/{id}/compilation-files", handlers.CreateCompilationFile)
-		r.Get("/api/v1/exercises/{id}/compilation-files/{fileId}", handlers.GetCompilationFile)
-		r.Delete("/api/v1/exercises/{id}/compilation-files/{fileId}", handlers.DeleteCompilationFile)
-
-		r.Get("/api/v1/exercises/{id}/attached-files", handlers.ListAttachedFiles)
-		r.Post("/api/v1/exercises/{id}/attached-files", handlers.CreateAttachedFile)
-		r.Delete("/api/v1/exercises/{id}/attached-files/{fileId}", handlers.DeleteAttachedFile)
-
-		// professor and admin routes: own classes and the people in them
+		// Everything else requires a confirmed email. Login enforces the same
+		// rule for new sessions; this covers a session whose account was
+		// unconfirmed after it was issued.
 		r.Group(func(r chi.Router) {
-			r.Use(validation.RequireRole("professor", "admin"))
+			r.Use(handlers.RequireVerifiedEmail)
 
-			r.Get("/api/v1/offerings", handlers.ListOfferings)
-			r.Post("/api/v1/offerings/create", handlers.CreateOffering)
-			r.Get("/api/v1/offerings/{id}", handlers.GetOffering)
-			r.Put("/api/v1/offerings/{id}", handlers.UpdateOffering)
-			r.Delete("/api/v1/offerings/{id}", handlers.DeleteOffering)
+			r.Get("/api/v1/auth", handlers.GetAuth)
+			r.Post("/api/v1/auth/refresh", handlers.RefreshAuth)
 
-			r.Get("/api/v1/offerings/{id}/members", handlers.ListOfferingMembers)
-			r.Post("/api/v1/offerings/{id}/members", handlers.AddOfferingMember)
-			r.Put("/api/v1/offerings/{id}/members/{userId}", handlers.UpdateOfferingMember)
-			r.Delete("/api/v1/offerings/{id}/members/{userId}", handlers.RemoveOfferingMember)
-		})
+			// the caller's own account
+			r.Get("/api/v1/user/profile", handlers.GetProfile)
+			r.Put("/api/v1/user/profile", handlers.UpdateProfile)
+			r.Put("/api/v1/user/password", handlers.ChangePassword)
 
-		// admin panel
-		r.Group(func(r chi.Router) {
-			r.Use(validation.RequireRole("admin"))
+			// the caller's own classes and open exercises (home page)
+			r.Get("/api/v1/user/offerings", handlers.ListMyOfferings)
+			r.Get("/api/v1/user/exercises", handlers.ListMyOpenExercises)
 
-			r.Get("/api/v1/admin/users", handlers.AdminListUsers)
-			r.Put("/api/v1/admin/users/{id}", handlers.AdminUpdateUser)
-			r.Delete("/api/v1/admin/users/{id}", handlers.AdminDeleteUser)
+			r.Post("/api/v1/offerings/enroll", handlers.Enroll)
+			r.Delete("/api/v1/offerings/{id}/enrollment", handlers.Unenroll)
 
-			r.Get("/api/v1/admin/offerings", handlers.AdminListOfferings)
-			r.Put("/api/v1/admin/offerings/{id}", handlers.AdminUpdateOffering)
-			r.Delete("/api/v1/admin/offerings/{id}", handlers.AdminDeleteOffering)
-			r.Get("/api/v1/admin/offerings/{id}/members", handlers.AdminListOfferingMembers)
+			r.Post("/api/v1/submissions", handlers.CreateSubmission)
+			r.Get("/api/v1/submissions/{id}/events", handlers.StreamSubmissionEvents)
 
-			r.Get("/api/v1/admin/settings", handlers.GetSettings)
-			r.Put("/api/v1/admin/settings", handlers.UpdateSettings)
+			// exercise & test-case authoring (access is enforced in the services)
+			r.Get("/api/v1/allowed-file-types", handlers.ListAllowedFileTypes)
+
+			r.Post("/api/v1/offerings/{offeringId}/exercises", handlers.CreateExercise)
+			r.Get("/api/v1/offerings/{offeringId}/exercises", handlers.ListOfferingExercises)
+
+			r.Get("/api/v1/exercises/{id}", handlers.GetExercise)
+			r.Put("/api/v1/exercises/{id}", handlers.UpdateExercise)
+			r.Delete("/api/v1/exercises/{id}", handlers.DeleteExercise)
+
+			r.Get("/api/v1/exercises/{id}/test-cases", handlers.ListTestCases)
+			r.Post("/api/v1/exercises/{id}/test-cases", handlers.CreateTestCase)
+			r.Put("/api/v1/exercises/{id}/test-cases/{caseId}", handlers.UpdateTestCase)
+			r.Delete("/api/v1/exercises/{id}/test-cases/{caseId}", handlers.DeleteTestCase)
+
+			r.Get("/api/v1/exercises/{id}/compilation-files", handlers.ListCompilationFiles)
+			r.Post("/api/v1/exercises/{id}/compilation-files", handlers.CreateCompilationFile)
+			r.Get("/api/v1/exercises/{id}/compilation-files/{fileId}", handlers.GetCompilationFile)
+			r.Delete("/api/v1/exercises/{id}/compilation-files/{fileId}", handlers.DeleteCompilationFile)
+
+			r.Get("/api/v1/exercises/{id}/attached-files", handlers.ListAttachedFiles)
+			r.Get("/api/v1/exercises/{id}/attached-files/{fileId}", handlers.GetAttachedFile)
+			r.Post("/api/v1/exercises/{id}/attached-files", handlers.CreateAttachedFile)
+			r.Delete("/api/v1/exercises/{id}/attached-files/{fileId}", handlers.DeleteAttachedFile)
+
+			// professor and admin routes: own classes and the people in them
+			r.Group(func(r chi.Router) {
+				r.Use(validation.RequireRole("professor", "admin"))
+
+				r.Get("/api/v1/offerings", handlers.ListOfferings)
+				r.Post("/api/v1/offerings/create", handlers.CreateOffering)
+				r.Get("/api/v1/offerings/{id}", handlers.GetOffering)
+				r.Put("/api/v1/offerings/{id}", handlers.UpdateOffering)
+				r.Delete("/api/v1/offerings/{id}", handlers.DeleteOffering)
+
+				r.Get("/api/v1/offerings/{id}/members", handlers.ListOfferingMembers)
+				r.Post("/api/v1/offerings/{id}/members", handlers.AddOfferingMember)
+				r.Put("/api/v1/offerings/{id}/members/{userId}", handlers.UpdateOfferingMember)
+				r.Delete("/api/v1/offerings/{id}/members/{userId}", handlers.RemoveOfferingMember)
+			})
+
+			// admin panel
+			r.Group(func(r chi.Router) {
+				r.Use(validation.RequireRole("admin"))
+
+				r.Get("/api/v1/admin/users", handlers.AdminListUsers)
+				r.Put("/api/v1/admin/users/{id}", handlers.AdminUpdateUser)
+				r.Delete("/api/v1/admin/users/{id}", handlers.AdminDeleteUser)
+
+				r.Get("/api/v1/admin/offerings", handlers.AdminListOfferings)
+				r.Put("/api/v1/admin/offerings/{id}", handlers.AdminUpdateOffering)
+				r.Delete("/api/v1/admin/offerings/{id}", handlers.AdminDeleteOffering)
+				r.Get("/api/v1/admin/offerings/{id}/members", handlers.AdminListOfferingMembers)
+
+				r.Get("/api/v1/admin/settings", handlers.GetSettings)
+				r.Put("/api/v1/admin/settings", handlers.UpdateSettings)
+			})
 		})
 	})
 }

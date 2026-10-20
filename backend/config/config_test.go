@@ -21,6 +21,9 @@ func clearEnv(t *testing.T) {
 		"RUNCODES_S3_BUCKET_PREFIX",
 		"RUNCODES_JUDGE_URL", "RUNCODES_JUDGE_TOKEN",
 		"RUNCODES_JUDGE_STALE_TIMEOUT",
+		"RUNCODES_PUBLIC_URL", "RUNCODES_SMTP_HOST", "RUNCODES_SMTP_PORT",
+		"RUNCODES_SMTP_USERNAME", "RUNCODES_SMTP_PASSWORD",
+		"RUNCODES_SMTP_FROM",
 	} {
 		t.Setenv(key, "")
 	}
@@ -40,6 +43,9 @@ func setRequired(t *testing.T, overrides map[string]string) {
 		"RUNCODES_DB_USER":     "runcodes",
 		"RUNCODES_DB_PASSWORD": "password",
 		"RUNCODES_DB_NAME":     "runcodes",
+		"RUNCODES_PUBLIC_URL":  "https://runcodes.example",
+		"RUNCODES_SMTP_HOST":   "smtp.example",
+		"RUNCODES_SMTP_FROM":   "RunCodes <no-reply@runcodes.example>",
 	}
 	for key, value := range required {
 		t.Setenv(key, value)
@@ -85,6 +91,15 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Judge.StaleTimeout != defaultStaleTimeout {
 		t.Errorf("Judge.StaleTimeout = %s, want %s", cfg.Judge.StaleTimeout, defaultStaleTimeout)
 	}
+	if cfg.PublicURL != "https://runcodes.example" {
+		t.Errorf("PublicURL = %q", cfg.PublicURL)
+	}
+	if cfg.Mail.Host != "smtp.example" || cfg.Mail.Port != defaultSMTPPort {
+		t.Errorf("Mail = %+v, want the host and the default port", cfg.Mail)
+	}
+	if cfg.Mail.From != "RunCodes <no-reply@runcodes.example>" {
+		t.Errorf("Mail.From = %q", cfg.Mail.From)
+	}
 
 	// Load publishes the configuration for the rest of the process.
 	if C != cfg || Get() != cfg {
@@ -110,6 +125,12 @@ func TestLoadReadsEveryValue(t *testing.T) {
 		"RUNCODES_JUDGE_URL":             "http://judge:9000",
 		"RUNCODES_JUDGE_TOKEN":           "token",
 		"RUNCODES_JUDGE_STALE_TIMEOUT":   "3m",
+		"RUNCODES_PUBLIC_URL":            "https://runcodes.example",
+		"RUNCODES_SMTP_HOST":             "mail.example",
+		"RUNCODES_SMTP_PORT":             "2525",
+		"RUNCODES_SMTP_USERNAME":         "relay-user",
+		"RUNCODES_SMTP_PASSWORD":         "relay-password",
+		"RUNCODES_SMTP_FROM":             "RunCodes <runcodes@example.com>",
 	})
 
 	cfg, err := Load()
@@ -141,6 +162,19 @@ func TestLoadReadsEveryValue(t *testing.T) {
 	if cfg.Judge.Token != "token" || cfg.Judge.StaleTimeout != 3*time.Minute {
 		t.Errorf("Judge = %+v", cfg.Judge)
 	}
+	if cfg.PublicURL != "https://runcodes.example" {
+		t.Errorf("PublicURL = %q", cfg.PublicURL)
+	}
+	wantMail := MailConfig{
+		Host:     "mail.example",
+		Port:     "2525",
+		Username: "relay-user",
+		Password: "relay-password",
+		From:     "RunCodes <runcodes@example.com>",
+	}
+	if cfg.Mail != wantMail {
+		t.Errorf("Mail = %+v, want %+v", cfg.Mail, wantMail)
+	}
 }
 
 // TestLoadNormalizes covers the values Load rewrites instead of rejecting.
@@ -149,6 +183,7 @@ func TestLoadNormalizes(t *testing.T) {
 	setRequired(t, map[string]string{
 		"RUNCODES_JUDGE_URL":        "http://judge:9000/",
 		"RUNCODES_S3_BUCKET_PREFIX": "-runcodes-",
+		"RUNCODES_PUBLIC_URL":       "https://runcodes.example/",
 	})
 
 	cfg, err := Load()
@@ -159,6 +194,9 @@ func TestLoadNormalizes(t *testing.T) {
 	if cfg.Judge.URL != "http://judge:9000" {
 		t.Errorf("Judge.URL = %q, want the trailing slash trimmed", cfg.Judge.URL)
 	}
+	if cfg.PublicURL != "https://runcodes.example" {
+		t.Errorf("PublicURL = %q, want the trailing slash trimmed", cfg.PublicURL)
+	}
 	if got := cfg.S3.CasesBucket(); got != "runcodes-cases" {
 		t.Errorf("CasesBucket = %q, want the dashes trimmed", got)
 	}
@@ -168,7 +206,8 @@ func TestLoadRejectsMissingValues(t *testing.T) {
 	for _, key := range []string{
 		"RUNCODES_API_PORT", "RUNCODES_JWT_SECRET", "RUNCODES_DB_HOST",
 		"RUNCODES_DB_PORT", "RUNCODES_DB_USER", "RUNCODES_DB_PASSWORD",
-		"RUNCODES_DB_NAME",
+		"RUNCODES_DB_NAME", "RUNCODES_PUBLIC_URL", "RUNCODES_SMTP_HOST",
+		"RUNCODES_SMTP_FROM",
 	} {
 		t.Run(key, func(t *testing.T) {
 			clearEnv(t)
@@ -241,6 +280,31 @@ func TestLoadRejectsMalformedValues(t *testing.T) {
 			name:  "judge url uses another scheme",
 			env:   map[string]string{"RUNCODES_JUDGE_URL": "ftp://judge:9000"},
 			names: "RUNCODES_JUDGE_URL",
+		},
+		{
+			name:  "public url is not absolute",
+			env:   map[string]string{"RUNCODES_PUBLIC_URL": "runcodes.example"},
+			names: "RUNCODES_PUBLIC_URL",
+		},
+		{
+			name:  "public url has a path",
+			env:   map[string]string{"RUNCODES_PUBLIC_URL": "https://runcodes.example/app"},
+			names: "RUNCODES_PUBLIC_URL",
+		},
+		{
+			name:  "smtp port is not a number",
+			env:   map[string]string{"RUNCODES_SMTP_PORT": "smtp"},
+			names: "RUNCODES_SMTP_PORT",
+		},
+		{
+			name:  "smtp port is out of range",
+			env:   map[string]string{"RUNCODES_SMTP_PORT": "70000"},
+			names: "RUNCODES_SMTP_PORT",
+		},
+		{
+			name:  "smtp from is not an address",
+			env:   map[string]string{"RUNCODES_SMTP_FROM": "RunCodes"},
+			names: "RUNCODES_SMTP_FROM",
 		},
 	}
 

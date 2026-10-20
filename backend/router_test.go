@@ -13,6 +13,10 @@ func TestCreateRoutes(t *testing.T) {
 	createRoutes(router)
 
 	want := []string{
+		"/api/v1/user/signup",
+		"/api/v1/user/login",
+		"/api/v1/user/verify-email",
+		"/api/v1/user/resend-verification",
 		"/api/v1/user/logout",
 		"/api/v1/user/profile",
 		"/api/v1/user/password",
@@ -32,6 +36,8 @@ func TestCreateRoutes(t *testing.T) {
 		"/api/v1/exercises/{id}/test-cases/{caseId}",
 		"/api/v1/exercises/{id}/compilation-files",
 		"/api/v1/exercises/{id}/compilation-files/{fileId}",
+		"/api/v1/exercises/{id}/attached-files",
+		"/api/v1/exercises/{id}/attached-files/{fileId}",
 		"/api/v1/admin/users",
 		"/api/v1/admin/users/{id}",
 		"/api/v1/admin/offerings",

@@ -22,6 +22,9 @@ func loadConfig(t *testing.T) {
 		"RUNCODES_DB_USER":     "runcodes",
 		"RUNCODES_DB_PASSWORD": "password",
 		"RUNCODES_DB_NAME":     "runcodes",
+		"RUNCODES_PUBLIC_URL":  "https://runcodes.example",
+		"RUNCODES_SMTP_HOST":   "smtp.example",
+		"RUNCODES_SMTP_FROM":   "RunCodes <no-reply@runcodes.example>",
 	} {
 		t.Setenv(key, value)
 	}

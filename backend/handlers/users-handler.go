@@ -77,7 +77,8 @@ func SignUp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := services.SignUp(ctx, &req); err != nil {
+	userID, err := services.SignUp(ctx, &req)
+	if err != nil {
 		slog.ErrorContext(ctx,
 			"error registering new user",
 			slog.String("error", err.Error()),
@@ -86,6 +87,18 @@ func SignUp(w http.ResponseWriter, r *http.Request) {
 			models.Error{Message: services.ErrServer.Error()},
 		)
 		return
+	}
+
+	// The account exists even if the mail cannot be delivered, so a delivery
+	// failure must not turn a successful signup into an error the caller would
+	// retry (and then be told the email is taken). The resend endpoint is the
+	// recovery path, and the failure is visible in the log.
+	if err := services.SendVerificationEmail(ctx, userID, req.Name, req.Email); err != nil {
+		slog.ErrorContext(ctx,
+			"error sending account verification email",
+			slog.Int("user_id", userID),
+			slog.String("error", err.Error()),
+		)
 	}
 
 	WriteResponse(w, http.StatusCreated, nil)
@@ -120,6 +133,13 @@ func LogIn(w http.ResponseWriter, r *http.Request) {
 			)
 			WriteResponse(w, http.StatusUnauthorized,
 				models.Error{Message: services.ErrInvalidCredentials.Error()},
+			)
+		case errors.Is(err, services.ErrEmailNotVerified):
+			slog.InfoContext(ctx,
+				"someone tried to login before verifying their email",
+			)
+			WriteResponse(w, http.StatusForbidden,
+				models.Error{Message: services.ErrEmailNotVerified.Error()},
 			)
 		default:
 			slog.ErrorContext(ctx,

@@ -1,5 +1,9 @@
 # Legacy database migration
 
+> This directory is the one-shot import of the legacy production database.
+> Ongoing schema changes live in [`../migrations`](../migrations) and are
+> generated with Atlas; see [`../README.md`](../README.md).
+
 One-shot migration from the old production schema (`database/old_schema/schema.old.sql`)
 to the new schema (`database/schema/02-schema.sql`).
 

@@ -186,3 +186,90 @@
     scrollbar-color: var(--border) transparent;
   }
 }
+
+/* Rendered exercise statements. Tailwind has no typography plugin here, so the
+ * markdown surface gets the handful of rules it needs from the design tokens. */
+.markdown-body {
+  @apply text-sm leading-relaxed;
+  overflow-wrap: anywhere;
+}
+
+.markdown-body > * + * {
+  @apply mt-3;
+}
+
+.markdown-body h1 {
+  @apply mt-6 mb-3 text-2xl font-semibold tracking-tight;
+}
+
+.markdown-body h2 {
+  @apply mt-6 mb-2 text-xl font-semibold tracking-tight;
+}
+
+.markdown-body h3 {
+  @apply mt-5 mb-2 text-base font-semibold;
+}
+
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  @apply mt-4 mb-2 text-sm font-semibold;
+}
+
+.markdown-body ul {
+  @apply list-disc space-y-1 pl-5;
+}
+
+.markdown-body ol {
+  @apply list-decimal space-y-1 pl-5;
+}
+
+.markdown-body li > ul,
+.markdown-body li > ol {
+  @apply mt-1;
+}
+
+.markdown-body a {
+  @apply text-primary underline underline-offset-4;
+}
+
+.markdown-body strong {
+  @apply font-semibold;
+}
+
+.markdown-body code {
+  @apply bg-muted rounded px-1 py-0.5 font-mono text-[0.85em];
+}
+
+.markdown-body pre {
+  @apply bg-muted overflow-x-auto rounded-lg p-3;
+}
+
+.markdown-body pre code {
+  @apply bg-transparent p-0 text-[0.85em];
+}
+
+.markdown-body blockquote {
+  @apply border-border text-muted-foreground border-l-2 pl-4 italic;
+}
+
+.markdown-body hr {
+  @apply border-border my-5;
+}
+
+.markdown-body table {
+  @apply w-full border-collapse text-sm;
+}
+
+.markdown-body th,
+.markdown-body td {
+  @apply border-border border px-3 py-1.5 text-left;
+}
+
+.markdown-body th {
+  @apply bg-muted font-semibold;
+}
+
+.markdown-body img {
+  @apply max-w-full rounded-lg;
+}

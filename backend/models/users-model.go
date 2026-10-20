@@ -14,6 +14,17 @@ type LogInRequest struct {
 	Password string `json:"password"`
 }
 
+// VerifyEmailRequest is the JSON body of POST /api/v1/user/verify-email.
+type VerifyEmailRequest struct {
+	Token string `json:"token"`
+}
+
+// ResendVerificationRequest is the JSON body of
+// POST /api/v1/user/resend-verification.
+type ResendVerificationRequest struct {
+	Email string `json:"email"`
+}
+
 // User is the public representation of a user, as returned by the API.
 type User struct {
 	ID    int    `json:"id"`
@@ -31,21 +42,23 @@ type AuthInfo struct {
 
 // Profile is the caller's own account, as returned by the profile endpoints.
 type Profile struct {
-	ID        int       `json:"id"`
-	Name      string    `json:"name"`
-	Email     string    `json:"email"`
-	OrgID     string    `json:"org_id"`
-	Role      string    `json:"role"`
-	Confirmed bool      `json:"confirmed"`
-	CreatedAt time.Time `json:"created_at"`
+	ID                int       `json:"id"`
+	Name              string    `json:"name"`
+	Email             string    `json:"email"`
+	OrgID             string    `json:"org_id"`
+	Role              string    `json:"role"`
+	Confirmed         bool      `json:"confirmed"`
+	CodeEditorEnabled bool      `json:"code_editor_enabled"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
 // UpdateProfileRequest is the JSON body of PUT /api/v1/user/profile. Every
 // field is optional: absent fields are left untouched (partial update).
 type UpdateProfileRequest struct {
-	Name  *string `json:"name"`
-	Email *string `json:"email"`
-	OrgID *string `json:"org_id"`
+	Name              *string `json:"name"`
+	Email             *string `json:"email"`
+	OrgID             *string `json:"org_id"`
+	CodeEditorEnabled *bool   `json:"code_editor_enabled"`
 }
 
 // ChangePasswordRequest is the JSON body of PUT /api/v1/user/password.

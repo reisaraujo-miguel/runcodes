@@ -27,8 +27,11 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: {
         // Uses the TypeScript project service to pick up tsconfigs
-        // automatically instead of hardcoding them.
+        // automatically instead of hardcoding them. Pin the root so the
+        // project is resolved from this directory even when the editor
+        // starts ESLint from a parent worktree.
         projectService: true,
+        tsconfigRootDir: import.meta.dirname,
       },
     },
     rules: {

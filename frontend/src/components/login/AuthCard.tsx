@@ -1,4 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { MailCheckIcon } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, Navigate, useSearchParams } from "react-router";
@@ -19,7 +20,8 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Spinner } from "@/components/ui/spinner";
 import { useAuth } from "@/hooks/use-auth";
-import { login, signUp } from "@/lib/api/auth";
+import { login, resendVerification, signUp } from "@/lib/api/auth";
+import { ApiRequestError } from "@/lib/api/client";
 import { errorMessage } from "@/lib/errors";
 
 const SPECIAL_CHARACTER = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]/;
@@ -56,11 +58,65 @@ const signUpSchema = z
 type LoginValues = z.infer<typeof loginSchema>;
 type SignUpValues = z.infer<typeof signUpSchema>;
 
+/**
+ * The resend affordance shared by the failed-login and post-signup views. The
+ * endpoint answers the same way for an unknown address, so the copy never claims
+ * that an account exists.
+ */
+function ResendVerification({ email }: { email: string }) {
+  const [state, setState] = useState<"idle" | "sending" | "sent" | "error">(
+    "idle",
+  );
+
+  async function handleResend() {
+    setState("sending");
+    try {
+      await resendVerification(email);
+      setState("sent");
+    } catch {
+      setState("error");
+    }
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border p-3">
+      <p className="text-muted-foreground text-sm">
+        Não recebeu? Confira a caixa de spam ou peça um novo link para{" "}
+        <span className="text-foreground font-medium">{email}</span>.
+      </p>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={state === "sending"}
+        onClick={() => void handleResend()}
+      >
+        {state === "sending" ? <Spinner className="size-4" /> : null}
+        {state === "sent"
+          ? "Enviar novamente"
+          : "Reenviar email de verificação"}
+      </Button>
+      {state === "sent" ? (
+        <p className="text-muted-foreground text-xs">
+          Se houver uma conta pendente para esse endereço, o link chegará em
+          instantes.
+        </p>
+      ) : null}
+      {state === "error" ? (
+        <p className="text-destructive text-xs">
+          Não foi possível reenviar agora. Tente novamente em instantes.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 /** The sign-in form. */
 function LoginForm() {
   const { refreshAuth } = useAuth();
   const [done, setDone] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
@@ -68,6 +124,7 @@ function LoginForm() {
 
   async function onSubmit(values: LoginValues) {
     setApiError(null);
+    setUnverifiedEmail(null);
     try {
       await login(values);
       // The backend set the session cookie; load the user (and role) so the
@@ -75,6 +132,15 @@ function LoginForm() {
       await refreshAuth();
       setDone(true);
     } catch (error) {
+      // 403 on this endpoint means the credentials are right but the account
+      // has not confirmed its email yet.
+      if (error instanceof ApiRequestError && error.status === 403) {
+        setUnverifiedEmail(values.email.trim());
+        setApiError(
+          "Confirme o seu email antes de entrar. Abra o link que enviamos para ativar a sua conta.",
+        );
+        return;
+      }
       setApiError(errorMessage(error, "Não foi possível entrar."));
     }
   }
@@ -126,6 +192,10 @@ function LoginForm() {
               <AlertDescription>{apiError}</AlertDescription>
             </Alert>
           ) : null}
+
+          {unverifiedEmail ? (
+            <ResendVerification key={unverifiedEmail} email={unverifiedEmail} />
+          ) : null}
         </CardContent>
         <CardFooter className="flex-col gap-3">
           <Button
@@ -156,8 +226,7 @@ function LoginForm() {
 
 /** The sign-up form. */
 function SignUpForm() {
-  const { refreshAuth } = useAuth();
-  const [done, setDone] = useState(false);
+  const [createdEmail, setCreatedEmail] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
   const form = useForm<SignUpValues>({
     resolver: zodResolver(signUpSchema),
@@ -178,16 +247,47 @@ function SignUpForm() {
         password: values.password,
         password_confirmation: values.passwordConfirmation,
       });
-      // Auto-login after a successful sign-up.
-      await login({ email: values.email, password: values.password });
-      await refreshAuth();
-      setDone(true);
+      // No auto-login: the account is unverified until the emailed link is
+      // opened, and the API refuses to start a session before that.
+      setCreatedEmail(values.email.trim());
     } catch (error) {
       setApiError(errorMessage(error, "Não foi possível criar a conta."));
     }
   }
 
-  if (done) return <Navigate to="/" replace />;
+  if (createdEmail) {
+    return (
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle>Confirme o seu email</CardTitle>
+          <CardDescription>
+            Falta só um passo para ativar a sua conta.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Alert variant="info">
+            <MailCheckIcon aria-hidden />
+            <AlertDescription>
+              Enviamos um link de verificação para{" "}
+              <span className="text-foreground font-medium">
+                {createdEmail}
+              </span>
+              . Abra o link para ativar a conta; depois entre com a sua senha.
+            </AlertDescription>
+          </Alert>
+          <p className="text-muted-foreground text-sm">
+            O link expira em 24 horas.
+          </p>
+          <ResendVerification email={createdEmail} />
+        </CardContent>
+        <CardFooter>
+          <Button size="lg" className="w-full" render={<Link to="/login" />}>
+            Ir para o login
+          </Button>
+        </CardFooter>
+      </Card>
+    );
+  }
 
   const errors = form.formState.errors;
 

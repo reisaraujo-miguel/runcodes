@@ -16,13 +16,13 @@ import {
   deleteAttachedFile,
   listAttachedFiles,
 } from "@/lib/api";
+import { attachedFileDownloadUrl } from "@/lib/api/attached-files";
 import { errorMessage } from "@/lib/errors";
 
 /**
  * Manages the materials attached to an exercise: the statement, datasets and
  * starter files students read on the submission page. Uploading a same-named
- * file replaces the stored one. The platform exposes no download endpoint, so
- * only the filenames and upload/removal are offered here.
+ * file replaces the stored one.
  */
 export function AttachedFilesCard({ exerciseId }: { exerciseId: number }) {
   const files = useAsync(
@@ -60,7 +60,7 @@ export function AttachedFilesCard({ exerciseId }: { exerciseId: number }) {
   return (
     <SectionCard
       title="Materiais anexados"
-      description="Enunciados, dados e arquivos de apoio mostrados aos alunos. A plataforma não disponibiliza download; aqui você só envia e remove."
+      description="Enunciados, dados e arquivos de apoio mostrados aos alunos."
     >
       <div className="space-y-4">
         <div className="flex flex-wrap items-end gap-3">
@@ -119,7 +119,14 @@ export function AttachedFilesCard({ exerciseId }: { exerciseId: number }) {
                 className="flex items-center justify-between gap-3 px-3 py-2"
               >
                 <div className="min-w-0">
-                  <p className="truncate font-mono text-sm">{file.filename}</p>
+                  <a
+                    href={attachedFileDownloadUrl(exerciseId, file.id)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary block truncate font-mono text-sm hover:underline"
+                  >
+                    {file.filename}
+                  </a>
                   {file.path ? (
                     <p className="text-muted-foreground truncate text-xs">
                       {file.path}

@@ -166,6 +166,33 @@ The judge logs the same diagnosis at startup and on every readiness probe. While
 podman is unreachable the backend refuses submissions with `503`, so nothing is
 queued or lost.
 
+**`readiness: podman unavailable` … `dial unix /run/podman/podman.sock: connect:
+permission denied`.** Unlike the case above the mount is alive — the socket is
+there and only the access check fails. Two settings are load-bearing on a
+rootless podman host, and both are easy to lose in an override file:
+
+- **SELinux.** Fedora enables it by default and labels the rootless socket
+  `user_tmp_t`. A container runs as `container_t`, cannot connect to it, and the
+  kernel reports the denial as a plain `EACCES`. The judge therefore disables
+  SELinux separation for itself (`security_opt: [label=disable]`); relabelling
+  the socket with `:z` is not a fix, because systemd recreates it with
+  `user_tmp_t` the next time `podman.socket` restarts.
+- **The UID.** Rootless podman maps container root to the host user, so a
+  container started as uid 1000 is a host *subuid* (524288 and up) — neither in
+  the socket's group nor its owner, which is what a `0660` socket checks. The
+  judge therefore runs as root inside its namespace (`user:` defaults to `0:0`),
+  which *is* the host user; that also makes the workspaces it writes in `./exec`
+  belong to the host user, so the host podman can relabel them (`:z`) and mount
+  them into the runner containers. `judge-exec-init` needs the same ownership to
+  `chmod 0777 ./exec`.
+
+A recreated judge is enough; verify it with:
+
+```sh
+docker compose exec judge id                      # uid=0(root), not 1000
+curl -s http://localhost:9000/readyz              # {"status":"ok"}
+```
+
 **`could not claim commit: begin claim tx: context deadline exceeded`.** The
 judge could not get a database connection within its 10 s claim budget, which is
 what a database container that was recreated under a running judge looks like:

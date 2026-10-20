@@ -154,16 +154,24 @@ export function UserEditDialog({
             ) : null}
           </div>
 
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="admin-user-confirmed"
-              checked={confirmed}
-              disabled={submit.pending}
-              onCheckedChange={(checked) => {
-                setConfirmed(checked);
-              }}
-            />
-            <Label htmlFor="admin-user-confirmed">Conta confirmada</Label>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="admin-user-confirmed"
+                checked={confirmed}
+                disabled={isSelf || submit.pending}
+                onCheckedChange={(checked) => {
+                  setConfirmed(checked);
+                }}
+              />
+              <Label htmlFor="admin-user-confirmed">Conta confirmada</Label>
+            </div>
+            {isSelf ? (
+              <p className="text-muted-foreground text-xs">
+                A confirmação da sua própria conta não pode ser removida: isso
+                bloquearia o acesso ao painel.
+              </p>
+            ) : null}
           </div>
 
           {submit.error ? (

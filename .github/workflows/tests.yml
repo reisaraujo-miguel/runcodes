@@ -213,3 +213,91 @@ jobs:
           deny "CREATE ROLE ci_privilege_check"
           deny "SELECT * FROM pg_authid"
           exit "${denied}"
+
+  migrations:
+    name: Database (migrations)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres@sha256:885cf05d376c7cf27afef02073e6bdac3841252537f16e244fd1c1e6a7c99fb1
+        env:
+          POSTGRES_USER: runcodes
+          POSTGRES_PASSWORD: runcodes
+          POSTGRES_DB: runcodes
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U runcodes"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: runcodes
+      PGPASSWORD: runcodes
+      # Disposable database Atlas uses to replay the migration directory. The
+      # role must be `runcodes`: the schema file runs SET ROLE TO runcodes.
+      ATLAS_DEV_URL: "postgres://runcodes:runcodes@localhost:5432/atlas_dev?sslmode=disable&search_path=public"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Install psql
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Create the migration databases
+        run: |
+          psql -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE atlas_dev'
+          psql -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE runcodes_migrated'
+
+      # Checks atlas.sum and replays every file in the dev database.
+      - name: Validate the migrations
+        run: ./database/atlas.sh migrate validate --env local
+
+      # `migrate diff` writes a file when the desired schema and the migration
+      # directory disagree, so a clean tree means they are in sync.
+      - name: Check the schema and migrations agree
+        run: |
+          ./database/atlas.sh migrate diff ci-check --env local
+          if [ -n "$(git status --porcelain -- database/migrations)" ]; then
+            echo "::error::database/schema/02-schema.sql changed without a migration"
+            echo "Run ./database/atlas.sh migrate diff <name> and commit the result."
+            git status --porcelain -- database/migrations
+            git diff -- database/migrations
+            exit 1
+          fi
+
+      - name: Apply the migrations to an empty database
+        run: |
+          ./database/atlas.sh migrate apply --env local \
+            --url "postgres://runcodes:runcodes@localhost:5432/runcodes_migrated?sslmode=disable"
+
+      # Proves the seed and the role setup still work on a database built only
+      # from the migrations, not only on one built from the schema file.
+      - name: Seed the migrated database and create the application role
+        env:
+          RUNCODES_DB_APP_PASSWORD: app-password
+        run: |
+          psql -d runcodes_migrated -v ON_ERROR_STOP=1 -f database/schema/03-seed-data.sql
+          PGDATABASE=runcodes_migrated ./database/schema/05-app-role.sh
+
+      - name: Verify the application role on the migrated database
+        env:
+          PGDATABASE: runcodes_migrated
+          PGUSER: runcodes_app
+          PGPASSWORD: app-password
+        run: |
+          psql -v ON_ERROR_STOP=1 \
+            -c "BEGIN;
+                  INSERT INTO users (name, email, password_hash)
+                       VALUES ('ci-migration-check', 'ci-migration-check@invalid', '!');
+                  DELETE FROM users WHERE email = 'ci-migration-check@invalid';
+                  ROLLBACK;"
+
+          # The migration history is in its own schema and must stay outside the
+          # application role's reach.
+          if psql -tAc "SELECT count(*) FROM atlas_schema_revisions.atlas_schema_revisions" >/dev/null 2>&1; then
+            echo "::error::runcodes_app can read the migration history"
+            exit 1
+          fi

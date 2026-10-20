@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, Outlet } from "react-router";
+import { NavLink, Outlet, useMatches } from "react-router";
 
 import { MenuIcon, PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react";
 
@@ -20,6 +20,25 @@ import { cn } from "@/lib/utils";
 import { GitHubLink } from "./GitHubLink";
 
 const SIDEBAR_COLLAPSED_KEY = "sidebar-collapsed";
+
+/**
+ * A route asks for the workspace layout by declaring
+ * `handle: { layout: "workspace" }`. Workspace pages drop the standard column
+ * width and, on wide screens, fill the remaining viewport height so their
+ * panels can scroll internally instead of the page.
+ */
+interface WorkspaceHandle {
+  layout?: "workspace";
+}
+
+function isWorkspaceHandle(handle: unknown): handle is WorkspaceHandle {
+  return (
+    typeof handle === "object" &&
+    handle !== null &&
+    "layout" in handle &&
+    (handle as { layout?: unknown }).layout === "workspace"
+  );
+}
 
 /** The persisted compact-rail preference, defaulting to expanded. */
 function readSidebarCollapsed(): boolean {
@@ -165,6 +184,9 @@ export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(readSidebarCollapsed);
   const sections = navSectionsFor(user?.role ?? "student");
+  const workspaceLayout = useMatches().some((match) =>
+    isWorkspaceHandle(match.handle),
+  );
 
   useEffect(() => {
     try {
@@ -231,7 +253,14 @@ export function AppShell() {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <main
+          className={cn(
+            "w-full",
+            workspaceLayout
+              ? "px-4 py-4 xl:h-svh xl:overflow-hidden xl:px-6"
+              : "mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8",
+          )}
+        >
           <Outlet />
         </main>
       </div>

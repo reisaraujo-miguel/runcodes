@@ -53,7 +53,7 @@ A submission flows through the platform like this:
 | Judge       | `judge/`    | Go, rootless podman, PostgreSQL, S3       | Compiles, runs and grades submissions.           |
 | Runners     | `runners/`  | Docker images per language                | The container each submission is graded in.      |
 | Monitor     | `monitor/`  | C                                         | Limits, times and reports one graded process.    |
-| Database    | `database/` | PostgreSQL                                | Schema, seed data and the legacy-data migration. |
+| Database    | `database/` | PostgreSQL                                | Schema, seeds, migrations and legacy import.     |
 
 Each service has its own README: [`backend/README.md`](backend/README.md),
 [`frontend/README.md`](frontend/README.md), [`judge/README.md`](judge/README.md),
@@ -72,7 +72,7 @@ nonce and the per-case limits) is in the same file.
 ├── judge/          Execution engine (rootless podman)
 ├── runners/        Language images the judge runs submissions in
 ├── monitor/        In-container process monitor (limits, timing, report)
-├── database/       PostgreSQL schema, seeds and legacy migration
+├── database/       PostgreSQL schema, seeds, migrations and legacy import
 └── docker-compose.yml
 ```
 
@@ -119,7 +119,7 @@ docker compose up --build
 | Backend   | reached through the frontend proxy at `/api` (loopback `:8443`) |
 | Judge     | `http://localhost:9000` (loopback only)                         |
 | SeaweedFS | `http://localhost:8333` (loopback only)                         |
-| smtp4dev  | `http://localhost:8081` (loopback only)                         |
+| smtp4dev  | `http://localhost:8081` (web UI), `localhost:1025` (SMTP)       |
 
 Only the frontend is published on a network interface. The judge, SeaweedFS and
 smtp4dev are bound to loopback: the backend and the judge talk to each other over
@@ -135,14 +135,58 @@ RUNCODES_ADMIN_PASSWORD='...' \
   PGPASSWORD="$RUNCODES_DB_PASSWORD" ./database/bootstrap-admin.sh
 ```
 
+### Account verification
+
+New accounts are created **unconfirmed**. Signing up sends a verification link
+to the address; until that link is opened, `POST /api/v1/user/login` answers
+`403` and the API refuses any protected route, even with a token issued before
+the account was unconfirmed. The link points at `/verify-email?token=...` on the
+frontend, expires after 24 hours, and can be reissued from the login page (or
+`POST /api/v1/user/resend-verification`), which invalidates the previous link.
+
+Locally, no real mail server is needed. The `smtp4dev` service catches every
+message and lists it at `http://localhost:8081`:
+
+1. Start the stack (`docker compose up --build`) or just the catcher
+   (`docker compose up -d smtp4dev`) if you run the backend with `go run .`.
+2. Sign up in the frontend. The backend sends the link to smtp4dev; open
+   `http://localhost:8081` and click the message, then its verification link.
+3. The `/verify-email` page confirms the account; sign in afterwards.
+
+Compose points the backend at `smtp4dev:25` and builds links for
+`http://localhost:8080`. The backend's own `.env` (used by `cd backend && go run .`)
+uses `127.0.0.1:1025` and `http://localhost:5173` instead, matching the published
+SMTP port and the Vite dev server. All of them are overridable:
+
+| Variable                                            | Purpose                                                  |
+| --------------------------------------------------- | -------------------------------------------------------- |
+| `RUNCODES_PUBLIC_URL`                               | Origin used in verification links (no path).             |
+| `RUNCODES_SMTP_HOST`                                | SMTP server hostname; `smtp4dev` in Compose.             |
+| `RUNCODES_SMTP_PORT`                                | SMTP port; defaults to `587`.                            |
+| `RUNCODES_SMTP_FROM`                                | `From` address, e.g. `RunCodes <no-reply@example.com>`.  |
+| `RUNCODES_SMTP_USERNAME` / `RUNCODES_SMTP_PASSWORD` | Optional relay credentials; leave empty for smtp4dev.    |
+
+A database created before this feature needs the migration applied once (a
+fresh Compose volume already contains the table):
+
+```bash
+export DATABASE_URL="postgres://runcodes:${RUNCODES_DB_PASSWORD}@localhost:5432/runcodes?sslmode=disable"
+./database/atlas.sh migrate apply --url "$DATABASE_URL"
+```
+
+Accounts migrated from the legacy system inherit their old `confirmed` flag, so
+an unconfirmed legacy account must be confirmed from the admin panel or by
+reissuing its verification link.
+
 ### Configuration
 
 Compose reads secrets from the environment (or a root `.env` file, see
 `.env.example`). The most relevant variables are `RUNCODES_JWT_SECRET`,
 `RUNCODES_DB_PASSWORD`, `RUNCODES_DB_APP_PASSWORD`,
-`RUNCODES_LEGACY_PASSWORD_SALT`, `RUNCODES_JUDGE_TOKEN` and the `RUNCODES_S3_*`
-settings; all but the legacy salt are required and compose fails fast when one is
-missing. Every service documents its own variables in its `.env.example`.
+`RUNCODES_LEGACY_PASSWORD_SALT`, `RUNCODES_JUDGE_TOKEN`, the `RUNCODES_S3_*`
+settings and the mail variables described above. All but the legacy salt are
+required and compose fails fast when one is missing. Every service documents its
+own variables in its `.env.example`.
 
 ## Development
 
@@ -159,6 +203,22 @@ cd judge && make run
 # Frontend
 cd frontend && bun install && bun run dev
 ```
+
+### Database changes
+
+`database/schema/02-schema.sql` is the desired schema and
+`database/migrations/` holds the versioned migrations that move an existing
+database to it. Generate a migration after editing the schema instead of
+changing a live database by hand:
+
+```bash
+ATLAS_DEV_URL='postgres://runcodes:PASSWORD@localhost:5432/atlas_dev?sslmode=disable&search_path=public' \
+  ./database/atlas.sh migrate diff add_the_column
+```
+
+See [`database/README.md`](database/README.md) for the disposable dev database,
+applying migrations and baselining an existing database. CI fails when the
+schema and the migration directory disagree.
 
 ## Releases
 

@@ -60,8 +60,21 @@ services:
       RUNCODES_S3_CREDENTIALS_SECRET: "${RUNCODES_S3_CREDENTIALS_SECRET:?RUNCODES_S3_CREDENTIALS_SECRET must be set}"
       RUNCODES_S3_BUCKET_PREFIX: "runcodes"
       RUNCODES_REDIS_ADDR: "redis:6379"
+      # Browser-facing origin used in the links inside outgoing email. This is
+      # the Caddy frontend by default; a public deployment sets its hostname.
+      RUNCODES_PUBLIC_URL: "${RUNCODES_PUBLIC_URL:-http://localhost:8080}"
+      # Account verification mail goes to the bundled catcher. Its web UI is at
+      # http://localhost:8081, and its SMTP port is published on 127.0.0.1:1025
+      # for running the backend outside Compose (`cd backend && go run .`).
+      RUNCODES_SMTP_HOST: "smtp4dev"
+      RUNCODES_SMTP_PORT: "25"
+      RUNCODES_SMTP_FROM: "${RUNCODES_SMTP_FROM:-RunCodes <no-reply@runcodes.local>}"
+      RUNCODES_SMTP_USERNAME: "${RUNCODES_SMTP_USERNAME:-}"
+      RUNCODES_SMTP_PASSWORD: "${RUNCODES_SMTP_PASSWORD:-}"
     depends_on:
       database:
+        condition: service_started
+      smtp4dev:
         condition: service_started
 
   # Prepares the host's ./exec directory before the judge starts. The directory
@@ -78,6 +91,11 @@ services:
     # still starts, since the directory is owned by the judge's UID. It must not
     # fail the `service_completed_successfully` gate below.
     command: ["sh", "-c", "mkdir -p /exec && chmod 0777 /exec || true"]
+    # Without this SELinux (enforcing on Fedora) denies the chmod on the
+    # user_home_t bind mount, and the `|| true` hides it: the judge then finds a
+    # 0755 directory it cannot write to.
+    security_opt:
+      - label=disable
     volumes:
       - ./exec:/exec
     networks:
@@ -94,8 +112,21 @@ services:
       # nothing needs this published: the judge runs untrusted code and its API is
       # guarded by a single shared token.
       - "127.0.0.1:9000:9000"
-    # Run as the host user so the rootless podman socket and ./exec are accessible.
-    user: "${JUDGE_UID:-1000}:${JUDGE_GID:-1000}"
+    # Rootless podman maps container root to the host user, so the judge runs as
+    # root *inside* the container. A container uid of 1000 would map to a host
+    # subuid (524288+), which can neither open the socket below (0660, owned by
+    # the host user) nor write the workspaces the host's podman mounts into the
+    # runner containers. Under Docker rootful this is plain container root, which
+    # reaches the socket as well.
+    user: "${JUDGE_UID:-0}:${JUDGE_GID:-0}"
+    # SELinux (enforcing on Fedora) labels the rootless socket user_tmp_t, which
+    # container_t cannot connect to: the mount is alive but every connect fails
+    # with EACCES ("connect: permission denied"). Relabelling the live socket
+    # would be undone the next time systemd recreates it, so drop SELinux
+    # separation for this container alone. Untrusted code runs in the runner
+    # containers, which stay confined.
+    security_opt:
+      - label=disable
     environment:
       TZ: "America/Sao_Paulo"
       JUDGE_ADDR: ":9000"
@@ -152,15 +183,23 @@ services:
     networks:
       - runcodes-network
 
+  # Local mail catcher. It accepts any recipient and keeps the messages for
+  # inspection, so account verification can be tested end to end without a real
+  # mail server. The web UI is at http://localhost:8081.
   smtp4dev:
     image: rnwood/smtp4dev:v3.15
     restart: unless-stopped
     ports:
       # Loopback only: the mail catcher has no authentication and keeps every
       # message the platform has sent.
-      - "127.0.0.1:8081:80"
+      - "127.0.0.1:8081:80" # web UI
+      - "127.0.0.1:1025:25" # SMTP, for a backend running outside Compose
     environment:
       TZ: "America/Sao_Paulo"
+      ServerOptions__HostName: "smtp4dev"
+    volumes:
+      # Keep captured messages across restarts.
+      - smtp4dev-data:/smtp4dev
     networks:
       - runcodes-network
 
@@ -203,3 +242,4 @@ volumes:
   runcodes-db-vol:
   runcodes-redis-vol:
   runcodes-seaweed-vol:
+  smtp4dev-data:

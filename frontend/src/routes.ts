@@ -29,6 +29,14 @@ export const router = createBrowserRouter([
         loader: () => redirect("/login?mode=signup"),
       },
       {
+        path: "/verify-email",
+        lazy: async () => {
+          const { VerifyEmailPage } =
+            await import("./routes/verify-email/page.tsx");
+          return { Component: VerifyEmailPage };
+        },
+      },
+      {
         Component: ProtectedRoute,
         children: [
           {
@@ -52,6 +60,10 @@ export const router = createBrowserRouter([
               },
               {
                 path: "exercises/:exerciseId/submit",
+                // The submission page is a workspace: it uses the full width
+                // and, on wide screens, the remaining viewport height instead
+                // of the standard page column. See AppShell.
+                handle: { layout: "workspace" },
                 lazy: async () => {
                   const { SubmitPage } =
                     await import("./routes/exercises/submit/page.tsx");
