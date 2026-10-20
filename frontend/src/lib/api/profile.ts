@@ -8,6 +8,7 @@ export interface Profile {
   org_id: string;
   role: string;
   confirmed: boolean;
+  code_editor_enabled: boolean;
   created_at: string;
 }
 
@@ -16,6 +17,7 @@ export interface ProfilePayload {
   name?: string;
   email?: string;
   org_id?: string;
+  code_editor_enabled?: boolean;
 }
 
 export interface PasswordPayload {
