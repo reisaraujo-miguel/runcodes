@@ -1,4 +1,11 @@
-import { FileUpIcon, PaperclipIcon } from "lucide-react";
+import {
+  CheckCircle2Icon,
+  CodeIcon,
+  DownloadIcon,
+  FileUpIcon,
+  Loader2Icon,
+  PaperclipIcon,
+} from "lucide-react";
 import {
   useEffect,
   useMemo,
@@ -11,18 +18,26 @@ import { Link, useParams } from "react-router";
 import { PageHeader } from "@/components/app/PageHeader";
 import { SectionCard } from "@/components/app/SectionCard";
 import { ErrorState, LoadingState } from "@/components/app/states";
+import { StatusBadge } from "@/components/app/StatusBadge";
+import { CodeEditor } from "@/components/editor/CodeEditor";
 import {
   LiveResults,
   type CaseVisibility,
 } from "@/components/submission/LiveResults";
+import { Markdown } from "@/components/submission/Markdown";
+import { TestCasesPreview } from "@/components/submission/TestCasesPreview";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { useAsync } from "@/hooks/use-async";
+import { useCodeEditorPreference } from "@/hooks/use-code-editor-preference";
 import {
+  attachedFileDownloadUrl,
   createSubmission,
   getAllowedFileTypes,
   getExercise,
@@ -37,8 +52,19 @@ import {
 } from "@/lib/api";
 import { ApiRequestError } from "@/lib/api/client";
 import { deadlineInfo } from "@/lib/deadline";
+import { editorLanguagesFor } from "@/lib/editor/languages";
+import {
+  extensionOf,
+  normalizeExtension,
+  validateFileType,
+} from "@/lib/file-types";
 import { formatDateTime } from "@/lib/format";
-import { isTerminalStatus } from "@/lib/submission-status";
+import {
+  commitStatus,
+  finishedStatus,
+  isPendingStatus,
+  isTerminalStatus,
+} from "@/lib/submission-status";
 import {
   upsertCaseResult,
   viewFromEvent,
@@ -96,21 +122,37 @@ function storeCommit(exerciseId: number, commitId: number | null): void {
   }
 }
 
-function normalizeExtension(extension: string): string {
-  const trimmed = extension.trim().toLowerCase();
-  if (!trimmed) return "";
-  return trimmed.startsWith(".") ? trimmed : `.${trimmed}`;
-}
+/**
+ * Resolves the types an exercise accepts on the server: its own allowed types
+ * when configured, otherwise every available platform type.
+ */
+function resolveAllowedFileTypes(
+  exercise: Exercise | null,
+  allTypes: AllowedFileType[],
+): AllowedFileType[] {
+  if (!exercise) return [];
 
-function extensionOf(filename: string): string {
-  const dot = filename.lastIndexOf(".");
-  return dot === -1 ? "" : filename.slice(dot);
+  const own = exercise.allowed_file_types;
+  if (own && own.length > 0) {
+    const available = own.filter((type) => type.is_available);
+    if (available.length > 0) return available;
+  }
+
+  const ids = exercise.allowed_file_type_ids;
+  if (ids && ids.length > 0) {
+    return allTypes.filter(
+      (type) => ids.includes(type.id) && type.is_available,
+    );
+  }
+
+  // An explicitly empty exercise list means "no restriction": offer everything
+  // the platform can compile so the editor still has languages to choose from.
+  return allTypes.filter((type) => type.is_available);
 }
 
 /**
- * Resolves the extensions the exercise accepts: the exercise's own allowed
- * types when the endpoint embeds them, otherwise the platform's available
- * types. Returns `null` when nothing is known (skip client-side validation).
+ * Resolves the extensions the exercise accepts for client-side validation.
+ * Returns `null` when nothing is restricted (skip validation).
  */
 function resolveAllowedExtensions(
   exercise: Exercise | null,
@@ -120,9 +162,12 @@ function resolveAllowedExtensions(
 
   const own = exercise.allowed_file_types;
   if (own) {
-    if (own.length === 0) return null;
+    // An empty list means no restriction; a list whose entries are all
+    // unavailable is treated the same way by the backend's validation.
+    const available = own.filter((type) => type.is_available);
+    if (own.length === 0 || available.length === 0) return null;
     const extensions = [
-      ...new Set(own.map((type) => normalizeExtension(type.extension))),
+      ...new Set(available.map((type) => normalizeExtension(type.extension))),
     ].filter((extension) => extension !== "");
     return extensions.length > 0 ? extensions : null;
   }
@@ -138,11 +183,8 @@ function resolveAllowedExtensions(
   return extensions.length > 0 ? extensions : null;
 }
 
-function validateFile(file: File, allowed: string[] | null): string | null {
-  if (!allowed) return null;
-  const extension = normalizeExtension(extensionOf(file.name));
-  if (extension !== "" && allowed.includes(extension)) return null;
-  return `Extensão não permitida. Tipos aceitos: ${allowed.join(", ")}.`;
+function isPdf(filename: string): boolean {
+  return extensionOf(filename) === ".pdf";
 }
 
 /** The submission view for one exercise; remounted when the exercise changes. */
@@ -169,6 +211,16 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
       validId ? listAttachedFiles(numericExerciseId) : Promise.resolve([]),
     `attached-${exerciseId ?? ""}`,
   );
+  const preference = useCodeEditorPreference();
+
+  const [modeChoice, setModeChoice] = useState<"editor" | "upload" | null>(
+    null,
+  );
+  const [code, setCode] = useState("");
+  const [filenameDraft, setFilenameDraft] = useState<string | null>(null);
+  const [selectedLanguageId, setSelectedLanguageId] = useState<string | null>(
+    null,
+  );
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
@@ -186,16 +238,45 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
   const [final, setFinal] = useState<FinalSummary | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
 
+  const allowedFileTypes = useMemo(
+    () => resolveAllowedFileTypes(exercise.data, allowedTypes.data ?? []),
+    [exercise.data, allowedTypes.data],
+  );
   const allowedExtensions = useMemo(
     () => resolveAllowedExtensions(exercise.data, allowedTypes.data ?? []),
     [exercise.data, allowedTypes.data],
   );
+  const languages = useMemo(
+    () => editorLanguagesFor(allowedFileTypes),
+    [allowedFileTypes],
+  );
+  const selectedLanguage = useMemo(
+    () =>
+      languages.find((item) => item.id === selectedLanguageId) ?? languages[0],
+    [languages, selectedLanguageId],
+  );
+  const filename = filenameDraft ?? selectedLanguage?.defaultFilename ?? "";
+
+  // An explicit choice only lives for this visit; otherwise the stored
+  // preference decides the default input mode.
+  const effectiveMode =
+    languages.length === 0
+      ? "upload"
+      : (modeChoice ?? (preference.enabled ? "editor" : "upload"));
 
   // Honor each test case's visibility flags in the student's result view.
   const visibility = useMemo(() => {
     const map = new Map<number, CaseVisibility>();
     for (const testCase of testCases.data ?? []) {
-      map.set(testCase.id, { showUserOutput: testCase.show_user_output });
+      map.set(testCase.id, {
+        showUserOutput: testCase.show_user_output,
+        showInput: testCase.show_input,
+        showExpectedOutput: testCase.show_expected_output,
+        input: testCase.input,
+        inputType: testCase.input_type,
+        expectedOutput: testCase.expected_output,
+        expectedOutputType: testCase.expected_output_type,
+      });
     }
     return map;
   }, [testCases.data]);
@@ -221,6 +302,8 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
             compilationMessage: event.commit.compilation_message,
             compilationError: event.commit.compilation_error,
           });
+        } else {
+          setFinal(null);
         }
       },
       onStatus: (event) => {
@@ -283,23 +366,37 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.item(0) ?? null;
     setSelectedFile(file);
-    setFileError(file ? validateFile(file, allowedExtensions) : null);
+    setFileError(file ? validateFileType(file, allowedExtensions) : null);
   }
 
   async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!exercise.data || !selectedFile) return;
+    if (!exercise.data) return;
 
-    const validation = validateFile(selectedFile, allowedExtensions);
+    let file: File;
+    if (effectiveMode === "editor") {
+      if (!selectedLanguage || code.trim() === "") return;
+      file = new File(
+        [code],
+        filename.trim() || selectedLanguage.defaultFilename,
+        { type: "text/plain" },
+      );
+    } else {
+      if (!selectedFile) return;
+      file = selectedFile;
+    }
+
+    const validation = validateFileType(file, allowedExtensions);
     if (validation) {
       setFileError(validation);
       return;
     }
 
+    setFileError(null);
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const queued = await createSubmission(exercise.data.id, selectedFile);
+      const queued = await createSubmission(exercise.data.id, file);
       storeCommit(exercise.data.id, queued.commit_id);
       resetRunState();
       setCommitId(queued.commit_id);
@@ -308,15 +405,6 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
     } finally {
       setSubmitting(false);
     }
-  }
-
-  function handleNewSubmission() {
-    if (exercise.data) storeCommit(exercise.data.id, null);
-    resetRunState();
-    setCommitId(null);
-    setSelectedFile(null);
-    setFileError(null);
-    setSubmitError(null);
   }
 
   if (exercise.loading) return <LoadingState />;
@@ -333,12 +421,24 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
   const current = exercise.data;
   const info = deadlineInfo(current.deadline);
   const materials = attached.data ?? [];
+  const pdfMaterials = materials.filter((file) => isPdf(file.filename));
+  const primaryPdf = pdfMaterials[0];
+  const editorAvailable = languages.length > 0;
+
+  const pending =
+    commitId !== null && final === null && isPendingStatus(status);
+  const overall = final ? finishedStatus(final.status) : commitStatus(status);
+  const canSubmit =
+    !submitting &&
+    !pending &&
+    (effectiveMode === "editor"
+      ? editorAvailable && code.trim() !== ""
+      : selectedFile !== null);
 
   return (
     <div className="space-y-6">
       <PageHeader
         title={current.title}
-        description={current.description || undefined}
         breadcrumb={
           <Link
             to="/exercises"
@@ -362,86 +462,49 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="space-y-4 lg:col-span-2">
-          {commitId === null ? (
-            <SectionCard
-              title="Enviar solução"
-              description="Selecione o arquivo com o código da sua solução e envie para correção."
-            >
-              <form
-                className="space-y-4"
-                onSubmit={(event) => void handleSubmit(event)}
-              >
-                <div className="space-y-2">
-                  <Label htmlFor="submission-file">Arquivo da solução</Label>
-                  <Input
-                    id="submission-file"
-                    type="file"
-                    accept={allowedExtensions?.join(",")}
-                    onChange={handleFileChange}
-                    className="h-auto py-2"
-                  />
-                  {allowedExtensions ? (
-                    <p className="text-muted-foreground text-xs">
-                      Tipos aceitos: {allowedExtensions.join(", ")}
-                    </p>
-                  ) : (
-                    <p className="text-muted-foreground text-xs">
-                      Nenhuma restrição de tipo configurada neste exercício.
-                    </p>
-                  )}
-                  {fileError ? (
-                    <p className="text-destructive text-sm">{fileError}</p>
-                  ) : null}
-                </div>
-
-                {submitError ? (
-                  <Alert variant="destructive">
-                    <AlertDescription>{submitError}</AlertDescription>
-                  </Alert>
-                ) : null}
-
-                <Button type="submit" disabled={!selectedFile || submitting}>
-                  {submitting ? <Spinner className="size-4" /> : <FileUpIcon />}
-                  {submitting ? "Enviando…" : "Enviar para correção"}
-                </Button>
-              </form>
-            </SectionCard>
-          ) : (
-            <>
-              <LiveResults
-                status={status}
-                history={history}
-                compilation={compilation}
-                results={results}
-                final={final}
-                streamError={streamError}
-                artifacts={artifacts}
-                visibility={visibility}
-              />
-              {final ? (
-                <Button variant="outline" onClick={handleNewSubmission}>
-                  Enviar outra solução
-                </Button>
-              ) : null}
-            </>
-          )}
-        </div>
-
-        <aside className="space-y-6">
-          <SectionCard title="Informações">
-            <dl className="space-y-3 text-sm">
-              <div>
-                <dt className="text-muted-foreground">Abertura</dt>
-                <dd>{formatDateTime(current.open_date)}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Prazo</dt>
-                <dd>{formatDateTime(current.deadline)}</dd>
-              </div>
-            </dl>
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+        <div className="space-y-4 lg:sticky lg:top-24 lg:max-h-[calc(100svh-7rem)] lg:overflow-y-auto lg:pr-1">
+          <SectionCard
+            title="Enunciado"
+            description={`Prazo: ${formatDateTime(current.deadline)}`}
+          >
+            {current.description.trim() ? (
+              <Markdown>{current.description}</Markdown>
+            ) : (
+              <p className="text-muted-foreground text-sm">
+                Este exercício não possui descrição em texto.
+              </p>
+            )}
           </SectionCard>
+
+          {primaryPdf ? (
+            <SectionCard
+              title="Enunciado em PDF"
+              description={primaryPdf.filename}
+              action={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  render={
+                    <a
+                      href={attachedFileDownloadUrl(current.id, primaryPdf.id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    />
+                  }
+                >
+                  <DownloadIcon />
+                  Abrir
+                </Button>
+              }
+            >
+              <iframe
+                title={`Enunciado em PDF: ${primaryPdf.filename}`}
+                src={attachedFileDownloadUrl(current.id, primaryPdf.id)}
+                className="border-border h-[65vh] w-full rounded-lg border"
+              />
+            </SectionCard>
+          ) : null}
 
           <SectionCard
             title="Materiais de apoio"
@@ -461,13 +524,235 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
                       className="text-muted-foreground size-4 shrink-0"
                       aria-hidden
                     />
-                    <span className="truncate font-mono">{file.filename}</span>
+                    <a
+                      href={attachedFileDownloadUrl(current.id, file.id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary min-w-0 truncate font-mono hover:underline"
+                    >
+                      {file.filename}
+                    </a>
                   </li>
                 ))}
               </ul>
             )}
           </SectionCard>
-        </aside>
+        </div>
+
+        <div className="space-y-4">
+          <SectionCard
+            title="Sua solução"
+            description="Escreva o código no editor ou envie um arquivo pronto."
+            action={
+              editorAvailable && preference.enabled ? (
+                <div className="flex rounded-lg border p-0.5">
+                  <Button
+                    size="xs"
+                    variant={effectiveMode === "editor" ? "secondary" : "ghost"}
+                    onClick={() => {
+                      setModeChoice("editor");
+                    }}
+                  >
+                    <CodeIcon />
+                    Editor
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant={effectiveMode === "upload" ? "secondary" : "ghost"}
+                    onClick={() => {
+                      setModeChoice("upload");
+                    }}
+                  >
+                    <FileUpIcon />
+                    Arquivo
+                  </Button>
+                </div>
+              ) : undefined
+            }
+          >
+            <form
+              className="space-y-4"
+              onSubmit={(event) => void handleSubmit(event)}
+            >
+              {effectiveMode === "editor" && selectedLanguage ? (
+                <>
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div className="min-w-44 flex-1 space-y-2">
+                      <Label htmlFor="editor-language">Linguagem</Label>
+                      <Select
+                        id="editor-language"
+                        value={selectedLanguage.id}
+                        onChange={(event) => {
+                          setSelectedLanguageId(event.target.value);
+                          setFilenameDraft(null);
+                        }}
+                      >
+                        {languages.map((language) => (
+                          <option key={language.id} value={language.id}>
+                            {language.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div className="min-w-48 flex-1 space-y-2">
+                      <Label htmlFor="editor-filename">Nome do arquivo</Label>
+                      <Input
+                        id="editor-filename"
+                        value={filename}
+                        onChange={(event) => {
+                          setFilenameDraft(event.target.value);
+                        }}
+                        className="font-mono"
+                        spellCheck={false}
+                      />
+                    </div>
+                  </div>
+
+                  <CodeEditor
+                    value={code}
+                    onChange={setCode}
+                    language={selectedLanguage}
+                    className="h-[26rem]"
+                  />
+                </>
+              ) : effectiveMode === "editor" ? (
+                <Alert>
+                  <AlertDescription>
+                    Este exercício não possui linguagens de programação
+                    configuradas para o editor. Envie um arquivo.
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <div className="space-y-2">
+                  <Label htmlFor="submission-file">Arquivo da solução</Label>
+                  <Input
+                    id="submission-file"
+                    type="file"
+                    accept={allowedExtensions?.join(",")}
+                    onChange={handleFileChange}
+                    className="h-auto py-2"
+                  />
+                  {allowedExtensions ? (
+                    <p className="text-muted-foreground text-xs">
+                      Tipos aceitos: {allowedExtensions.join(", ")}
+                    </p>
+                  ) : (
+                    <p className="text-muted-foreground text-xs">
+                      Nenhuma restrição de tipo configurada neste exercício.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {fileError ? (
+                <p className="text-destructive text-sm">{fileError}</p>
+              ) : null}
+
+              {submitError ? (
+                <Alert variant="destructive">
+                  <AlertDescription>{submitError}</AlertDescription>
+                </Alert>
+              ) : null}
+
+              {preference.error ? (
+                <Alert variant="destructive">
+                  <AlertDescription>{preference.error}</AlertDescription>
+                </Alert>
+              ) : null}
+
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <Button type="submit" disabled={!canSubmit}>
+                  {submitting ? <Spinner className="size-4" /> : <FileUpIcon />}
+                  {submitting
+                    ? "Enviando…"
+                    : pending
+                      ? "Correção em andamento"
+                      : "Enviar para correção"}
+                </Button>
+
+                {editorAvailable ? (
+                  <label className="text-muted-foreground flex cursor-pointer items-center gap-2 text-xs">
+                    <Checkbox
+                      checked={preference.enabled}
+                      disabled={preference.saving || preference.loading}
+                      onCheckedChange={(checked) => {
+                        setModeChoice(null);
+                        void preference.setEnabled(checked);
+                      }}
+                    />
+                    Usar editor de código
+                    {preference.saving ? (
+                      <Loader2Icon
+                        className="size-3 animate-spin"
+                        aria-label="Salvando preferência"
+                      />
+                    ) : null}
+                  </label>
+                ) : null}
+              </div>
+            </form>
+          </SectionCard>
+
+          {commitId !== null ? (
+            <>
+              <div
+                role="status"
+                aria-live="polite"
+                className="bg-card flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2"
+              >
+                <div className="flex items-center gap-2">
+                  {pending ? (
+                    <Loader2Icon
+                      className="text-muted-foreground size-4 animate-spin"
+                      aria-hidden
+                    />
+                  ) : (
+                    <CheckCircle2Icon
+                      className="text-success size-4"
+                      aria-hidden
+                    />
+                  )}
+                  <span className="text-sm font-medium">
+                    Submissão #{String(commitId)}
+                  </span>
+                  <StatusBadge value={overall} />
+                </div>
+                {final ? (
+                  <span className="text-muted-foreground text-sm">
+                    Nota{" "}
+                    <span className="text-foreground font-medium tabular-nums">
+                      {final.score.toFixed(2)}
+                    </span>{" "}
+                    · {String(final.numCorrectCases)} caso(s) correto(s)
+                  </span>
+                ) : null}
+              </div>
+
+              <LiveResults
+                status={status}
+                history={history}
+                compilation={compilation}
+                results={results}
+                final={final}
+                streamError={streamError}
+                artifacts={artifacts}
+                visibility={visibility}
+              />
+
+              {results.length === 0 ? (
+                <TestCasesPreview
+                  testCases={testCases.data ?? []}
+                  loading={testCases.loading}
+                />
+              ) : null}
+            </>
+          ) : (
+            <TestCasesPreview
+              testCases={testCases.data ?? []}
+              loading={testCases.loading}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
