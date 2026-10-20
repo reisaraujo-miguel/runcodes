@@ -11,7 +11,7 @@ import {
   indentUnit,
   syntaxHighlighting,
 } from "@codemirror/language";
-import { EditorState } from "@codemirror/state";
+import { EditorState, type Extension } from "@codemirror/state";
 import {
   drawSelection,
   dropCursor,
@@ -23,10 +23,11 @@ import {
   placeholder,
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useTheme } from "@/hooks/use-theme";
-import type { ResolvedEditorLanguage } from "@/lib/editor/languages";
+import { loadLanguageSupport } from "@/lib/editor/language-support";
+import type { EditorLanguage } from "@/lib/editor/languages";
 import { cn } from "@/lib/utils";
 
 /**
@@ -134,7 +135,7 @@ function editorTheme(dark: boolean) {
 export interface CodeEditorProps {
   value: string;
   onChange: (value: string) => void;
-  language: ResolvedEditorLanguage;
+  language: EditorLanguage;
   ariaLabel?: string;
   className?: string;
 }
@@ -142,7 +143,8 @@ export interface CodeEditorProps {
 /**
  * A CodeMirror 6 editor. The view is recreated when the language or theme
  * changes (rare), while external value changes are applied without resetting
- * the selection during normal typing.
+ * the selection during normal typing. The grammar is fetched on demand so the
+ * editor core and the grammars stay in separate chunks.
  */
 export function CodeEditor({
   value,
@@ -156,6 +158,29 @@ export function CodeEditor({
   const viewRef = useRef<EditorView | null>(null);
   const valueRef = useRef(value);
   const onChangeRef = useRef(onChange);
+  const [loaded, setLoaded] = useState<{
+    extension: string;
+    support: Extension;
+  } | null>(null);
+
+  useEffect(() => {
+    let disposed = false;
+    void loadLanguageSupport(language.extension).then(
+      (support) => {
+        if (!disposed) setLoaded({ extension: language.extension, support });
+      },
+      () => {
+        if (!disposed)
+          setLoaded({ extension: language.extension, support: [] });
+      },
+    );
+    return () => {
+      disposed = true;
+    };
+  }, [language.extension]);
+
+  const support =
+    loaded?.extension === language.extension ? loaded.support : null;
 
   useEffect(() => {
     valueRef.current = value;
@@ -167,7 +192,7 @@ export function CodeEditor({
 
   useEffect(() => {
     const parent = containerRef.current;
-    if (!parent) return;
+    if (!parent || !support) return;
 
     const view = new EditorView({
       state: EditorState.create({
@@ -201,7 +226,7 @@ export function CodeEditor({
               onChangeRef.current(update.state.doc.toString());
             }
           }),
-          language.support,
+          support,
           ...editorTheme(theme === "dark"),
         ],
       }),
@@ -214,7 +239,7 @@ export function CodeEditor({
       view.destroy();
       viewRef.current = null;
     };
-  }, [ariaLabel, language, theme]);
+  }, [ariaLabel, support, theme]);
 
   useEffect(() => {
     const view = viewRef.current;

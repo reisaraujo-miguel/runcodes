@@ -10,6 +10,8 @@ import {
   SendIcon,
 } from "lucide-react";
 import {
+  lazy,
+  Suspense,
   useEffect,
   useMemo,
   useState,
@@ -20,7 +22,6 @@ import {
 import { Link, useParams } from "react-router";
 
 import { ErrorState, LoadingState } from "@/components/app/states";
-import { CodeEditor } from "@/components/editor/CodeEditor";
 import { ResultsPanel } from "@/components/submission/ResultsPanel";
 import { StatementPanel } from "@/components/submission/StatementPanel";
 import { Badge } from "@/components/ui/badge";
@@ -73,6 +74,13 @@ import { clamp, cn } from "@/lib/utils";
 
 const INITIAL_STATUS: CommitStatus = "queued";
 const FORM_ID = "submission-form";
+
+// CodeMirror and its grammars are large, so they load only when the editor is
+// actually shown. The grammar for the selected language is fetched separately.
+const CodeEditor = lazy(async () => {
+  const { CodeEditor: Editor } = await import("@/components/editor/CodeEditor");
+  return { default: Editor };
+});
 
 /** Translates a refused submission, keyed on the HTTP status. */
 function submitErrorMessage(error: unknown): string {
@@ -495,7 +503,7 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
         >
           {info.label}
         </Badge>
-        <span className="text-muted-foreground order-last flex w-full items-center gap-1.5 text-xs sm:order-none sm:ml-auto sm:w-auto">
+        <span className="text-muted-foreground order-last flex w-full items-center gap-1.5 text-xs sm:order-0 sm:ml-auto sm:w-auto">
           <CalendarClockIcon className="size-3.5 shrink-0" aria-hidden />
           Prazo: {formatDateTime(current.deadline)}
         </span>
@@ -505,7 +513,7 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
         ref={gridRef}
         style={{ "--dock-columns": dockColumns } as CSSProperties}
         className={cn(
-          "grid min-h-0 grid-cols-1 gap-3 xl:flex-1 xl:grid-cols-[var(--dock-columns)]",
+          "grid min-h-0 grid-cols-1 gap-3 xl:flex-1 xl:grid-cols-(--dock-columns)",
           statementCollapsed ? "xl:gap-3" : "xl:gap-0",
         )}
       >
@@ -550,7 +558,7 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
               "bg-card flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border",
               editorCollapsed
                 ? "xl:basis-auto xl:grow-0 xl:shrink-0"
-                : "xl:basis-0 xl:grow-[var(--editor-grow)]",
+                : "xl:basis-0 xl:grow-(--editor-grow)",
             )}
           >
             <form
@@ -680,15 +688,27 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
               ) : null}
 
               {effectiveMode === "editor" && selectedLanguage ? (
-                <CodeEditor
-                  value={code}
-                  onChange={setCode}
-                  language={selectedLanguage}
-                  className={cn(
-                    "h-80 w-full rounded-none border-0 xl:h-auto xl:min-h-0 xl:flex-1",
-                    editorCollapsed && "xl:hidden",
-                  )}
-                />
+                <Suspense
+                  fallback={
+                    <div
+                      aria-hidden
+                      className={cn(
+                        "bg-muted/30 h-80 w-full xl:h-auto xl:min-h-0 xl:flex-1",
+                        editorCollapsed && "xl:hidden",
+                      )}
+                    />
+                  }
+                >
+                  <CodeEditor
+                    value={code}
+                    onChange={setCode}
+                    language={selectedLanguage}
+                    className={cn(
+                      "h-80 w-full rounded-none border-0 xl:h-auto xl:min-h-0 xl:flex-1",
+                      editorCollapsed && "xl:hidden",
+                    )}
+                  />
+                </Suspense>
               ) : (
                 <div
                   className={cn(
@@ -755,7 +775,7 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
               "xl:mt-auto",
               resultsCollapsed
                 ? "xl:basis-auto xl:grow-0 xl:shrink-0"
-                : "xl:basis-0 xl:grow-[var(--results-grow)]",
+                : "xl:basis-0 xl:grow-(--results-grow)",
             )}
           />
         </div>

@@ -251,7 +251,7 @@ export function ResultsPanel({
             aria-label={
               tab === "results" ? "Casos desta submissão" : "Casos de teste"
             }
-            className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden"
           >
             {tab === "results"
               ? results.map((result) => (
@@ -508,7 +508,7 @@ function CaseField({
       ) : (
         <pre
           className={cn(
-            "border-border bg-muted/50 max-h-40 overflow-auto rounded-md border px-2.5 py-2 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap",
+            "border-border bg-muted/50 max-h-40 overflow-auto rounded-md border px-2.5 py-2 font-mono text-xs leading-relaxed wrap-break-word whitespace-pre-wrap",
             tone === "danger" &&
               "border-destructive/30 bg-destructive/10 text-destructive",
           )}
@@ -588,7 +588,7 @@ function ResultDetail({
       />
 
       {result.errorMessage ? (
-        <pre className="border-destructive/30 bg-destructive/10 text-destructive max-h-40 overflow-auto rounded-md border px-2.5 py-2 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap">
+        <pre className="border-destructive/30 bg-destructive/10 text-destructive max-h-40 overflow-auto rounded-md border px-2.5 py-2 font-mono text-xs leading-relaxed wrap-break-word whitespace-pre-wrap">
           {result.errorMessage}
         </pre>
       ) : null}
@@ -696,7 +696,7 @@ function CompilationError({ message }: { message: string }) {
         <CircleAlertIcon className="size-3.5 shrink-0" aria-hidden />
         Erro de compilação
       </p>
-      <pre className="border-destructive/30 bg-destructive/10 text-destructive max-h-40 overflow-auto rounded-md border px-2.5 py-2 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap">
+      <pre className="border-destructive/30 bg-destructive/10 text-destructive max-h-40 overflow-auto rounded-md border px-2.5 py-2 font-mono text-xs leading-relaxed wrap-break-word whitespace-pre-wrap">
         {message}
       </pre>
     </div>
@@ -726,7 +726,7 @@ function StreamError({ message }: { message: string }) {
         <summary className="text-muted-foreground hover:text-foreground cursor-pointer text-[11px] select-none">
           Ver detalhes
         </summary>
-        <p className="text-muted-foreground mt-1 text-[11px] break-words">
+        <p className="text-muted-foreground mt-1 text-[11px] wrap-break-word">
           {message} Recarregue a página para ver o estado atual.
         </p>
       </details>
@@ -769,7 +769,7 @@ function CompilationMessage({ message }: { message: string }) {
         />
         Mensagem da compilação
       </summary>
-      <pre className="bg-muted mt-2 max-h-40 overflow-auto rounded-md px-2.5 py-2 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap">
+      <pre className="bg-muted mt-2 max-h-40 overflow-auto rounded-md px-2.5 py-2 font-mono text-xs leading-relaxed wrap-break-word whitespace-pre-wrap">
         {message}
       </pre>
     </details>
