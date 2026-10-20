@@ -79,7 +79,8 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, err error) {
 		errors.Is(err, services.ErrOwnerCannotUnenroll),
 		errors.Is(err, services.ErrCannotBanOwner),
 		errors.Is(err, services.ErrAlreadyMember),
-		errors.Is(err, services.ErrSelfManagement):
+		errors.Is(err, services.ErrSelfManagement),
+		errors.Is(err, services.ErrSelfUnconfirm):
 		WriteResponse(w, http.StatusConflict, models.Error{Message: err.Error()})
 	default:
 		slog.ErrorContext(ctx, "unhandled service error",

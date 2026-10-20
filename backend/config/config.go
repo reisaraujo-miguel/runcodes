@@ -13,6 +13,7 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"net/mail"
 	"net/url"
 	"os"
 	"strconv"
@@ -29,6 +30,7 @@ const (
 	defaultS3Prefix       = "runcodes"
 	defaultJudgeURL       = "http://judge:9000"
 	defaultStaleTimeout   = 15 * time.Minute
+	defaultSMTPPort       = "587"
 )
 
 // Config holds every tunable of the backend service.
@@ -43,11 +45,16 @@ type Config struct {
 	// LegacyPasswordSalt is the old system's global salt. It is only needed to
 	// verify - and then upgrade - the passwords of users migrated from it.
 	LegacyPasswordSalt string // RUNCODES_LEGACY_PASSWORD_SALT
+	// PublicURL is the browser-facing origin of the SPA (for example
+	// https://runcodes.example). Links in outgoing email point at it, so it is
+	// not necessarily the URL this process is reached on.
+	PublicURL string // RUNCODES_PUBLIC_URL
 
 	DB    DBConfig
 	Redis RedisConfig
 	S3    S3Config
 	Judge JudgeConfig
+	Mail  MailConfig
 }
 
 // DBConfig describes the PostgreSQL connection.
@@ -108,6 +115,17 @@ type JudgeConfig struct {
 	StaleTimeout time.Duration
 }
 
+// MailConfig describes the SMTP submission endpoint used for account email.
+// Username may be empty: a local catcher such as smtp4dev accepts mail without
+// authentication.
+type MailConfig struct {
+	Host     string // RUNCODES_SMTP_HOST
+	Port     string // RUNCODES_SMTP_PORT
+	Username string // RUNCODES_SMTP_USERNAME
+	Password string // RUNCODES_SMTP_PASSWORD
+	From     string // RUNCODES_SMTP_FROM, e.g. "RunCodes <no-reply@example.com>"
+}
+
 // C is the process configuration, published by Load. The rest of the process
 // treats it as read-only; the single exception is main enabling debug mode from
 // the -debug flag before any consumer runs.
@@ -154,6 +172,7 @@ func Load() (*Config, error) {
 
 		JWTSecret:          os.Getenv("RUNCODES_JWT_SECRET"),
 		LegacyPasswordSalt: os.Getenv("RUNCODES_LEGACY_PASSWORD_SALT"),
+		PublicURL:          strings.TrimRight(os.Getenv("RUNCODES_PUBLIC_URL"), "/"),
 
 		DB: DBConfig{
 			Host:     os.Getenv("RUNCODES_DB_HOST"),
@@ -181,6 +200,13 @@ func Load() (*Config, error) {
 			Token:        os.Getenv("RUNCODES_JUDGE_TOKEN"),
 			StaleTimeout: staleTimeout,
 		},
+		Mail: MailConfig{
+			Host:     os.Getenv("RUNCODES_SMTP_HOST"),
+			Port:     env("RUNCODES_SMTP_PORT", defaultSMTPPort),
+			Username: os.Getenv("RUNCODES_SMTP_USERNAME"),
+			Password: os.Getenv("RUNCODES_SMTP_PASSWORD"),
+			From:     os.Getenv("RUNCODES_SMTP_FROM"),
+		},
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -204,6 +230,9 @@ func (c *Config) validate() error {
 		{"RUNCODES_DB_USER", c.DB.User},
 		{"RUNCODES_DB_PASSWORD", c.DB.Password},
 		{"RUNCODES_DB_NAME", c.DB.Name},
+		{"RUNCODES_PUBLIC_URL", c.PublicURL},
+		{"RUNCODES_SMTP_HOST", c.Mail.Host},
+		{"RUNCODES_SMTP_FROM", c.Mail.From},
 	}
 	for _, field := range required {
 		if strings.TrimSpace(field.value) == "" {
@@ -216,6 +245,32 @@ func (c *Config) validate() error {
 	}
 	if err := checkPort("RUNCODES_DB_PORT", c.DB.Port); err != nil {
 		return err
+	}
+	if err := checkPort("RUNCODES_SMTP_PORT", c.Mail.Port); err != nil {
+		return err
+	}
+
+	// The verification links are built as PublicURL + "/verify-email?token=...",
+	// so an origin with a path, query or fragment would silently produce a broken
+	// link in every message.
+	publicURL, err := url.Parse(c.PublicURL)
+	if err != nil || (publicURL.Scheme != "http" && publicURL.Scheme != "https") ||
+		publicURL.Host == "" ||
+		(publicURL.Path != "" && publicURL.Path != "/") ||
+		publicURL.RawQuery != "" || publicURL.Fragment != "" {
+		return fmt.Errorf(
+			"RUNCODES_PUBLIC_URL must be an absolute http(s) origin without a path, got %q",
+			c.PublicURL,
+		)
+	}
+
+	// The From header is built from this value, so reject a malformed address
+	// here rather than failing every signup after the account was created.
+	if _, err := mail.ParseAddress(c.Mail.From); err != nil {
+		return fmt.Errorf(
+			"RUNCODES_SMTP_FROM must be a valid email address, got %q: %w",
+			c.Mail.From, err,
+		)
 	}
 
 	// http.NewRequest fails on anything else, but only once a submission is

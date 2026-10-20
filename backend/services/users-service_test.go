@@ -5,6 +5,9 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/runcodes-icmc/runcodes/models"
+
+	sqlmock "github.com/DATA-DOG/go-sqlmock"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -23,6 +26,59 @@ func TestVerifyBcryptPassword(t *testing.T) {
 
 	if err := verifyBcryptPassword(ctx, "wrong horse", string(hash)); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("wrong password = %v, want ErrInvalidCredentials", err)
+	}
+}
+
+// A correct password on an unconfirmed account is refused, and the refusal is
+// distinct from a wrong password so the client can offer to resend the link.
+func TestLogInRejectsAnUnconfirmedAccount(t *testing.T) {
+	hash, err := bcrypt.GenerateFromPassword([]byte("correct horse"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatalf("GenerateFromPassword: %v", err)
+	}
+
+	mock := newMockDB(t)
+	mock.ExpectQuery(`SELECT id, name, password_hash, role, confirmed FROM users`).
+		WithArgs("ada@example.com").
+		WillReturnRows(sqlmock.NewRows(
+			[]string{"id", "name", "password_hash", "role", "confirmed"},
+		).AddRow(7, "Ada", string(hash), "student", false))
+
+	_, err = LogIn(context.Background(), &models.LogInRequest{
+		Email: "ada@example.com", Password: "correct horse",
+	})
+	if !errors.Is(err, ErrEmailNotVerified) {
+		t.Fatalf("LogIn = %v, want ErrEmailNotVerified", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLogInAcceptsAConfirmedAccount(t *testing.T) {
+	hash, err := bcrypt.GenerateFromPassword([]byte("correct horse"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatalf("GenerateFromPassword: %v", err)
+	}
+
+	mock := newMockDB(t)
+	mock.ExpectQuery(`SELECT id, name, password_hash, role, confirmed FROM users`).
+		WithArgs("ada@example.com").
+		WillReturnRows(sqlmock.NewRows(
+			[]string{"id", "name", "password_hash", "role", "confirmed"},
+		).AddRow(7, "Ada", string(hash), "student", true))
+
+	claims, err := LogIn(context.Background(), &models.LogInRequest{
+		Email: "ada@example.com", Password: "correct horse",
+	})
+	if err != nil {
+		t.Fatalf("LogIn = %v, want nil", err)
+	}
+	if claims["id"] != 7 || claims["role"] != "student" {
+		t.Fatalf("claims = %+v", claims)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }
 

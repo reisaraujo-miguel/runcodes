@@ -1,4 +1,12 @@
-export { checkAuth, login, logout, refreshSession, signUp } from "./auth";
+export {
+  checkAuth,
+  login,
+  logout,
+  refreshSession,
+  resendVerification,
+  signUp,
+  verifyEmail,
+} from "./auth";
 export type {
   AuthUser,
   LoginPayload,

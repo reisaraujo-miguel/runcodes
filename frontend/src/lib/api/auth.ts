@@ -42,9 +42,25 @@ export function login(payload: LoginPayload): Promise<LoginResponse> {
   return apiPost<LoginResponse>("/api/v1/user/login", payload);
 }
 
-/** Register a new user account. */
+/** Register a new user account. The account starts unverified; the API emails a link. */
 export function signUp(payload: SignUpPayload): Promise<void> {
   return apiPost<undefined>("/api/v1/user/signup", payload);
+}
+
+/**
+ * Confirm an account with the token from the verification email. The endpoint
+ * is public: the link is often opened in a browser with no session.
+ */
+export function verifyEmail(token: string): Promise<void> {
+  return apiPost<undefined>("/api/v1/user/verify-email", { token });
+}
+
+/**
+ * Ask for a new verification link. The API always answers the same way, so the
+ * UI must not promise that an account exists for the address.
+ */
+export function resendVerification(email: string): Promise<void> {
+  return apiPost<undefined>("/api/v1/user/resend-verification", { email });
 }
 
 /**

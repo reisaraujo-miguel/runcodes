@@ -29,6 +29,14 @@ export const router = createBrowserRouter([
         loader: () => redirect("/login?mode=signup"),
       },
       {
+        path: "/verify-email",
+        lazy: async () => {
+          const { VerifyEmailPage } =
+            await import("./routes/verify-email/page.tsx");
+          return { Component: VerifyEmailPage };
+        },
+      },
+      {
         Component: ProtectedRoute,
         children: [
           {

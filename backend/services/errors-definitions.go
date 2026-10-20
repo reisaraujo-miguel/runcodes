@@ -7,7 +7,12 @@ var (
 	ErrOrgIDExists        = errors.New("that organization id is already in use")
 	ErrServer             = errors.New("internal server error, try again later")
 	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrOfferingNotFound   = errors.New("offering not found")
+	ErrEmailNotVerified   = errors.New("email is not verified, check your inbox for the verification link")
+	// ErrInvalidVerificationToken covers a token that is unknown, already
+	// consumed, or past its expiry; a caller sees one message, so the link's
+	// state is not disclosed.
+	ErrInvalidVerificationToken = errors.New("the verification link is invalid or has expired")
+	ErrOfferingNotFound         = errors.New("offering not found")
 
 	ErrExerciseNotFound = errors.New("exercise not found")
 	ErrNotEnrolled      = errors.New("you are not enrolled in this exercise's offering")
@@ -35,6 +40,7 @@ var (
 	ErrInvalidMemberRole     = errors.New("invalid member role")
 	ErrInvalidRole           = errors.New("invalid role")
 	ErrSelfManagement        = errors.New("an admin cannot change their own role or delete their own account")
+	ErrSelfUnconfirm         = errors.New("an admin cannot unconfirm their own account")
 	ErrNotAProfessor         = errors.New("only a professor or admin account can be assigned to teach a class")
 	ErrCannotBanOwner        = errors.New("the owner of an offering cannot be banned or removed")
 	ErrAlreadyMember         = errors.New("user is already a member of this offering")

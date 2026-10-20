@@ -14,6 +14,17 @@ type LogInRequest struct {
 	Password string `json:"password"`
 }
 
+// VerifyEmailRequest is the JSON body of POST /api/v1/user/verify-email.
+type VerifyEmailRequest struct {
+	Token string `json:"token"`
+}
+
+// ResendVerificationRequest is the JSON body of
+// POST /api/v1/user/resend-verification.
+type ResendVerificationRequest struct {
+	Email string `json:"email"`
+}
+
 // User is the public representation of a user, as returned by the API.
 type User struct {
 	ID    int    `json:"id"`

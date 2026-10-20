@@ -33,9 +33,11 @@ const (
 )
 
 /*
-SignUp creates a new user on the database
+SignUp creates a new user on the database and returns its id. The account is
+created unconfirmed: the caller sends the verification email, and LogIn refuses
+it until the link is used.
 */
-func SignUp(ctx context.Context, req *models.SignUpRequest) error {
+func SignUp(ctx context.Context, req *models.SignUpRequest) (int, error) {
 	var password string
 	var err error
 	if password, err = hashPassword(req.Password); err != nil {
@@ -43,7 +45,7 @@ func SignUp(ctx context.Context, req *models.SignUpRequest) error {
 			"error hashing password",
 			slog.String("error", err.Error()),
 		)
-		return ErrServer
+		return 0, ErrServer
 	}
 
 	var tx *sql.Tx
@@ -52,25 +54,26 @@ func SignUp(ctx context.Context, req *models.SignUpRequest) error {
 			"error initializing database transaction",
 			slog.String("error", err.Error()),
 		)
-		return ErrServer
+		return 0, ErrServer
 	}
 
 	defer tx.Rollback()
 
-	if _, err = tx.ExecContext(ctx,
-		"INSERT INTO users (name, email, password_hash) VALUES ($1, $2, $3)",
+	var userID int
+	if err = tx.QueryRowContext(ctx,
+		"INSERT INTO users (name, email, password_hash) VALUES ($1, $2, $3) RETURNING id",
 		req.Name, req.Email, password,
-	); err != nil {
+	).Scan(&userID); err != nil {
 		if pgErr, ok := err.(*pq.Error); ok {
 			if pgErr.Code == pqerror.UniqueViolation {
-				return ErrEmailExists
+				return 0, ErrEmailExists
 			}
 		}
 		slog.ErrorContext(ctx,
 			"database error inserting new user",
 			slog.String("error", err.Error()),
 		)
-		return ErrServer
+		return 0, ErrServer
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -78,10 +81,10 @@ func SignUp(ctx context.Context, req *models.SignUpRequest) error {
 			"error committing database transaction",
 			slog.String("error", err.Error()),
 		)
-		return ErrServer
+		return 0, ErrServer
 	}
 
-	return nil
+	return userID, nil
 }
 
 func LogIn(ctx context.Context, req *models.LogInRequest) (map[string]any, error) {
@@ -89,9 +92,10 @@ func LogIn(ctx context.Context, req *models.LogInRequest) (map[string]any, error
 	var name string
 	var passwordHash string
 	var role string
+	var confirmed bool
 	if err := database.DB.QueryRowContext(ctx,
-		"SELECT id, name, password_hash, role FROM users WHERE email = $1",
-		req.Email).Scan(&id, &name, &passwordHash, &role); err != nil {
+		"SELECT id, name, password_hash, role, confirmed FROM users WHERE email = $1",
+		req.Email).Scan(&id, &name, &passwordHash, &role, &confirmed); err != nil {
 		if err == sql.ErrNoRows {
 			slog.InfoContext(ctx,
 				"someone tried to login as an user that does not exist",
@@ -128,6 +132,16 @@ func LogIn(ctx context.Context, req *models.LogInRequest) (map[string]any, error
 		if err := verifyBcryptPassword(ctx, req.Password, passwordHash); err != nil {
 			return nil, err
 		}
+	}
+
+	// Checked after the password so an unverified account is only revealed to
+	// someone who already knows its credentials.
+	if !confirmed {
+		slog.InfoContext(ctx,
+			"someone tried to login before verifying their email",
+			slog.Int("user_id", id),
+		)
+		return nil, ErrEmailNotVerified
 	}
 
 	claims := map[string]any{

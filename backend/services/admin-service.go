@@ -106,13 +106,18 @@ func AdminListUsers(
 /*
 AdminUpdateUser applies a partial update to any user of the platform. An admin
 cannot change their own role: demoting the account that performs the change
-would take the admin panel away from them mid-request.
+would take the admin panel away from them mid-request. For the same reason they
+cannot unconfirm their own account: the route guard would then lock them out of
+the panel that could confirm it again.
 */
 func AdminUpdateUser(
 	ctx context.Context, userID int, req *models.UpdateUserRequest, adminID int,
 ) (*models.AdminUser, error) {
 	if userID == adminID && req.Role != nil {
 		return nil, ErrSelfManagement
+	}
+	if userID == adminID && req.Confirmed != nil && !*req.Confirmed {
+		return nil, ErrSelfUnconfirm
 	}
 
 	var user models.AdminUser
