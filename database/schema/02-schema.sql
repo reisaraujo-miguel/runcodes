@@ -11,6 +11,10 @@ CREATE TABLE users (
   password_hash text NOT NULL,
   role user_t DEFAULT 'student' NOT NULL,
   confirmed boolean DEFAULT FALSE NOT NULL,
+  -- Whether the in-browser code editor is enabled for this user. New users
+  -- start with it on; the preference is editable on the profile and submission
+  -- pages.
+  code_editor_enabled boolean DEFAULT TRUE NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
 );

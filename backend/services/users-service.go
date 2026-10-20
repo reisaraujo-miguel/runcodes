@@ -196,12 +196,14 @@ GetProfile returns the caller's own account.
 func GetProfile(ctx context.Context, userID int) (*models.Profile, error) {
 	var profile models.Profile
 	err := database.DB.QueryRowContext(ctx, `
-		SELECT id, name, email, COALESCE(org_id, ''), role, confirmed, created_at
+		SELECT id, name, email, COALESCE(org_id, ''), role, confirmed,
+		       code_editor_enabled, created_at
 		FROM users
 		WHERE id = $1`, userID,
 	).Scan(
 		&profile.ID, &profile.Name, &profile.Email, &profile.OrgID,
-		&profile.Role, &profile.Confirmed, &profile.CreatedAt,
+		&profile.Role, &profile.Confirmed, &profile.CodeEditorEnabled,
+		&profile.CreatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -252,12 +254,17 @@ func UpdateProfile(
 			return nil, err
 		}
 	}
+	if req.CodeEditorEnabled != nil {
+		profile.CodeEditorEnabled = *req.CodeEditorEnabled
+	}
 
 	if _, err := database.DB.ExecContext(ctx, `
 		UPDATE users
-		SET name = $1, email = $2, org_id = NULLIF($3, ''), updated_at = now()
-		WHERE id = $4`,
-		profile.Name, profile.Email, profile.OrgID, userID,
+		SET name = $1, email = $2, org_id = NULLIF($3, ''), updated_at = now(),
+		    code_editor_enabled = $4
+		WHERE id = $5`,
+		profile.Name, profile.Email, profile.OrgID,
+		profile.CodeEditorEnabled, userID,
 	); err != nil {
 		if pgErr, ok := err.(*pq.Error); ok &&
 			pgErr.Code == pqerror.UniqueViolation {
