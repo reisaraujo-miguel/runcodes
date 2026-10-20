@@ -53,7 +53,7 @@ A submission flows through the platform like this:
 | Judge       | `judge/`    | Go, rootless podman, PostgreSQL, S3       | Compiles, runs and grades submissions.           |
 | Runners     | `runners/`  | Docker images per language                | The container each submission is graded in.      |
 | Monitor     | `monitor/`  | C                                         | Limits, times and reports one graded process.    |
-| Database    | `database/` | PostgreSQL                                | Schema, seed data and the legacy-data migration. |
+| Database    | `database/` | PostgreSQL                                | Schema, seeds, migrations and legacy import.     |
 
 Each service has its own README: [`backend/README.md`](backend/README.md),
 [`frontend/README.md`](frontend/README.md), [`judge/README.md`](judge/README.md),
@@ -72,7 +72,7 @@ nonce and the per-case limits) is in the same file.
 ├── judge/          Execution engine (rootless podman)
 ├── runners/        Language images the judge runs submissions in
 ├── monitor/        In-container process monitor (limits, timing, report)
-├── database/       PostgreSQL schema, seeds and legacy migration
+├── database/       PostgreSQL schema, seeds, migrations and legacy import
 └── docker-compose.yml
 ```
 
@@ -159,6 +159,22 @@ cd judge && make run
 # Frontend
 cd frontend && bun install && bun run dev
 ```
+
+### Database changes
+
+`database/schema/02-schema.sql` is the desired schema and
+`database/migrations/` holds the versioned migrations that move an existing
+database to it. Generate a migration after editing the schema instead of
+changing a live database by hand:
+
+```bash
+ATLAS_DEV_URL='postgres://runcodes:PASSWORD@localhost:5432/atlas_dev?sslmode=disable&search_path=public' \
+  ./database/atlas.sh migrate diff add_the_column
+```
+
+See [`database/README.md`](database/README.md) for the disposable dev database,
+applying migrations and baselining an existing database. CI fails when the
+schema and the migration directory disagree.
 
 ## Releases
 

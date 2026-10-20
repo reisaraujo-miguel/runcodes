@@ -11,6 +11,8 @@ Thank you for considering contributing to our project! Here's how you can help:
 - Fork the repository.
 - Make your changes in your fork.
 - Submit a pull request through GitHub.
+- Schema changes are generated as versioned migrations with Atlas; see
+  [`database/README.md`](database/README.md).
 
 Try to make your pull request descritive, indicating the changes you made and the reason for them. If the pull request is
 related to an issue, please reference it in the description.

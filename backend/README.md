@@ -146,8 +146,13 @@ The disclaimer is HTML and is sanitized with DOMPurify in the browser before it
 is rendered. An empty disclaimer is valid: it hides the paragraph instead of
 falling back to the default.
 
-`docker compose` only runs `database/schema/*` on an empty data volume. To add
-the table to a database that was provisioned before this feature, apply:
+`docker compose` only runs `database/schema/*` on an empty data volume. New
+schema changes are generated as versioned Atlas migrations (see
+[`database/README.md`](../database/README.md)); the manual SQL below is the
+historical change that predates that tooling, kept for databases provisioned
+before `platform_settings` existed.
+
+To add the table to a database that was provisioned before this feature, apply:
 
 ```sql
 CREATE TABLE IF NOT EXISTS platform_settings (
