@@ -78,6 +78,11 @@ services:
     # still starts, since the directory is owned by the judge's UID. It must not
     # fail the `service_completed_successfully` gate below.
     command: ["sh", "-c", "mkdir -p /exec && chmod 0777 /exec || true"]
+    # Without this SELinux (enforcing on Fedora) denies the chmod on the
+    # user_home_t bind mount, and the `|| true` hides it: the judge then finds a
+    # 0755 directory it cannot write to.
+    security_opt:
+      - label=disable
     volumes:
       - ./exec:/exec
     networks:
@@ -94,8 +99,21 @@ services:
       # nothing needs this published: the judge runs untrusted code and its API is
       # guarded by a single shared token.
       - "127.0.0.1:9000:9000"
-    # Run as the host user so the rootless podman socket and ./exec are accessible.
-    user: "${JUDGE_UID:-1000}:${JUDGE_GID:-1000}"
+    # Rootless podman maps container root to the host user, so the judge runs as
+    # root *inside* the container. A container uid of 1000 would map to a host
+    # subuid (524288+), which can neither open the socket below (0660, owned by
+    # the host user) nor write the workspaces the host's podman mounts into the
+    # runner containers. Under Docker rootful this is plain container root, which
+    # reaches the socket as well.
+    user: "${JUDGE_UID:-0}:${JUDGE_GID:-0}"
+    # SELinux (enforcing on Fedora) labels the rootless socket user_tmp_t, which
+    # container_t cannot connect to: the mount is alive but every connect fails
+    # with EACCES ("connect: permission denied"). Relabelling the live socket
+    # would be undone the next time systemd recreates it, so drop SELinux
+    # separation for this container alone. Untrusted code runs in the runner
+    # containers, which stay confined.
+    security_opt:
+      - label=disable
     environment:
       TZ: "America/Sao_Paulo"
       JUDGE_ADDR: ":9000"
