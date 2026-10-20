@@ -28,9 +28,15 @@ import type {
   FinalSummary,
 } from "@/lib/submission-view";
 
-/** Whether a case's user output may be shown to this viewer. */
+/** Whether a case's details may be shown to this viewer. */
 export interface CaseVisibility {
   showUserOutput: boolean;
+  showInput?: boolean;
+  showExpectedOutput?: boolean;
+  input?: string;
+  inputType?: string;
+  expectedOutput?: string;
+  expectedOutputType?: string;
 }
 
 export interface LiveResultsProps {
@@ -187,6 +193,12 @@ export function LiveResults({
               const value = caseStatus(result.status);
               const canShowOutput =
                 visibility?.get(result.testCaseId)?.showUserOutput ?? true;
+              const details = visibility?.get(result.testCaseId);
+              const showInput =
+                details?.showInput === true && details.inputType === "text";
+              const showExpected =
+                details?.showExpectedOutput === true &&
+                details.expectedOutputType === "text";
               return (
                 <div key={result.testCaseId} className="space-y-2">
                   {index > 0 ? <Separator /> : null}
@@ -211,6 +223,28 @@ export function LiveResults({
                     <pre className="bg-destructive/10 text-destructive overflow-x-auto rounded-lg p-3 text-xs whitespace-pre-wrap">
                       {result.errorMessage}
                     </pre>
+                  ) : null}
+                  {showInput ? (
+                    <details>
+                      <summary className="text-muted-foreground cursor-pointer text-sm select-none">
+                        Ver entrada
+                      </summary>
+                      <pre className="bg-muted mt-2 max-h-72 overflow-auto rounded-lg p-3 text-xs whitespace-pre-wrap">
+                        {details.input === "" ? "(vazio)" : details.input}
+                      </pre>
+                    </details>
+                  ) : null}
+                  {showExpected ? (
+                    <details>
+                      <summary className="text-muted-foreground cursor-pointer text-sm select-none">
+                        Ver saída esperada
+                      </summary>
+                      <pre className="bg-muted mt-2 max-h-72 overflow-auto rounded-lg p-3 text-xs whitespace-pre-wrap">
+                        {details.expectedOutput === ""
+                          ? "(vazio)"
+                          : details.expectedOutput}
+                      </pre>
+                    </details>
                   ) : null}
                   {canShowOutput && result.userOutput ? (
                     <details>
