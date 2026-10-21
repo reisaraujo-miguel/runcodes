@@ -312,7 +312,9 @@ func AdminListOfferings(
 	limit, offset = normalizePage(limit, offset)
 	pattern := "%" + strings.TrimSpace(query) + "%"
 
-	return queryAdminOfferings(ctx, adminOfferingSearchFilter, pattern, limit, offset)
+	return queryAdminOfferings(
+		ctx, adminOfferingSearchFilter, limit, offset, pattern,
+	)
 }
 
 /*
@@ -406,7 +408,7 @@ adminOfferingByID re-reads one class in the admin shape.
 func adminOfferingByID(
 	ctx context.Context, offeringID int64,
 ) (*models.AdminOffering, error) {
-	list, err := queryAdminOfferings(ctx, "WHERE o.id = $1", offeringID)
+	list, err := queryAdminOfferings(ctx, "WHERE o.id = $1", 1, 0, offeringID)
 	if err != nil {
 		return nil, err
 	}
@@ -472,13 +474,16 @@ const adminOfferingSearchFilter = `
 /*
 queryAdminOfferings runs an admin offering listing. The filter is always one of
 the constants above — never a caller-supplied string — so building the query
-with concatenation cannot introduce injection.
+with concatenation cannot introduce injection. The filter's only placeholder is
+$1, the search pattern (or the id in `adminOfferingByID`); $2 and $3 are the
+page bounds.
 */
 func queryAdminOfferings(
-	ctx context.Context, filter string, args ...any,
+	ctx context.Context, filter string, limit, offset int, args ...any,
 ) ([]models.AdminOffering, error) {
 	rows, err := database.DB.QueryContext(ctx,
-		adminOfferingSelect+"\n"+filter+"\nORDER BY o.id", args...)
+		adminOfferingSelect+"\n"+filter+"\nORDER BY o.id\nLIMIT $2 OFFSET $3",
+		append(args, limit, offset)...)
 	if err != nil {
 		slog.ErrorContext(ctx, "error listing offerings",
 			slog.String("error", err.Error()),
