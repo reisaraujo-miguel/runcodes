@@ -10,7 +10,7 @@ import svgr from "vite-plugin-svgr";
 import svgoConfig from "./svgo.config.ts";
 
 /**
- * Optimises the SVGs that reach `dist/` as files: assets imported by URL and
+ * Optimizes the SVGs that reach `dist/` as files: assets imported by URL and
  * files copied verbatim from `public/`. The SVGR plugin only handles
  * `*.svg?react` imports, and neither Vite's asset graph nor `generateBundle`
  * sees `public/` files, so the emitted `.svg` files are rewritten once the
