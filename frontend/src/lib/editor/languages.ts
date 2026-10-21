@@ -1,5 +1,5 @@
 import type { AllowedFileType } from "@/lib/api/exercises";
-import { normalizeExtension } from "@/lib/file-types";
+import { matchesAllowedExtension, normalizeExtension } from "@/lib/file-types";
 
 /** A programming language offered by the in-browser editor. */
 export interface EditorLanguage {
@@ -47,4 +47,32 @@ export function editorLanguagesFor(
         !NON_CODE_EXTENSIONS.has(normalizeExtension(type.extension)),
     )
     .map(editorLanguageFrom);
+}
+
+/**
+ * Finds the editor language matching a submitted filename. Used when restoring
+ * a past solution: the stored filename is the only language signal a commit
+ * carries. Returns undefined when the file is not one the editor can edit
+ * (e.g. a ZIP submission, or a language no longer allowed by the exercise).
+ *
+ * The longest matching extension wins, so "solver.omp.c" restores as OpenMP C
+ * rather than as plain C when both are offered.
+ */
+export function editorLanguageForFilename(
+  languages: readonly EditorLanguage[],
+  filename: string,
+): EditorLanguage | undefined {
+  let match: EditorLanguage | undefined;
+  let matchLength = 0;
+
+  for (const language of languages) {
+    if (!matchesAllowedExtension(filename, [language.extension])) continue;
+    const length = normalizeExtension(language.extension).length;
+    if (length > matchLength) {
+      match = language;
+      matchLength = length;
+    }
+  }
+
+  return match;
 }

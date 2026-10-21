@@ -3,7 +3,9 @@ import { describe, expect, test } from "bun:test";
 import type { AllowedFileType } from "@/lib/api/exercises";
 import {
   defaultFilenameFor,
+  editorLanguageForFilename,
   editorLanguagesFor,
+  type EditorLanguage,
 } from "@/lib/editor/languages";
 
 function fileType(
@@ -60,5 +62,29 @@ describe("editorLanguagesFor", () => {
       extension: "omp.c",
       defaultFilename: "main.omp.c",
     });
+  });
+});
+
+describe("editorLanguageForFilename", () => {
+  const languages: EditorLanguage[] = editorLanguagesFor([
+    fileType(1, "Python 3", "py"),
+    fileType(4, "C", "c"),
+    fileType(2, "C (OpenMP)", "omp.c"),
+    fileType(3, "Java", "java"),
+  ]);
+
+  test("matches a restored submission to its language", () => {
+    expect(editorLanguageForFilename(languages, "main.py")?.id).toBe("1");
+    expect(editorLanguageForFilename(languages, "Main.java")?.id).toBe("3");
+    expect(editorLanguageForFilename(languages, "main.c")?.id).toBe("4");
+  });
+
+  test("prefers the most specific compound extension", () => {
+    expect(editorLanguageForFilename(languages, "solver.omp.c")?.id).toBe("2");
+  });
+
+  test("returns undefined for files the editor cannot edit", () => {
+    expect(editorLanguageForFilename(languages, "project.zip")).toBeUndefined();
+    expect(editorLanguageForFilename(languages, "README")).toBeUndefined();
   });
 });

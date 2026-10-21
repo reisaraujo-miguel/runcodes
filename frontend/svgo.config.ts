@@ -5,7 +5,7 @@ import type { Config } from "svgo";
  * - the SVGR component transform and the asset pass in `vite.config.ts`;
  * - the `bun run optimize-svg` script that rewrites the source SVGs in place.
  *
- * Keeping a single source of truth means a `?react` import and a file optimised
+ * Keeping a single source of truth means a `?react` import and a file optimized
  * by the script are cleaned up the same way.
  */
 const svgoConfig: Config = {
@@ -26,7 +26,7 @@ const svgoConfig: Config = {
       params: {
         overrides: {
           // Surface pure black as `currentColor` so monochrome icons follow the
-          // surrounding text colour. `preset-default` also runs
+          // surrounding text color. `preset-default` also runs
           // `removeUnknownsAndDefaults`, which strips `fill="#000000"` as the
           // SVG default *before* SVGR's `replaceAttrValues` can rewrite it —
           // leaving the icon stuck on black. `convertColors` runs earlier in the
@@ -38,7 +38,7 @@ const svgoConfig: Config = {
     },
     // Not part of `preset-default`: hoists real presentation props (fill, …)
     // onto attributes. Inkscape exports keep `style="font-family:…;-inkscape-…"`
-    // on vectorised text, and the leftover `style` is then dropped by the plugin
+    // on vectorized text, and the leftover `style` is then dropped by the plugin
     // below so it can't become invalid JSX such as `InkscapeFontSpecification`.
     "convertStyleToAttrs",
     { name: "removeAttrs", params: { attrs: "style" } },

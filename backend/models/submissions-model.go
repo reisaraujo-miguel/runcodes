@@ -10,6 +10,18 @@ type CreateSubmissionResponse struct {
 	EventsURL string `json:"events_url"`
 }
 
+// SubmissionSummary is one entry in a user's submission history. It carries
+// enough metadata to identify and download a past solution without exposing the
+// internal object key.
+type SubmissionSummary struct {
+	ID              int64     `json:"id"`
+	Status          string    `json:"status"`
+	NumCorrectCases int       `json:"num_correct_cases"`
+	Score           float64   `json:"score"`
+	CreatedAt       time.Time `json:"created_at"`
+	Filename        string    `json:"filename"`
+}
+
 // Commit is the persisted state of a submission. It is sent to clients inside
 // the SSE "snapshot" event so a reloading client can render the current state
 // without waiting for new judge events.
@@ -42,9 +54,18 @@ type CaseResult struct {
 	ErrorMessage       *string `json:"error_message"`
 }
 
-// Snapshot is the first SSE event sent to a subscriber.
+// SubmissionArtifact identifies a generated file the download endpoint can
+// serve for a commit.
+type SubmissionArtifact struct {
+	Kind string `json:"kind"`
+}
+
+// Snapshot is the first SSE event sent to a subscriber. Artifacts are not
+// persisted; the handler rehydrates them from the judge for terminal commits so
+// the files section survives a page reload.
 type Snapshot struct {
-	Type    string       `json:"type"`
-	Commit  *Commit      `json:"commit"`
-	Results []CaseResult `json:"results"`
+	Type      string               `json:"type"`
+	Commit    *Commit              `json:"commit"`
+	Results   []CaseResult         `json:"results"`
+	Artifacts []SubmissionArtifact `json:"artifacts"`
 }

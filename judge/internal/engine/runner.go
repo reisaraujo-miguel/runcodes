@@ -12,6 +12,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/runcodes-icmc/judge/internal/config"
@@ -163,7 +165,7 @@ func (e *Engine) Process(ctx context.Context, commit *model.Commit) {
 	}
 
 	// Build an artifact (zip archive) of the output files, if any, and report its availability to the event hub.
-	if zipPath, err := e.buildArtifact(commit.ID, ws.BaseDir); err != nil {
+	if zipPath, err := e.buildArtifact(commit.ID, ws); err != nil {
 		logger.Warn("could not build output archive", "error", err)
 	} else if zipPath != "" {
 		e.hub.Artifact(commit.ID, "output", fmt.Sprintf("/v1/runs/%d/output", commit.ID))
@@ -327,18 +329,145 @@ func classify(err error) model.RunStatus {
 	return model.RunServerError
 }
 
-// buildArtifact zips the container's `outputfiles` directory, if any. It
-// returns "" when there is nothing to archive.
+/*
+isInternalOutputFile reports whether a regular file in outputfiles is one of the
+runner's own reports rather than a file produced by the submission:
+compilation.* metadata and `<case id>.{output,error,monitor_out,monitor_err}`.
+*/
+func isInternalOutputFile(name string) bool {
+	base := filepath.Base(name)
+	if strings.HasPrefix(base, "compilation.") {
+		return true
+	}
+
+	ext := filepath.Ext(base)
+	switch ext {
+	case ".monitor_out", ".monitor_err", ".output", ".error":
+		_, err := strconv.ParseInt(strings.TrimSuffix(base, ext), 10, 64)
+		return err == nil
+	default:
+		return false
+	}
+}
+
+// buildArtifact zips the files the submission produced. It returns "" when
+// there is nothing to archive.
 //
-// The directory is written by the untrusted submission, so the walk only follows
-// regular files (never a symlink, which would otherwise publish the contents of
-// any file the judge can read) and stops once the archive reaches
-// MaxArtifactBytes, so a submission cannot fill the shared execution directory.
-func (e *Engine) buildArtifact(commitID int64, baseDir string) (string, error) {
+// Two places can contain user output:
+//   - `outputfiles`, where the runner copies its own reports. Those reports are
+//     filtered out; anything else the submission wrote there is kept.
+//   - each case's `test_<id>` working directory, which is also where the source
+//     and test-case files were copied. Files whose path is a known input are
+//     skipped; newly created regular files are archived under `test_<id>/`.
+//
+// The workspace is written by untrusted code, so only regular files are read
+// (never a symlink, which would otherwise publish the contents of any file the
+// judge can read), and the archive stops at MaxArtifactBytes so a submission
+// cannot fill the shared execution directory.
+func (e *Engine) buildArtifact(commitID int64, ws *workspace) (string, error) {
+	baseDir := ws.BaseDir
 	outputDir := filepath.Join(baseDir, "outputfiles")
 
-	info, err := os.Stat(outputDir)
-	if err != nil || !info.IsDir() {
+	type candidate struct {
+		path string
+		name string
+	}
+
+	var (
+		files    []candidate
+		archived int64
+	)
+
+	add := func(path, name string, fi os.FileInfo) error {
+		if archived+fi.Size() > e.cfg.MaxArtifactBytes {
+			return fmt.Errorf("output archive exceeds the %d byte limit", e.cfg.MaxArtifactBytes)
+		}
+		archived += fi.Size()
+		files = append(files, candidate{path: path, name: name})
+		return nil
+	}
+
+	// Files the submission wrote directly into outputfiles. The runner also
+	// copies its own per-case reports and compiler metadata there; those are
+	// internal bookkeeping, not user output.
+	if info, err := os.Stat(outputDir); err == nil && info.IsDir() {
+		err := filepath.Walk(outputDir, func(p string, fi os.FileInfo, openErr error) error {
+			if openErr != nil {
+				return openErr
+			}
+			if fi.IsDir() {
+				return nil
+			}
+			if !fi.Mode().IsRegular() {
+				e.logger.Warn("skipping non-regular output file",
+					"commit_id", commitID, "name", filepath.Base(p))
+				return nil
+			}
+			if isInternalOutputFile(fi.Name()) {
+				return nil
+			}
+			rel, err := filepath.Rel(outputDir, p)
+			if err != nil {
+				return err
+			}
+			return add(p, rel, fi)
+		})
+		if err != nil {
+			return "", err
+		}
+	}
+
+	sourceInputs := inputFiles(ws.SourceDir)
+
+	// Files the submission created while running each test case. The working
+	// directory also contains the source and case files copied in by the runner;
+	// those are inputs, not output.
+	for _, tc := range ws.TestCases {
+		testName := fmt.Sprintf("test_%d", tc.ID)
+		testDir := filepath.Join(baseDir, testName)
+
+		info, err := os.Stat(testDir)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+
+		caseInputs := make(map[string]struct{}, len(tc.Files))
+		for _, name := range tc.Files {
+			caseInputs[filepath.Base(name)] = struct{}{}
+		}
+
+		err = filepath.Walk(testDir, func(p string, fi os.FileInfo, openErr error) error {
+			if openErr != nil {
+				return openErr
+			}
+			if fi.IsDir() {
+				return nil
+			}
+			if !fi.Mode().IsRegular() {
+				e.logger.Warn("skipping non-regular output file",
+					"commit_id", commitID, "name", filepath.Base(p))
+				return nil
+			}
+
+			rel, err := filepath.Rel(testDir, p)
+			if err != nil {
+				return err
+			}
+			if _, ok := sourceInputs[filepath.ToSlash(rel)]; ok {
+				return nil
+			}
+			if _, ok := caseInputs[filepath.Base(rel)]; ok {
+				return nil
+			}
+
+			return add(p, filepath.Join(testName, rel), fi)
+		})
+		if err != nil {
+			return "", err
+		}
+	}
+
+	if len(files) == 0 {
 		return "", nil
 	}
 
@@ -356,73 +485,67 @@ func (e *Engine) buildArtifact(commitID int64, baseDir string) (string, error) {
 
 	zw := zip.NewWriter(f)
 
-	// Walk the output directory and add each file to the zip archive.
-	var archived int64
+	cleanup := func() {
+		_ = zw.Close()
+		_ = f.Close()
+		_ = os.Remove(zipPath)
+	}
 
-	walkErr := filepath.Walk(outputDir, func(p string, fi os.FileInfo, openErr error) error {
-		if openErr != nil {
-			return openErr
-		}
-
-		// Skip directories; we only want to add files to the zip archive.
-		if fi.IsDir() {
-			return nil
-		}
-
-		// filepath.Walk reports the entry itself (lstat), so a symlink is visible
-		// here: skip anything that is not a regular file instead of opening it and
-		// following the link out of the workspace.
-		if !fi.Mode().IsRegular() {
-			e.logger.Warn("skipping non-regular output file",
-				"commit_id", commitID, "name", filepath.Base(p))
-			return nil
-		}
-
-		if archived+fi.Size() > e.cfg.MaxArtifactBytes {
-			return fmt.Errorf("output archive exceeds the %d byte limit", e.cfg.MaxArtifactBytes)
-		}
-
-		// Compute the relative path of the file to be added to the zip archive.
-		rel, err := filepath.Rel(outputDir, p)
+	for _, file := range files {
+		w, err := zw.Create(filepath.ToSlash(file.name))
 		if err != nil {
-			return err
+			cleanup()
+			return "", err
 		}
 
-		// Create a new file in the zip archive with the relative path.
-		w, err := zw.Create(rel)
+		src, err := openRegular(file.path)
 		if err != nil {
-			return err
+			cleanup()
+			return "", err
 		}
 
-		// Open the source file for reading and copy its contents to the zip archive.
-		// openRegular refuses a symlink swapped in since the walk lstat'ed it.
-		src, err := openRegular(p)
-		if err != nil {
-			return err
-		}
-
-		written, err := io.Copy(w, src)
+		_, err = io.Copy(w, src)
 		src.Close()
 		if err != nil {
-			return err
+			cleanup()
+			return "", err
 		}
-
-		archived += written
-
-		return nil
-	})
-
-	if err := zw.Close(); err != nil && walkErr == nil {
-		walkErr = err
 	}
 
-	if err := f.Close(); err != nil && walkErr == nil {
-		walkErr = err
+	if err := zw.Close(); err != nil {
+		_ = f.Close()
+		_ = os.Remove(zipPath)
+		return "", err
 	}
-
-	if walkErr != nil {
-		return "", walkErr
+	if err := f.Close(); err != nil {
+		_ = os.Remove(zipPath)
+		return "", err
 	}
 
 	return zipPath, nil
+}
+
+/*
+inputFiles lists the relative paths of the files in the source directory. The
+runner copies these into every test-case working directory, so they must not be
+mistaken for files the submission generated.
+*/
+func inputFiles(dir string) map[string]struct{} {
+	inputs := make(map[string]struct{})
+	if dir == "" {
+		return inputs
+	}
+
+	_ = filepath.Walk(dir, func(p string, fi os.FileInfo, err error) error {
+		if err != nil || fi.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(dir, p)
+		if err == nil {
+			inputs[filepath.ToSlash(rel)] = struct{}{}
+		}
+		return nil
+	})
+
+	return inputs
 }

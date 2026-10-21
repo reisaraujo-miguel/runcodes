@@ -36,6 +36,14 @@ import (
 const cSource = `#include <stdio.h>
 int main(void) {
     printf("hello\n");
+
+    // Also produce a user file in the case's working directory for the
+    // downloadable output archive. Source and test-case files are inputs and
+    // must not make it into the archive.
+    FILE *out = fopen("result.txt", "w");
+    if (out == NULL) return 1;
+    fputs("generated\n", out);
+    fclose(out);
     return 0;
 }
 `

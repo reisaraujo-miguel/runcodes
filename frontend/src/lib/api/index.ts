@@ -102,12 +102,20 @@ export {
 } from "./attached-files";
 export type { AttachedFile } from "./attached-files";
 
-export { createSubmission, subscribeSubmissionEvents } from "./submissions";
+export {
+  createSubmission,
+  getSubmissionSourceBlob,
+  getSubmissionSourceText,
+  listExerciseSubmissions,
+  submissionOutputUrl,
+  subscribeSubmissionEvents,
+} from "./submissions";
 export type {
   CaseResultStatus,
   CommitStatus,
   FinishedStatus,
   QueuedSubmission,
+  SubmissionArtifact,
   SubmissionArtifactEvent,
   SubmissionCaseResultEvent,
   SubmissionCommit,
@@ -119,4 +127,5 @@ export type {
   SubmissionSnapshotResult,
   SubmissionStatusEvent,
   SubmissionStreamErrorEvent,
+  SubmissionSummary,
 } from "./submissions";

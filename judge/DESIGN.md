@@ -104,8 +104,10 @@ Event types (SSE `event:` field):
 
 ### `GET /v1/runs/{commitID}/output`
 
-Authenticated download of the generated output zip (monitor output, per-case
-stdout/stderr), if produced. The backend may fetch this and store it in S3.
+Authenticated download of the generated output zip of the files the submission
+produced, if any. The runner's internal reports (`compilation.*` and the per-case
+`.output`, `.error`, `.monitor_out` and `.monitor_err` files) are excluded. The
+backend proxies this endpoint for authenticated owners.
 
 ## Container contract (from `runners/`)
 

@@ -11,7 +11,13 @@ export const STATEMENT_RAIL_WIDTH = 40;
 
 /** Minimum dock sizes, in CSS pixels, kept usable on a 1366px laptop. */
 export const MIN_STATEMENT_WIDTH = 280;
-export const MIN_RIGHT_WIDTH = 380;
+/**
+ * The editor toolbar (mode, language, filename, history, draft status and
+ * discard) fits in one row at this width, with room for larger browser text.
+ * Keeping the dock at least this wide means the controls never wrap just
+ * because the split was dragged in.
+ */
+export const MIN_RIGHT_WIDTH = 640;
 export const MIN_EDITOR_HEIGHT = 220;
 export const MIN_RESULTS_HEIGHT = 240;
 
@@ -39,7 +45,6 @@ export function dockBounds(
 
 export interface DockCollapsed {
   statement: boolean;
-  editor: boolean;
   results: boolean;
 }
 
@@ -54,7 +59,7 @@ export interface DockLayout {
 export const DEFAULT_DOCK_LAYOUT: DockLayout = {
   horizontal: 0.475,
   vertical: 0.575,
-  collapsed: { statement: false, editor: false, results: false },
+  collapsed: { statement: false, results: false },
 };
 
 function readRatio(value: unknown, fallback: number): number {
@@ -70,7 +75,6 @@ function readCollapsed(value: unknown): DockCollapsed {
       : {};
   return {
     statement: record.statement === true,
-    editor: record.editor === true,
     results: record.results === true,
   };
 }

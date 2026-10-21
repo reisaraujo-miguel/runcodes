@@ -178,10 +178,10 @@ rootless podman host, and both are easy to lose in an override file:
   the socket with `:z` is not a fix, because systemd recreates it with
   `user_tmp_t` the next time `podman.socket` restarts.
 - **The UID.** Rootless podman maps container root to the host user, so a
-  container started as uid 1000 is a host *subuid* (524288 and up) — neither in
+  container started as uid 1000 is a host _subuid_ (524288 and up) — neither in
   the socket's group nor its owner, which is what a `0660` socket checks. The
   judge therefore runs as root inside its namespace (`user:` defaults to `0:0`),
-  which *is* the host user; that also makes the workspaces it writes in `./exec`
+  which _is_ the host user; that also makes the workspaces it writes in `./exec`
   belong to the host user, so the host podman can relabel them (`:z`) and mount
   them into the runner containers. `judge-exec-init` needs the same ownership to
   `chmod 0777 ./exec`.
@@ -210,6 +210,7 @@ along with the database.
 | POST   | `/v1/runs/{id}`        | wake the poll loop for a commit                 |
 | GET    | `/v1/runs/{id}/events` | SSE event stream (`?from=<seq>` to resume)      |
 | GET    | `/v1/runs/{id}/output` | the generated output archive                    |
+| HEAD   | `/v1/runs/{id}/output` | whether the output archive exists               |
 
 `/v1` endpoints require `Authorization: Bearer $JUDGE_AUTH_TOKEN`. Without a
 configured token they return `503` unless `JUDGE_ALLOW_INSECURE=true` is set.

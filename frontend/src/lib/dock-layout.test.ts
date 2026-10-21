@@ -3,6 +3,8 @@ import { describe, expect, test } from "bun:test";
 import {
   DEFAULT_DOCK_LAYOUT,
   dockBounds,
+  MIN_RIGHT_WIDTH,
+  MIN_STATEMENT_WIDTH,
   normalizeDockLayout,
 } from "./dock-layout";
 
@@ -14,6 +16,16 @@ describe("dockBounds", () => {
     // Both docks keep at least their configured width at the limits.
     expect(min * 1242).toBeCloseTo(280);
     expect((1 - max) * 1242).toBeCloseTo(380);
+  });
+
+  test("keeps the right pane wide enough for the editor toolbar", () => {
+    // The configured minimum is what prevents the submission toolbar from
+    // wrapping when the splitter is dragged all the way to the right.
+    expect(MIN_RIGHT_WIDTH).toBeGreaterThanOrEqual(640);
+
+    const available = 964;
+    const { max } = dockBounds(available, MIN_STATEMENT_WIDTH, MIN_RIGHT_WIDTH);
+    expect((1 - max) * available).toBeGreaterThanOrEqual(MIN_RIGHT_WIDTH);
   });
 
   test("keeps the limits ordered when the container is tight", () => {
@@ -43,21 +55,29 @@ describe("normalizeDockLayout", () => {
     expect(normalizeDockLayout({ horizontal: 0.6, vertical: 0.4 })).toEqual({
       horizontal: 0.6,
       vertical: 0.4,
-      collapsed: { statement: false, editor: false, results: false },
+      collapsed: { statement: false, results: false },
     });
   });
 
-  test("keeps valid collapsed flags and ignores invalid ones", () => {
+  test("keeps the remaining collapsed flags and drops the editor flag", () => {
     const layout = normalizeDockLayout({
       horizontal: 0.4,
       vertical: 0.6,
-      collapsed: { statement: true, editor: "yes", results: true },
+      collapsed: { statement: true, editor: true, results: true },
     });
     expect(layout.collapsed).toEqual({
       statement: true,
-      editor: false,
       results: true,
     });
+  });
+
+  test("never restores a removed editor-collapsed state", () => {
+    // A layout saved while the editor could still be collapsed must not hide
+    // the editor now that there is no control to expand it again.
+    expect(
+      normalizeDockLayout({ collapsed: { editor: true, results: false } })
+        .collapsed,
+    ).toEqual({ statement: false, results: false });
   });
 
   test("falls back independently for corrupt storage", () => {

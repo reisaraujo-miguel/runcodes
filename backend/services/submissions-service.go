@@ -23,6 +23,10 @@ const (
 	// MaxSubmissionBytes is the maximum accepted source file size (10 MiB).
 	MaxSubmissionBytes = 10 << 20
 
+	// SubmissionHistoryLimit bounds how many past submissions are returned for
+	// one exercise, keeping the response and the history dialog small.
+	SubmissionHistoryLimit = 50
+
 	// wakeTimeout bounds the judge wake-up call so a submission request cannot
 	// hang on an unresponsive judge.
 	wakeTimeout = 5 * time.Second
@@ -328,6 +332,152 @@ func sanitizeFilename(filename string) string {
 }
 
 /*
+ListMyExerciseSubmissions returns the caller's submissions for an exercise,
+newest first. Commits without a stored source are omitted because their code can
+no longer be downloaded or restored.
+*/
+func ListMyExerciseSubmissions(
+	ctx context.Context, exerciseID, userID int64,
+) ([]models.SubmissionSummary, error) {
+	rows, err := database.DB.QueryContext(ctx,
+		`SELECT id, status, num_correct_cases, score, created_at, s3_key
+		 FROM commits
+		 WHERE user_id = $1 AND exercise_id = $2
+		   AND s3_key IS NOT NULL AND s3_key <> ''
+		 ORDER BY created_at DESC, id DESC
+		 LIMIT $3`,
+		userID, exerciseID, SubmissionHistoryLimit,
+	)
+	if err != nil {
+		slog.ErrorContext(ctx, "error listing exercise submissions",
+			slog.Int64("user_id", userID),
+			slog.Int64("exercise_id", exerciseID),
+			slog.String("error", err.Error()),
+		)
+		return nil, ErrServer
+	}
+	defer rows.Close()
+
+	submissions := make([]models.SubmissionSummary, 0, 8)
+	for rows.Next() {
+		var (
+			summary models.SubmissionSummary
+			key     string
+		)
+		if err := rows.Scan(
+			&summary.ID, &summary.Status, &summary.NumCorrectCases,
+			&summary.Score, &summary.CreatedAt, &key,
+		); err != nil {
+			slog.ErrorContext(ctx, "error scanning submission summary",
+				slog.Int64("user_id", userID),
+				slog.Int64("exercise_id", exerciseID),
+				slog.String("error", err.Error()),
+			)
+			return nil, ErrServer
+		}
+		summary.Filename = path.Base(key)
+		submissions = append(submissions, summary)
+	}
+	if err := rows.Err(); err != nil {
+		slog.ErrorContext(ctx, "error iterating submission summaries",
+			slog.Int64("user_id", userID),
+			slog.Int64("exercise_id", exerciseID),
+			slog.String("error", err.Error()),
+		)
+		return nil, ErrServer
+	}
+
+	return submissions, nil
+}
+
+// CommitSource is a submitted source file opened for download or restoration.
+type CommitSource struct {
+	Filename    string
+	ContentType string
+	Size        int64
+	Body        io.ReadCloser
+}
+
+/*
+VerifyMyCommit reports whether a commit belongs to the caller. Missing and
+foreign commits both return ErrCommitNotFound, so the endpoint never discloses
+whether someone else's commit exists.
+*/
+func VerifyMyCommit(ctx context.Context, commitID, userID int64) error {
+	var id int64
+	err := database.DB.QueryRowContext(ctx,
+		`SELECT id FROM commits WHERE id = $1 AND user_id = $2`,
+		commitID, userID,
+	).Scan(&id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrCommitNotFound
+		}
+		slog.ErrorContext(ctx, "error verifying commit ownership",
+			slog.Int64("commit_id", commitID),
+			slog.Int64("user_id", userID),
+			slog.String("error", err.Error()),
+		)
+		return ErrServer
+	}
+
+	return nil
+}
+
+/*
+GetMySubmissionSource opens the source of one of the caller's commits. The query
+includes the user id, so another user's commit is indistinguishable from a
+missing one and its existence is never disclosed.
+*/
+func GetMySubmissionSource(
+	ctx context.Context, commitID, userID int64,
+) (*CommitSource, error) {
+	var key string
+	err := database.DB.QueryRowContext(ctx,
+		`SELECT s3_key
+		 FROM commits
+		 WHERE id = $1 AND user_id = $2
+		   AND s3_key IS NOT NULL AND s3_key <> ''`,
+		commitID, userID,
+	).Scan(&key)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrCommitNotFound
+		}
+		slog.ErrorContext(ctx, "error fetching submission source",
+			slog.Int64("commit_id", commitID),
+			slog.Int64("user_id", userID),
+			slog.String("error", err.Error()),
+		)
+		return nil, ErrServer
+	}
+
+	object, err := storage.GetCommitObject(ctx, key)
+	if err != nil {
+		if errors.Is(err, storage.ErrObjectNotFound) {
+			slog.WarnContext(ctx, "submitted source object is missing",
+				slog.Int64("commit_id", commitID),
+				slog.String("s3_key", key),
+			)
+			return nil, ErrCommitSourceNotFound
+		}
+		slog.ErrorContext(ctx, "failed to open submitted source",
+			slog.Int64("commit_id", commitID),
+			slog.String("s3_key", key),
+			slog.String("error", err.Error()),
+		)
+		return nil, ErrServer
+	}
+
+	return &CommitSource{
+		Filename:    path.Base(key),
+		ContentType: object.ContentType,
+		Size:        object.Size,
+		Body:        object.Body,
+	}, nil
+}
+
+/*
 GetCommitSnapshot reads the current commit state and its test-case results.
 */
 func GetCommitSnapshot(ctx context.Context, commitID int64) (*models.Snapshot, error) {
@@ -400,9 +550,10 @@ func GetCommitSnapshot(ctx context.Context, commitID int64) (*models.Snapshot, e
 	}
 
 	return &models.Snapshot{
-		Type:    "snapshot",
-		Commit:  &commit,
-		Results: results,
+		Type:      "snapshot",
+		Commit:    &commit,
+		Results:   results,
+		Artifacts: []models.SubmissionArtifact{},
 	}, nil
 }
 

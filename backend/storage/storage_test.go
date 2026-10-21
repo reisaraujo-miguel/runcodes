@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -219,6 +220,43 @@ func TestFileObjectStorageRoundTrip(t *testing.T) {
 
 	if err := DeleteFileObject(ctx, "compilationfiles/7/helper.h"); err != nil {
 		t.Fatalf("DeleteFileObject: %v", err)
+	}
+}
+
+func TestCommitObjectStorageRoundTrip(t *testing.T) {
+	fake := withFakeS3(t)
+	ctx := context.Background()
+
+	_, buckets, err := Client()
+	if err != nil {
+		t.Fatalf("Client: %v", err)
+	}
+
+	if err := UploadCommitSource(
+		ctx, "uuid/main.py", bytes.NewReader([]byte("print('oi')")), 11, "text/plain",
+	); err != nil {
+		t.Fatalf("UploadCommitSource: %v", err)
+	}
+
+	object, err := GetCommitObject(ctx, "uuid/main.py")
+	if err != nil {
+		t.Fatalf("GetCommitObject: %v", err)
+	}
+	defer object.Body.Close()
+
+	data, err := io.ReadAll(object.Body)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if string(data) != "print('oi')" {
+		t.Fatalf("source = %q, want print('oi')", data)
+	}
+	if _, ok := fake.get(buckets.Commits, "uuid/main.py"); !ok {
+		t.Fatal("expected the source in the commits bucket")
+	}
+
+	if _, err := GetCommitObject(ctx, "missing/source.py"); !errors.Is(err, ErrObjectNotFound) {
+		t.Fatalf("GetCommitObject missing = %v, want ErrObjectNotFound", err)
 	}
 }
 

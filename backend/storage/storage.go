@@ -27,6 +27,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 )
 
 // Buckets holds the bucket names derived from the configured prefix.
@@ -36,6 +37,10 @@ type Buckets struct {
 	Files       string
 	OutputFiles string
 }
+
+// ErrObjectNotFound reports that an object does not exist in its bucket. It
+// lets callers tell a missing source apart from a storage failure.
+var ErrObjectNotFound = errors.New("object not found")
 
 var (
 	storageOnce    sync.Once
@@ -381,7 +386,7 @@ func FileObjectExists(ctx context.Context, key string) (bool, error) {
 	return objectExists(ctx, buckets.Files, key)
 }
 
-// FileObject is an object read from the files bucket.
+// FileObject is an object read from a storage bucket.
 type FileObject struct {
 	Body        io.ReadCloser
 	ContentType string
@@ -389,21 +394,34 @@ type FileObject struct {
 }
 
 /*
-GetFileObject opens an object from the files bucket (compilation files and
-exercise attachments) for streaming to a client. The caller must close Body.
+getObject opens an object from a bucket for streaming to a client. A missing
+object is reported as ErrObjectNotFound so callers can answer 404 instead of
+treating a deleted source as an infrastructure failure.
 */
-func GetFileObject(ctx context.Context, key string) (*FileObject, error) {
-	client, buckets, err := Client()
+func getObject(ctx context.Context, bucket, key string) (*FileObject, error) {
+	client, _, err := Client()
 	if err != nil {
 		return nil, err
 	}
 
 	output, err := client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(buckets.Files),
+		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("getting file object: %w", err)
+		var notFound *types.NotFound
+		var noSuchKey *types.NoSuchKey
+		if errors.As(err, &notFound) || errors.As(err, &noSuchKey) {
+			return nil, ErrObjectNotFound
+		}
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) {
+			switch apiErr.ErrorCode() {
+			case "NoSuchKey", "NotFound":
+				return nil, ErrObjectNotFound
+			}
+		}
+		return nil, fmt.Errorf("getting object: %w", err)
 	}
 
 	contentType := "application/octet-stream"
@@ -421,4 +439,30 @@ func GetFileObject(ctx context.Context, key string) (*FileObject, error) {
 		ContentType: contentType,
 		Size:        size,
 	}, nil
+}
+
+/*
+GetFileObject opens an object from the files bucket (compilation files and
+exercise attachments). The caller must close Body.
+*/
+func GetFileObject(ctx context.Context, key string) (*FileObject, error) {
+	_, buckets, err := Client()
+	if err != nil {
+		return nil, err
+	}
+
+	return getObject(ctx, buckets.Files, key)
+}
+
+/*
+GetCommitObject opens a submitted source from the commits bucket. The caller
+must close Body.
+*/
+func GetCommitObject(ctx context.Context, key string) (*FileObject, error) {
+	_, buckets, err := Client()
+	if err != nil {
+		return nil, err
+	}
+
+	return getObject(ctx, buckets.Commits, key)
 }

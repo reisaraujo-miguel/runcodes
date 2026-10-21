@@ -80,16 +80,6 @@ export function useDockLayout() {
     }));
   }, []);
 
-  const toggleEditor = useCallback(() => {
-    setLayout((previous) => ({
-      ...previous,
-      collapsed: {
-        ...previous.collapsed,
-        editor: !previous.collapsed.editor,
-      },
-    }));
-  }, []);
-
   const toggleResults = useCallback(() => {
     setLayout((previous) => ({
       ...previous,
@@ -107,7 +97,6 @@ export function useDockLayout() {
     resetHorizontal,
     resetVertical,
     toggleStatement,
-    toggleEditor,
     toggleResults,
   };
 }
