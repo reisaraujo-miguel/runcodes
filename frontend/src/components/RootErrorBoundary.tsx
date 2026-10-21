@@ -14,6 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { usePlatformSettings } from "@/hooks/use-platform-settings";
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -36,16 +37,30 @@ function getErrorStack(error: unknown): string {
   return "(stack trace indisponível)";
 }
 
+/** The admin-configured address for reporting problems with the platform. */
+function ContactEmailLink({ email }: { email: string }) {
+  return (
+    <a
+      href={`mailto:${email}`}
+      className="text-primary font-medium underline underline-offset-4"
+    >
+      {email}
+    </a>
+  );
+}
+
 /**
  * Rendered by the router when a route throws or no route matches (404).
- * Shows a friendly not-found page or, for unexpected errors, the error
- * details so users can open an issue with useful information.
+ * Shows a friendly not-found page or, for unexpected errors, the error details
+ * and the admin-configured address where users can report the problem.
  */
 export function RootErrorBoundary() {
   const error = useRouteError();
   const location = useLocation();
+  const settings = usePlatformSettings();
   const [copied, setCopied] = useState(false);
 
+  const contactEmail = settings.contact_email.trim();
   const isNotFound = isRouteErrorResponse(error) && error.status === 404;
 
   if (isNotFound) {
@@ -58,10 +73,18 @@ export function RootErrorBoundary() {
               A página que você tentou acessar não existe ou foi movida.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex justify-center gap-2">
-            <Link to="/" className={buttonVariants({ variant: "default" })}>
-              Voltar para o início
-            </Link>
+          <CardContent className="space-y-4">
+            {contactEmail ? (
+              <p className="text-muted-foreground text-sm">
+                Se você chegou aqui por um link que deveria funcionar, avise a
+                equipe pelo email <ContactEmailLink email={contactEmail} />.
+              </p>
+            ) : null}
+            <div className="flex justify-center gap-2">
+              <Link to="/" className={buttonVariants({ variant: "default" })}>
+                Voltar para o início
+              </Link>
+            </div>
           </CardContent>
         </Card>
       </main>
@@ -105,7 +128,7 @@ export function RootErrorBoundary() {
           </CardTitle>
           <CardDescription>
             Ocorreu um erro inesperado. Você pode tentar novamente ou copiar as
-            informações abaixo para abrir uma issue.
+            informações abaixo para reportar o problema.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -119,6 +142,13 @@ export function RootErrorBoundary() {
               {stack}
             </pre>
           </details>
+
+          {contactEmail ? (
+            <p className="text-muted-foreground text-sm">
+              Se o problema persistir, copie as informações do erro e envie para{" "}
+              <ContactEmailLink email={contactEmail} />.
+            </p>
+          ) : null}
 
           <div className="flex flex-wrap gap-2">
             <Button type="button" onClick={handleCopy} variant="outline">
