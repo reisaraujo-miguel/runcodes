@@ -2,10 +2,13 @@ import { describe, expect, test } from "bun:test";
 
 import {
   dateInputToTimestamp,
+  dateTimeInputToTimestamp,
   formatBytes,
   formatCpuTime,
   formatDateTime,
   formatLimit,
+  formatTimeInput,
+  isEndOfDay,
 } from "./format";
 
 describe("formatBytes", () => {
@@ -89,5 +92,64 @@ describe("dateInputToTimestamp", () => {
   test("returns null for malformed input", () => {
     expect(dateInputToTimestamp("", "start")).toBeNull();
     expect(dateInputToTimestamp("2026-03", "start")).toBeNull();
+  });
+});
+
+describe("formatTimeInput", () => {
+  test("renders the local HH:mm of a timestamp", () => {
+    const local = new Date(2026, 2, 4, 14, 30).toISOString();
+    expect(formatTimeInput(local)).toBe("14:30");
+  });
+
+  test("renders missing and invalid values as empty", () => {
+    expect(formatTimeInput(null)).toBe("");
+    expect(formatTimeInput("not-a-date")).toBe("");
+  });
+});
+
+describe("isEndOfDay", () => {
+  test("recognizes 23:59 regardless of seconds", () => {
+    const endOfDay = new Date(2026, 2, 4, 23, 59, 0).toISOString();
+    const lastSecond = new Date(2026, 2, 4, 23, 59, 59).toISOString();
+    expect(isEndOfDay(endOfDay)).toBe(true);
+    expect(isEndOfDay(lastSecond)).toBe(true);
+  });
+
+  test("rejects other times and invalid values", () => {
+    const earlier = new Date(2026, 2, 4, 23, 58).toISOString();
+    expect(isEndOfDay(earlier)).toBe(false);
+    expect(isEndOfDay(null)).toBe(false);
+    expect(isEndOfDay("not-a-date")).toBe(false);
+  });
+});
+
+describe("dateTimeInputToTimestamp", () => {
+  test("combines a date and time in the local timezone", () => {
+    const iso = dateTimeInputToTimestamp("2026-03-04", "14:30");
+    if (iso === null) throw new Error("expected a timestamp");
+
+    const date = new Date(iso);
+    expect(date.getFullYear()).toBe(2026);
+    expect(date.getMonth()).toBe(2);
+    expect(date.getDate()).toBe(4);
+    expect(date.getHours()).toBe(14);
+    expect(date.getMinutes()).toBe(30);
+    expect(date.getSeconds()).toBe(0);
+  });
+
+  test("uses the last second of the day for the end-of-day shortcut", () => {
+    const iso = dateTimeInputToTimestamp("2026-03-04", "08:00", true);
+    if (iso === null) throw new Error("expected a timestamp");
+
+    const date = new Date(iso);
+    expect(date.getHours()).toBe(23);
+    expect(date.getMinutes()).toBe(59);
+    expect(date.getSeconds()).toBe(59);
+  });
+
+  test("rejects invalid times and impossible dates", () => {
+    expect(dateTimeInputToTimestamp("2026-03-04", "24:00")).toBeNull();
+    expect(dateTimeInputToTimestamp("2026-03-04", "12:60")).toBeNull();
+    expect(dateTimeInputToTimestamp("2026-02-31", "12:00")).toBeNull();
   });
 });

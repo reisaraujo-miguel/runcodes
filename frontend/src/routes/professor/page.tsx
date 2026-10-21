@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAsync } from "@/hooks/use-async";
 import { listOfferings, type ManagedOffering, type Offering } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 
 /** Renders a count with the right noun: "1 aluno" but "N alunos". */
 function countLabel(count: number, singular: string, plural: string): string {
@@ -55,7 +55,7 @@ function ClassCard({ offering }: { offering: ManagedOffering }) {
           </span>
           <span className="inline-flex items-center gap-1.5">
             <CalendarIcon className="size-3.5" aria-hidden />
-            Até {formatDate(offering.end_date)}
+            Até {formatDateTime(offering.end_date)}
           </span>
         </div>
 

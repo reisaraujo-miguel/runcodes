@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+import { DateTimeField } from "@/components/app/DateTimeField";
+import { MarkdownEditor } from "@/components/editor/MarkdownEditor";
 import { AllowedFileTypesField } from "@/components/professor/AllowedFileTypesField";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -15,10 +17,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import { Textarea } from "@/components/ui/textarea";
 import { useSubmit } from "@/hooks/use-submit";
 import { createExercise, type Exercise } from "@/lib/api";
-import { dateInputToTimestamp } from "@/lib/format";
+import { dateTimeInputToTimestamp } from "@/lib/format";
 
 /** Modal form to create an exercise inside a class. */
 export function NewExerciseForm({
@@ -33,7 +34,10 @@ export function NewExerciseForm({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [openDate, setOpenDate] = useState("");
+  const [openTime, setOpenTime] = useState("00:00");
   const [deadline, setDeadline] = useState("");
+  const [deadlineTime, setDeadlineTime] = useState("23:59");
+  const [deadlineEndOfDay, setDeadlineEndOfDay] = useState(true);
   const [showBeforeOpenDate, setShowBeforeOpenDate] = useState(false);
   const [selectedTypes, setSelectedTypes] = useState<number[]>([]);
   const { pending, error, setError, run } = useSubmit(
@@ -46,10 +50,18 @@ export function NewExerciseForm({
       setError("O título do exercício é obrigatório.");
       return;
     }
-    const openDateIso = dateInputToTimestamp(openDate, "start");
-    const deadlineIso = dateInputToTimestamp(deadline, "end");
+    const openDateIso = dateTimeInputToTimestamp(openDate, openTime);
+    const deadlineIso = dateTimeInputToTimestamp(
+      deadline,
+      deadlineTime,
+      deadlineEndOfDay,
+    );
     if (!openDateIso || !deadlineIso) {
-      setError("Informe as datas de abertura e de prazo.");
+      setError("Informe a data e o horário de abertura e de prazo.");
+      return;
+    }
+    if (new Date(deadlineIso) < new Date(openDateIso)) {
+      setError("O prazo não pode ser anterior à abertura.");
       return;
     }
 
@@ -75,11 +87,11 @@ export function NewExerciseForm({
         if (!open) onClose();
       }}
     >
-      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Novo exercício</DialogTitle>
           <DialogDescription>
-            Defina o período de abertura e o prazo de entrega.
+            Defina o período de abertura, o prazo e as instruções do exercício.
           </DialogDescription>
         </DialogHeader>
 
@@ -103,43 +115,28 @@ export function NewExerciseForm({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="new-exercise-description">Descrição</Label>
-            <Textarea
-              id="new-exercise-description"
-              value={description}
-              onChange={(event) => {
-                setDescription(event.target.value);
-              }}
-              placeholder="Enunciado do exercício (opcional)"
+          <div className="grid gap-6 md:grid-cols-2">
+            <DateTimeField
+              id="new-exercise-open-date"
+              label="Abertura"
+              date={openDate}
+              time={openTime}
+              onDateChange={setOpenDate}
+              onTimeChange={setOpenTime}
+              required
             />
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="new-exercise-open-date">Abertura</Label>
-              <Input
-                id="new-exercise-open-date"
-                type="date"
-                value={openDate}
-                onChange={(event) => {
-                  setOpenDate(event.target.value);
-                }}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="new-exercise-deadline">Prazo</Label>
-              <Input
-                id="new-exercise-deadline"
-                type="date"
-                value={deadline}
-                onChange={(event) => {
-                  setDeadline(event.target.value);
-                }}
-                required
-              />
-            </div>
+            <DateTimeField
+              id="new-exercise-deadline"
+              label="Prazo"
+              date={deadline}
+              time={deadlineTime}
+              onDateChange={setDeadline}
+              onTimeChange={setDeadlineTime}
+              endOfDay={deadlineEndOfDay}
+              onEndOfDayChange={setDeadlineEndOfDay}
+              className="md:border-border md:border-l md:pl-6"
+              required
+            />
           </div>
 
           <Label className="font-normal" htmlFor="new-exercise-show-before">
@@ -158,6 +155,23 @@ export function NewExerciseForm({
             selected={selectedTypes}
             onChange={setSelectedTypes}
           />
+
+          <div className="space-y-2">
+            <div>
+              <p className="text-sm font-medium">Instruções do exercício</p>
+              <p className="text-muted-foreground text-xs">
+                O enunciado que os alunos veem. Aceita Markdown e será
+                renderizado com essa formatação.
+              </p>
+            </div>
+            <MarkdownEditor
+              value={description}
+              onChange={setDescription}
+              heightClassName="h-56"
+              ariaLabel="Instruções do exercício em Markdown"
+              placeholder="Escreva o enunciado ou as instruções do exercício…"
+            />
+          </div>
 
           {error ? (
             <Alert variant="destructive">
