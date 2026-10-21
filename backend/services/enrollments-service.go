@@ -206,6 +206,159 @@ func Unenroll(ctx context.Context, offeringID int64, claims map[string]any) erro
 }
 
 /*
+GetUserOffering returns one class the caller belongs to or owns, together with
+the caller's progress on each exercise they can see: submission count, latest
+status and best score. It backs the student-facing class page. The enrollment
+code is deliberately absent, so an enrolled student cannot invite others.
+*/
+func GetUserOffering(
+	ctx context.Context, offeringID int64, claims map[string]any,
+) (*models.UserOfferingDetail, error) {
+	userID, _, err := claimsUserID(claims)
+	if err != nil {
+		return nil, err
+	}
+
+	// The LEFT JOIN is restricted to an active enrollment, and the WHERE clause
+	// accepts either that enrollment or ownership. A banned member therefore
+	// gets the same "not found" answer as a stranger, without disclosing that
+	// the class exists.
+	var detail models.UserOfferingDetail
+	err = database.DB.QueryRowContext(ctx, `
+		SELECT o.id, o.name, COALESCE(o.description, ''), o.end_date,
+		       CASE WHEN o.owner_id = $1 THEN 'professor'
+		            ELSE en.role::text END,
+		       COALESCE(owner.name, ''),
+		       COALESCE(o.owner_id = $1, FALSE),
+		       (SELECT count(*) FROM enrollments members
+		         WHERE members.offering_id = o.id)
+		FROM offerings o
+		LEFT JOIN enrollments en
+		       ON en.offering_id = o.id AND en.user_id = $1 AND NOT en.banned
+		LEFT JOIN users owner ON owner.id = o.owner_id
+		WHERE o.id = $2 AND (en.user_id IS NOT NULL OR o.owner_id = $1)`,
+		userID, offeringID,
+	).Scan(
+		&detail.ID, &detail.Name, &detail.Description, &detail.EndDate,
+		&detail.Role, &detail.OwnerName, &detail.IsOwner, &detail.MemberCount,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrOfferingNotFound
+		}
+		slog.ErrorContext(ctx, "error fetching user offering",
+			slog.Int64("user_id", userID),
+			slog.Int64("offering_id", offeringID),
+			slog.String("error", err.Error()),
+		)
+		return nil, ErrServer
+	}
+
+	detail.Exercises, err = listUserOfferingExercises(ctx, offeringID, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &detail, nil
+}
+
+/*
+listUserOfferingExercises reads the exercises a participant may see (not
+removed, and either already open or explicitly shown before the open date) and
+aggregates the caller's own commits for each one. The aggregate runs in a lateral
+subquery so the whole overview is one query instead of one request per exercise.
+*/
+func listUserOfferingExercises(
+	ctx context.Context, offeringID, userID int64,
+) ([]models.UserOfferingExercise, error) {
+	rows, err := database.DB.QueryContext(ctx, `
+		SELECT e.id, e.offering_id, e.title, COALESCE(e.description, ''),
+		       e.deadline, e.open_date,
+		       progress.submission_count,
+		       progress.last_submission_at,
+		       progress.last_status,
+		       progress.best_score
+		FROM exercises e
+		LEFT JOIN LATERAL (
+			SELECT count(*) AS submission_count,
+			       max(c.created_at) AS last_submission_at,
+			       (array_agg(c.status::text
+			                  ORDER BY c.created_at DESC, c.id DESC))[1]
+			           AS last_status,
+			       max(c.score) FILTER (
+			           WHERE c.status NOT IN (
+			               'pending', 'queued', 'compiling', 'running'
+			           )
+			       ) AS best_score
+			FROM commits c
+			WHERE c.exercise_id = e.id AND c.user_id = $2
+		) progress ON TRUE
+		WHERE e.offering_id = $1
+		  AND NOT e.removed
+		  AND (e.show_before_open_date OR e.open_date <= now())
+		ORDER BY e.deadline, e.id`, offeringID, userID)
+	if err != nil {
+		slog.ErrorContext(ctx, "error fetching user offering exercises",
+			slog.Int64("user_id", userID),
+			slog.Int64("offering_id", offeringID),
+			slog.String("error", err.Error()),
+		)
+		return nil, ErrServer
+	}
+	defer rows.Close()
+
+	exercises := make([]models.UserOfferingExercise, 0, 8)
+	for rows.Next() {
+		var (
+			exercise         models.UserOfferingExercise
+			lastSubmissionAt sql.NullTime
+			lastStatus       sql.NullString
+			bestScore        sql.NullFloat64
+		)
+		if err := rows.Scan(
+			&exercise.ID, &exercise.OfferingID, &exercise.Title,
+			&exercise.Description, &exercise.Deadline, &exercise.OpenDate,
+			&exercise.SubmissionCount, &lastSubmissionAt, &lastStatus,
+			&bestScore,
+		); err != nil {
+			slog.ErrorContext(ctx, "error scanning user offering exercise",
+				slog.Int64("user_id", userID),
+				slog.Int64("offering_id", offeringID),
+				slog.String("error", err.Error()),
+			)
+			return nil, ErrServer
+		}
+
+		// Pointers distinguish "no submission yet" from a zero score/status, so
+		// the client can show "Sem submissão" instead of "Nota 0".
+		if lastSubmissionAt.Valid {
+			submittedAt := lastSubmissionAt.Time
+			exercise.LastSubmissionAt = &submittedAt
+		}
+		if lastStatus.Valid {
+			status := lastStatus.String
+			exercise.LastStatus = &status
+		}
+		if bestScore.Valid {
+			score := bestScore.Float64
+			exercise.BestScore = &score
+		}
+
+		exercises = append(exercises, exercise)
+	}
+	if err := rows.Err(); err != nil {
+		slog.ErrorContext(ctx, "error iterating user offering exercises",
+			slog.Int64("user_id", userID),
+			slog.Int64("offering_id", offeringID),
+			slog.String("error", err.Error()),
+		)
+		return nil, ErrServer
+	}
+
+	return exercises, nil
+}
+
+/*
 ListUserOfferings lists the classes the caller belongs to: the ones they are
 enrolled in (any role, not banned) and the ones they own. It backs the
 "my classes" section of the home page.

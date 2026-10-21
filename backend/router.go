@@ -68,6 +68,7 @@ func createRoutes(router *chi.Mux) {
 
 			// the caller's own classes and open exercises (home page)
 			r.Get("/api/v1/user/offerings", handlers.ListMyOfferings)
+			r.Get("/api/v1/user/offerings/{id}", handlers.GetMyOffering)
 			r.Get("/api/v1/user/exercises", handlers.ListMyOpenExercises)
 
 			r.Post("/api/v1/offerings/enroll", handlers.Enroll)
