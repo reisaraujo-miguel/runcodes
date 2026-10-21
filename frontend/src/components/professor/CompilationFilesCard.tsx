@@ -41,7 +41,14 @@ function filePath(file: CompilationFile): string | null {
  * basename already exists replaces the stored one, so no duplicate cleanup is
  * needed.
  */
-export function CompilationFilesCard({ exerciseId }: { exerciseId: number }) {
+export function CompilationFilesCard({
+  exerciseId,
+  embedded = false,
+}: {
+  exerciseId: number;
+  /** Render the content without its own card, for a tab panel. */
+  embedded?: boolean;
+}) {
   const files = useAsync(
     () => getCompilationFiles(exerciseId),
     `compilation-${String(exerciseId)}`,
@@ -49,9 +56,7 @@ export function CompilationFilesCard({ exerciseId }: { exerciseId: number }) {
   );
   const [selected, setSelected] = useState<File | null>(null);
   const [inputKey, setInputKey] = useState(0);
-  const upload = useSubmit(
-    "Não foi possível enviar o arquivo de compilação.",
-  );
+  const upload = useSubmit("Não foi possível enviar o arquivo de compilação.");
   const [actionError, setActionError] = useState<string | null>(null);
 
   function handleUpload() {
@@ -75,95 +80,107 @@ export function CompilationFilesCard({ exerciseId }: { exerciseId: number }) {
   }
 
   const list = files.data ?? [];
+  const description =
+    "Arquivos auxiliares usados na compilação (headers, bibliotecas). Um envio com o mesmo nome substitui o anterior.";
+
+  const content = (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-64 flex-1 space-y-2">
+          <Input
+            key={inputKey}
+            type="file"
+            aria-label="Arquivo de compilação"
+            className="h-auto py-2"
+            onChange={(event) => {
+              setSelected(event.target.files?.item(0) ?? null);
+            }}
+          />
+        </div>
+        <Button
+          type="button"
+          disabled={!selected || upload.pending}
+          onClick={handleUpload}
+        >
+          {upload.pending ? <Spinner className="size-4" /> : null}
+          Enviar arquivo
+        </Button>
+      </div>
+
+      {upload.error ? (
+        <Alert variant="destructive">
+          <AlertDescription>{upload.error}</AlertDescription>
+        </Alert>
+      ) : null}
+      {upload.success ? (
+        <Alert variant="success">
+          <AlertDescription>{upload.success}</AlertDescription>
+        </Alert>
+      ) : null}
+      {actionError ? (
+        <Alert variant="destructive">
+          <AlertDescription>{actionError}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {files.loading && files.data === null ? (
+        <LoadingState className="py-8" />
+      ) : files.error ? (
+        <ErrorState description={files.error} onRetry={files.reload} />
+      ) : list.length === 0 ? (
+        <EmptyState
+          icon={FileCode2Icon}
+          title="Nenhum arquivo de compilação"
+          description="Envie os arquivos auxiliares que a compilação das soluções precisa."
+        />
+      ) : (
+        <ul className="divide-border divide-y rounded-lg border">
+          {list.map((file) => {
+            const path = filePath(file);
+            return (
+              <li
+                key={file.id}
+                className="flex items-center justify-between gap-3 px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-mono text-sm">{fileName(file)}</p>
+                  {path ? (
+                    <p className="text-muted-foreground truncate text-xs">
+                      {path}
+                    </p>
+                  ) : null}
+                </div>
+                <ConfirmButton
+                  size="sm"
+                  destructive
+                  variant="destructive"
+                  title="Remover arquivo"
+                  description={`Remover “${fileName(file)}” dos arquivos de compilação?`}
+                  confirmLabel="Remover"
+                  onConfirm={() => handleDelete(file.id)}
+                >
+                  Remover
+                </ConfirmButton>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+
+  if (embedded) {
+    return (
+      <div className="space-y-4">
+        <p className="text-muted-foreground text-sm">{description}</p>
+        {content}
+      </div>
+    );
+  }
 
   return (
-    <SectionCard
-      title="Arquivos de compilação"
-      description="Arquivos auxiliares usados na compilação (headers, bibliotecas). Um envio com o mesmo nome substitui o anterior."
-    >
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-64 flex-1 space-y-2">
-            <Input
-              key={inputKey}
-              type="file"
-              aria-label="Arquivo de compilação"
-              className="h-auto py-2"
-              onChange={(event) => {
-                setSelected(event.target.files?.item(0) ?? null);
-              }}
-            />
-          </div>
-          <Button
-            type="button"
-            disabled={!selected || upload.pending}
-            onClick={handleUpload}
-          >
-            {upload.pending ? <Spinner className="size-4" /> : null}
-            Enviar arquivo
-          </Button>
-        </div>
-
-        {upload.error ? (
-          <Alert variant="destructive">
-            <AlertDescription>{upload.error}</AlertDescription>
-          </Alert>
-        ) : null}
-        {upload.success ? (
-          <Alert variant="success">
-            <AlertDescription>{upload.success}</AlertDescription>
-          </Alert>
-        ) : null}
-        {actionError ? (
-          <Alert variant="destructive">
-            <AlertDescription>{actionError}</AlertDescription>
-          </Alert>
-        ) : null}
-
-        {files.loading && files.data === null ? (
-          <LoadingState className="py-8" />
-        ) : files.error ? (
-          <ErrorState description={files.error} onRetry={files.reload} />
-        ) : list.length === 0 ? (
-          <EmptyState
-            icon={FileCode2Icon}
-            title="Nenhum arquivo de compilação"
-            description="Envie os arquivos auxiliares que a compilação das soluções precisa."
-          />
-        ) : (
-          <ul className="divide-border divide-y rounded-lg border">
-            {list.map((file) => {
-              const path = filePath(file);
-              return (
-                <li
-                  key={file.id}
-                  className="flex items-center justify-between gap-3 px-3 py-2"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-mono text-sm">{fileName(file)}</p>
-                    {path ? (
-                      <p className="text-muted-foreground truncate text-xs">
-                        {path}
-                      </p>
-                    ) : null}
-                  </div>
-                  <ConfirmButton
-                    size="sm"
-                    destructive
-                    variant="destructive"
-                    title="Remover arquivo"
-                    description={`Remover “${fileName(file)}” dos arquivos de compilação?`}
-                    confirmLabel="Remover"
-                    onConfirm={() => handleDelete(file.id)}
-                  >
-                    Remover
-                  </ConfirmButton>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
+    <SectionCard title="Arquivos de compilação" description={description}>
+      {content}
     </SectionCard>
   );
 }

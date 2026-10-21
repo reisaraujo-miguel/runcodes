@@ -5,12 +5,7 @@ import {
   historyKeymap,
   indentWithTab,
 } from "@codemirror/commands";
-import {
-  bracketMatching,
-  HighlightStyle,
-  indentUnit,
-  syntaxHighlighting,
-} from "@codemirror/language";
+import { bracketMatching, indentUnit } from "@codemirror/language";
 import { EditorState, type Extension } from "@codemirror/state";
 import {
   drawSelection,
@@ -22,115 +17,13 @@ import {
   lineNumbers,
   placeholder,
 } from "@codemirror/view";
-import { tags } from "@lezer/highlight";
 import { useEffect, useRef, useState } from "react";
 
 import { useTheme } from "@/hooks/use-theme";
+import { editorTheme } from "@/lib/editor/editor-theme";
 import { loadLanguageSupport } from "@/lib/editor/language-support";
 import type { EditorLanguage } from "@/lib/editor/languages";
 import { cn } from "@/lib/utils";
-
-/**
- * Syntax colors come from the app's design tokens, so the editor follows the
- * light/dark theme without a second palette to maintain.
- */
-const highlightStyle = HighlightStyle.define([
-  { tag: tags.keyword, color: "var(--primary)", fontWeight: "600" },
-  {
-    tag: [
-      tags.controlKeyword,
-      tags.operatorKeyword,
-      tags.moduleKeyword,
-      tags.definitionKeyword,
-    ],
-    color: "var(--primary)",
-  },
-  {
-    tag: [tags.function(tags.variableName), tags.labelName],
-    color: "var(--info)",
-  },
-  {
-    tag: [tags.typeName, tags.className, tags.namespace],
-    color: "var(--warning)",
-  },
-  {
-    tag: [tags.number, tags.integer, tags.float, tags.constant(tags.name)],
-    color: "var(--warning)",
-  },
-  { tag: [tags.string, tags.special(tags.string)], color: "var(--success)" },
-  {
-    tag: [tags.comment, tags.lineComment, tags.blockComment],
-    color: "var(--muted-foreground)",
-    fontStyle: "italic",
-  },
-  { tag: [tags.operator, tags.punctuation], color: "var(--muted-foreground)" },
-  { tag: [tags.bool, tags.atom], color: "var(--destructive)" },
-  { tag: tags.invalid, color: "var(--destructive)" },
-]);
-
-function editorTheme(dark: boolean) {
-  return [
-    EditorView.theme(
-      {
-        "&": {
-          height: "100%",
-          color: "var(--foreground)",
-          backgroundColor: "var(--card)",
-          fontSize: "13px",
-        },
-        "&.cm-focused": { outline: "none" },
-        ".cm-scroller": {
-          fontFamily: "var(--font-mono)",
-          lineHeight: "1.6",
-        },
-        ".cm-content": {
-          padding: "12px 0",
-          caretColor: "var(--primary)",
-        },
-        ".cm-gutters": {
-          backgroundColor: "var(--muted)",
-          color: "var(--muted-foreground)",
-          border: "none",
-          borderRight: "1px solid var(--border)",
-        },
-        ".cm-activeLine": {
-          backgroundColor:
-            "color-mix(in oklab, var(--primary) 6%, transparent)",
-        },
-        ".cm-activeLineGutter": {
-          backgroundColor:
-            "color-mix(in oklab, var(--primary) 10%, transparent)",
-          color: "var(--foreground)",
-        },
-        ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection":
-          {
-            backgroundColor:
-              "color-mix(in oklab, var(--primary) 24%, transparent)",
-          },
-        ".cm-cursor, .cm-dropCursor": {
-          borderLeftColor: "var(--primary)",
-        },
-        ".cm-panels": {
-          backgroundColor: "var(--card)",
-          color: "var(--foreground)",
-        },
-        ".cm-tooltip": {
-          backgroundColor: "var(--popover)",
-          border: "1px solid var(--border)",
-          color: "var(--popover-foreground)",
-        },
-        ".cm-placeholder": { color: "var(--muted-foreground)" },
-        ".cm-foldPlaceholder": {
-          backgroundColor: "var(--muted)",
-          border: "none",
-          color: "var(--muted-foreground)",
-        },
-      },
-      { dark },
-    ),
-    syntaxHighlighting(highlightStyle),
-  ];
-}
 
 export interface CodeEditorProps {
   value: string;
