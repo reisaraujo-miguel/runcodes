@@ -21,6 +21,9 @@ var (
 	ErrJudgeUnavailable = errors.New("the judge is unavailable, try again later")
 	ErrCommitNotFound   = errors.New("commit not found")
 	ErrCommitForbidden  = errors.New("you are not allowed to view this commit")
+	// ErrCommitSourceNotFound is reported when the source object is no longer
+	// in storage (for example, removed by an object-store cleanup).
+	ErrCommitSourceNotFound = errors.New("submitted source is not available")
 
 	ErrNotOwner                = errors.New("you are not the owner of this offering")
 	ErrTestCaseNotFound        = errors.New("test case not found")

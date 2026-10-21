@@ -2,6 +2,7 @@ package judge
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -111,6 +112,110 @@ func TestRequestAddsToken(t *testing.T) {
 	if authorization != "Bearer s3cret" {
 		t.Fatalf("expected bearer token, got %q", authorization)
 	}
+}
+
+func TestOpenOutput(t *testing.T) {
+	t.Run("streams the archive", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/v1/runs/42/output" {
+				t.Errorf("unexpected path %q", r.URL.Path)
+			}
+			w.Header().Set("Content-Type", "application/zip")
+			w.WriteHeader(http.StatusOK)
+			_, _ = io.WriteString(w, "zip-bytes")
+		}))
+		defer server.Close()
+		useJudgeConfig(t, server.URL, "")
+
+		resp, err := OpenOutput(context.Background(), 42)
+		if err != nil {
+			t.Fatalf("OpenOutput: %v", err)
+		}
+		defer resp.Body.Close()
+
+		data, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("ReadAll: %v", err)
+		}
+		if string(data) != "zip-bytes" {
+			t.Fatalf("body = %q, want zip-bytes", data)
+		}
+	})
+
+	t.Run("missing archive", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer server.Close()
+		useJudgeConfig(t, server.URL, "")
+
+		if _, err := OpenOutput(context.Background(), 42); !errors.Is(err, ErrOutputNotFound) {
+			t.Fatalf("err = %v, want ErrOutputNotFound", err)
+		}
+	})
+
+	t.Run("judge failure", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer server.Close()
+		useJudgeConfig(t, server.URL, "")
+
+		if _, err := OpenOutput(context.Background(), 42); err == nil {
+			t.Fatal("expected an error for a 500 output response")
+		}
+	})
+}
+
+func TestOutputExists(t *testing.T) {
+	t.Run("exists", func(t *testing.T) {
+		var method, path string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			method, path = r.Method, r.URL.Path
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+		useJudgeConfig(t, server.URL, "")
+
+		exists, err := OutputExists(context.Background(), 42)
+		if err != nil {
+			t.Fatalf("OutputExists: %v", err)
+		}
+		if !exists {
+			t.Fatal("expected the archive to exist")
+		}
+		if method != http.MethodHead || path != "/v1/runs/42/output" {
+			t.Fatalf("unexpected request %s %s", method, path)
+		}
+	})
+
+	t.Run("missing", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer server.Close()
+		useJudgeConfig(t, server.URL, "")
+
+		exists, err := OutputExists(context.Background(), 42)
+		if err != nil {
+			t.Fatalf("OutputExists: %v", err)
+		}
+		if exists {
+			t.Fatal("expected no archive")
+		}
+	})
+
+	t.Run("judge failure", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer server.Close()
+		useJudgeConfig(t, server.URL, "")
+
+		if _, err := OutputExists(context.Background(), 42); err == nil {
+			t.Fatal("expected an error for a 500 output check")
+		}
+	})
 }
 
 func TestOpenEvents(t *testing.T) {

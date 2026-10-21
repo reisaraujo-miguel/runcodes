@@ -75,6 +75,9 @@ func createRoutes(router *chi.Mux) {
 
 			r.Post("/api/v1/submissions", handlers.CreateSubmission)
 			r.Get("/api/v1/submissions/{id}/events", handlers.StreamSubmissionEvents)
+			r.Get("/api/v1/submissions/{id}/source", handlers.GetSubmissionSource)
+			r.Get("/api/v1/submissions/{id}/output", handlers.GetSubmissionOutput)
+			r.Get("/api/v1/exercises/{id}/submissions", handlers.ListSubmissionHistory)
 
 			// exercise & test-case authoring (access is enforced in the services)
 			r.Get("/api/v1/allowed-file-types", handlers.ListAllowedFileTypes)

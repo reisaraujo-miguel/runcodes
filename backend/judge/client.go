@@ -7,6 +7,7 @@ package judge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,11 +18,19 @@ import (
 )
 
 var (
+	// ErrOutputNotFound reports that the judge has no generated output archive
+	// for a commit.
+	ErrOutputNotFound = errors.New("output archive not found")
+
 	// readyClient bounds the pre-registration readiness probe.
 	readyClient = &http.Client{Timeout: 2 * time.Second}
 
 	// streamClient has no overall timeout: SSE responses are long-lived.
 	streamClient = &http.Client{}
+
+	// outputClient bounds a download of a generated archive. The judge is on the
+	// internal network; a request that stalls must still release the handler.
+	outputClient = &http.Client{Timeout: 60 * time.Second}
 )
 
 /*
@@ -93,6 +102,68 @@ func Wake(ctx context.Context, commitID int64) error {
 	}
 
 	return nil
+}
+
+/*
+OpenOutput opens a commit's generated output archive on the judge. The caller
+must close the body. A missing archive is reported as ErrOutputNotFound.
+*/
+func OpenOutput(ctx context.Context, commitID int64) (*http.Response, error) {
+	req, err := newRequest(
+		ctx, http.MethodGet,
+		"/v1/runs/"+strconv.FormatInt(commitID, 10)+"/output", nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/zip")
+
+	resp, err := outputClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("opening judge output: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
+		return nil, ErrOutputNotFound
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		resp.Body.Close()
+		return nil, fmt.Errorf("judge output returned status %d", resp.StatusCode)
+	}
+
+	return resp, nil
+}
+
+/*
+OutputExists reports whether the judge has a generated output archive for a
+commit. The snapshot uses it to restore the "generated files" section after a
+page reload, when the transient artifact event is no longer in the stream.
+*/
+func OutputExists(ctx context.Context, commitID int64) (bool, error) {
+	req, err := newRequest(
+		ctx, http.MethodHead,
+		"/v1/runs/"+strconv.FormatInt(commitID, 10)+"/output", nil,
+	)
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set("Accept", "application/zip")
+
+	resp, err := outputClient.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("checking judge output: %w", err)
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return true, nil
+	case http.StatusNotFound:
+		return false, nil
+	default:
+		return false, fmt.Errorf("judge output check returned status %d", resp.StatusCode)
+	}
 }
 
 /*

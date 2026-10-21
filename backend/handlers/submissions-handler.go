@@ -1,12 +1,17 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/runcodes-icmc/runcodes/judge"
@@ -154,6 +159,193 @@ func CreateSubmission(w http.ResponseWriter, r *http.Request) {
 }
 
 /*
+ListSubmissionHistory handles GET /api/v1/exercises/{id}/submissions. It returns
+only the caller's own submissions, newest first.
+*/
+func ListSubmissionHistory(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	claims, ok := tokenClaims(w, r)
+	if !ok {
+		return
+	}
+	userID, ok := claimsID(claims)
+	if !ok {
+		WriteResponse(w, http.StatusUnauthorized, nil)
+		return
+	}
+
+	exerciseID, err := pathID(r, "id")
+	if err != nil || exerciseID <= 0 {
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "invalid exercise id"},
+		)
+		return
+	}
+
+	submissions, err := services.ListMyExerciseSubmissions(
+		ctx, exerciseID, int64(userID),
+	)
+	if err != nil {
+		writeServiceError(ctx, w, err)
+		return
+	}
+
+	WriteResponse(w, http.StatusOK, submissions)
+}
+
+/*
+GetSubmissionSource handles GET /api/v1/submissions/{id}/source. It streams the
+original submitted file so the client can either download it or restore its
+contents into the editor. The source belongs to the caller alone.
+*/
+func GetSubmissionSource(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	claims, ok := tokenClaims(w, r)
+	if !ok {
+		return
+	}
+	userID, ok := claimsID(claims)
+	if !ok {
+		WriteResponse(w, http.StatusUnauthorized, nil)
+		return
+	}
+
+	commitID, err := pathID(r, "id")
+	if err != nil || commitID <= 0 {
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "invalid commit id"},
+		)
+		return
+	}
+
+	source, err := services.GetMySubmissionSource(ctx, commitID, int64(userID))
+	if err != nil {
+		switch {
+		case errors.Is(err, services.ErrCommitNotFound):
+			WriteResponse(w, http.StatusNotFound,
+				models.Error{Message: services.ErrCommitNotFound.Error()},
+			)
+		case errors.Is(err, services.ErrCommitSourceNotFound):
+			WriteResponse(w, http.StatusNotFound,
+				models.Error{Message: services.ErrCommitSourceNotFound.Error()},
+			)
+		default:
+			writeServiceError(ctx, w, err)
+		}
+		return
+	}
+	defer source.Body.Close()
+
+	extension := strings.ToLower(filepath.Ext(source.Filename))
+	contentType := source.ContentType
+	if contentType == "" || contentType == "application/octet-stream" {
+		if inferred := mime.TypeByExtension(extension); inferred != "" {
+			contentType = inferred
+		}
+	}
+	if contentType == "" {
+		contentType = "text/plain; charset=utf-8"
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition",
+		fmt.Sprintf("attachment; filename=%q", source.Filename),
+	)
+	w.Header().Set("Cache-Control", "private, no-store")
+	if source.Size >= 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(source.Size, 10))
+	}
+	w.WriteHeader(http.StatusOK)
+
+	if _, err := io.Copy(w, source.Body); err != nil {
+		slog.ErrorContext(ctx, "failed to stream submitted source",
+			slog.Int64("commit_id", commitID),
+			slog.String("error", err.Error()),
+		)
+	}
+}
+
+/*
+GetSubmissionOutput handles GET /api/v1/submissions/{id}/output. It proxies the
+generated output archive from the judge so the browser can download it through
+the authenticated API. The archive is available to the commit's owner only.
+*/
+func GetSubmissionOutput(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	claims, ok := tokenClaims(w, r)
+	if !ok {
+		return
+	}
+	userID, ok := claimsID(claims)
+	if !ok {
+		WriteResponse(w, http.StatusUnauthorized, nil)
+		return
+	}
+
+	commitID, err := pathID(r, "id")
+	if err != nil || commitID <= 0 {
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "invalid commit id"},
+		)
+		return
+	}
+
+	if err := services.VerifyMyCommit(ctx, commitID, int64(userID)); err != nil {
+		if errors.Is(err, services.ErrCommitNotFound) {
+			WriteResponse(w, http.StatusNotFound,
+				models.Error{Message: services.ErrCommitNotFound.Error()},
+			)
+			return
+		}
+		writeServiceError(ctx, w, err)
+		return
+	}
+
+	archive, err := judge.OpenOutput(ctx, commitID)
+	if err != nil {
+		switch {
+		case errors.Is(err, judge.ErrOutputNotFound):
+			WriteResponse(w, http.StatusNotFound,
+				models.Error{Message: "no output was generated for this submission"},
+			)
+		default:
+			slog.ErrorContext(ctx, "failed to fetch generated output",
+				slog.Int64("commit_id", commitID),
+				slog.String("error", err.Error()),
+			)
+			WriteResponse(w, http.StatusBadGateway,
+				models.Error{Message: "could not fetch the generated output"},
+			)
+		}
+		return
+	}
+	defer archive.Body.Close()
+
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition",
+		fmt.Sprintf("attachment; filename=%q",
+			strconv.FormatInt(commitID, 10)+".zip"),
+	)
+	w.Header().Set("Cache-Control", "private, no-store")
+	if archive.ContentLength > 0 {
+		w.Header().Set("Content-Length",
+			strconv.FormatInt(archive.ContentLength, 10),
+		)
+	}
+	w.WriteHeader(http.StatusOK)
+
+	if _, err := io.Copy(w, archive.Body); err != nil {
+		slog.ErrorContext(ctx, "failed to stream generated output",
+			slog.Int64("commit_id", commitID),
+			slog.String("error", err.Error()),
+		)
+	}
+}
+
+/*
 StreamSubmissionEvents streams a commit's judging events as Server-Sent Events.
 It starts with a snapshot of the persisted state, then relays live judge events
 fanned out through the per-commit hub.
@@ -212,6 +404,27 @@ func StreamSubmissionEvents(w http.ResponseWriter, r *http.Request) {
 			models.Error{Message: services.ErrCommitForbidden.Error()},
 		)
 		return
+	}
+
+	// Artifact events are transient and never persisted. Ask the judge whether
+	// the generated archive exists so a reloading client can show the files
+	// section. The archive can appear before the finished event, so check even
+	// while the run is still in progress. Only the owner can download it, so do
+	// not advertise it on a privileged viewer's snapshot.
+	if owned {
+		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		exists, err := judge.OutputExists(checkCtx, commitID)
+		cancel()
+		if err != nil {
+			slog.WarnContext(ctx, "could not check generated output",
+				slog.Int64("commit_id", commitID),
+				slog.String("error", err.Error()),
+			)
+		} else if exists {
+			snapshot.Artifacts = append(snapshot.Artifacts,
+				models.SubmissionArtifact{Kind: "output"},
+			)
+		}
 	}
 
 	flusher, ok := w.(http.Flusher)
