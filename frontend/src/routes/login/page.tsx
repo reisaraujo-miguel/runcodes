@@ -1,11 +1,20 @@
+import { Navigate } from "react-router";
+
 import { Brand } from "@/components/app/Brand";
+import { GitHubLink } from "@/components/app/GitHubLink";
 import { AboutSection } from "@/components/login/AboutSection";
 import { AuthCard } from "@/components/login/AuthCard";
 import { ThemeToggle } from "@/components/ThemeToggle";
-
-import { GitHubLink } from "@/components/app/GitHubLink";
+import { useAuth } from "@/hooks/use-auth";
 
 export function AuthPage() {
+  const { user } = useAuth();
+
+  // The sign-in page is only for signed-out visitors. A session restored from
+  // the cookie must land on the app instead of showing a form it no longer
+  // needs; `replace` keeps the login entry out of the history.
+  if (user) return <Navigate to="/" replace />;
+
   return (
     <div className="grid min-h-svh lg:grid-cols-2">
       {/* Brand / marketing panel (desktop). */}
