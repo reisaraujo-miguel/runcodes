@@ -1,6 +1,8 @@
 import { isTerminalStatus } from "../submission-status";
 import {
   API_BASE_URL,
+  apiGet,
+  ApiRequestError,
   isRecord,
   readApiBody,
   readApiError,
@@ -44,6 +46,17 @@ export interface QueuedSubmission {
   events_url: string;
 }
 
+/** One entry in the caller's submission history for an exercise. */
+export interface SubmissionSummary {
+  id: number;
+  status: CommitStatus;
+  num_correct_cases: number;
+  score: number;
+  created_at: string;
+  /** Basename of the submitted file, used to download or restore it. */
+  filename: string;
+}
+
 /** The commit state carried by the first `snapshot` frame. */
 export interface SubmissionCommit {
   id: number;
@@ -71,10 +84,17 @@ export interface SubmissionSnapshotResult {
   error_message: string;
 }
 
+/** A generated file the output download endpoint can serve. */
+export interface SubmissionArtifact {
+  kind: string;
+}
+
 export interface SubmissionSnapshotEvent {
   type: "snapshot";
   commit: SubmissionCommit;
   results: SubmissionSnapshotResult[];
+  /** Absent from older backends; empty when no archive exists. */
+  artifacts?: SubmissionArtifact[];
 }
 
 export interface SubmissionStatusEvent {
@@ -109,11 +129,10 @@ export interface SubmissionCaseResultEvent {
   error_message: string;
 }
 
-export interface SubmissionArtifactEvent {
+export interface SubmissionArtifactEvent extends SubmissionArtifact {
   type: "artifact";
   commit_id: number;
   seq: number;
-  kind: string;
   url: string;
 }
 
@@ -214,6 +233,63 @@ export async function createSubmission(
   }
 
   return readApiBody<QueuedSubmission>(response);
+}
+
+/**
+ * Lists the caller's previous submissions for an exercise, newest first. Only
+ * submissions whose source is still available are returned by the API.
+ */
+export function listExerciseSubmissions(
+  exerciseId: number,
+): Promise<SubmissionSummary[]> {
+  return apiGet<SubmissionSummary[]>(
+    `/api/v1/exercises/${String(exerciseId)}/submissions`,
+  );
+}
+
+/** Fetches the raw source response, preserving a binary upload's bytes. */
+async function fetchSubmissionSource(commitId: number): Promise<Response> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/submissions/${String(commitId)}/source`,
+    {
+      credentials: "include",
+      // Sources can be up to the same 10 MiB accepted by an upload.
+      signal: requestSignal(undefined, UPLOAD_TIMEOUT_MS),
+    },
+  );
+
+  if (!response.ok) {
+    throw new ApiRequestError(await readApiError(response), response.status);
+  }
+
+  return response;
+}
+
+/**
+ * Reads the source of one of the caller's submissions as text, for restoring it
+ * into the editor.
+ */
+export async function getSubmissionSourceText(
+  commitId: number,
+): Promise<string> {
+  return (await fetchSubmissionSource(commitId)).text();
+}
+
+/**
+ * Reads the source as a blob, preserving its content type for downloads. Unlike
+ * the text variant, this works for non-code uploads such as a ZIP file.
+ */
+export async function getSubmissionSourceBlob(commitId: number): Promise<Blob> {
+  return (await fetchSubmissionSource(commitId)).blob();
+}
+
+/**
+ * URL that downloads the generated output archive of a commit. The backend
+ * proxies the archive from the judge, so it is reachable from the browser and
+ * authenticated by the session cookie.
+ */
+export function submissionOutputUrl(commitId: number): string {
+  return `${API_BASE_URL}/api/v1/submissions/${String(commitId)}/output`;
 }
 
 /** Validates a parsed frame and narrows it to a known event. */

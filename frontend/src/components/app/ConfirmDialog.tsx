@@ -95,12 +95,13 @@ export function ConfirmButton({
   destructive,
   onConfirm,
   children,
+  type = "button",
   variant,
   size,
   className,
   ...triggerProps
 }: ConfirmProps &
-  Pick<ComponentProps<typeof Button>, "disabled"> & {
+  Pick<ComponentProps<typeof Button>, "disabled" | "type"> & {
     children: ReactNode;
     variant?: ComponentProps<typeof Button>["variant"];
     size?: ComponentProps<typeof Button>["size"];
@@ -111,6 +112,7 @@ export function ConfirmButton({
   return (
     <>
       <Button
+        type={type}
         variant={variant}
         size={size}
         className={className}

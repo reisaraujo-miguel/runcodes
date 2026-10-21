@@ -5,8 +5,7 @@ import {
   CodeIcon,
   FileCode2Icon,
   FileUpIcon,
-  PanelTopCloseIcon,
-  PanelTopOpenIcon,
+  HistoryIcon,
   SendIcon,
 } from "lucide-react";
 import {
@@ -21,9 +20,12 @@ import {
 } from "react";
 import { Link, useParams } from "react-router";
 
+import { ConfirmDialog } from "@/components/app/ConfirmDialog";
 import { ErrorState, LoadingState } from "@/components/app/states";
+import { CodeDraftIndicator } from "@/components/editor/CodeDraftIndicator";
 import { ResultsPanel } from "@/components/submission/ResultsPanel";
 import { StatementPanel } from "@/components/submission/StatementPanel";
+import { SubmissionHistoryDialog } from "@/components/submission/SubmissionHistoryDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DockSplitter } from "@/components/ui/dock-splitter";
@@ -31,6 +33,8 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { useAsync } from "@/hooks/use-async";
+import { useAuth } from "@/hooks/use-auth";
+import { useCodeDraft } from "@/hooks/use-code-draft";
 import { useCodeEditorPreference } from "@/hooks/use-code-editor-preference";
 import { useDockLayout } from "@/hooks/use-dock-layout";
 import { useElementSize } from "@/hooks/use-element-size";
@@ -44,8 +48,9 @@ import {
   type AllowedFileType,
   type CommitStatus,
   type Exercise,
-  type SubmissionArtifactEvent,
+  type SubmissionArtifact,
   type SubmissionStatusEvent,
+  type SubmissionSummary,
 } from "@/lib/api";
 import { ApiRequestError } from "@/lib/api/client";
 import { deadlineInfo } from "@/lib/deadline";
@@ -58,7 +63,11 @@ import {
   MIN_STATEMENT_WIDTH,
   STATEMENT_RAIL_WIDTH,
 } from "@/lib/dock-layout";
-import { editorLanguagesFor } from "@/lib/editor/languages";
+import { getCodeDraftStorage, readCodeDraft } from "@/lib/editor/code-draft";
+import {
+  editorLanguageForFilename,
+  editorLanguagesFor,
+} from "@/lib/editor/languages";
 import { normalizeExtension, validateFileType } from "@/lib/file-types";
 import { formatDateTime } from "@/lib/format";
 import { isPendingStatus, isTerminalStatus } from "@/lib/submission-status";
@@ -214,23 +223,43 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
     `attached-${exerciseId ?? ""}`,
   );
   const preference = useCodeEditorPreference();
+  const { user } = useAuth();
   const [gridRef, gridSize] = useElementSize();
   const [columnRef, columnSize] = useElementSize();
   const dockLayout = useDockLayout();
 
-  const [modeChoice, setModeChoice] = useState<"editor" | "upload" | null>(
-    null,
+  // Read the draft once, before the editor states below are initialized, so the
+  // first paint already shows the restored code instead of flashing empty.
+  const [restoredDraft] = useState(() =>
+    readCodeDraft(
+      getCodeDraftStorage(),
+      user?.id ?? null,
+      validId ? numericExerciseId : null,
+    ),
   );
-  const [code, setCode] = useState("");
-  const [filenameDraft, setFilenameDraft] = useState<string | null>(null);
+
+  const [modeChoice, setModeChoice] = useState<"editor" | "upload" | null>(
+    // A restored solution should be visible even when the profile preference is
+    // to submit a file.
+    restoredDraft?.code.trim() ? "editor" : null,
+  );
+  const [code, setCode] = useState(restoredDraft?.code ?? "");
+  const [filenameDraft, setFilenameDraft] = useState<string | null>(
+    restoredDraft?.filename ?? null,
+  );
   const [selectedLanguageId, setSelectedLanguageId] = useState<string | null>(
-    null,
+    restoredDraft?.languageId ?? null,
   );
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [pendingRestore, setPendingRestore] = useState<{
+    submission: SubmissionSummary;
+    source: string;
+  } | null>(null);
 
   const [commitId, setCommitId] = useState<number | null>(() =>
     validId ? readStoredCommit(numericExerciseId) : null,
@@ -239,7 +268,7 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
   const [history, setHistory] = useState<SubmissionStatusEvent[]>([]);
   const [compilation, setCompilation] = useState<CompilationInfo | null>(null);
   const [results, setResults] = useState<CaseResultView[]>([]);
-  const [artifacts, setArtifacts] = useState<SubmissionArtifactEvent[]>([]);
+  const [artifacts, setArtifacts] = useState<SubmissionArtifact[]>([]);
   const [final, setFinal] = useState<FinalSummary | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
 
@@ -269,6 +298,23 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
       ? "upload"
       : (modeChoice ?? (preference.enabled ? "editor" : "upload"));
 
+  // The editor lives in a resizable split pane, so viewport breakpoints say
+  // nothing about how much room the toolbar actually has. Compact the secondary
+  // controls from the measured width instead, keeping the toolbar on one row.
+  // Before the first measurement the compact layout is the safe default: it
+  // avoids rendering a wrapped row for one frame.
+  const compactToolbar = columnSize.width === 0 || columnSize.width < 720;
+  const iconOnlyToolbar = columnSize.width > 0 && columnSize.width < 560;
+
+  const codeDraft = useCodeDraft({
+    userId: user?.id ?? null,
+    exerciseId: validId ? numericExerciseId : null,
+    code,
+    languageId: selectedLanguageId,
+    filename: filenameDraft,
+    initialDraft: restoredDraft,
+  });
+
   useEffect(() => {
     if (commitId === null) return;
 
@@ -285,6 +331,20 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
           error: event.commit.compilation_error,
         });
         setResults(event.results.map(viewFromSnapshot));
+        // Artifact frames are transient; the snapshot rehydrates availability
+        // after a reload for a settled submission. Merge rather than replace so
+        // a reconnect cannot drop an artifact seen earlier in this run.
+        setArtifacts((previous) => {
+          const fromSnapshot = event.artifacts ?? [];
+          if (fromSnapshot.length === 0) return previous;
+          const merged = new Map(
+            previous.map((artifact) => [artifact.kind, artifact]),
+          );
+          for (const artifact of fromSnapshot) {
+            merged.set(artifact.kind, artifact);
+          }
+          return [...merged.values()];
+        });
         if (isTerminalStatus(event.commit.status)) {
           setFinal({
             status: event.commit.status,
@@ -318,7 +378,11 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
       },
       onArtifact: (event) => {
         setStreamError(null);
-        setArtifacts((previous) => [...previous, event]);
+        setArtifacts((previous) =>
+          previous.some((artifact) => artifact.kind === event.kind)
+            ? previous
+            : [...previous, { kind: event.kind }],
+        );
       },
       onFinished: (event) => {
         setStreamError(null);
@@ -359,6 +423,51 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
     setStreamError(null);
   }
 
+  /**
+   * Stores the language the editor is actually using. The selected id can be
+   * null on a first visit or stale if the exercise's allowed types changed; either
+   * way the draft should remember the grammar the code was written in.
+   */
+  function rememberEffectiveLanguage() {
+    if (selectedLanguage && selectedLanguageId !== selectedLanguage.id) {
+      setSelectedLanguageId(selectedLanguage.id);
+    }
+  }
+
+  function handleCodeChange(next: string) {
+    setCode(next);
+    rememberEffectiveLanguage();
+  }
+
+  /** Loads a past submission into the editor and makes it the saved draft. */
+  function applyRestore(submission: SubmissionSummary, source: string) {
+    const language = editorLanguageForFilename(languages, submission.filename);
+    const languageId = language?.id ?? selectedLanguage?.id ?? null;
+
+    setCode(source);
+    setFilenameDraft(submission.filename);
+    setSelectedLanguageId(languageId);
+    setModeChoice("editor");
+    setFileError(null);
+    setSubmitError(null);
+    // The restore confirmation promises the current draft is lost, so replace
+    // the stored draft immediately instead of waiting for the autosave timer.
+    codeDraft.replace({
+      code: source,
+      languageId,
+      filename: submission.filename,
+    });
+  }
+
+  function handleRestoreRequest(submission: SubmissionSummary, source: string) {
+    const hasEditorDraft = code.trim() !== "" || codeDraft.hasDraft;
+    if (hasEditorDraft) {
+      setPendingRestore({ submission, source });
+      return;
+    }
+    applyRestore(submission, source);
+  }
+
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.item(0) ?? null;
     setSelectedFile(file);
@@ -391,6 +500,9 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
     setFileError(null);
     setSubmitting(true);
     setSubmitError(null);
+    // Persist the exact buffer before the request: a refused upload, a dropped
+    // connection, or a failed run must not cost the student this code.
+    codeDraft.flush();
     try {
       const queued = await createSubmission(exercise.data.id, file);
       storeCommit(exercise.data.id, queued.commit_id);
@@ -428,7 +540,6 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
       : selectedFile !== null);
 
   const statementCollapsed = dockLayout.layout.collapsed.statement;
-  const editorCollapsed = dockLayout.layout.collapsed.editor;
   const resultsCollapsed = dockLayout.layout.collapsed.results;
 
   const horizontalBounds = dockBounds(
@@ -456,13 +567,9 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
     ? `${String(STATEMENT_RAIL_WIDTH)}px minmax(0, 1fr)`
     : `${leftRatio.toFixed(4)}fr ${String(DOCK_SPLITTER_SIZE)}px ${(1 - leftRatio).toFixed(4)}fr`;
   const showHorizontalSplitter = !statementCollapsed;
-  const showVerticalSplitter = !editorCollapsed && !resultsCollapsed;
-  const editorGrow = editorCollapsed ? 0 : resultsCollapsed ? 1 : editorRatio;
-  const resultsGrow = resultsCollapsed
-    ? 0
-    : editorCollapsed
-      ? 1
-      : 1 - editorRatio;
+  const showVerticalSplitter = !resultsCollapsed;
+  const editorGrow = resultsCollapsed ? 1 : editorRatio;
+  const resultsGrow = resultsCollapsed ? 0 : 1 - editorRatio;
 
   const submitAction = (
     <Button
@@ -553,14 +660,7 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
             showVerticalSplitter ? "xl:gap-0" : "xl:gap-3",
           )}
         >
-          <section
-            className={cn(
-              "bg-card flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border",
-              editorCollapsed
-                ? "xl:basis-auto xl:grow-0 xl:shrink-0"
-                : "xl:basis-0 xl:grow-(--editor-grow)",
-            )}
-          >
+          <section className="bg-card flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border xl:basis-0 xl:grow-(--editor-grow)">
             <form
               id={FORM_ID}
               className="flex min-h-0 flex-col xl:flex-1"
@@ -576,13 +676,16 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
                         effectiveMode === "editor" ? "secondary" : "ghost"
                       }
                       aria-pressed={effectiveMode === "editor"}
+                      title={iconOnlyToolbar ? "Editor" : undefined}
                       onClick={() => {
                         setModeChoice("editor");
                         setFileError(null);
                       }}
                     >
                       <CodeIcon />
-                      Editor
+                      <span className={cn(iconOnlyToolbar && "sr-only")}>
+                        Editor
+                      </span>
                     </Button>
                     <Button
                       type="button"
@@ -591,13 +694,16 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
                         effectiveMode === "upload" ? "secondary" : "ghost"
                       }
                       aria-pressed={effectiveMode === "upload"}
+                      title={iconOnlyToolbar ? "Arquivo" : undefined}
                       onClick={() => {
                         setModeChoice("upload");
                         setFileError(null);
                       }}
                     >
                       <FileUpIcon />
-                      Arquivo
+                      <span className={cn(iconOnlyToolbar && "sr-only")}>
+                        Arquivo
+                      </span>
                     </Button>
                   </div>
                 ) : (
@@ -615,7 +721,11 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
                         setSelectedLanguageId(event.target.value);
                         setFilenameDraft(null);
                       }}
-                      className="border-border/70 h-7 w-auto min-w-28 cursor-pointer rounded-md bg-transparent px-2 py-0 text-xs shadow-none"
+                      className={cn(
+                        "border-border/70 h-7 w-auto min-w-28 max-w-40 cursor-pointer rounded-md bg-transparent px-2 py-0 text-xs shadow-none",
+                        compactToolbar && "w-24 min-w-24 max-w-24",
+                        iconOnlyToolbar && "w-20 min-w-20 max-w-20",
+                      )}
                     >
                       {languages.map((language) => (
                         <option key={language.id} value={language.id}>
@@ -633,8 +743,13 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
                         value={filename}
                         onChange={(event) => {
                           setFilenameDraft(event.target.value);
+                          rememberEffectiveLanguage();
                         }}
-                        className="border-border/70 h-7 w-36 rounded-md bg-transparent px-2 py-0 font-mono text-xs shadow-none"
+                        className={cn(
+                          "border-border/70 h-7 w-36 rounded-md bg-transparent px-2 py-0 font-mono text-xs shadow-none",
+                          compactToolbar && "w-24",
+                          iconOnlyToolbar && "w-20",
+                        )}
                         spellCheck={false}
                       />
                     </div>
@@ -643,39 +758,60 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
 
                 <div className="ml-auto flex min-w-0 items-center gap-2">
                   {effectiveMode === "upload" && selectedFile ? (
-                    <span className="text-muted-foreground min-w-0 truncate text-[11px]">
+                    <span
+                      title={selectedFile.name}
+                      className={cn(
+                        "text-muted-foreground min-w-0 truncate text-[11px]",
+                        compactToolbar ? "max-w-24" : "max-w-48",
+                      )}
+                    >
                       {selectedFile.name}
                     </span>
                   ) : null}
                   <Button
                     type="button"
                     variant="ghost"
-                    size="icon-sm"
-                    className="hidden xl:inline-flex"
-                    aria-label={
-                      editorCollapsed ? "Expandir editor" : "Recolher editor"
-                    }
-                    title={
-                      editorCollapsed ? "Expandir editor" : "Recolher editor"
-                    }
-                    onClick={dockLayout.toggleEditor}
+                    size={iconOnlyToolbar ? "icon-xs" : "icon-sm"}
+                    aria-label="Submissões anteriores"
+                    title="Submissões anteriores"
+                    onClick={() => {
+                      setHistoryOpen(true);
+                    }}
                   >
-                    {editorCollapsed ? (
-                      <PanelTopOpenIcon className="size-4.5" />
-                    ) : (
-                      <PanelTopCloseIcon className="size-4.5" />
-                    )}
+                    <HistoryIcon className="size-4.5" />
                   </Button>
+                  {effectiveMode === "editor" && codeDraft.status !== "idle" ? (
+                    <CodeDraftIndicator
+                      status={codeDraft.status}
+                      savedAt={codeDraft.savedAt}
+                      error={codeDraft.error}
+                      restored={codeDraft.restored}
+                      hasDraft={codeDraft.hasDraft}
+                      compact={compactToolbar}
+                      onDiscard={codeDraft.discard}
+                    />
+                  ) : null}
                 </div>
               </div>
+
+              {effectiveMode === "editor" &&
+              codeDraft.status === "error" &&
+              codeDraft.error ? (
+                <div className="border-destructive/30 bg-destructive/10 border-b px-3 py-1.5">
+                  <p className="text-destructive flex items-start gap-1.5 text-xs">
+                    <CircleAlertIcon
+                      className="mt-px size-3.5 shrink-0"
+                      aria-hidden
+                    />
+                    {codeDraft.error}
+                  </p>
+                </div>
+              ) : null}
 
               {fileError ? (
                 <div
                   aria-live="polite"
-                  className={cn(
-                    "border-destructive/30 bg-destructive/10 border-b px-3 py-1.5",
-                    editorCollapsed && "xl:hidden",
-                  )}
+                  className="border-destructive/30 bg-destructive/10 border-b px-3 py-1.5"
                 >
                   <p className="text-destructive flex items-start gap-1.5 text-xs">
                     <CircleAlertIcon
@@ -692,30 +828,19 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
                   fallback={
                     <div
                       aria-hidden
-                      className={cn(
-                        "bg-muted/30 h-80 w-full xl:h-auto xl:min-h-0 xl:flex-1",
-                        editorCollapsed && "xl:hidden",
-                      )}
+                      className="bg-muted/30 h-80 w-full xl:h-auto xl:min-h-0 xl:flex-1"
                     />
                   }
                 >
                   <CodeEditor
                     value={code}
-                    onChange={setCode}
+                    onChange={handleCodeChange}
                     language={selectedLanguage}
-                    className={cn(
-                      "h-80 w-full rounded-none border-0 xl:h-auto xl:min-h-0 xl:flex-1",
-                      editorCollapsed && "xl:hidden",
-                    )}
+                    className="h-80 w-full rounded-none border-0 xl:h-auto xl:min-h-0 xl:flex-1"
                   />
                 </Suspense>
               ) : (
-                <div
-                  className={cn(
-                    "flex min-h-64 flex-1 flex-col items-center justify-center gap-3 px-6 py-8 text-center xl:min-h-0",
-                    editorCollapsed && "xl:hidden",
-                  )}
-                >
+                <div className="flex min-h-64 flex-1 flex-col items-center justify-center gap-3 px-6 py-8 text-center xl:min-h-0">
                   <div className="bg-muted text-muted-foreground flex size-10 items-center justify-center rounded-full">
                     <FileUpIcon className="size-5" aria-hidden />
                   </div>
@@ -780,6 +905,43 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
           />
         </div>
       </div>
+
+      {historyOpen ? (
+        <SubmissionHistoryDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setHistoryOpen(false);
+          }}
+          exerciseId={current.id}
+          languages={languages}
+          onRestore={handleRestoreRequest}
+        />
+      ) : null}
+
+      <ConfirmDialog
+        open={pendingRestore !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingRestore(null);
+        }}
+        title="Restaurar submissão anterior?"
+        description={
+          pendingRestore ? (
+            <>
+              O rascunho atual do editor será perdido e substituído pelo código
+              da submissão #{pendingRestore.submission.id}, enviada em{" "}
+              {formatDateTime(pendingRestore.submission.created_at)}. Esta ação
+              é irreversível.
+            </>
+          ) : null
+        }
+        confirmLabel="Restaurar submissão"
+        cancelLabel="Cancelar"
+        destructive
+        onConfirm={() => {
+          if (!pendingRestore) return;
+          applyRestore(pendingRestore.submission, pendingRestore.source);
+        }}
+      />
     </div>
   );
 }
