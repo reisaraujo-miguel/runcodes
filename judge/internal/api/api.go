@@ -74,6 +74,9 @@ func (s *Server) Router() http.Handler {
 		r.Post("/v1/runs/{id}", s.handleWake)
 		r.Get("/v1/runs/{id}/events", s.handleEvents)
 		r.Get("/v1/runs/{id}/output", s.handleOutput)
+		// HEAD lets the backend rehydrate artifact availability without
+		// downloading the archive; ServeContent handles it without a body.
+		r.Head("/v1/runs/{id}/output", s.handleOutput)
 	})
 	return r
 }

@@ -210,6 +210,7 @@ along with the database.
 | POST   | `/v1/runs/{id}`        | wake the poll loop for a commit                 |
 | GET    | `/v1/runs/{id}/events` | SSE event stream (`?from=<seq>` to resume)      |
 | GET    | `/v1/runs/{id}/output` | the generated output archive                    |
+| HEAD   | `/v1/runs/{id}/output` | whether the output archive exists               |
 
 `/v1` endpoints require `Authorization: Bearer $JUDGE_AUTH_TOKEN`. Without a
 configured token they return `503` unless `JUDGE_ALLOW_INSECURE=true` is set.

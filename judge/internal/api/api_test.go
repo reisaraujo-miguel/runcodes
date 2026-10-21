@@ -201,6 +201,23 @@ func TestOutput(t *testing.T) {
 	}
 }
 
+func TestOutputHead(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "1.zip")
+	if err := os.WriteFile(path, []byte("PK\x03\x04payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	srv, _, _ := newInsecureServer(fakeDB{}, fakeRuntime{}, fakeArtifacts{path: path})
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodHead, "/v1/runs/1/output", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code = %d, want 200", rec.Code)
+	}
+	if rec.Body.Len() != 0 {
+		t.Fatalf("HEAD body = %q, want empty", rec.Body.String())
+	}
+}
+
 func TestOutputMissing(t *testing.T) {
 	srv, _, _ := newInsecureServer(fakeDB{}, fakeRuntime{}, fakeArtifacts{path: filepath.Join(t.TempDir(), "nope.zip")})
 	rec := httptest.NewRecorder()
