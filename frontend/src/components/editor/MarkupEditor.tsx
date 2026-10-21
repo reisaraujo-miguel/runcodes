@@ -4,8 +4,9 @@ import {
   historyKeymap,
   indentWithTab,
 } from "@codemirror/commands";
+import { html } from "@codemirror/lang-html";
 import { markdown } from "@codemirror/lang-markdown";
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
 import {
   drawSelection,
   dropCursor,
@@ -14,8 +15,9 @@ import {
   keymap,
   placeholder as placeholderExtension,
 } from "@codemirror/view";
-import { EyeIcon, FileTextIcon, PencilIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import DOMPurify from "dompurify";
+import { CodeIcon, EyeIcon, FileTextIcon, PencilIcon } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Markdown } from "@/components/submission/Markdown";
 import { Button } from "@/components/ui/button";
@@ -23,11 +25,41 @@ import { useTheme } from "@/hooks/use-theme";
 import { editorTheme } from "@/lib/editor/editor-theme";
 import { cn } from "@/lib/utils";
 
-const markdownSupport = markdown();
+/** The markup formats the prose editor can edit. */
+export type MarkupFormat = "markdown" | "html";
 
-type MarkdownMode = "edit" | "preview";
+const supportByFormat = {
+  markdown: markdown(),
+  html: html(),
+} as const;
 
-export interface MarkdownEditorProps {
+const presentationByFormat: Record<
+  MarkupFormat,
+  {
+    label: string;
+    icon: typeof FileTextIcon;
+    ariaLabel: string;
+    placeholder: string;
+  }
+> = {
+  markdown: {
+    label: "Markdown",
+    icon: FileTextIcon,
+    ariaLabel: "Instruções do exercício em Markdown",
+    placeholder: "Escreva as instruções do exercício…",
+  },
+  html: {
+    label: "HTML",
+    icon: CodeIcon,
+    ariaLabel: "Conteúdo HTML",
+    placeholder: "Escreva o HTML…",
+  },
+};
+
+type MarkupMode = "edit" | "preview";
+
+export interface MarkupEditorProps {
+  format: MarkupFormat;
   value: string;
   onChange: (value: string) => void;
   ariaLabel?: string;
@@ -35,6 +67,8 @@ export interface MarkdownEditorProps {
   /** Height shared by the editor and the preview. */
   heightClassName?: string;
   className?: string;
+  /** Renders the content without accepting edits, e.g. while saving. */
+  readOnly?: boolean;
   /**
    * False while the surrounding tab is hidden. The draft stays with the parent,
    * but the CodeMirror view is not created inside a zero-size container.
@@ -43,25 +77,34 @@ export interface MarkdownEditorProps {
 }
 
 /**
- * A compact Markdown editor with syntax highlighting and a rendered preview.
- * It uses the same CodeMirror theme as the code editor so instructions feel
- * like part of the same workspace.
+ * A compact CodeMirror editor for the Markdown and HTML written by professors
+ * and admins, with syntax highlighting and a rendered preview. It uses the same
+ * theme as the code editor so prose feels like part of the same workspace.
+ * HTML previews are sanitized before being rendered.
  */
-export function MarkdownEditor({
+export function MarkupEditor({
+  format,
   value,
   onChange,
-  ariaLabel = "Instruções do exercício em Markdown",
-  placeholder = "Escreva as instruções do exercício…",
+  ariaLabel,
+  placeholder,
   heightClassName = "h-72",
   className,
+  readOnly = false,
   enabled = true,
-}: MarkdownEditorProps) {
+}: MarkupEditorProps) {
   const theme = useTheme();
-  const [mode, setMode] = useState<MarkdownMode>("edit");
+  const [mode, setMode] = useState<MarkupMode>("edit");
+  const [readOnlyCompartment] = useState(() => new Compartment());
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const valueRef = useRef(value);
   const onChangeRef = useRef(onChange);
+  const readOnlyRef = useRef(readOnly);
+  const presentation = presentationByFormat[format];
+  const resolvedAriaLabel = ariaLabel ?? presentation.ariaLabel;
+  const resolvedPlaceholder = placeholder ?? presentation.placeholder;
+  const FormatIcon = presentation.icon;
 
   useEffect(() => {
     valueRef.current = value;
@@ -70,6 +113,10 @@ export function MarkdownEditor({
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+
+  useEffect(() => {
+    readOnlyRef.current = readOnly;
+  }, [readOnly]);
 
   useEffect(() => {
     const parent = containerRef.current;
@@ -83,12 +130,13 @@ export function MarkdownEditor({
           drawSelection(),
           dropCursor(),
           highlightActiveLine(),
-          markdownSupport,
+          supportByFormat[format],
           EditorView.lineWrapping,
-          placeholderExtension(placeholder),
+          placeholderExtension(resolvedPlaceholder),
           keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+          readOnlyCompartment.of(readOnlyExtensions(readOnlyRef.current)),
           EditorView.contentAttributes.of({
-            "aria-label": ariaLabel,
+            "aria-label": resolvedAriaLabel,
             spellcheck: "true",
           }),
           EditorView.updateListener.of((update) => {
@@ -108,7 +156,23 @@ export function MarkdownEditor({
       view.destroy();
       viewRef.current = null;
     };
-  }, [ariaLabel, enabled, mode, placeholder, theme]);
+  }, [
+    enabled,
+    format,
+    mode,
+    readOnlyCompartment,
+    resolvedAriaLabel,
+    resolvedPlaceholder,
+    theme,
+  ]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: readOnlyCompartment.reconfigure(readOnlyExtensions(readOnly)),
+    });
+  }, [readOnly, readOnlyCompartment]);
 
   useEffect(() => {
     const view = viewRef.current;
@@ -129,12 +193,12 @@ export function MarkdownEditor({
     >
       <div className="bg-muted/30 flex items-center justify-between gap-2 border-b px-3 py-1.5">
         <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs font-medium">
-          <FileTextIcon className="size-3.5" aria-hidden />
-          Markdown
+          <FormatIcon className="size-3.5" aria-hidden />
+          {presentation.label}
         </span>
         <div
           role="group"
-          aria-label="Modo de visualização das instruções"
+          aria-label={`Modo de visualização do conteúdo em ${presentation.label}`}
           className="flex items-center gap-1"
         >
           <Button
@@ -169,7 +233,11 @@ export function MarkdownEditor({
       ) : (
         <div className={cn("overflow-y-auto px-4 py-3", heightClassName)}>
           {value.trim() ? (
-            <Markdown>{value}</Markdown>
+            format === "markdown" ? (
+              <Markdown>{value}</Markdown>
+            ) : (
+              <SanitizedHtml source={value} />
+            )
           ) : (
             <p className="text-muted-foreground text-sm">
               Nada para visualizar ainda.
@@ -178,5 +246,24 @@ export function MarkdownEditor({
         </div>
       )}
     </div>
+  );
+}
+
+/** Keeps the editor locked while the surrounding form is saving. */
+function readOnlyExtensions(readOnly: boolean) {
+  return [EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)];
+}
+
+/** Renders the HTML preview after removing anything unsafe to insert. */
+function SanitizedHtml({ source }: { source: string }) {
+  const sanitized = useMemo(() => DOMPurify.sanitize(source), [source]);
+
+  return (
+    <div
+      className="markdown-body"
+      // The HTML comes from the admin editor and is sanitized above.
+      // eslint-disable-next-line react-dom/no-dangerously-set-innerhtml
+      dangerouslySetInnerHTML={{ __html: sanitized }}
+    />
   );
 }

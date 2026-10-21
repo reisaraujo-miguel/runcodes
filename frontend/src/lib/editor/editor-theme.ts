@@ -4,8 +4,8 @@ import { tags } from "@lezer/highlight";
 
 /**
  * Syntax colors come from the app's design tokens, so every editor follows the
- * light/dark theme without a second palette to maintain. The Markdown tags are
- * appended to the code tags because the exercise instructions use the same
+ * light/dark theme without a second palette to maintain. The Markdown and HTML
+ * tags are appended to the code tags because the prose editor shares the same
  * CodeMirror surface.
  */
 const highlightStyle = HighlightStyle.define([
@@ -59,6 +59,18 @@ const highlightStyle = HighlightStyle.define([
   },
   {
     tag: [tags.meta, tags.contentSeparator],
+    color: "var(--muted-foreground)",
+  },
+
+  // HTML
+  {
+    tag: [tags.tagName, tags.angleBracket],
+    color: "var(--primary)",
+  },
+  { tag: tags.attributeName, color: "var(--warning)" },
+  { tag: tags.attributeValue, color: "var(--success)" },
+  {
+    tag: [tags.character, tags.processingInstruction, tags.documentMeta],
     color: "var(--muted-foreground)",
   },
 ]);

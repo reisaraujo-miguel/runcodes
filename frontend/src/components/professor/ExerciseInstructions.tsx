@@ -1,7 +1,7 @@
 import { FileTextIcon, SaveIcon } from "lucide-react";
 import { useState } from "react";
 
-import { MarkdownEditor } from "@/components/editor/MarkdownEditor";
+import { MarkupEditor } from "@/components/editor/MarkupEditor";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -106,7 +106,8 @@ export function ExerciseInstructions({
         </div>
       </div>
 
-      <MarkdownEditor
+      <MarkupEditor
+        format="markdown"
         value={draft}
         onChange={handleChange}
         heightClassName="h-80"

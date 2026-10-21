@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import { DateTimeField } from "@/components/app/DateTimeField";
-import { MarkdownEditor } from "@/components/editor/MarkdownEditor";
+import { MarkupEditor } from "@/components/editor/MarkupEditor";
 import { AllowedFileTypesField } from "@/components/professor/AllowedFileTypesField";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -164,7 +164,8 @@ export function NewExerciseForm({
                 renderizado com essa formatação.
               </p>
             </div>
-            <MarkdownEditor
+            <MarkupEditor
+              format="markdown"
               value={description}
               onChange={setDescription}
               heightClassName="h-56"
