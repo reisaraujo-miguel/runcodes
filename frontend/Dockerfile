@@ -15,7 +15,7 @@ COPY bun.lock package.json ./
 RUN bun install --frozen-lockfile
 
 COPY . .
-RUN bun run build
+RUN bun -b run build
 
 FROM caddy:2.11.7-alpine AS dist
 
