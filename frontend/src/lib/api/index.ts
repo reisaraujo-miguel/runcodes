@@ -20,11 +20,17 @@ export type { PasswordPayload, Profile, ProfilePayload } from "./profile";
 
 export {
   enroll,
+  getMyOffering,
   getMyOfferings,
   getMyOpenExercises,
   unenroll,
 } from "./enrollments";
-export type { OpenExercise, UserOffering } from "./enrollments";
+export type {
+  OpenExercise,
+  UserOffering,
+  UserOfferingDetail,
+  UserOfferingExercise,
+} from "./enrollments";
 
 export {
   addOfferingMember,

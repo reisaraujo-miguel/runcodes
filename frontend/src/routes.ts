@@ -79,6 +79,14 @@ export const router = createBrowserRouter([
                 },
               },
               {
+                path: "classes/:offeringId",
+                lazy: async () => {
+                  const { OfferingPage } =
+                    await import("./routes/classes/offering/page.tsx");
+                  return { Component: OfferingPage };
+                },
+              },
+              {
                 path: "profile",
                 lazy: async () => {
                   const { ProfilePage } =
