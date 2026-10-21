@@ -56,6 +56,10 @@ export interface ResultsPanelProps {
   testCases: TestCase[];
   testCasesLoading: boolean;
   testCasesError: string | null;
+  /** True while the page is still checking for an existing submission. */
+  historyLoading?: boolean;
+  /** Why the existing submissions could not be checked, when that failed. */
+  historyError?: string | null;
   /** The primary submission action, rendered in the panel footer. */
   actions?: ReactNode;
   /** Submission error shown next to the action. */
@@ -93,6 +97,8 @@ export function ResultsPanel({
   testCases,
   testCasesLoading,
   testCasesError,
+  historyLoading = false,
+  historyError = null,
   actions,
   actionError,
   collapsed = false,
@@ -296,6 +302,10 @@ export function ResultsPanel({
             <CompilationError message={compilation.error} />
           ) : null}
 
+          {historyError ? (
+            <p className="text-destructive text-xs">{historyError}</p>
+          ) : null}
+
           {testCasesError ? (
             <p className="text-destructive text-xs">
               Não foi possível carregar os casos de teste: {testCasesError}
@@ -348,9 +358,16 @@ export function ResultsPanel({
             ) : null}
             {hasSubmission ? (
               <StatusBadge value={overall} />
+            ) : historyLoading ? (
+              <span className="text-muted-foreground flex items-center gap-1.5 text-[11px]">
+                <Loader2Icon className="size-3 animate-spin" aria-hidden />
+                Verificando submissões…
+              </span>
             ) : (
               <span className="text-muted-foreground text-[11px]">
-                Nenhum envio ainda
+                {historyError
+                  ? "Submissões anteriores indisponíveis"
+                  : "Nenhum envio ainda"}
               </span>
             )}
             {final ? (
