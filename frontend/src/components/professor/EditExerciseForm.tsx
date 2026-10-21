@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { DateTimeField } from "@/components/app/DateTimeField";
 import { AllowedFileTypesField } from "@/components/professor/AllowedFileTypesField";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -15,10 +16,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import { Textarea } from "@/components/ui/textarea";
 import { useSubmit } from "@/hooks/use-submit";
 import { updateExercise, type Exercise, type ExercisePayload } from "@/lib/api";
-import { dateInputToTimestamp, formatDateInput } from "@/lib/format";
+import {
+  dateTimeInputToTimestamp,
+  formatDateInput,
+  formatTimeInput,
+  isEndOfDay,
+} from "@/lib/format";
 
 /** Compares two sets of file type ids, ignoring their order. */
 function sameIds(left: number[], right: number[]): boolean {
@@ -39,12 +44,20 @@ export function EditExerciseForm({
   onSaved: (exercise: Exercise) => void;
 }) {
   const [title, setTitle] = useState(exercise.title);
-  const [description, setDescription] = useState(exercise.description);
   const [openDate, setOpenDate] = useState(() =>
     formatDateInput(exercise.open_date),
   );
+  const [openTime, setOpenTime] = useState(
+    () => formatTimeInput(exercise.open_date) || "00:00",
+  );
   const [deadline, setDeadline] = useState(() =>
     formatDateInput(exercise.deadline),
+  );
+  const [deadlineTime, setDeadlineTime] = useState(
+    () => formatTimeInput(exercise.deadline) || "23:59",
+  );
+  const [deadlineEndOfDay, setDeadlineEndOfDay] = useState(() =>
+    isEndOfDay(exercise.deadline),
   );
   const [showBeforeOpenDate, setShowBeforeOpenDate] = useState(
     exercise.show_before_open_date,
@@ -62,10 +75,18 @@ export function EditExerciseForm({
       setError("O título do exercício é obrigatório.");
       return;
     }
-    const openDateIso = dateInputToTimestamp(openDate, "start");
-    const deadlineIso = dateInputToTimestamp(deadline, "end");
+    const openDateIso = dateTimeInputToTimestamp(openDate, openTime);
+    const deadlineIso = dateTimeInputToTimestamp(
+      deadline,
+      deadlineTime,
+      deadlineEndOfDay,
+    );
     if (!openDateIso || !deadlineIso) {
-      setError("Informe as datas de abertura e de prazo.");
+      setError("Informe a data e o horário de abertura e de prazo.");
+      return;
+    }
+    if (new Date(deadlineIso) < new Date(openDateIso)) {
+      setError("O prazo não pode ser anterior à abertura.");
       return;
     }
 
@@ -73,16 +94,17 @@ export function EditExerciseForm({
     const payload: Partial<ExercisePayload> = {};
     if (trimmedTitle !== exercise.title) payload.title = trimmedTitle;
 
-    const trimmedDescription = description.trim();
-    if (trimmedDescription !== exercise.description) {
-      payload.description = trimmedDescription;
-    }
-    if (openDate !== formatDateInput(exercise.open_date)) {
-      payload.open_date = openDateIso;
-    }
-    if (deadline !== formatDateInput(exercise.deadline)) {
-      payload.deadline = deadlineIso;
-    }
+    const openChanged =
+      openDate !== formatDateInput(exercise.open_date) ||
+      openTime !== formatTimeInput(exercise.open_date);
+    if (openChanged) payload.open_date = openDateIso;
+
+    const deadlineChanged =
+      deadline !== formatDateInput(exercise.deadline) ||
+      deadlineTime !== formatTimeInput(exercise.deadline) ||
+      deadlineEndOfDay !== isEndOfDay(exercise.deadline);
+    if (deadlineChanged) payload.deadline = deadlineIso;
+
     if (showBeforeOpenDate !== exercise.show_before_open_date) {
       payload.show_before_open_date = showBeforeOpenDate;
     }
@@ -107,11 +129,12 @@ export function EditExerciseForm({
         if (!open) onClose();
       }}
     >
-      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Editar exercício</DialogTitle>
           <DialogDescription>
-            Altere o enunciado, o período de entrega e os tipos aceitos.
+            Altere o título, o período de entrega e os tipos aceitos. As
+            instruções são editadas na página do exercício.
           </DialogDescription>
         </DialogHeader>
 
@@ -135,43 +158,28 @@ export function EditExerciseForm({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="edit-exercise-description">Descrição</Label>
-            <Textarea
-              id="edit-exercise-description"
-              value={description}
-              onChange={(event) => {
-                setDescription(event.target.value);
-              }}
-              placeholder="Enunciado do exercício (opcional)"
+          <div className="grid gap-6 md:grid-cols-2">
+            <DateTimeField
+              id="edit-exercise-open-date"
+              label="Abertura"
+              date={openDate}
+              time={openTime}
+              onDateChange={setOpenDate}
+              onTimeChange={setOpenTime}
+              required
             />
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="edit-exercise-open-date">Abertura</Label>
-              <Input
-                id="edit-exercise-open-date"
-                type="date"
-                value={openDate}
-                onChange={(event) => {
-                  setOpenDate(event.target.value);
-                }}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-exercise-deadline">Prazo</Label>
-              <Input
-                id="edit-exercise-deadline"
-                type="date"
-                value={deadline}
-                onChange={(event) => {
-                  setDeadline(event.target.value);
-                }}
-                required
-              />
-            </div>
+            <DateTimeField
+              id="edit-exercise-deadline"
+              label="Prazo"
+              date={deadline}
+              time={deadlineTime}
+              onDateChange={setDeadline}
+              onTimeChange={setDeadlineTime}
+              endOfDay={deadlineEndOfDay}
+              onEndOfDayChange={setDeadlineEndOfDay}
+              className="md:border-border md:border-l md:pl-6"
+              required
+            />
           </div>
 
           <Label className="font-normal" htmlFor="edit-exercise-show-before">

@@ -2,18 +2,14 @@ import {
   BookOpenIcon,
   GraduationCapIcon,
   InfoIcon,
-  SettingsIcon,
   TicketIcon,
   UsersIcon,
 } from "lucide-react";
-import { NavLink } from "react-router";
 
 import { PageHeader } from "@/components/app/PageHeader";
-import { SectionCard } from "@/components/app/SectionCard";
 import { StatCard } from "@/components/app/StatCard";
 import { ErrorState, LoadingState } from "@/components/app/states";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { useAsync } from "@/hooks/use-async";
 import {
   ADMIN_PAGE_LIMIT,
@@ -106,32 +102,6 @@ export function AdminDashboard() {
               telas de Usuários e Turmas para consultar todos os cadastros.
             </AlertDescription>
           </Alert>
-
-          <SectionCard
-            title="Atalhos"
-            description="As ações administrativas mais usadas."
-          >
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" render={<NavLink to="/admin/users" />}>
-                <UsersIcon />
-                Usuários
-              </Button>
-              <Button
-                variant="outline"
-                render={<NavLink to="/admin/courses" />}
-              >
-                <GraduationCapIcon />
-                Turmas
-              </Button>
-              <Button
-                variant="outline"
-                render={<NavLink to="/admin/settings" />}
-              >
-                <SettingsIcon />
-                Configurações
-              </Button>
-            </div>
-          </SectionCard>
         </>
       )}
     </div>

@@ -8,11 +8,13 @@ import {
 
 /**
  * The contact address and disclaimer rendered on the public pages, which an
- * admin edits in the database.
+ * admin edits in the database. The address is also used by the root error
+ * boundary to tell users where to report unexpected problems.
  *
  * The build-time fallback is used first and replaced once the API answers. The
- * login page must render even when the API is unreachable, so a failed request
- * silently keeps the fallback instead of surfacing an error.
+ * login page and the error pages must render even when the API is unreachable,
+ * so a failed request silently keeps the fallback instead of surfacing an
+ * error.
  */
 export function usePlatformSettings(): PlatformSettings {
   const [settings, setSettings] = useState<PlatformSettings>(FALLBACK_SETTINGS);

@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { DateTimeField } from "@/components/app/DateTimeField";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -17,7 +18,12 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { useSubmit } from "@/hooks/use-submit";
 import { updateOffering, type Offering } from "@/lib/api";
-import { dateInputToTimestamp, formatDateInput } from "@/lib/format";
+import {
+  dateTimeInputToTimestamp,
+  formatDateInput,
+  formatTimeInput,
+  isEndOfDay,
+} from "@/lib/format";
 
 /** Modal form to edit a class the caller owns. */
 export function EditClassForm({
@@ -34,6 +40,10 @@ export function EditClassForm({
   const [endDate, setEndDate] = useState(() =>
     formatDateInput(offering.end_date),
   );
+  const [endTime, setEndTime] = useState(
+    () => formatTimeInput(offering.end_date) || "23:59",
+  );
+  const [endOfDay, setEndOfDay] = useState(() => isEndOfDay(offering.end_date));
   const [visibleToEnroll, setVisibleToEnroll] = useState(
     offering.visible_to_enroll,
   );
@@ -47,9 +57,9 @@ export function EditClassForm({
       setError("O nome da turma é obrigatório.");
       return;
     }
-    const endDateIso = dateInputToTimestamp(endDate, "end");
+    const endDateIso = dateTimeInputToTimestamp(endDate, endTime, endOfDay);
     if (!endDateIso) {
-      setError("Informe a data limite da turma.");
+      setError("Informe a data e o horário limite da turma.");
       return;
     }
 
@@ -111,18 +121,17 @@ export function EditClassForm({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="edit-class-end-date">Disponível até</Label>
-            <Input
-              id="edit-class-end-date"
-              type="date"
-              value={endDate}
-              onChange={(event) => {
-                setEndDate(event.target.value);
-              }}
-              required
-            />
-          </div>
+          <DateTimeField
+            id="edit-class-end-date"
+            label="Disponível até"
+            date={endDate}
+            time={endTime}
+            onDateChange={setEndDate}
+            onTimeChange={setEndTime}
+            endOfDay={endOfDay}
+            onEndOfDayChange={setEndOfDay}
+            required
+          />
 
           <Label className="font-normal" htmlFor="edit-class-visible">
             <Checkbox

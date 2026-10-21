@@ -78,10 +78,16 @@ export function ClassMembersCard({
   offeringId,
   isOwner,
   ownerId,
+  embedded = false,
+  onChanged,
 }: {
   offeringId: number;
   isOwner: boolean;
   ownerId: number | null;
+  /** Render the content without its own card, for a tab panel. */
+  embedded?: boolean;
+  /** Called after a member is added, changed or removed. */
+  onChanged?: () => void;
 }) {
   const members = useAsync(
     () => (isOwner ? listOfferingMembers(offeringId) : Promise.resolve([])),
@@ -97,16 +103,29 @@ export function ClassMembersCard({
   const [newRole, setNewRole] = useState<MemberRole>("monitor");
   const add = useSubmit("Não foi possível adicionar o participante.");
 
+  const description =
+    "Alunos matriculados, monitores e professores convidados.";
+
   if (!isOwner) {
+    const note = (
+      <p className="text-muted-foreground text-sm">
+        Apenas o professor responsável pela turma pode gerenciar os
+        participantes.
+      </p>
+    );
+
+    if (embedded) {
+      return (
+        <div className="space-y-3">
+          <p className="text-muted-foreground text-sm">{description}</p>
+          {note}
+        </div>
+      );
+    }
+
     return (
-      <SectionCard
-        title="Participantes"
-        description="Alunos matriculados, monitores e professores convidados."
-      >
-        <p className="text-muted-foreground text-sm">
-          Apenas o professor responsável pela turma pode gerenciar os
-          participantes.
-        </p>
+      <SectionCard title="Participantes" description={description}>
+        {note}
       </SectionCard>
     );
   }
@@ -127,6 +146,7 @@ export function ClassMembersCard({
     try {
       await updateOfferingMember(offeringId, member.user_id, { role });
       members.reload();
+      onChanged?.();
     } catch (error) {
       setRowError(
         member.user_id,
@@ -145,6 +165,7 @@ export function ClassMembersCard({
         banned: !member.banned,
       });
       members.reload();
+      onChanged?.();
     } catch (error) {
       setRowError(
         member.user_id,
@@ -164,6 +185,7 @@ export function ClassMembersCard({
     try {
       await removeOfferingMember(offeringId, userId);
       members.reload();
+      onChanged?.();
     } catch (error) {
       setRowError(
         userId,
@@ -191,17 +213,15 @@ export function ClassMembersCard({
       }
       setNewEmail("");
       members.reload();
+      onChanged?.();
       add.setSuccess(
         `${member.name} foi adicionado como ${enrollmentRoleLabel(member.role).toLowerCase()}.`,
       );
     });
   }
 
-  return (
-    <SectionCard
-      title="Participantes"
-      description="Alunos matriculados, monitores e professores convidados."
-    >
+  const content = (
+    <>
       {members.loading && members.data === null ? (
         <LoadingState className="py-8" />
       ) : members.error ? (
@@ -382,6 +402,21 @@ export function ClassMembersCard({
           </Alert>
         ) : null}
       </form>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div className="space-y-4">
+        <p className="text-muted-foreground text-sm">{description}</p>
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <SectionCard title="Participantes" description={description}>
+      {content}
     </SectionCard>
   );
 }

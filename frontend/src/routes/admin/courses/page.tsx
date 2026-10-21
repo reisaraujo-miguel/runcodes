@@ -35,7 +35,7 @@ import {
   type AdminOffering,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
-import { formatDate } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 
 /**
  * Lists every class on the platform. An admin can edit its data, transfer
@@ -206,7 +206,7 @@ export function AdminCoursesPage() {
                             : "Matrícula fechada"}
                         </Badge>
                       </TableCell>
-                      <TableCell>{formatDate(offering.end_date)}</TableCell>
+                      <TableCell>{formatDateTime(offering.end_date)}</TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-1">
                           <Button

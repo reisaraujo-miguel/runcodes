@@ -73,6 +73,37 @@ type OpenExercise struct {
 	OpenDate     time.Time `json:"open_date"`
 }
 
+// UserOfferingDetail is the caller's own view of one class: the class
+// information and the caller's progress on each visible exercise. It is the
+// student-facing counterpart of Offering, so the enrollment code is absent.
+type UserOfferingDetail struct {
+	ID          int64                  `json:"id"`
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
+	EndDate     time.Time              `json:"end_date"`
+	Role        string                 `json:"role"`
+	OwnerName   string                 `json:"owner_name"`
+	IsOwner     bool                   `json:"is_owner"`
+	MemberCount int64                  `json:"member_count"`
+	Exercises   []UserOfferingExercise `json:"exercises"`
+}
+
+// UserOfferingExercise is one visible exercise of a class together with the
+// caller's own submission summary: how many times they submitted, when for the
+// last time, the latest status and the best score they achieved.
+type UserOfferingExercise struct {
+	ID               int64      `json:"id"`
+	OfferingID       int64      `json:"offering_id"`
+	Title            string     `json:"title"`
+	Description      string     `json:"description"`
+	Deadline         time.Time  `json:"deadline"`
+	OpenDate         time.Time  `json:"open_date"`
+	SubmissionCount  int64      `json:"submission_count"`
+	LastSubmissionAt *time.Time `json:"last_submission_at"`
+	LastStatus       *string    `json:"last_status"`
+	BestScore        *float64   `json:"best_score"`
+}
+
 // OfferingMember is a user enrolled in an offering (student, monitor or
 // professor) as returned by the member endpoints.
 type OfferingMember struct {

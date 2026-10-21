@@ -8,8 +8,9 @@ import { useAsync } from "@/hooks/use-async";
 import { adminGetSettings } from "@/lib/api";
 
 /**
- * Edits the platform-wide contact settings shown on the login page: the contact
- * address and the optional HTML disclaimer rendered below it.
+ * Edits the platform-wide contact settings: the address used in the login terms
+ * and in the error pages' issue-reporting instructions, and the optional HTML
+ * disclaimer shown on the login page.
  */
 export function AdminSettingsPage() {
   const settings = useAsync(
@@ -22,12 +23,12 @@ export function AdminSettingsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Configurações"
-        description="Dados de contato exibidos publicamente na página de login."
+        description="Dados de contato usados na página de login e nas orientações de reporte de erros."
       />
 
       <SectionCard
         title="Contato"
-        description="O email e o aviso mostrados na página de login."
+        description="O email é usado nos termos de uso e nas instruções de reporte de erros; o aviso é exibido na página de login."
       >
         {settings.loading ? (
           <LoadingState />

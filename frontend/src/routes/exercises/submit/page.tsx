@@ -44,6 +44,7 @@ import {
   getExercise,
   getExerciseTestCases,
   listAttachedFiles,
+  listExerciseSubmissions,
   subscribeSubmissionEvents,
   type AllowedFileType,
   type CommitStatus,
@@ -70,6 +71,7 @@ import {
 } from "@/lib/editor/languages";
 import { normalizeExtension, validateFileType } from "@/lib/file-types";
 import { formatDateTime } from "@/lib/format";
+import { initialCommitId } from "@/lib/submission-hydration";
 import { isPendingStatus, isTerminalStatus } from "@/lib/submission-status";
 import {
   upsertCaseResult,
@@ -222,6 +224,17 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
       validId ? listAttachedFiles(numericExerciseId) : Promise.resolve([]),
     `attached-${exerciseId ?? ""}`,
   );
+  // The newest submission on the server. sessionStorage only knows about the
+  // submissions this tab made, so a new tab, another browser, or a cleared
+  // session would otherwise open on "Nenhum envio ainda" forever.
+  const latestSubmission = useAsync(
+    () =>
+      validId
+        ? listExerciseSubmissions(numericExerciseId)
+        : Promise.resolve([]),
+    `latest-submission-${exerciseId ?? ""}`,
+    "Não foi possível carregar as suas submissões anteriores.",
+  );
   const preference = useCodeEditorPreference();
   const { user } = useAuth();
   const [gridRef, gridSize] = useElementSize();
@@ -261,8 +274,22 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
     source: string;
   } | null>(null);
 
-  const [commitId, setCommitId] = useState<number | null>(() =>
+  // sessionStorage only knows about submissions made in this tab, so it cannot
+  // be the only source for the run the page shows. It is kept as a fallback
+  // for a failed history request; the server's list decides otherwise.
+  const [storedCommitId] = useState<number | null>(() =>
     validId ? readStoredCommit(numericExerciseId) : null,
+  );
+  const [submittedCommitId, setSubmittedCommitId] = useState<number | null>(
+    null,
+  );
+  // A submission made here wins; otherwise the page opens on the newest
+  // submission the server knows about, even when this tab stored none.
+  const commitId = initialCommitId(
+    submittedCommitId,
+    latestSubmission.data?.[0]?.id ?? null,
+    storedCommitId,
+    latestSubmission.error !== null,
   );
   const [status, setStatus] = useState<CommitStatus>(INITIAL_STATUS);
   const [history, setHistory] = useState<SubmissionStatusEvent[]>([]);
@@ -507,7 +534,7 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
       const queued = await createSubmission(exercise.data.id, file);
       storeCommit(exercise.data.id, queued.commit_id);
       resetRunState();
-      setCommitId(queued.commit_id);
+      setSubmittedCommitId(queued.commit_id);
     } catch (error) {
       setSubmitError(submitErrorMessage(error));
     } finally {
@@ -892,6 +919,8 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
             testCases={testCases.data ?? []}
             testCasesLoading={testCases.loading}
             testCasesError={testCases.error}
+            historyLoading={commitId === null && latestSubmission.loading}
+            historyError={commitId === null ? latestSubmission.error : null}
             actions={submitAction}
             actionError={submitError}
             collapsed={resultsCollapsed}

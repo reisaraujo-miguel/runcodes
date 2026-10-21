@@ -291,6 +291,37 @@ func ListMyOfferings(w http.ResponseWriter, r *http.Request) {
 }
 
 /*
+GetMyOffering returns one class the requesting user belongs to or owns, with
+their own progress on each visible exercise. It is the student-facing class
+page; unlike GetOffering, it is reachable by every participant and never
+includes the enrollment code.
+*/
+func GetMyOffering(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	claims, ok := tokenClaims(w, r)
+	if !ok {
+		return
+	}
+
+	offeringID, err := pathID(r, "id")
+	if err != nil || offeringID <= 0 {
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "invalid offering id"},
+		)
+		return
+	}
+
+	offering, err := services.GetUserOffering(ctx, offeringID, claims)
+	if err != nil {
+		writeServiceError(ctx, w, err)
+		return
+	}
+
+	WriteResponse(w, http.StatusOK, offering)
+}
+
+/*
 ListMyOpenExercises lists the exercises that are open right now in the classes
 the requesting user belongs to, for the home page.
 */

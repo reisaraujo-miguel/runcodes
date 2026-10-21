@@ -1,11 +1,18 @@
-import { CalendarIcon, LogOutIcon, UserRoundIcon } from "lucide-react";
+import {
+  ArrowRightIcon,
+  CalendarIcon,
+  LogOutIcon,
+  UserRoundIcon,
+} from "lucide-react";
+import { Link } from "react-router";
 
 import { ConfirmButton } from "@/components/app/ConfirmDialog";
 import { EnrollmentRoleBadge } from "@/components/app/RoleBadge";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import type { UserOffering } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 
 /** One class the user belongs to, with the option to leave it. */
 function ClassCard({
@@ -16,11 +23,16 @@ function ClassCard({
   onLeave: (offeringId: number) => void | Promise<void>;
 }) {
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <Card className="@container">
+      <CardContent className="flex flex-col gap-4 @md:flex-row @md:items-start @md:justify-between">
         <div className="min-w-0 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="truncate font-medium">{offering.name}</p>
+            <Link
+              to={`/classes/${String(offering.offering_id)}`}
+              className="truncate font-medium hover:underline"
+            >
+              {offering.name}
+            </Link>
             <EnrollmentRoleBadge role={offering.role} />
             {offering.is_owner ? (
               <Badge variant="outline">Responsável</Badge>
@@ -38,26 +50,35 @@ function ClassCard({
             </span>
             <span className="inline-flex items-center gap-1.5">
               <CalendarIcon className="size-3.5" aria-hidden />
-              Termina em {formatDate(offering.end_date)}
+              Termina em {formatDateTime(offering.end_date)}
             </span>
           </div>
         </div>
 
-        {!offering.is_owner ? (
-          <ConfirmButton
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Button
             variant="outline"
             size="sm"
-            className="shrink-0"
-            destructive
-            title="Sair da turma"
-            description={`Você vai deixar “${offering.name}”. Para voltar depois, precisará do código de matrícula novamente.`}
-            confirmLabel="Sair da turma"
-            onConfirm={() => onLeave(offering.offering_id)}
+            render={<Link to={`/classes/${String(offering.offering_id)}`} />}
           >
-            <LogOutIcon />
-            Sair
-          </ConfirmButton>
-        ) : null}
+            Abrir turma
+            <ArrowRightIcon data-icon="inline-end" />
+          </Button>
+          {!offering.is_owner ? (
+            <ConfirmButton
+              variant="outline"
+              size="sm"
+              destructive
+              title="Sair da turma"
+              description={`Você vai deixar “${offering.name}”. Para voltar depois, precisará do código de matrícula novamente.`}
+              confirmLabel="Sair da turma"
+              onConfirm={() => onLeave(offering.offering_id)}
+            >
+              <LogOutIcon />
+              Sair
+            </ConfirmButton>
+          ) : null}
+        </div>
       </CardContent>
     </Card>
   );

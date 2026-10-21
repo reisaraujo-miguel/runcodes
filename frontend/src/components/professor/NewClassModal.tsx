@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { DateTimeField } from "@/components/app/DateTimeField";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,7 +17,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { useSubmit } from "@/hooks/use-submit";
 import { createOffering, type Offering } from "@/lib/api";
-import { dateInputToTimestamp } from "@/lib/format";
+import { dateTimeInputToTimestamp } from "@/lib/format";
 
 /**
  * Modal to create a new class. Owns the form but not the navigation: the page
@@ -32,6 +33,8 @@ export function NewClassModal({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [endTime, setEndTime] = useState("23:59");
+  const [endOfDay, setEndOfDay] = useState(true);
   const { pending, error, setError, run } = useSubmit(
     "Não foi possível criar a turma.",
   );
@@ -42,9 +45,9 @@ export function NewClassModal({
       setError("O nome da turma é obrigatório.");
       return;
     }
-    const endDateIso = dateInputToTimestamp(endDate, "end");
+    const endDateIso = dateTimeInputToTimestamp(endDate, endTime, endOfDay);
     if (!endDateIso) {
-      setError("Informe a data limite da turma.");
+      setError("Informe a data e o horário limite da turma.");
       return;
     }
 
@@ -105,18 +108,17 @@ export function NewClassModal({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="new-class-end-date">Disponível até</Label>
-            <Input
-              id="new-class-end-date"
-              type="date"
-              value={endDate}
-              onChange={(event) => {
-                setEndDate(event.target.value);
-              }}
-              required
-            />
-          </div>
+          <DateTimeField
+            id="new-class-end-date"
+            label="Disponível até"
+            date={endDate}
+            time={endTime}
+            onDateChange={setEndDate}
+            onTimeChange={setEndTime}
+            endOfDay={endOfDay}
+            onEndOfDayChange={setEndOfDay}
+            required
+          />
 
           {error ? (
             <Alert variant="destructive">

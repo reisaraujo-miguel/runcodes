@@ -1,5 +1,6 @@
 import { useState, type SubmitEvent } from "react";
 
+import { DateTimeField } from "@/components/app/DateTimeField";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -21,7 +22,12 @@ import {
   type AdminOffering,
   type UpdateAdminOfferingPayload,
 } from "@/lib/api";
-import { dateInputToTimestamp, formatDateInput } from "@/lib/format";
+import {
+  dateTimeInputToTimestamp,
+  formatDateInput,
+  formatTimeInput,
+  isEndOfDay,
+} from "@/lib/format";
 
 /**
  * Edits a class from the admin panel: its name, description, deadline and
@@ -42,6 +48,10 @@ export function OfferingEditDialog({
   const [endDate, setEndDate] = useState(() =>
     formatDateInput(offering.end_date),
   );
+  const [endTime, setEndTime] = useState(
+    () => formatTimeInput(offering.end_date) || "23:59",
+  );
+  const [endOfDay, setEndOfDay] = useState(() => isEndOfDay(offering.end_date));
   const [visibleToEnroll, setVisibleToEnroll] = useState(
     offering.visible_to_enroll,
   );
@@ -58,9 +68,9 @@ export function OfferingEditDialog({
       return;
     }
 
-    const endDateIso = dateInputToTimestamp(endDate, "end");
+    const endDateIso = dateTimeInputToTimestamp(endDate, endTime, endOfDay);
     if (endDateIso === null) {
-      submit.setError("Informe uma data de encerramento válida.");
+      submit.setError("Informe uma data e um horário de encerramento válidos.");
       return;
     }
 
@@ -131,21 +141,18 @@ export function OfferingEditDialog({
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="admin-course-end-date">
-                Data de encerramento
-              </Label>
-              <Input
-                id="admin-course-end-date"
-                type="date"
-                value={endDate}
-                disabled={submit.pending}
-                onChange={(event) => {
-                  setEndDate(event.target.value);
-                }}
-                required
-              />
-            </div>
+            <DateTimeField
+              id="admin-course-end-date"
+              label="Data de encerramento"
+              date={endDate}
+              time={endTime}
+              onDateChange={setEndDate}
+              onTimeChange={setEndTime}
+              endOfDay={endOfDay}
+              onEndOfDayChange={setEndOfDay}
+              disabled={submit.pending}
+              required
+            />
 
             <div className="space-y-2">
               <Label htmlFor="admin-course-owner-id">ID do responsável</Label>

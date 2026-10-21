@@ -21,6 +21,7 @@ func TestCreateRoutes(t *testing.T) {
 		"/api/v1/user/profile",
 		"/api/v1/user/password",
 		"/api/v1/user/offerings",
+		"/api/v1/user/offerings/{id}",
 		"/api/v1/user/exercises",
 		"/api/v1/settings/public",
 		"/api/v1/allowed-file-types",

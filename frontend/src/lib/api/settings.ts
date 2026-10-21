@@ -1,8 +1,9 @@
 import { apiGet } from "./client";
 
 /**
- * The platform settings the frontend renders: the contact address and the
- * disclaimer shown on the login page. Both are editable by an admin.
+ * The platform settings the frontend renders: the contact address used on the
+ * login page and in error-reporting instructions, and the disclaimer shown on
+ * the login page. Both are editable by an admin.
  */
 export interface PlatformSettings {
   contact_email: string;
@@ -11,7 +12,7 @@ export interface PlatformSettings {
 
 /**
  * Build-time values, used before the API answers and when it is unreachable, so
- * the login page never renders an empty contact disclaimer.
+ * the login and error pages always have a contact address.
  */
 export const FALLBACK_SETTINGS: PlatformSettings = {
   contact_email: import.meta.env.VITE_CONTACT_EMAIL ?? "contact@example.com",

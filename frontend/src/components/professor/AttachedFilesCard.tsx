@@ -24,7 +24,14 @@ import { errorMessage } from "@/lib/errors";
  * starter files students read on the submission page. Uploading a same-named
  * file replaces the stored one.
  */
-export function AttachedFilesCard({ exerciseId }: { exerciseId: number }) {
+export function AttachedFilesCard({
+  exerciseId,
+  embedded = false,
+}: {
+  exerciseId: number;
+  /** Render the content without its own card, for a tab panel. */
+  embedded?: boolean;
+}) {
   const files = useAsync(
     () => listAttachedFiles(exerciseId),
     `attached-files-${String(exerciseId)}`,
@@ -56,99 +63,111 @@ export function AttachedFilesCard({ exerciseId }: { exerciseId: number }) {
   }
 
   const list = files.data ?? [];
+  const description =
+    "Enunciados, dados e arquivos de apoio mostrados aos alunos.";
+
+  const content = (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-64 flex-1 space-y-2">
+          <Input
+            key={inputKey}
+            type="file"
+            aria-label="Material do exercício"
+            className="h-auto py-2"
+            onChange={(event) => {
+              setSelected(event.target.files?.item(0) ?? null);
+            }}
+          />
+        </div>
+        <Button
+          type="button"
+          disabled={!selected || upload.pending}
+          onClick={handleUpload}
+        >
+          {upload.pending ? <Spinner className="size-4" /> : null}
+          Anexar material
+        </Button>
+      </div>
+
+      {upload.error ? (
+        <Alert variant="destructive">
+          <AlertDescription>{upload.error}</AlertDescription>
+        </Alert>
+      ) : null}
+      {upload.success ? (
+        <Alert variant="success">
+          <AlertDescription>{upload.success}</AlertDescription>
+        </Alert>
+      ) : null}
+      {actionError ? (
+        <Alert variant="destructive">
+          <AlertDescription>{actionError}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {files.loading && files.data === null ? (
+        <LoadingState className="py-8" />
+      ) : files.error ? (
+        <ErrorState description={files.error} onRetry={files.reload} />
+      ) : list.length === 0 ? (
+        <EmptyState
+          icon={PaperclipIcon}
+          title="Nenhum material anexado"
+          description="Anexe o enunciado ou arquivos de apoio para os alunos."
+        />
+      ) : (
+        <ul className="divide-border divide-y rounded-lg border">
+          {list.map((file) => (
+            <li
+              key={file.id}
+              className="flex items-center justify-between gap-3 px-3 py-2"
+            >
+              <div className="min-w-0">
+                <a
+                  href={attachedFileDownloadUrl(exerciseId, file.id)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary block truncate font-mono text-sm hover:underline"
+                >
+                  {file.filename}
+                </a>
+                {file.path ? (
+                  <p className="text-muted-foreground truncate text-xs">
+                    {file.path}
+                  </p>
+                ) : null}
+              </div>
+              <ConfirmButton
+                size="sm"
+                destructive
+                variant="destructive"
+                title="Remover material"
+                description={`Remover “${file.filename}” dos materiais do exercício?`}
+                confirmLabel="Remover"
+                onConfirm={() => handleDelete(file.id)}
+              >
+                Remover
+              </ConfirmButton>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+
+  if (embedded) {
+    return (
+      <div className="space-y-4">
+        <p className="text-muted-foreground text-sm">{description}</p>
+        {content}
+      </div>
+    );
+  }
 
   return (
-    <SectionCard
-      title="Materiais anexados"
-      description="Enunciados, dados e arquivos de apoio mostrados aos alunos."
-    >
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-64 flex-1 space-y-2">
-            <Input
-              key={inputKey}
-              type="file"
-              aria-label="Material do exercício"
-              className="h-auto py-2"
-              onChange={(event) => {
-                setSelected(event.target.files?.item(0) ?? null);
-              }}
-            />
-          </div>
-          <Button
-            type="button"
-            disabled={!selected || upload.pending}
-            onClick={handleUpload}
-          >
-            {upload.pending ? <Spinner className="size-4" /> : null}
-            Anexar material
-          </Button>
-        </div>
-
-        {upload.error ? (
-          <Alert variant="destructive">
-            <AlertDescription>{upload.error}</AlertDescription>
-          </Alert>
-        ) : null}
-        {upload.success ? (
-          <Alert variant="success">
-            <AlertDescription>{upload.success}</AlertDescription>
-          </Alert>
-        ) : null}
-        {actionError ? (
-          <Alert variant="destructive">
-            <AlertDescription>{actionError}</AlertDescription>
-          </Alert>
-        ) : null}
-
-        {files.loading && files.data === null ? (
-          <LoadingState className="py-8" />
-        ) : files.error ? (
-          <ErrorState description={files.error} onRetry={files.reload} />
-        ) : list.length === 0 ? (
-          <EmptyState
-            icon={PaperclipIcon}
-            title="Nenhum material anexado"
-            description="Anexe o enunciado ou arquivos de apoio para os alunos."
-          />
-        ) : (
-          <ul className="divide-border divide-y rounded-lg border">
-            {list.map((file) => (
-              <li
-                key={file.id}
-                className="flex items-center justify-between gap-3 px-3 py-2"
-              >
-                <div className="min-w-0">
-                  <a
-                    href={attachedFileDownloadUrl(exerciseId, file.id)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary block truncate font-mono text-sm hover:underline"
-                  >
-                    {file.filename}
-                  </a>
-                  {file.path ? (
-                    <p className="text-muted-foreground truncate text-xs">
-                      {file.path}
-                    </p>
-                  ) : null}
-                </div>
-                <ConfirmButton
-                  size="sm"
-                  destructive
-                  variant="destructive"
-                  title="Remover material"
-                  description={`Remover “${file.filename}” dos materiais do exercício?`}
-                  confirmLabel="Remover"
-                  onConfirm={() => handleDelete(file.id)}
-                >
-                  Remover
-                </ConfirmButton>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+    <SectionCard title="Materiais anexados" description={description}>
+      {content}
     </SectionCard>
   );
 }

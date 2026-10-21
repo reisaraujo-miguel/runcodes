@@ -65,7 +65,14 @@ function TextPreview({ value }: { value: string }) {
  * Lists an exercise's test cases and hosts the create / edit / delete flows.
  * Editing happens inline, in place of the row being edited.
  */
-export function TestCasesCard({ exerciseId }: { exerciseId: number }) {
+export function TestCasesCard({
+  exerciseId,
+  embedded = false,
+}: {
+  exerciseId: number;
+  /** Render the content without its own card, for a tab panel. */
+  embedded?: boolean;
+}) {
   const testCases = useAsync(
     () => getExerciseTestCases(exerciseId),
     `test-cases-${String(exerciseId)}`,
@@ -88,99 +95,114 @@ export function TestCasesCard({ exerciseId }: { exerciseId: number }) {
   }
 
   const list = testCases.data ?? [];
+  const description = "Entradas e saídas esperadas usadas na correção.";
+  const newCaseButton = (
+    <Button
+      size="sm"
+      variant={showNew ? "outline" : "default"}
+      onClick={() => {
+        setShowNew((previous) => !previous);
+      }}
+    >
+      {showNew ? null : <PlusIcon />}
+      {showNew ? "Fechar" : "Novo caso"}
+    </Button>
+  );
+
+  const content = (
+    <div className="space-y-4">
+      {showNew ? (
+        <NewTestCaseForm
+          exerciseId={exerciseId}
+          onCreated={() => {
+            testCases.reload();
+          }}
+        />
+      ) : null}
+
+      {actionError ? (
+        <Alert variant="destructive">
+          <AlertDescription>{actionError}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {testCases.loading && testCases.data === null ? (
+        <LoadingState className="py-8" />
+      ) : testCases.error ? (
+        <ErrorState description={testCases.error} onRetry={testCases.reload} />
+      ) : list.length === 0 ? (
+        <EmptyState
+          icon={FlaskConicalIcon}
+          title="Nenhum caso de teste"
+          description="Adicione casos com a entrada e a saída esperada para corrigir as soluções."
+        />
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Caso</TableHead>
+              <TableHead>Entrada</TableHead>
+              <TableHead>Saída esperada</TableHead>
+              <TableHead>Visibilidade</TableHead>
+              <TableHead>Limites</TableHead>
+              <TableHead>Arquivos</TableHead>
+              <TableHead className="text-right">Ações</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {list.map((testCase) =>
+              editingId === testCase.id ? (
+                <TableRow key={testCase.id}>
+                  <TableCell colSpan={7}>
+                    <EditTestCaseForm
+                      exerciseId={exerciseId}
+                      testCase={testCase}
+                      onCancel={() => {
+                        setEditingId(null);
+                      }}
+                      onSaved={() => {
+                        setEditingId(null);
+                        testCases.reload();
+                      }}
+                    />
+                  </TableCell>
+                </TableRow>
+              ) : (
+                <TestRow
+                  key={testCase.id}
+                  testCase={testCase}
+                  onEdit={() => {
+                    setEditingId(testCase.id);
+                  }}
+                  onDelete={() => handleDelete(testCase.id)}
+                />
+              ),
+            )}
+          </TableBody>
+        </Table>
+      )}
+    </div>
+  );
+
+  if (embedded) {
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-muted-foreground text-sm">{description}</p>
+          {newCaseButton}
+        </div>
+        {content}
+      </div>
+    );
+  }
 
   return (
     <SectionCard
       title="Casos de teste"
-      description="Entradas e saídas esperadas usadas na correção."
-      action={
-        <Button
-          size="sm"
-          variant={showNew ? "outline" : "default"}
-          onClick={() => {
-            setShowNew((previous) => !previous);
-          }}
-        >
-          {showNew ? null : <PlusIcon />}
-          {showNew ? "Fechar" : "Novo caso"}
-        </Button>
-      }
+      description={description}
+      action={newCaseButton}
     >
-      <div className="space-y-4">
-        {showNew ? (
-          <NewTestCaseForm
-            exerciseId={exerciseId}
-            onCreated={() => {
-              testCases.reload();
-            }}
-          />
-        ) : null}
-
-        {actionError ? (
-          <Alert variant="destructive">
-            <AlertDescription>{actionError}</AlertDescription>
-          </Alert>
-        ) : null}
-
-        {testCases.loading && testCases.data === null ? (
-          <LoadingState className="py-8" />
-        ) : testCases.error ? (
-          <ErrorState
-            description={testCases.error}
-            onRetry={testCases.reload}
-          />
-        ) : list.length === 0 ? (
-          <EmptyState
-            icon={FlaskConicalIcon}
-            title="Nenhum caso de teste"
-            description="Adicione casos com a entrada e a saída esperada para corrigir as soluções."
-          />
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Caso</TableHead>
-                <TableHead>Entrada</TableHead>
-                <TableHead>Saída esperada</TableHead>
-                <TableHead>Visibilidade</TableHead>
-                <TableHead>Limites</TableHead>
-                <TableHead>Arquivos</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {list.map((testCase) =>
-                editingId === testCase.id ? (
-                  <TableRow key={testCase.id}>
-                    <TableCell colSpan={7}>
-                      <EditTestCaseForm
-                        exerciseId={exerciseId}
-                        testCase={testCase}
-                        onCancel={() => {
-                          setEditingId(null);
-                        }}
-                        onSaved={() => {
-                          setEditingId(null);
-                          testCases.reload();
-                        }}
-                      />
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  <TestRow
-                    key={testCase.id}
-                    testCase={testCase}
-                    onEdit={() => {
-                      setEditingId(testCase.id);
-                    }}
-                    onDelete={() => handleDelete(testCase.id)}
-                  />
-                ),
-              )}
-            </TableBody>
-          </Table>
-        )}
-      </div>
+      {content}
     </SectionCard>
   );
 }

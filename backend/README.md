@@ -166,6 +166,7 @@ it is marked public.
 | `POST /api/v1/offerings/enroll`                        | signed-in user   | join a class with its enrollment code             |
 | `DELETE /api/v1/offerings/{id}/enrollment`             | signed-in user   | leave a class                                     |
 | `GET /api/v1/user/offerings`                           | signed-in user   | classes the caller belongs to or owns             |
+| `GET /api/v1/user/offerings/{id}`                      | class member     | one class with the caller's exercise progress     |
 | `GET /api/v1/user/exercises`                           | signed-in user   | exercises open right now in those classes         |
 | `GET /api/v1/offerings`                                | professor, admin | classes the caller owns or teaches                |
 | `PUT`/`DELETE /api/v1/offerings/{id}`                  | class owner      | edit or delete a class                            |
