@@ -179,6 +179,7 @@ jobs:
           PGHOST: localhost
           PGPASSWORD: runcodes
           RUNCODES_DB_APP_PASSWORD: app-password
+          RUNCODES_DB_JUDGE_PASSWORD: judge-password
         run: ./database/schema/05-app-role.sh
 
       # The role exists to bound what a SQL injection in a service can do, so the
@@ -213,6 +214,42 @@ jobs:
           deny "CREATE ROLE ci_privilege_check"
           deny "SELECT * FROM pg_authid"
           exit "${denied}"
+
+      - name: Verify the judge role is confined to judging tables
+        env:
+          PGHOST: localhost
+          PGDATABASE: runcodes
+          PGUSER: runcodes_judge
+          PGPASSWORD: judge-password
+        run: |
+          # Positive checks: the queue and the inputs the judge actually uses.
+          psql -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM commits"
+          psql -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM exercises"
+          psql -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM exercises_test_cases"
+
+          # No grant on users.
+          if psql -v ON_ERROR_STOP=1 -tAc "SELECT count(*) FROM users" >/dev/null 2>&1; then
+            echo "::error::runcodes_judge can read users"
+            exit 1
+          fi
+
+          # Even if a future grant is too broad, RLS has no policy for the judge
+          # role and must return no rows. Seed a row as the owner so a broken
+          # policy (which would return 1) cannot pass against an empty table.
+          PGUSER=runcodes PGPASSWORD=runcodes psql -v ON_ERROR_STOP=1 \
+            -c "INSERT INTO users (name, email, password_hash)
+                     VALUES ('ci-rls-check', 'ci-rls-check@invalid', '!')"
+          PGUSER=runcodes PGPASSWORD=runcodes psql -v ON_ERROR_STOP=1 \
+            -c "GRANT SELECT ON users TO runcodes_judge"
+          count="$(psql -v ON_ERROR_STOP=1 -tAc "SELECT count(*) FROM users")"
+          PGUSER=runcodes PGPASSWORD=runcodes psql -v ON_ERROR_STOP=1 \
+            -c "REVOKE SELECT ON users FROM runcodes_judge"
+          PGUSER=runcodes PGPASSWORD=runcodes psql -v ON_ERROR_STOP=1 \
+            -c "DELETE FROM users WHERE email = 'ci-rls-check@invalid'"
+          if [ "${count}" != "0" ]; then
+            echo "::error::RLS did not hide users from runcodes_judge (saw ${count} rows)"
+            exit 1
+          fi
 
   migrations:
     name: Database (migrations)
@@ -278,6 +315,7 @@ jobs:
       - name: Seed the migrated database and create the application role
         env:
           RUNCODES_DB_APP_PASSWORD: app-password
+          RUNCODES_DB_JUDGE_PASSWORD: judge-password
         run: |
           psql -d runcodes_migrated -v ON_ERROR_STOP=1 -f database/schema/03-seed-data.sql
           PGDATABASE=runcodes_migrated ./database/schema/05-app-role.sh

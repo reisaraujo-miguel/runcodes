@@ -20,9 +20,11 @@
 vault_runcodes_jwt_secret: "REPLACE_WITH_64_HEX_CHARS"
 vault_runcodes_judge_token: "REPLACE_WITH_64_HEX_CHARS"
 
-# PostgreSQL: the owner (`runcodes`) and the row-only application role.
+# PostgreSQL: the owner (`runcodes`), the application role and the narrower
+# judge role.
 vault_runcodes_db_owner_password: "REPLACE_WITH_48_HEX_CHARS"
 vault_runcodes_db_app_password: "REPLACE_WITH_48_HEX_CHARS"
+vault_runcodes_db_judge_password: "REPLACE_WITH_48_HEX_CHARS"
 
 # SeaweedFS S3 identity.
 vault_runcodes_s3_access_key: "REPLACE_WITH_32_HEX_CHARS"

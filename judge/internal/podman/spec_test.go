@@ -1,6 +1,7 @@
 package podman
 
 import (
+	"slices"
 	"testing"
 
 	spec "github.com/opencontainers/runtime-spec/specs-go"
@@ -18,7 +19,7 @@ func TestSpecForCutsTheRunOffFromEverything(t *testing.T) {
 		Image:       "ghcr.io/runcodes-icmc/runcodes-runner-c:latest",
 		MountSource: "/srv/judge/work/1",
 		Labels:      map[string]string{"runcodes.commit": "1"},
-	}, Limits{})
+	}, Limits{TmpfsBytes: 64 << 20})
 
 	if s.Name != "run-1" {
 		t.Errorf("name = %q, want run-1", s.Name)
@@ -62,18 +63,35 @@ func TestSpecForCutsTheRunOffFromEverything(t *testing.T) {
 		t.Errorf("cap drop = %v, want [ALL]", s.CapDrop)
 	}
 
-	// Exactly one mount, and it is the workspace: anything else would expose
-	// host paths to graded code.
+	// The root filesystem is read-only and podman must not add its own
+	// uncapped /tmp on top of the explicit mounts.
+	if s.ReadOnlyFilesystem == nil || !*s.ReadOnlyFilesystem {
+		t.Errorf("read-only rootfs = %v, want true", s.ReadOnlyFilesystem)
+	}
+	if s.ReadWriteTmpfs == nil || *s.ReadWriteTmpfs {
+		t.Errorf("read-write tmpfs = %v, want false", s.ReadWriteTmpfs)
+	}
+
+	// The workspace is the only bind mount; the other two are the size-capped
+	// scratch filesystems. Anything else would expose host paths to graded code.
 	want := spec.Mount{
 		Type:        "bind",
 		Source:      "/srv/judge/work/1",
 		Destination: "/root",
 		Options:     []string{"rw", "z"},
 	}
-	if len(s.Mounts) != 1 {
-		t.Fatalf("mounts = %+v, want exactly the workspace mount", s.Mounts)
+	if len(s.Mounts) != 3 {
+		t.Fatalf("mounts = %+v, want the workspace plus /tmp and /run", s.Mounts)
 	}
-	got := s.Mounts[0]
+	var got *spec.Mount
+	for i := range s.Mounts {
+		if s.Mounts[i].Destination == "/root" {
+			got = &s.Mounts[i]
+		}
+	}
+	if got == nil {
+		t.Fatalf("workspace mount missing: %+v", s.Mounts)
+	}
 	if got.Type != want.Type || got.Source != want.Source || got.Destination != want.Destination {
 		t.Errorf("mount = %+v, want %+v", got, want)
 	}
@@ -85,6 +103,33 @@ func TestSpecForCutsTheRunOffFromEverything(t *testing.T) {
 	for i, opt := range want.Options {
 		if got.Options[i] != opt {
 			t.Errorf("mount option %d = %q, want %q", i, got.Options[i], opt)
+		}
+	}
+
+	for _, wantTmpfs := range []struct {
+		destination string
+		size        string
+	}{
+		{"/tmp", "size=67108864"},
+		{"/run", "size=16777216"},
+	} {
+		found := false
+		for _, mount := range s.Mounts {
+			if mount.Destination != wantTmpfs.destination {
+				continue
+			}
+			found = true
+			if mount.Type != "tmpfs" {
+				t.Errorf("%s type = %q, want tmpfs", wantTmpfs.destination, mount.Type)
+			}
+			for _, option := range []string{"rw", "nosuid", "nodev", wantTmpfs.size} {
+				if !slices.Contains(mount.Options, option) {
+					t.Errorf("%s options = %v, want %q", wantTmpfs.destination, mount.Options, option)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("missing %s tmpfs mount", wantTmpfs.destination)
 		}
 	}
 }

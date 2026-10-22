@@ -3,6 +3,9 @@
 
 #include <stdio.h>
 
+/* Longest command string the monitor accepts, including the terminating NUL. */
+#define COMMAND_MAX 2000
+
 typedef struct {
   const char *in_fname;
   const char *out_fname;

@@ -17,7 +17,7 @@ func clearEnv(t *testing.T) {
 		"JUDGE_DEFAULT_EXEC_TIMEOUT", "JUDGE_DEFAULT_CASE_TIMEOUT",
 		"JUDGE_MONITOR_MAX_FILE_SIZE", "JUDGE_MONITOR_MAX_MEM_SIZE",
 		"JUDGE_CONTAINER_MEMORY_BYTES", "JUDGE_CONTAINER_PIDS_LIMIT",
-		"JUDGE_CONTAINER_CPU_QUOTA", "JUDGE_MAX_RUN_DURATION", "JUDGE_ARTIFACT_TTL",
+		"JUDGE_CONTAINER_CPU_QUOTA", "JUDGE_CONTAINER_TMPFS_BYTES", "JUDGE_MAX_RUN_DURATION", "JUDGE_ARTIFACT_TTL",
 		"RUNCODES_DB_HOST", "RUNCODES_DB_PORT", "RUNCODES_DB_NAME",
 		"RUNCODES_DB_USER", "RUNCODES_DB_USERNAME", "RUNCODES_DB_PASSWORD",
 		"RUNCODES_DB_SSLMODE",
@@ -65,6 +65,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.ArtifactTTL != 7*24*time.Hour {
 		t.Errorf("ArtifactTTL = %s, want 168h", cfg.ArtifactTTL)
 	}
+	if cfg.ContainerTmpfsBytes != 256*1024*1024 {
+		t.Errorf("ContainerTmpfsBytes = %d, want 256 MiB", cfg.ContainerTmpfsBytes)
+	}
 	if cfg.DB.User != "runcodes" {
 		t.Errorf("DB.User = %q, want runcodes", cfg.DB.User)
 	}
@@ -83,6 +86,7 @@ func TestLoadOverrides(t *testing.T) {
 	t.Setenv("JUDGE_POLL_INTERVAL", "250ms")
 	t.Setenv("JUDGE_AUTH_TOKEN", "s3cret")
 	t.Setenv("JUDGE_ARTIFACT_TTL", "24h")
+	t.Setenv("JUDGE_CONTAINER_TMPFS_BYTES", "67108864")
 	t.Setenv("RUNCODES_DB_USERNAME", "legacy")
 	t.Setenv("RUNCODES_S3_BUCKET_PREFIX", "mycode")
 
@@ -112,6 +116,9 @@ func TestLoadOverrides(t *testing.T) {
 	if cfg.ArtifactTTL != 24*time.Hour {
 		t.Errorf("ArtifactTTL = %s, want 24h", cfg.ArtifactTTL)
 	}
+	if cfg.ContainerTmpfsBytes != 64*1024*1024 {
+		t.Errorf("ContainerTmpfsBytes = %d, want 64 MiB", cfg.ContainerTmpfsBytes)
+	}
 }
 
 func TestLoadRejectsNegativeArtifactTTL(t *testing.T) {
@@ -120,6 +127,15 @@ func TestLoadRejectsNegativeArtifactTTL(t *testing.T) {
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected an error for a negative JUDGE_ARTIFACT_TTL")
+	}
+}
+
+func TestLoadRejectsNonPositiveTmpfs(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JUDGE_CONTAINER_TMPFS_BYTES", "0")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected an error for JUDGE_CONTAINER_TMPFS_BYTES=0")
 	}
 }
 

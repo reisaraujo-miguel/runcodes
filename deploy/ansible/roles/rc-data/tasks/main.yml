@@ -86,6 +86,7 @@
       - "PGPASSWORD={{ runcodes_db_owner_password }}"
       - -e
       - "RUNCODES_DB_APP_PASSWORD={{ runcodes_db_app_password }}"
+      - "RUNCODES_DB_JUDGE_PASSWORD={{ runcodes_db_judge_password }}"
       - runcodes-data-database
       - /docker-entrypoint-initdb.d/05-app-role.sh
   changed_when: false

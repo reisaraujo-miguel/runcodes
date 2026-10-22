@@ -1,5 +1,7 @@
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #include "monitor.h"
@@ -25,12 +27,28 @@ void usage();
  */
 void print_error(const char *msg);
 
+static const char *parse_limit(const char *text, unsigned long *limit) {
+  char *end = NULL;
+
+  if (text == NULL || *text < '0' || *text > '9')
+    return "incorrect limit parameter";
+
+  errno = 0;
+  unsigned long parsed = strtoul(text, &end, 10);
+  if (errno == ERANGE || end == text || *end != '\0')
+    return "incorrect limit parameter";
+
+  *limit = parsed;
+  return NULL;
+}
+
 const char *parse_args(int argc, char *argv[], MonitorParams *params) {
   if (params == NULL)
     return "'params' not set";
 
   int opt;
   unsigned long limit;
+  const char *limit_error;
   while ((opt = getopt(argc, argv, "i:o:e:r:f:m:s:c:h")) != -1) {
     switch (opt) {
     case 'h':
@@ -49,18 +67,18 @@ const char *parse_args(int argc, char *argv[], MonitorParams *params) {
       params->report_fname = optarg;
       break;
     case 'f':
-      if (sscanf(optarg, "%lu", &limit) != 1)
-        return "incorrect -f parameter";
+      if ((limit_error = parse_limit(optarg, &limit)) != NULL)
+        return limit_error;
       params->fs_limit = limit;
       break;
     case 'm':
-      if (sscanf(optarg, "%lu", &limit) != 1)
-        return "incorrect -m parameter";
+      if ((limit_error = parse_limit(optarg, &limit)) != NULL)
+        return limit_error;
       params->ms_limit = limit;
       break;
     case 's':
-      if (sscanf(optarg, "%lu", &limit) != 1)
-        return "incorrect -s parameter";
+      if ((limit_error = parse_limit(optarg, &limit)) != NULL)
+        return limit_error;
       params->stack_limit = limit;
       break;
     case 'c':
@@ -71,8 +89,10 @@ const char *parse_args(int argc, char *argv[], MonitorParams *params) {
     }
   }
 
-  if (!params->command)
+  if (params->command == NULL || params->command[0] == '\0')
     return "missing -c option";
+  if (strlen(params->command) >= COMMAND_MAX)
+    return "command is too long";
   return NULL;
 }
 

@@ -160,6 +160,7 @@ monitor and can defeat it.
 | `JUDGE_CONTAINER_MEMORY_BYTES` | 1536 MiB | memory and swap cap per concurrent run |
 | `JUDGE_CONTAINER_PIDS_LIMIT` | 256 | process/thread cap (fork bombs) |
 | `JUDGE_CONTAINER_CPU_QUOTA` | 100000 | CPU per 100 ms period (one full core) |
+| `JUDGE_CONTAINER_TMPFS_BYTES` | 256 MiB | writable `/tmp` cap; `/run` is fixed at 16 MiB |
 
 The memory cap is deliberately above the largest default a language image sets
 (1 GiB): a run that reaches the image's own limit is reported as exceeding it,
@@ -212,7 +213,9 @@ The container spec is built by `internal/podman` and asserted by
   image cannot give the submission rights the monitor does not hold;
 - **`cap_drop=ALL`**, so the runtime's default capability set is not inherited;
 - **core dumps disabled** (`RLIMIT_CORE=0`), so a crash cannot fill the workspace;
-- exactly one mount: the run's workspace at `/root`;
+- a **read-only image filesystem**, with size-capped tmpfs at `/tmp` and `/run`
+  for compiler/runtime scratch space;
+- exactly one persistent mount: the run's workspace at `/root`;
 - a **zero umask**, because the container's uid is not the judge's. With the
   default umask, build trees would be owned by a subuid the judge cannot remove,
   and the shared exec directory would grow without bound.

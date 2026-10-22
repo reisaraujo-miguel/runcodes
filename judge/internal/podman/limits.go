@@ -25,6 +25,9 @@ type Limits struct {
 	// CPUQuota is the CPU time budget per CPUPeriodMicros, so 100_000 is one
 	// full core and 200_000 is two.
 	CPUQuota int64
+	// TmpfsBytes caps the writable /tmp when the root filesystem is read-only.
+	// It is not a cgroup limit; specFor applies it as a tmpfs mount option.
+	TmpfsBytes int64
 }
 
 // Configured reports whether any limit is set.
