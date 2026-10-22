@@ -3,9 +3,12 @@ package services
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
+	"math/big"
 	"strings"
 	"time"
 
@@ -14,13 +17,26 @@ import (
 	"github.com/runcodes-icmc/runcodes/models"
 	"github.com/runcodes-icmc/runcodes/storage"
 	"github.com/runcodes-icmc/runcodes/validation"
+
+	"github.com/lib/pq"
+	"github.com/lib/pq/pqerror"
 )
 
 // MaxOfferingNameLength bounds a class name.
 const MaxOfferingNameLength = 100
 
+// enrollmentCodeAttempts bounds retries when a generated code collides with an
+// existing one. With 36^6 values a single retry is already unlikely; the bound
+// only keeps a broken random source from looping forever.
+const enrollmentCodeAttempts = 5
+
+// errEnrollmentCodeCollision tells CreateOffering to generate another code.
+var errEnrollmentCodeCollision = errors.New("enrollment code collision")
+
 /*
-CreateOffering creates a new offering on the platform.
+CreateOffering creates a new offering on the platform. The enrollment code is
+generated with crypto/rand: it is the authorization secret students use to join
+the class, so it must not be derivable from the sequential offering id.
 */
 func CreateOffering(
 	ctx context.Context, req *models.CreateOfferingRequest, claims map[string]any,
@@ -30,12 +46,48 @@ func CreateOffering(
 		return nil, err
 	}
 
-	var tx *sql.Tx
-	if tx, err = database.DB.BeginTx(ctx, nil); err != nil {
+	for attempt := 1; attempt <= enrollmentCodeAttempts; attempt++ {
+		enrollmentCode, err := newEnrollmentCode()
+		if err != nil {
+			slog.ErrorContext(ctx,
+				"error generating enrollment code",
+				slog.String("error", err.Error()),
+			)
+			return nil, ErrServer
+		}
+
+		offering, err := insertOffering(ctx, req, userID, enrollmentCode)
+		if err == nil {
+			cache.Delete(ctx, cache.OfferingKey(offering.ID))
+			return offering, nil
+		}
+		if !errors.Is(err, errEnrollmentCodeCollision) {
+			return nil, err
+		}
+	}
+
+	slog.ErrorContext(ctx,
+		"could not generate a unique enrollment code",
+		slog.Int("attempts", enrollmentCodeAttempts),
+		slog.Any("user_id", claims["id"]),
+	)
+	return nil, ErrServer
+}
+
+/*
+insertOffering inserts the class row with its generated code. A unique violation
+on enrollment_code is reported as errEnrollmentCodeCollision so the caller can
+retry with a new code.
+*/
+func insertOffering(
+	ctx context.Context, req *models.CreateOfferingRequest, userID int64, enrollmentCode string,
+) (*models.Offering, error) {
+	tx, err := database.DB.BeginTx(ctx, nil)
+	if err != nil {
 		slog.ErrorContext(ctx,
 			"error initializing database transaction",
 			slog.String("error", err.Error()),
-			slog.Any("user_id", claims["id"]),
+			slog.Any("user_id", userID),
 		)
 		return nil, ErrServer
 	}
@@ -43,33 +95,22 @@ func CreateOffering(
 	defer tx.Rollback()
 
 	var id int64
-	if err = tx.QueryRowContext(ctx,
+	if err := tx.QueryRowContext(ctx,
 		`
-		INSERT INTO offerings (name, owner_id, end_date, description)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO offerings (name, owner_id, end_date, description, enrollment_code)
+		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id
-		`, req.Name, userID, req.EndDate, req.Description,
+		`, req.Name, userID, req.EndDate, req.Description, enrollmentCode,
 	).Scan(&id); err != nil {
+		if pgErr, ok := err.(*pq.Error); ok &&
+			pgErr.Code == pqerror.UniqueViolation &&
+			pgErr.Constraint == "offerings_enrollment_code_key" {
+			return nil, errEnrollmentCodeCollision
+		}
 		slog.ErrorContext(ctx,
 			"error inserting new offering on the database",
 			slog.String("error", err.Error()),
-			slog.Any("user_id", claims["id"]),
-		)
-		return nil, ErrServer
-	}
-
-	enrollmentCode := IDToCode(id)
-
-	if _, err = tx.ExecContext(ctx,
-		"UPDATE offerings SET enrollment_code = $1 WHERE id = $2",
-		enrollmentCode, id,
-	); err != nil {
-		slog.ErrorContext(ctx,
-			"error updating offering enrollment_code",
-			slog.String("error", err.Error()),
-			slog.Any("user_id", claims["id"]),
-			slog.Int64("offering_id", id),
-			slog.String("enrollment_code", enrollmentCode),
+			slog.Any("user_id", userID),
 		)
 		return nil, ErrServer
 	}
@@ -78,12 +119,10 @@ func CreateOffering(
 		slog.ErrorContext(ctx,
 			"error committing database transaction",
 			slog.String("error", err.Error()),
-			slog.Any("user_id", claims["id"]),
+			slog.Any("user_id", userID),
 		)
 		return nil, ErrServer
 	}
-
-	cache.Delete(ctx, cache.OfferingKey(id))
 
 	return &models.Offering{
 		ID:              id,
@@ -371,6 +410,36 @@ UpdateOffering enforces ownership, the admin panel overrides it.
 func updateOfferingRow(
 	ctx context.Context, rel *offeringRelation, req *models.UpdateOfferingRequest,
 ) (*models.Offering, error) {
+	offering, err := updateOfferingFields(ctx, database.DB, rel, req)
+	if err != nil {
+		return nil, err
+	}
+
+	cache.Delete(ctx, cache.OfferingKey(offering.ID))
+
+	slog.InfoContext(ctx, "offering updated",
+		slog.Int64("offering_id", offering.ID),
+	)
+
+	return offering, nil
+}
+
+// offeringExecer is the subset of *sql.DB and *sql.Tx the field update needs, so
+// the admin panel can run the field write and the ownership transfer in one
+// transaction.
+type offeringExecer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+/*
+updateOfferingFields validates and writes the mutable offering fields. It does
+not invalidate the cache or log success: the caller does that after the
+surrounding transaction commits.
+*/
+func updateOfferingFields(
+	ctx context.Context, exec offeringExecer,
+	rel *offeringRelation, req *models.UpdateOfferingRequest,
+) (*models.Offering, error) {
 	offering := rel.Offering
 
 	if req.Name != nil {
@@ -396,7 +465,7 @@ func updateOfferingRow(
 		return nil, err
 	}
 
-	if _, err := database.DB.ExecContext(ctx, `
+	if _, err := exec.ExecContext(ctx, `
 		UPDATE offerings
 		SET name = $1, description = $2, end_date = $3,
 		    visible_to_enroll = $4, updated_at = now()
@@ -413,12 +482,6 @@ func updateOfferingRow(
 
 	// The stored value comes back normalised, so report what a reload will show.
 	offering.EndDate = endDate.Format(time.RFC3339)
-
-	cache.Delete(ctx, cache.OfferingKey(offering.ID))
-
-	slog.InfoContext(ctx, "offering updated",
-		slog.Int64("offering_id", offering.ID),
-	)
 
 	return &offering, nil
 }
@@ -471,14 +534,84 @@ func deleteOfferingRow(ctx context.Context, rel *offeringRelation) error {
 }
 
 /*
-storageObject names one object to clean up, and which bucket holds it. The S3
-object keys of the different kinds overlap in shape (a case id and an exercise
-id are both numbers), so the bucket travels with the key instead of being
-re-derived from it.
+storageBucket identifies the S3 bucket that holds a storageObject. The keys of
+the different kinds overlap in shape (a case id and an exercise id are both
+numbers), so the bucket travels with the key instead of being re-derived from
+it. In particular, submitted sources live in the commits bucket, not the files
+bucket.
 */
+type storageBucket int
+
+const (
+	bucketCases storageBucket = iota
+	bucketFiles
+	bucketCommits
+)
+
+func (b storageBucket) String() string {
+	switch b {
+	case bucketCases:
+		return "cases"
+	case bucketFiles:
+		return "files"
+	case bucketCommits:
+		return "commits"
+	default:
+		return "unknown"
+	}
+}
+
+// storageObject names one object to clean up, and which bucket holds it.
 type storageObject struct {
-	inCases bool
-	key     string
+	bucket storageBucket
+	key    string
+}
+
+// deleteObjectsBestEffort removes a set of objects, grouping them by bucket so a
+// class deletion is a handful of batched S3 requests instead of one per object.
+// Duplicate keys are collapsed: a user's commits inside an offering they own
+// appear both in the class's key set and in the user's.
+func deleteObjectsBestEffort(ctx context.Context, objects []storageObject) {
+	if _, _, err := storage.Client(); err != nil {
+		slog.ErrorContext(ctx, "storage unavailable, skipping object cleanup",
+			slog.String("error", err.Error()),
+		)
+		return
+	}
+
+	grouped := make(map[storageBucket][]string)
+	seen := make(map[storageBucket]map[string]struct{})
+	for _, object := range objects {
+		if seen[object.bucket] == nil {
+			seen[object.bucket] = make(map[string]struct{})
+		}
+		if _, duplicate := seen[object.bucket][object.key]; duplicate {
+			continue
+		}
+		seen[object.bucket][object.key] = struct{}{}
+		grouped[object.bucket] = append(grouped[object.bucket], object.key)
+	}
+
+	for bucket, keys := range grouped {
+		var err error
+		switch bucket {
+		case bucketCases:
+			err = storage.DeleteCaseObjects(ctx, keys)
+		case bucketFiles:
+			err = storage.DeleteFileObjects(ctx, keys)
+		case bucketCommits:
+			err = storage.DeleteCommitObjects(ctx, keys)
+		default:
+			err = fmt.Errorf("unknown storage bucket %d", bucket)
+		}
+		if err != nil {
+			slog.ErrorContext(ctx, "error deleting objects",
+				slog.String("bucket", bucket.String()),
+				slog.Int("objects", len(keys)),
+				slog.String("error", err.Error()),
+			)
+		}
+	}
 }
 
 /*
@@ -522,14 +655,14 @@ func offeringStorageKeys(ctx context.Context, offeringID int64) ([]storageObject
 			return nil, ErrServer
 		}
 		if inputType == IOTypeFile {
-			keys = append(keys, storageObject{true, storage.CaseInputKey(caseID)})
+			keys = append(keys, storageObject{bucketCases, storage.CaseInputKey(caseID)})
 		}
 		if outputType == IOTypeFile {
-			keys = append(keys, storageObject{true, storage.CaseOutputKey(caseID)})
+			keys = append(keys, storageObject{bucketCases, storage.CaseOutputKey(caseID)})
 		}
 		if attachedPath != "" {
 			keys = append(keys, storageObject{
-				true, storage.CaseFileKey(caseID, attachedPath),
+				bucketCases, storage.CaseFileKey(caseID, attachedPath),
 			})
 		}
 	}
@@ -574,11 +707,11 @@ func offeringStorageKeys(ctx context.Context, offeringID int64) ([]storageObject
 		}
 		if kind == "compilation" {
 			keys = append(keys, storageObject{
-				false, storage.CompilationFileKey(exerciseID, filePath),
+				bucketFiles, storage.CompilationFileKey(exerciseID, filePath),
 			})
 		} else {
 			keys = append(keys, storageObject{
-				false, storage.AttachmentKey(exerciseID, filePath),
+				bucketFiles, storage.AttachmentKey(exerciseID, filePath),
 			})
 		}
 	}
@@ -612,7 +745,7 @@ func offeringStorageKeys(ctx context.Context, offeringID int64) ([]storageObject
 			)
 			return nil, ErrServer
 		}
-		keys = append(keys, storageObject{false, key})
+		keys = append(keys, storageObject{bucketCommits, key})
 	}
 	if err := rows.Err(); err != nil {
 		slog.ErrorContext(ctx, "error iterating submitted sources",
@@ -622,35 +755,6 @@ func offeringStorageKeys(ctx context.Context, offeringID int64) ([]storageObject
 	}
 
 	return keys, nil
-}
-
-/*
-deleteObjectsBestEffort removes objects from the storage buckets, logging every
-failure. A cleanup that cannot reach the object store must not fail the request:
-the rows are already gone, so there is nothing left to retry against.
-*/
-func deleteObjectsBestEffort(ctx context.Context, objects []storageObject) {
-	if _, _, err := storage.Client(); err != nil {
-		slog.ErrorContext(ctx, "storage unavailable, skipping object cleanup",
-			slog.String("error", err.Error()),
-		)
-		return
-	}
-
-	for _, object := range objects {
-		var err error
-		if object.inCases {
-			err = storage.DeleteCaseObject(ctx, object.key)
-		} else {
-			err = storage.DeleteFileObject(ctx, object.key)
-		}
-		if err != nil {
-			slog.ErrorContext(ctx, "error deleting object",
-				slog.String("key", object.key),
-				slog.String("error", err.Error()),
-			)
-		}
-	}
 }
 
 /*
@@ -971,48 +1075,25 @@ func removeOfferingMemberRow(
 
 const (
 	alphabet string = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	base     int64  = int64(len(alphabet))                    // 36
-	codeLen  int    = 6                                       // six-character enrollment codes
-	space    int64  = base * base * base * base * base * base // 36^6 = 2,176,782,336
-	prime    int64  = 1_276_043                               // Coprime with space (36^6 = 2^12 * 3^12, any prime ≠ 2,3 works)
+	codeLen  int    = 6 // six-character enrollment codes
 )
 
 /*
-encode converts a non-negative integer "n" into a fixed-width six-character
-string using the constant "alphabet". It is the base-36 positional notation,
-left-padded with the zero character ('A').
-
-n must be in [0, space). Behaviour is undefined outside this range.
+newEnrollmentCode returns a cryptographically random six-character code. The
+code is the class-join authorization secret, so it must not be derivable from
+the offering's sequential id or from another class's code.
 */
-func encode(n int64) string {
-	digits := make([]byte, codeLen)
-	for i := codeLen - 1; i >= 0; i-- {
-		digits[i] = alphabet[n%base]
-		n /= base
+func newEnrollmentCode() (string, error) {
+	chars := make([]byte, codeLen)
+	limit := big.NewInt(int64(len(alphabet)))
+
+	for i := range chars {
+		n, err := rand.Int(rand.Reader, limit)
+		if err != nil {
+			return "", err
+		}
+		chars[i] = alphabet[n.Int64()]
 	}
-	return string(digits)
-}
 
-/*
-IDToCode converts a unique offering ID into a six-character enrollment code.
-
-The mapping is deterministic and collision-free: distinct IDs always produce
-distinct codes. This is achieved through a multiplicative permutation —
-multiplying by a prime coprime with the code space produces a bijection
-over [0, space), so no uniqueness check against the database is needed.
-
-The resulting codes appear non-sequential, making it harder for students to
-guess or enumerate codes for other class offerings.
-
-Offerings created before the switch to six characters keep their stored
-four-character codes. Those remain valid and can never collide with a generated
-six-character code, because enrollment matches the stored code as a whole
-string.
-
-id must be in [0, 2,176,782,335]. If your dataset may exceed this range,
-increase the code length or expand the alphabet before deploying.
-*/
-func IDToCode(id int64) string {
-	scrambled := (id * prime) % space
-	return encode(scrambled)
+	return string(chars), nil
 }
