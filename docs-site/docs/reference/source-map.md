@@ -1,80 +1,106 @@
 ---
-title: Documentation coverage
-description: A map from every source document in the repository to the page on this site that covers it.
+title: Documentation map
+description: The canonical documentation policy and where every topic now lives.
 ---
 
-# Documentation coverage
+# Documentation map
 
-This site consolidates the repository's documentation. The table below maps each
-source document to the pages that carry its content, so nothing is lost and
-readers can find the original context.
+The published site is the **canonical documentation** for RunCodes. Repository
+Markdown files are short entry points: they hold the commands needed in that
+directory and link here for everything else.
 
-## Source map
+This avoids two copies drifting apart. When behaviour changes, update the page
+in [`docs-site/docs/`](https://github.com/reisaraujo-miguel/runcodes/tree/main/docs-site/docs)
+and leave the README pointer alone.
 
-| Source document | Covered by |
+## Repository entry points
+
+| File | Purpose |
 | --- | --- |
-| `README.md` | [Overview](../guide/overview.md), [Architecture](../guide/architecture.md), [Getting started](../guide/getting-started.md), [Deployment](../deployment/index.md), [Observability](../observability/index.md), [Releases](../ci-cd.md) |
-| `CONTRIBUTING.md` | [Contributing](../contributing.md) |
-| `CONTRIBUTORS.md` | [Contributing § Contributors](../contributing.md#contributors) |
-| `backend/README.md` | [Backend](../services/backend.md), [Accounts & settings](../guide/accounts-and-settings.md), [Submissions](../guide/submissions.md), [Users API](../api/auth.md) |
-| `backend/.env.example` | [Configuration § Backend](../reference/configuration.md#backend) |
-| `frontend/README.md` | [Frontend application](../guide/frontend.md) |
-| `frontend/.env.example` | [Configuration § Frontend](../reference/configuration.md#frontend) |
-| `judge/README.md` | [Judge](../services/judge.md) |
-| `judge/DESIGN.md` | [Judge](../services/judge.md), [Judge API](../api/judge.md) |
-| `judge/integration/README.md` | [Judge § Integration test](../services/judge.md#integration-test) |
-| `judge/.env.example` | [Configuration § Judge](../reference/configuration.md#judge) |
-| `monitor/README.md` | [Runner images & monitor](../services/runners-and-monitor.md) |
-| `runners/README.md` | [Runner images & monitor](../services/runners-and-monitor.md), [Languages & images](../reference/languages.md) |
-| `database/README.md` | [Database](../services/database.md) |
-| `database/legacy-migration/README.md` | [Database § Legacy migration](../services/database.md#legacy-migration) |
+| `README.md` | project landing: what it is, services, quick start, deployment links |
+| `CONTRIBUTING.md` | issues, pull requests, checks, database and docs rules |
+| `backend/README.md` | how to run and test the backend |
+| `frontend/README.md` | how to run and check the SPA |
+| `judge/README.md` | how to build, run and integration-test the judge |
+| `judge/integration/README.md` | integration harness requirements and commands |
+| `monitor/README.md` | monitor usage, report format and test |
+| `runners/README.md` | image build, test and the judge contract pointer |
+| `database/README.md` | schema change and migration commands |
+| `database/legacy-migration/README.md` | importer requirements and commands |
+| `deploy/README.md` | deployment entry point |
+| `deploy/ansible/README.md` | four-machine quick start and operating commands |
+| `docs/README.md` | pointer to this site (the old guides were retired) |
+| `docs-site/README.md` | how to edit and deploy the documentation site |
+
+## Where each topic lives
+
+| Topic | Page |
+| --- | --- |
+| Product overview, services, repository layout | [What is RunCodes?](../guide/overview.md) |
+| Component architecture, submission lifecycle, security boundaries | [Architecture](../guide/architecture.md) |
+| First local run, secrets, admin bootstrap, verification | [Getting started](../guide/getting-started.md) |
+| Student, professor and admin workflows | [Using RunCodes](../guide/using-runcodes.md) |
+| Statuses, SSE events, artifacts, failure handling | [Submissions & live judging](../guide/submissions.md) |
+| Classes, enrollment roles, deadlines, permissions | [Classes, roles & access](../guide/classes-and-roles.md) |
+| Signup, verification, sessions, password policy | [Accounts & settings](../guide/accounts-and-settings.md) |
+| SPA routes, stack, editor, browser telemetry | [Frontend application](../guide/frontend.md) |
+| Backend internals and readiness | [Backend API](../services/backend.md) |
+| Judge queue, contract, limits, isolation | [Judge](../services/judge.md) |
+| Runner images, harness, monitor, release contract | [Runner images & monitor](../services/runners-and-monitor.md) |
+| Schema, Atlas migrations, legacy import | [Database](../services/database.md) |
+| HTTP API (auth, classes, submissions, admin) | [API overview & authentication](../api/index.md) |
+| Internal judge API and event schemas | [Judge API](../api/judge.md) |
+| Compose vs Ansible, topology | [Deployment overview](../deployment/index.md) |
+| Single-host deployment | [Docker Compose](../deployment/compose.md) |
+| Four-machine setup | [Ansible deployment: setup](../deployment/ansible-setup.md) |
+| Upgrades, backups, migrations, troubleshooting | [Ansible deployment: operations](../deployment/ansible-operations.md) |
+| Security model, limits, scaling, capacity | [Security & scaling](../deployment/security.md) |
+| Observability stack and signals | [Observability overview](../observability/index.md) |
+| Local telemetry stack | [Local observability stack](../observability/local.md) |
+| Four-machine telemetry | [Four-machine observability](../observability/production.md) |
+| Telemetry procedures and failure modes | [Observability runbook](../observability/runbook.md) |
+| Workflows, image releases, test gates | [CI/CD & releases](../ci-cd.md) |
+| Environment variables and deployment settings | [Configuration reference](./configuration.md) |
+| Ports, buckets, volumes, limits | [Ports & storage](./ports-and-storage.md) |
+| Languages, extensions and image names | [Languages & images](./languages.md) |
+| Terms and concepts | [Glossary](./glossary.md) |
+| How this site is built and deployed | [Documentation site](../documentation.md) |
+
+## Retired files
+
+These files were consolidated into the site and removed from the repository, so
+there is one place to update:
+
+| Retired file | Content now in |
+| --- | --- |
 | `docs/observability/README.md` | [Observability overview](../observability/index.md), [Local stack](../observability/local.md) |
 | `docs/observability/runbook.md` | [Observability runbook](../observability/runbook.md) |
-| `deploy/README.md` | [Deployment overview](../deployment/index.md) |
-| `deploy/ansible/README.md` | [Ansible setup](../deployment/ansible-setup.md) |
-| `deploy/ansible/docs/ARCHITECTURE.md` | [Deployment overview](../deployment/index.md), [Security & scaling](../deployment/security.md), [Architecture](../guide/architecture.md) |
+| `deploy/ansible/docs/ARCHITECTURE.md` | [Deployment overview](../deployment/index.md), [Security & scaling](../deployment/security.md) |
 | `deploy/ansible/docs/DEPLOYMENT.md` | [Ansible setup](../deployment/ansible-setup.md), [Ansible operations](../deployment/ansible-operations.md) |
 | `deploy/ansible/docs/OBSERVABILITY.md` | [Four-machine observability](../observability/production.md) |
-| `deploy/ansible/inventories/group_vars/all/config.yml.example` | [Configuration § Ansible deployment](../reference/configuration.md#ansible-deployment) |
-| `deploy/ansible/inventories/group_vars/all/vault.yml.example` | [Ansible setup](../deployment/ansible-setup.md) |
-| `.env.example` | [Configuration § Docker Compose](../reference/configuration.md#docker-compose) |
-| `.github/workflows/*` | [CI/CD & releases](../ci-cd.md) |
-| `trivy.yaml`, `.trivyignore.yaml` | [CI/CD & releases](../ci-cd.md), [Security](../deployment/security.md) |
+| `judge/DESIGN.md` | [Judge](../services/judge.md), [Judge API](../api/judge.md) |
+| Long service READMEs | The matching service or guide page |
 
-## What was added
+## Documentation rules
 
-The source docs are strong in depth. This site adds:
+1. **Long-form content belongs in `docs-site/docs/`.** Do not add guides to
+   service READMEs or a new `docs/` subtree.
+2. **READMEs stay operational.** A service README may keep commands, required
+   files and a link to this site. It should not repeat the architecture, API or
+   operational reasoning.
+3. **Link to the published page.** Use
+   `https://reisaraujo-miguel.github.io/runcodes/...` from repository files so
+   the link works on GitHub. Use relative `.md` links between site pages.
+4. **Update the page, then build.** Run `npm ci && npm run build` in
+   `docs-site/`; VitePress fails on a dead internal link.
+5. **Do not link to retired files.** If a link points at one of the paths in the
+   table above, point it at the replacement page instead.
+6. **Keep the docs workflow green.** `.github/workflows/docs.yml` builds on pull
+   requests and deploys `main` to Pages; see
+   [Documentation site](../documentation.md).
 
-- a single navigation structure across the application, services, API,
-  deployment and operations;
-- an HTTP API reference reconstructed from the route table, handlers and models;
-- a configuration reference that consolidates every `.env.example`, the Ansible
-  `config.yml` and the observability overlay;
-- a ports, storage and retention reference;
-- a complete language/extension/image matrix from `judge/internal/language`;
-- cross-links between the design contract, the deployment guide and the
-  runbooks;
-- a coverage map (this page) so readers can trace a statement back to its source.
+## Related pages
 
-## Known source-document inconsistencies
-
-Where the repository documents disagreed, this site follows the current code or
-the most recent operational document:
-
-| Topic | Resolution |
-| --- | --- |
-| Browser tracing | `judge/README.md` contains an older note that browser tracing is not implemented; the SPA does emit fetch spans when built with `VITE_OTEL_ENABLED=true`. This site documents the implemented behaviour. |
-| Runner count | There are 22 language images: 12 inherit from the base image and 10 copy the harness from it. Some source comments say 23 or 11; the count here follows the directories and Dockerfiles. |
-| Observability PR summaries | `docs/observability/README.md` links to `PR-SUMMARY*.md` files that were removed. This site does not reproduce those links. |
-| Legacy import path | The legacy guide says `cd database/migration`; the directory is `database/legacy-migration`. This site uses the actual path. |
-
-## Keeping the site current
-
-The docs live in `docs-site/` next to the code. When a change affects behaviour:
-
-1. update the page that describes it;
-2. update [Configuration](./configuration.md) if a variable was added or changed;
-3. update the [source map](#source-map) if a new source document appears;
-4. run `npm run build` in `docs-site/` to catch broken links.
-
-See [Documentation site](../documentation.md).
+- [Documentation site](../documentation.md) — VitePress setup, local commands,
+  deployment and page authoring.
+- [Contributing](../contributing.md) — development setup and checks.

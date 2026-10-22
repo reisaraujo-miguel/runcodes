@@ -1,111 +1,51 @@
-# RunCodes Frontend (WIP)
+# Frontend
 
-This project houses the future new and improved RunCodes frontend.
+The RunCodes single-page application: React 19, React Router, TypeScript, Vite,
+Tailwind CSS and CodeMirror, managed with Bun. Caddy serves the production build
+and proxies `/api/*` to the backend, so the browser uses one origin.
 
-## The Stack
+**Full documentation:** [Frontend application](https://reisaraujo-miguel.github.io/runcodes/guide/frontend.html)
 
-- **Frontend Framework**: React
-- **Build Tool**: Vite with Rolldown
-- **Styling**: Tailwind CSS
-- **Language**: TypeScript
-- **Package Manager**: Bun
-- **Linting**: ESLint with TypeScript support
-- **UI Library**: shadcn/ui with Radix UI primitives
-
-## Build & Run
-
-### Prerequisites
-
-- [Bun](https://bun.sh/) (recommended) or Node.js 18+
-
-### Installation
-
-1. Install dependencies:
+## Run
 
 ```bash
+cd frontend
 bun install
+bun run dev        # http://localhost:5173
 ```
 
-2. Start the development server:
+Copy [`frontend/.env.example`](.env.example) to `.env` and point
+`VITE_API_ENDPOINT` at the backend (default `http://localhost:8443`). The
+production image leaves it empty and uses the relative `/api` path through
+Caddy.
 
-```bash
-bun run dev
-```
-
-3. Open your browser and navigate to `http://localhost:5173`
-
-### Other Commands
-
-- Build for production:
-
-```bash
-bun run build
-```
-
-- Preview the production build:
-
-```bash
-bun run preview
-```
-
-- Run linting:
+## Check
 
 ```bash
 bun run lint
+bun run check-svg
+bun test
+bun run build
 ```
 
-## Observability
-
-The SPA has an opt-in OpenTelemetry Web SDK integration
-(`src/lib/telemetry/`). With the observability overlay, the frontend is built
-with:
+`bun install` also enables the repository's Git hooks. If installing is not
+possible, enable them directly:
 
 ```bash
-VITE_OTEL_ENABLED=true
-VITE_OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
-VITE_OTEL_SERVICE_NAME=runcodes-frontend
+git config core.hooksPath .githooks
 ```
 
-`FetchInstrumentation` creates a span for every API call and injects
-`traceparent`; the backend continues the trace, so a browser click and its API
-request (and, for submissions, the judge work) appear in one trace. The
-collector must allow the SPA's origin in its OTLP HTTP CORS configuration
-(`http://localhost:8080` and `http://localhost:5173` by default). The SDK is
-lazy-loaded and is a no-op when the variables are absent.
+The pre-commit hook runs `bun run check-svg`; fix a failure with
+`bun run optimize-svg`.
 
-For local `bun run dev`, copy the telemetry variables from `.env.example` and
-start the observability overlay. For a split deployment, set
-`VITE_API_ENDPOINT` to the absolute API origin as well; the SDK propagates trace
-headers only to the SPA origin and that API origin.
+## Structure
 
-The browser path has a real Playwright test:
+Routes are in [`src/routes.ts`](src/routes.ts). Components, hooks, API client and
+telemetry live under `src/`. Browser tracing is opt-in at build time; see the
+[frontend guide](https://reisaraujo-miguel.github.io/runcodes/guide/frontend.html#telemetry).
 
-```bash
-# first run only
-bun run test:e2e:install
+## Related
 
-# with the observability stack running
-cd ..
-make observability-browser-smoke-test
-```
-
-The test loads the SPA at `http://localhost:8080`, issues a fetch, extracts the
-`traceparent` injected by `FetchInstrumentation`, and waits for the same trace
-to appear in Tempo with both `runcodes-frontend` and `runcodes-backend` spans.
-It runs Chromium headless and keeps a trace/screenshot on failure. Set
-`PLAYWRIGHT_BROWSERS_PATH` if the browsers live outside the default cache.
-
-See [`../docs/observability/README.md`](../docs/observability/README.md) for the
-full stack, collector CORS and browser configuration.
-
-## License
-
-For information on the license of this project, please see our [license file](../LICENSE).
-
-## Contributors
-
-For information of the contributors of this project, please see our [contributors file](../CONTRIBUTORS.md).
-
-## Contributing
-
-For information on contributing to this project, please see our [contribution guidelines](../CONTRIBUTING.md).
+- [Using RunCodes](https://reisaraujo-miguel.github.io/runcodes/guide/using-runcodes.html)
+- [API reference](https://reisaraujo-miguel.github.io/runcodes/api/)
+- [Contributing](../CONTRIBUTING.md)

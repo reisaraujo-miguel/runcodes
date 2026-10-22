@@ -112,9 +112,8 @@ firewall.
   and Pyroscope are disk-heavy and have a different upgrade cadence. A dedicated
   host keeps telemetry from competing with request handling.
 
-The full placement rationale, port matrix and capacity guidance are in the
-[deployment architecture reference](https://github.com/reisaraujo-miguel/runcodes/blob/main/deploy/ansible/docs/ARCHITECTURE.md)
-and in [Security & scaling](./security.md).
+The placement rationale, alternatives and capacity guidance are in
+[Security & scaling](./security.md#alternatives-considered).
 
 ## Images and releases
 

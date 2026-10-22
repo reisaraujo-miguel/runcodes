@@ -2,7 +2,7 @@
 #
 # The observability overlay is opt-in. It starts the existing application stack
 # plus Prometheus, Loki, Tempo, Grafana, Alertmanager, an OpenTelemetry Collector
-# and the infrastructure exporters. See docs/observability/README.md.
+# and the infrastructure exporters. See docs-site/docs/observability/local.md.
 
 SHELL := /bin/bash
 .DEFAULT_GOAL := help

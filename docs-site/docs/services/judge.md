@@ -303,9 +303,31 @@ so language containers can bind-mount it. In Compose:
 
 `make integration` starts ephemeral PostgreSQL and SeaweedFS containers, loads
 the schema, seeds a commit and a test case, uploads source and test I/O, and runs
-the real engine against a real language image through rootless Podman. The test
-is skipped unless `JUDGE_TEST_DB_DSN` is set. See
-[`judge/integration/README.md`](https://github.com/reisaraujo-miguel/runcodes/blob/main/judge/integration/README.md).
+the real engine against a real language image through rootless Podman. The Go
+test is skipped unless `JUDGE_TEST_DB_DSN` is set; the harness sets it.
+
+Requirements: Docker (for the two dependencies), `curl`, a rootless Podman
+socket, and the C runner image (pulled on demand).
+
+```bash
+cd judge
+make integration              # starts containers, runs the test, tears down
+./integration/run.sh --keep   # keep the containers for inspection
+```
+
+The harness creates, migrates and drops its own scratch database, so it connects
+as the owner (`runcodes`); a deployment points the judge at `runcodes_app`
+instead. Useful overrides:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `JUDGE_TEST_DB_DSN` | set by the harness | PostgreSQL DSN (the test skips if unset) |
+| `RUNCODES_S3_ENDPOINT` | `http://127.0.0.1:8333` | S3 endpoint |
+| `RUNCODES_S3_BUCKET_PREFIX` | `runcodes-itest` | bucket prefix |
+| `JUDGE_PODMAN_URI` | `unix:///run/user/$UID/podman/podman.sock` | Podman socket |
+| `JUDGE_TEST_IMAGE_FORMAT` | `ghcr.io/runcodes-icmc/runcodes-runner-%s:latest` | image format |
+| `JUDGE_TEST_KEEP` | `false` | keep per-commit workspaces |
+| `ITEST_DB_PORT` / `ITEST_S3_PORT` | `55432` / `18333` | host ports |
 
 ## Observability
 

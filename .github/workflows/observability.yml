@@ -4,7 +4,6 @@ on:
   pull_request:
     paths:
       - "observability/**"
-      - "docs/observability/**"
       - "scripts/observability/**"
       - "backend/telemetry/**"
       - "judge/internal/telemetry/**"
@@ -22,7 +21,6 @@ on:
       - development
     paths:
       - "observability/**"
-      - "docs/observability/**"
       - "scripts/observability/**"
       - "backend/telemetry/**"
       - "judge/internal/telemetry/**"

@@ -1976,7 +1976,7 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "\n- [Prometheus](http://localhost:9090) — raw metrics and targets\n- [Alertmanager](http://localhost:9093) — active alerts and silences\n- [Loki](http://localhost:3100/ready) — readiness only; query through Grafana Explore\n- [Tempo](http://localhost:3200/ready) — readiness only; query through Grafana Explore\n- [Grafana Explore](/explore) — choose Prometheus, Loki or Tempo\n- [Runbook](https://github.com/runcodes-icmc/runcodes/blob/development/docs/observability/runbook.md) — start/stop, validation and failure modes\n\nGrafana is protected by the generated admin password in `.observability/grafana_admin_password` (never committed). All published ports bind to `127.0.0.1` by default.\n",
+        "content": "\n- [Prometheus](http://localhost:9090) — raw metrics and targets\n- [Alertmanager](http://localhost:9093) — active alerts and silences\n- [Loki](http://localhost:3100/ready) — readiness only; query through Grafana Explore\n- [Tempo](http://localhost:3200/ready) — readiness only; query through Grafana Explore\n- [Grafana Explore](/explore) — choose Prometheus, Loki or Tempo\n- [Runbook](https://reisaraujo-miguel.github.io/runcodes/observability/runbook.html) — start/stop, validation and failure modes\n\nGrafana is protected by the generated admin password in `.observability/grafana_admin_password` (never committed). All published ports bind to `127.0.0.1` by default.\n",
         "mode": "markdown"
       },
       "title": "Open in Grafana",
