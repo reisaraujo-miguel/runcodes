@@ -185,6 +185,7 @@ and `stack_` keys. `JUDGE_MONITOR_MAX_FILE_SIZE` and
 | `JUDGE_MAX_RUN_DURATION` | 30m | end-to-end budget for one claimed commit |
 | `JUDGE_MAX_COMPARE_FILE_BYTES` | 16 MiB | max size of the two files a case is graded from |
 | `JUDGE_MAX_ARTIFACT_BYTES` | 64 MiB | max output archive size |
+| `JUDGE_ARTIFACT_TTL` | 168h | how long a published output archive is kept; 0 keeps it forever |
 | `JUDGE_MAX_EXTRACT_FILE_BYTES` | 64 MiB | max single entry when unpacking a zip |
 | `JUDGE_MAX_EXTRACT_BYTES` | 256 MiB | max total expanded zip size |
 | `JUDGE_MAX_OUTPUT_FILE_SIZE` | 1 MiB | max size of one output file collected |
@@ -209,6 +210,8 @@ The container spec is built by `internal/podman` and asserted by
   compose network, the backend or SeaweedFS;
 - **`no-new-privileges`**, so a setuid binary or a file capability in a language
   image cannot give the submission rights the monitor does not hold;
+- **`cap_drop=ALL`**, so the runtime's default capability set is not inherited;
+- **core dumps disabled** (`RLIMIT_CORE=0`), so a crash cannot fill the workspace;
 - exactly one mount: the run's workspace at `/root`;
 - a **zero umask**, because the container's uid is not the judge's. With the
   default umask, build trees would be owned by a subuid the judge cannot remove,
@@ -298,6 +301,12 @@ so language containers can bind-mount it. In Compose:
 - `JUDGE_EXEC_DIR_REMOTE` is the host's absolute path to `./exec`;
 - the judge runs as root inside its namespace and uses `userns_mode: keep-id`
   in the Ansible deployment, so the host user owns the workspace.
+
+The judge sweeps this directory at startup and hourly: `commit_*`/`expected_*`
+workspaces older than `JUDGE_MAX_RUN_DURATION` plus a five-minute grace period are
+removed, and `outputs/*.zip` older than `JUDGE_ARTIFACT_TTL` (default 168h, 0
+keeps them) are deleted. It also removes containers labeled
+`io.runcodes.commit` left by a previous process before starting workers.
 
 ## Integration test
 
