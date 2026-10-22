@@ -190,18 +190,13 @@ func exerciseVisible(ex models.Exercise, now time.Time) bool {
 
 /*
 requireExerciseAuthor loads an exercise and returns ErrNotOwner unless the caller
-may author it: the offering's owner, an admin, or a professor assigned to teach
-the class. Students and monitors never pass, even when enrolled.
+may author it: the offering's owner (professor or admin) or a professor assigned
+to teach the class. Students and monitors never pass, even when enrolled.
 */
 func requireExerciseAuthor(
 	ctx context.Context, exerciseID int64, claims map[string]any,
 ) (*exerciseAccess, error) {
-	userID, role, err := claimsUserID(claims)
-	if err != nil {
-		return nil, err
-	}
-
-	acc, err := loadExerciseAccess(ctx, exerciseID, userID, role)
+	acc, err := loadExerciseAccessForClaims(ctx, exerciseID, claims)
 	if err != nil {
 		return nil, err
 	}
@@ -209,6 +204,34 @@ func requireExerciseAuthor(
 		return nil, ErrNotOwner
 	}
 	return acc, nil
+}
+
+/*
+CanAuthorExercise reports whether the caller may author an exercise: the
+offering's owner (professor or admin) or a professor assigned to teach the class.
+It is the same boundary requireExerciseAuthor enforces, exposed for read paths
+that must decide whether a privileged viewer may inspect another user's
+submission.
+*/
+func CanAuthorExercise(
+	ctx context.Context, exerciseID int64, claims map[string]any,
+) (bool, error) {
+	acc, err := loadExerciseAccessForClaims(ctx, exerciseID, claims)
+	if err != nil {
+		return false, err
+	}
+	return acc.canAuthor, nil
+}
+
+func loadExerciseAccessForClaims(
+	ctx context.Context, exerciseID int64, claims map[string]any,
+) (*exerciseAccess, error) {
+	userID, role, err := claimsUserID(claims)
+	if err != nil {
+		return nil, err
+	}
+
+	return loadExerciseAccess(ctx, exerciseID, userID, role)
 }
 
 /*

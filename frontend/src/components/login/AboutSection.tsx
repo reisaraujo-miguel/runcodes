@@ -1,8 +1,7 @@
 import { useMemo, useState } from "react";
 
-import DOMPurify from "dompurify";
-
 import { usePlatformSettings } from "@/hooks/use-platform-settings";
+import { sanitizeRichText } from "@/lib/rich-text";
 
 import { TermsModal } from "./TermsModal";
 
@@ -15,7 +14,7 @@ export function AboutSection() {
   // The disclaimer is admin-editable content that arrives from the API, so it
   // is sanitized whenever it changes rather than once at module scope.
   const sanitizedContactDisclaimer = useMemo(
-    () => DOMPurify.sanitize(contactDisclaimerHtml),
+    () => sanitizeRichText(contactDisclaimerHtml),
     [contactDisclaimerHtml],
   );
 

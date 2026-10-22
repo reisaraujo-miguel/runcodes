@@ -83,6 +83,13 @@ func ValidatePassword(password string) error {
 		return ErrInputTooShort
 	}
 
+	// bcrypt silently refuses inputs over 72 bytes (and GenerateFromPassword
+	// returns an error), so reject them here as a validation error rather than
+	// letting hashing fail as an internal error.
+	if len(password) > 72 {
+		return ErrPasswordTooLong
+	}
+
 	var (
 		hasUpper   = false
 		hasLower   = false

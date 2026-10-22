@@ -191,8 +191,9 @@ LogOut clears the session cookie.
 
 There is no server-side session store, so the token itself stays valid until it
 expires: this ends the browser's session (the credential is dropped, so the next
-request is unauthenticated) rather than revoking the token. Changing a password
-or rotating RUNCODES_JWT_SECRET is what invalidates an issued token.
+request is unauthenticated) rather than revoking the token. Rotating
+RUNCODES_JWT_SECRET invalidates all issued tokens; changing a password does not
+revoke existing sessions (a known limitation).
 */
 func LogOut(w http.ResponseWriter, _ *http.Request) {
 	http.SetCookie(w, &http.Cookie{

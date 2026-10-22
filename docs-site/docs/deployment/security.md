@@ -33,8 +33,9 @@ truth. In a Compose install, only the frontend publishes on a network interface.
 
 - JWT (HS256) in an `HttpOnly`, `SameSite=Strict`, `Secure` cookie; 30-minute
   sliding lifetime.
-- No server-side revocation. Changing the password or rotating the JWT secret
-  invalidates issued tokens; logout clears the cookie.
+- No server-side revocation. Rotating the JWT secret invalidates issued tokens;
+  a password change does not revoke sessions that are already issued. Logout
+  clears the cookie.
 - Email confirmation is required for login and checked again on every protected
   route. A session issued before an account was unconfirmed stops working.
 - Verification tokens are stored only as SHA-256, expire after 24 hours, and a
@@ -76,8 +77,10 @@ limits.
 ### Secrets
 
 - Compose requires secrets explicitly and fails fast when one is missing.
-- Ansible Vault encrypts deployment secrets; they are rendered into root-owned
-  files on the hosts and never committed or baked into images.
+- Ansible Vault encrypts deployment secrets; they are rendered into files owned
+  by the deployment user on the hosts. `.env` files are 0600; mounted secret
+  files are left readable by the service container that consumes them. They are
+  never committed or baked into images.
 - The Grafana admin password is a mounted file; the Alertmanager webhook URL and
   Gmail app password are mounted files (`*_file`), not YAML.
 - The local observability stack generates the Grafana password into

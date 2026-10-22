@@ -144,7 +144,10 @@ func run() error {
 		// Bound how long a client may take to send its request headers and how long
 		// an idle keep-alive connection is held, so a slow-loris client cannot pin
 		// a connection (and a goroutine) indefinitely. WriteTimeout stays unset on
-		// purpose: the SSE submission stream is a long-lived response.
+		// purpose: the SSE submission stream is a long-lived response and sets its
+		// own per-write deadline. Request bodies get a per-request read deadline in
+		// limitRequestBody; a server-wide ReadTimeout would also cover long-lived SSE
+		// connections, whose requests have no body to bound.
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}

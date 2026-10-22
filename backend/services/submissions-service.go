@@ -176,6 +176,8 @@ func validateExercise(ctx context.Context, exerciseID, userID int64) error {
 		enrolled   bool
 		isOwner    bool
 		enrollRole string
+		openDate   time.Time
+		showBefore bool
 	)
 
 	err := database.DB.QueryRowContext(ctx,
@@ -190,12 +192,13 @@ func validateExercise(ctx context.Context, exerciseID, userID int64) error {
 		            SELECT en.role::text FROM enrollments en
 		            WHERE en.offering_id = e.offering_id AND en.user_id = $2
 		              AND NOT en.banned
-		        ), '') AS enroll_role
+		        ), '') AS enroll_role,
+		        e.open_date, e.show_before_open_date
 		 FROM exercises e
 		 JOIN offerings o ON o.id = e.offering_id
 		 WHERE e.id = $1 AND e.removed = FALSE`,
 		exerciseID, userID,
-	).Scan(&expired, &enrolled, &isOwner, &enrollRole)
+	).Scan(&expired, &enrolled, &isOwner, &enrollRole, &openDate, &showBefore)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -213,6 +216,13 @@ func validateExercise(ctx context.Context, exerciseID, userID int64) error {
 
 	if !enrolled && !isOwner {
 		return ErrNotEnrolled
+	}
+
+	// Every read path hides an exercise until its open date (unless the author
+	// chose to show it early); the submission path must apply the same rule, or a
+	// student can submit early and read the hidden cases through the result stream.
+	if !staff && !showBefore && openDate.After(nowFunc()) {
+		return ErrExerciseNotFound
 	}
 
 	if expired && !staff {
@@ -558,13 +568,15 @@ func GetCommitSnapshot(ctx context.Context, commitID int64) (*models.Snapshot, e
 }
 
 /*
-ParseClientIP extracts a client IP from X-Forwarded-For (first entry) falling
-back to RemoteAddr. Returns nil when neither holds a valid IP.
+ParseClientIP normalizes the address the trusted-proxy middleware resolved,
+falling back to RemoteAddr. The caller must pass the canonical client address
+from the request context (middleware.GetClientIP), never a raw X-Forwarded-For
+header: the client controls the start of that header, while the proxy-appended
+hop is the only trustworthy entry.
 */
-func ParseClientIP(forwardedFor, remoteAddr string) *string {
-	if forwardedFor != "" {
-		first := strings.TrimSpace(strings.Split(forwardedFor, ",")[0])
-		if ip := net.ParseIP(first); ip != nil {
+func ParseClientIP(clientIP, remoteAddr string) *string {
+	if clientIP != "" {
+		if ip := net.ParseIP(strings.TrimSpace(clientIP)); ip != nil {
 			value := ip.String()
 			return &value
 		}

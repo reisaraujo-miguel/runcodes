@@ -230,6 +230,14 @@ func AdminDeleteUser(ctx context.Context, userID, adminID int) error {
 		objects = append(objects, keys...)
 	}
 
+	// The user's own submissions in classes they do not own are cascaded away by
+	// the DELETE below, so their sources have to be collected before the rows go.
+	commitObjects, err := userCommitObjects(ctx, userID)
+	if err != nil {
+		return err
+	}
+	objects = append(objects, commitObjects...)
+
 	result, err := database.DB.ExecContext(ctx,
 		"DELETE FROM users WHERE id = $1", userID,
 	)
@@ -303,6 +311,44 @@ func ownedOfferingIDs(ctx context.Context, userID int) ([]int64, error) {
 }
 
 /*
+userCommitObjects collects the submitted sources owned by a user. They live in
+the commits bucket, not the files bucket.
+*/
+func userCommitObjects(ctx context.Context, userID int) ([]storageObject, error) {
+	rows, err := database.DB.QueryContext(ctx, `
+		SELECT s3_key FROM commits
+		WHERE user_id = $1 AND s3_key IS NOT NULL AND s3_key <> ''`, userID)
+	if err != nil {
+		slog.ErrorContext(ctx, "error fetching submitted sources for deletion",
+			slog.String("error", err.Error()),
+			slog.Int("user_id", userID),
+		)
+		return nil, ErrServer
+	}
+	defer rows.Close()
+
+	objects := make([]storageObject, 0, 8)
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			slog.ErrorContext(ctx, "error scanning submitted source",
+				slog.String("error", err.Error()),
+			)
+			return nil, ErrServer
+		}
+		objects = append(objects, storageObject{bucketCommits, key})
+	}
+	if err := rows.Err(); err != nil {
+		slog.ErrorContext(ctx, "error iterating submitted sources",
+			slog.String("error", err.Error()),
+		)
+		return nil, ErrServer
+	}
+
+	return objects, nil
+}
+
+/*
 AdminListOfferings lists every class on the platform with its owner and size,
 optionally filtered by a search term matched against the name and the owner.
 */
@@ -354,12 +400,24 @@ func AdminUpdateOffering(
 		AdminOverride: true,
 	}
 
-	if _, err := updateOfferingRow(ctx, rel, update); err != nil {
+	// The field update and the ownership transfer are one admin action: a failed
+	// transfer must not leave the fields half-applied.
+	tx, err := database.DB.BeginTx(ctx, nil)
+	if err != nil {
+		slog.ErrorContext(ctx, "error initializing admin offering transaction",
+			slog.String("error", err.Error()),
+			slog.Int64("offering_id", offeringID),
+		)
+		return nil, ErrServer
+	}
+	defer tx.Rollback()
+
+	if _, err := updateOfferingFields(ctx, tx, rel, update); err != nil {
 		return nil, err
 	}
 
 	if req.OwnerID != nil {
-		if _, err := database.DB.ExecContext(ctx, `
+		if _, err := tx.ExecContext(ctx, `
 			UPDATE offerings SET owner_id = $1, updated_at = now()
 			WHERE id = $2`, *req.OwnerID, offeringID,
 		); err != nil {
@@ -369,9 +427,19 @@ func AdminUpdateOffering(
 			)
 			return nil, ErrServer
 		}
-		// The cached offering carries the owner, so a transfer must drop it.
-		cache.Delete(ctx, cache.OfferingKey(offeringID))
 	}
+
+	if err := tx.Commit(); err != nil {
+		slog.ErrorContext(ctx, "error committing admin offering update",
+			slog.String("error", err.Error()),
+			slog.Int64("offering_id", offeringID),
+		)
+		return nil, ErrServer
+	}
+
+	// The cached offering carries the mutable fields and the owner, so every
+	// admin update must drop it after the transaction commits.
+	cache.Delete(ctx, cache.OfferingKey(offeringID))
 
 	return adminOfferingByID(ctx, offeringID)
 }

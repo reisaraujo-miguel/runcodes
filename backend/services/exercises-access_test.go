@@ -112,6 +112,56 @@ func TestRequireExerciseAuthorEnforcesPermissions(t *testing.T) {
 	}
 }
 
+// TestCanAuthorExercise pins the read-path variant used by the submission event
+// stream: a professor who does not teach the class must not gain access merely
+// by having the professor role.
+func TestCanAuthorExercise(t *testing.T) {
+	const ownerID = 7
+
+	tests := []struct {
+		name     string
+		claims   map[string]any
+		enrolled string
+		want     bool
+	}{
+		{
+			"owner", map[string]any{"id": float64(ownerID), "role": "professor"},
+			"", true,
+		},
+		{
+			"assigned co-professor", map[string]any{"id": float64(ownerID + 1), "role": "professor"},
+			EnrollmentRoleProfessor, true,
+		},
+		{
+			"professor elsewhere", map[string]any{"id": float64(ownerID + 1), "role": "professor"},
+			"", false,
+		},
+		{
+			"enrolled student", map[string]any{"id": float64(ownerID + 1), "role": "student"},
+			EnrollmentRoleStudent, false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := newMockDB(t)
+			expectExerciseAccess(mock, ownerID, tc.enrolled, false)
+
+			got, err := CanAuthorExercise(context.Background(), 10, tc.claims)
+			if err != nil {
+				t.Fatalf("CanAuthorExercise: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("CanAuthorExercise = %v, want %v", got, tc.want)
+			}
+
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 // TestRequireExerciseAuthorErrors covers the failure modes that decide the HTTP
 // status: a missing exercise is a 404 and a database failure is a 500, and neither
 // may be reported as a permission problem.

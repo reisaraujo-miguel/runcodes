@@ -3,6 +3,7 @@ package main
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/runcodes-icmc/runcodes/config"
@@ -192,6 +193,12 @@ func configureMiddleware(router *chi.Mux, cfg *config.Config) {
 
 	router.Use(middleware.Recoverer)
 
+	// Request bodies are small (a profile, a submission's exercise id, admin
+	// filters). Multipart upload endpoints already install their own, larger
+	// MaxBytesReader, so their bodies are skipped here. Without this, the public
+	// signup/login endpoints read an unbounded body into memory.
+	router.Use(limitRequestBody)
+
 	// The session JWT is delivered via an HttpOnly cookie, so the frontend
 	// calls the API with `credentials: "include"`. Cross-origin credentialed
 	// requests require `AllowCredentials` and an explicit origin list — the
@@ -206,13 +213,64 @@ func configureMiddleware(router *chi.Mux, cfg *config.Config) {
 	}))
 
 	// The only hop in front of this API is the Caddy container, whose address is
-	// dynamic, so count hops instead of enumerating trusted proxy CIDRs. With no
-	// trusted_proxies configured, Caddy ignores a client-supplied
-	// X-Forwarded-For and writes the address it observed itself, so that entry is
-	// the real client rather than a proxy.
+	// dynamic, so count hops instead of enumerating trusted proxy CIDRs. Caddy
+	// appends the address it observed to any client-supplied X-Forwarded-For;
+	// counting one trusted hop makes the middleware read that appended entry, so
+	// a spoofed header does not become the client IP. Handlers that need the
+	// address must use GetClientIP, not the raw header.
 	router.Use(middleware.ClientIPFromXFFTrustedProxies(1))
 
 	router.Use(httprate.LimitBy(100, time.Minute, clientIPKey))
+}
+
+// maxRequestBodyBytes bounds a non-multipart request body. It is deliberately
+// generous for an API whose largest JSON payload is a list of ids, while still
+// far below the multipart upload limits the authoring endpoints enforce.
+const maxRequestBodyBytes = 1 << 20
+
+// requestBodyReadTimeout bounds how long a client may spend sending a body. It is
+// applied per request rather than as a server-wide ReadTimeout, which would also
+// cover long-lived SSE requests that have no body to bound.
+const requestBodyReadTimeout = 30 * time.Second
+
+// multipartBodyReadTimeout is the longer budget for file uploads. It still
+// bounds a slow upload, which would otherwise pin the handler and its temporary
+// storage indefinitely.
+const multipartBodyReadTimeout = 5 * time.Minute
+
+/*
+limitRequestBody caps non-multipart request bodies with http.MaxBytesReader and
+gives body-carrying methods a read deadline. The cap is not keyed on the
+Content-Type header: that header is client-controlled, so an attacker could omit
+it and bypass a JSON-only limit. Multipart requests are not byte-capped here
+because their handlers install a limit that matches the file size they accept.
+*/
+func limitRequestBody(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		multipart := strings.HasPrefix(
+			r.Header.Get("Content-Type"), "multipart/form-data",
+		)
+		if !multipart {
+			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+		}
+
+		switch r.Method {
+		case http.MethodPost, http.MethodPut, http.MethodPatch:
+			timeout := requestBodyReadTimeout
+			if multipart {
+				timeout = multipartBodyReadTimeout
+			}
+
+			controller := http.NewResponseController(w)
+			if err := controller.SetReadDeadline(time.Now().Add(timeout)); err == nil {
+				// Do not leave the deadline on a keep-alive connection: the next
+				// request may be a multipart upload or a long-lived SSE stream.
+				defer func() { _ = controller.SetReadDeadline(time.Time{}) }()
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 // clientIPKey returns the canonicalized client IP address for rate limiting
