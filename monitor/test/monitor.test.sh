@@ -120,6 +120,28 @@ check "the report is not overwritten by a process the command left behind" \
 check "the surviving process never ran again" \
     test ! -e "${work}/contained.tampered"
 
+echo "==> argument validation"
+# An empty -c is not a valid command; the parser must fail cleanly instead of
+# dereferencing a NULL argv.
+"${monitor}" -o "${work}/out" -e "${work}/err" -r "${work}/empty_report" \
+    -c "" >/dev/null 2>&1
+status=$?
+check "an empty command is rejected" test "${status}" -ne 0
+
+# The command is bounded by COMMAND_MAX; a longer one must be rejected before
+# it is copied into the stack buffer.
+long_command="$(head -c 2100 /dev/zero | tr '\0' a)"
+"${monitor}" -o "${work}/out" -e "${work}/err" -r "${work}/long_report" \
+    -c "${long_command}" >/dev/null 2>&1
+status=$?
+check "an oversized command is rejected" test "${status}" -ne 0
+
+# Limit arguments are digits only; scanf used to accept "10junk" as 10.
+"${monitor}" -o "${work}/out" -e "${work}/err" -r "${work}/limit_report" \
+    -f 10junk -c /bin/true >/dev/null 2>&1
+status=$?
+check "a malformed limit is rejected" test "${status}" -ne 0
+
 echo "==> limits"
 # -s: the stack limit is inherited by the command.
 cat >"${work}/stack.sh" <<'EOF'

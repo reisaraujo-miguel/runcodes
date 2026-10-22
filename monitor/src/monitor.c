@@ -13,8 +13,6 @@
 #include <time.h>
 #include <unistd.h>
 
-#define COMMAND_MAX 2000
-
 const char *signal_name(int signal) {
   static char *signal_list[] = {
       "UNKNOWN",   /* 0 */
@@ -65,18 +63,35 @@ static float elapsed_secs(struct timespec *ts_start, struct timespec *ts_end) {
   return delta_sec + delta_nsec * 1e-9f;
 }
 
-static char **parse_args(char *command) {
+static char **parse_args(char *command, const char **error) {
   char **args = NULL, *arg;
-  int i;
+  size_t count = 0;
 
-  arg = strtok(command, " \t");
-  for (i = 0; arg != NULL; i++) {
-    args = (char **)realloc(args, sizeof(char *) * (i + 2));
-    args[i] = arg;
-    arg = strtok(NULL, " \t");
+  *error = NULL;
+
+  if (command == NULL || *command == '\0') {
+    *error = "empty command";
+    return NULL;
   }
-  args[i] = NULL;
 
+  for (arg = strtok(command, " \t"); arg != NULL; arg = strtok(NULL, " \t")) {
+    char **grown = (char **)realloc(args, sizeof(char *) * (count + 2));
+    if (grown == NULL) {
+      free(args);
+      *error = "out of memory";
+      return NULL;
+    }
+    args = grown;
+    args[count++] = arg;
+  }
+
+  if (count == 0) {
+    free(args);
+    *error = "empty command";
+    return NULL;
+  }
+
+  args[count] = NULL;
   return args;
 }
 
@@ -135,8 +150,19 @@ static int reopen_streams(const MonitorParams *params) {
 
 static void exec_cmd(const MonitorParams *params) {
   char buf[COMMAND_MAX + 1];
-  strncpy(buf, params->command, COMMAND_MAX);
-  char **args = parse_args(buf);
+  const char *error = NULL;
+
+  if (params->command == NULL || strlen(params->command) >= sizeof(buf)) {
+    fprintf(stderr, "monitor: Failed to initialize command.\n");
+    exit(255);
+  }
+  snprintf(buf, sizeof(buf), "%s", params->command);
+
+  char **args = parse_args(buf, &error);
+  if (args == NULL) {
+    fprintf(stderr, "monitor: %s\n", error != NULL ? error : "invalid command");
+    exit(255);
+  }
 
   if (!set_limits(params)) {
     fprintf(stderr, "monitor: Failed to set process limits.\n");
@@ -150,6 +176,7 @@ static void exec_cmd(const MonitorParams *params) {
 
   if (execvp(args[0], args) == -1) {
     fprintf(stderr, "monitor: exec failed\n");
+    free(args);
     exit(255);
   }
 }
@@ -192,8 +219,7 @@ static void trace_child(pid_t child_pid, MonitorStats *stats) {
     } else if (WIFSIGNALED(status)) {
       clock_gettime(CLOCK_MONOTONIC, &ts_end);
       stats->time_sec = elapsed_secs(&ts_start, &ts_end);
-      if (WCOREDUMP(status)) {
-      } else
+      if (!WCOREDUMP(status))
         stats->signal = WTERMSIG(status);
       break;
     }
