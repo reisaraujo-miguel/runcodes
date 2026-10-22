@@ -160,7 +160,7 @@ monitor and can defeat it.
 | `JUDGE_CONTAINER_MEMORY_BYTES` | 1536 MiB | memory and swap cap per concurrent run |
 | `JUDGE_CONTAINER_PIDS_LIMIT` | 256 | process/thread cap (fork bombs) |
 | `JUDGE_CONTAINER_CPU_QUOTA` | 100000 | CPU per 100 ms period (one full core) |
-| `JUDGE_CONTAINER_TMPFS_BYTES` | 268435456 | writable `/tmp` cap; `/run` is fixed at 16 MiB |
+| `JUDGE_CONTAINER_TMPFS_BYTES` | 256 MiB | writable `/tmp` cap; `/run` is fixed at 16 MiB |
 
 The memory cap is deliberately above the largest default a language image sets
 (1 GiB): a run that reaches the image's own limit is reported as exceeding it,
