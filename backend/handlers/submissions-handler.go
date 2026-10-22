@@ -19,11 +19,39 @@ import (
 	"github.com/runcodes-icmc/runcodes/services"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/jwtauth/v5"
 )
 
 // ssePingInterval is how often an idle event stream sends a comment heartbeat.
 const ssePingInterval = 15 * time.Second
+
+// sseWriteTimeout bounds a single write to an SSE client. The server has no
+// global WriteTimeout because the stream is long-lived, so each frame refreshes
+// its own deadline: a client that stops reading is disconnected instead of
+// pinning the handler and its hub subscription forever.
+const sseWriteTimeout = 30 * time.Second
+
+/*
+writeSSE writes one frame and flushes it, refreshing the connection's write
+deadline. Response wrappers that do not expose deadlines are still served; they
+simply keep the previous behavior.
+*/
+func writeSSE(
+	w http.ResponseWriter,
+	controller *http.ResponseController,
+	flusher http.Flusher,
+	payload []byte,
+) error {
+	_ = controller.SetWriteDeadline(time.Now().Add(sseWriteTimeout))
+
+	if _, err := w.Write(payload); err != nil {
+		return err
+	}
+	flusher.Flush()
+
+	return nil
+}
 
 /*
 CreateSubmission handles a new source code submission. The body must be a
@@ -108,7 +136,7 @@ func CreateSubmission(w http.ResponseWriter, r *http.Request) {
 		UserID:     int64(userIDRaw),
 		ExerciseID: exerciseID,
 		IP: services.ParseClientIP(
-			r.Header.Get("X-Forwarded-For"), r.RemoteAddr,
+			middleware.GetClientIP(r.Context()), r.RemoteAddr,
 		),
 		Filename:    header.Filename,
 		File:        file,
@@ -363,7 +391,6 @@ func StreamSubmissionEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID, okID := claims["id"].(float64)
-	role, _ := claims["role"].(string)
 	if !okID {
 		WriteResponse(w, http.StatusUnauthorized, nil)
 		return
@@ -393,18 +420,42 @@ func StreamSubmissionEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// A commit with a NULL user_id (the schema allows it and the judge
-	// integration creates such rows) is not owned by the requester. Students must
-	// not be able to read another user's or a system commit stream, so only the
-	// owner or a privileged role may subscribe.
-	isPrivileged := role == "professor" || role == "admin"
+	// integration creates such rows) is not owned by the requester. Only the
+	// owner or a member of staff who teaches the commit's offering may subscribe;
+	// being a professor elsewhere on the platform is not enough.
 	owned := snapshot.Commit.UserID != nil && *snapshot.Commit.UserID == int64(userID)
 
-	if !owned && !isPrivileged {
-		WriteResponse(w, http.StatusForbidden,
-			models.Error{Message: services.ErrCommitForbidden.Error()},
-		)
-		return
+	if !owned {
+		allowed := false
+		if snapshot.Commit.ExerciseID != nil {
+			var authErr error
+			allowed, authErr = services.CanAuthorExercise(ctx, *snapshot.Commit.ExerciseID, claims)
+			if authErr != nil {
+				if !errors.Is(authErr, services.ErrExerciseNotFound) {
+					slog.ErrorContext(ctx, "error authorizing commit viewer",
+						slog.Int64("commit_id", commitID),
+						slog.String("error", authErr.Error()),
+					)
+					WriteResponse(w, http.StatusInternalServerError,
+						models.Error{Message: services.ErrServer.Error()},
+					)
+					return
+				}
+				allowed = false
+			}
+		}
+		if !allowed {
+			WriteResponse(w, http.StatusForbidden,
+				models.Error{Message: services.ErrCommitForbidden.Error()},
+			)
+			return
+		}
 	}
+
+	// These fields are implementation details of the backend/judge handshake.
+	// No viewer needs them, and they name the submitter and an internal object.
+	snapshot.Commit.S3Key = nil
+	snapshot.Commit.IP = nil
 
 	// Artifact events are transient and never persisted. Ask the judge whether
 	// the generated archive exists so a reloading client can show the files
@@ -435,6 +486,7 @@ func StreamSubmissionEvents(w http.ResponseWriter, r *http.Request) {
 		)
 		return
 	}
+	controller := http.NewResponseController(w)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -449,10 +501,10 @@ func StreamSubmissionEvents(w http.ResponseWriter, r *http.Request) {
 		)
 		return
 	}
-	if _, err := w.Write(judge.FormatSSEFrame("snapshot", 0, snapshotJSON)); err != nil {
+	if err := writeSSE(w, controller, flusher,
+		judge.FormatSSEFrame("snapshot", 0, snapshotJSON)); err != nil {
 		return
 	}
-	flusher.Flush()
 
 	if judge.IsTerminalStatus(snapshot.Commit.Status) {
 		return
@@ -475,15 +527,13 @@ func StreamSubmissionEvents(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			if _, err := w.Write(frame); err != nil {
+			if err := writeSSE(w, controller, flusher, frame); err != nil {
 				return
 			}
-			flusher.Flush()
 		case <-ticker.C:
-			if _, err := io.WriteString(w, ": ping\n\n"); err != nil {
+			if err := writeSSE(w, controller, flusher, []byte(": ping\n\n")); err != nil {
 				return
 			}
-			flusher.Flush()
 		}
 	}
 }

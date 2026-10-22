@@ -272,3 +272,30 @@ func TestExerciseVisible(t *testing.T) {
 		})
 	}
 }
+
+// TestCanReadExerciseContent covers the attachment gate: enrolled students may
+// read visible exercises only, while staff may read hidden ones.
+func TestCanReadExerciseContent(t *testing.T) {
+	future := time.Now().Add(time.Hour)
+	visible := models.Exercise{OpenDate: time.Now().Add(-time.Hour)}
+	hidden := models.Exercise{OpenDate: future}
+
+	tests := []struct {
+		name string
+		acc  exerciseAccess
+		want error
+	}{
+		{"staff reads hidden", exerciseAccess{exercise: hidden, canAuthor: true}, nil},
+		{"student reads visible", exerciseAccess{exercise: visible, isEnrolled: true}, nil},
+		{"student reads hidden", exerciseAccess{exercise: hidden, isEnrolled: true}, ErrExerciseNotFound},
+		{"non-member", exerciseAccess{exercise: visible}, ErrNotEnrolled},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := canReadExerciseContent(&tt.acc); !errors.Is(err, tt.want) {
+				t.Fatalf("canReadExerciseContent = %v, want %v", err, tt.want)
+			}
+		})
+	}
+}

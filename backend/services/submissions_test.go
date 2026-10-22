@@ -55,14 +55,15 @@ func TestFilenameMatchesExtension(t *testing.T) {
 
 func TestParseClientIP(t *testing.T) {
 	tests := []struct {
-		name         string
-		forwardedFor string
-		remoteAddr   string
-		expected     string
+		name       string
+		clientIP   string
+		remoteAddr string
+		expected   string
 	}{
-		{"forwarded for first entry", "203.0.113.5, 10.0.0.1", "10.0.0.1:5555", "203.0.113.5"},
+		{"proxy-resolved client", "203.0.113.5", "10.0.0.1:5555", "203.0.113.5"},
 		{"remote addr with port", "", "192.168.0.2:1234", "192.168.0.2"},
 		{"remote addr without port", "", "192.168.0.2", "192.168.0.2"},
+		{"invalid fallback", "not-an-ip", "192.168.0.2:1234", "192.168.0.2"},
 		{"invalid", "not-an-ip", "also-bad", ""},
 		{"empty", "", "", ""},
 		{"ipv6", "", "[2001:db8::1]:9000", "2001:db8::1"},
@@ -70,7 +71,7 @@ func TestParseClientIP(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ParseClientIP(tt.forwardedFor, tt.remoteAddr)
+			got := ParseClientIP(tt.clientIP, tt.remoteAddr)
 			if tt.expected == "" {
 				if got != nil {
 					t.Errorf("expected nil, got %q", *got)
