@@ -7,6 +7,11 @@ import (
 
 	"github.com/runcodes-icmc/runcodes/config"
 	"github.com/runcodes-icmc/runcodes/database"
+	"github.com/runcodes-icmc/runcodes/telemetry"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // reconcileInterval is how often the sweeper looks for stale commits.
@@ -46,6 +51,12 @@ anything, so keeping its judge stream open would leak a goroutine and a
 connection per crashed run.
 */
 func reconcileStaleCommits(ctx context.Context, timeout time.Duration) {
+	ctx, span := telemetry.Tracer().Start(ctx, "judge.reconcile_stale_commits",
+		trace.WithAttributes(attribute.String("runcodes.job", "reconcile_stale_commits")),
+	)
+	defer span.End()
+	span.SetAttributes(attribute.String("runcodes.stale_timeout", timeout.String()))
+
 	rows, err := database.DB.QueryContext(ctx,
 		`UPDATE commits
 		 SET status = 'server_error',
@@ -57,6 +68,8 @@ func reconcileStaleCommits(ctx context.Context, timeout time.Duration) {
 		timeout.Seconds(),
 	)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "query failed")
 		slog.ErrorContext(ctx, "error reconciling stale commits",
 			slog.String("error", err.Error()),
 		)
@@ -86,6 +99,7 @@ func reconcileStaleCommits(ctx context.Context, timeout time.Duration) {
 		CloseHub(commitID)
 	}
 
+	span.SetAttributes(attribute.Int("runcodes.reconciled_commits", len(commitIDs)))
 	if len(commitIDs) > 0 {
 		slog.WarnContext(ctx, "marked stale commits as server_error",
 			slog.Int("commits", len(commitIDs)),

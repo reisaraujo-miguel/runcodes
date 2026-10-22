@@ -1,0 +1,94 @@
+apiVersion: 1
+
+# Datasources are provisioned, not created in the UI. UIDs are stable so
+# dashboard JSON, derived fields and contact points can reference them.
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      timeInterval: 10s
+      # OTel/Tempo exemplars carry trace_id; clicking one opens the trace.
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+    jsonData:
+      httpMethod: GET
+      maxLines: 1000
+      # OTel logs store trace_id as structured metadata through Loki's OTLP
+      # endpoint. matcherType: label reads it from that structured metadata
+      # instead of trying to regex the log body.
+      derivedFields:
+        - name: TraceID
+          matcherRegex: trace_id
+          matcherType: label
+          url: "$${__value.raw}"
+          urlDisplayLabel: "View trace in Tempo"
+          datasourceUid: tempo
+
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    editable: false
+    jsonData:
+      httpMethod: GET
+      streamingEnabled:
+        search: true
+        metrics: true
+      # Span -> logs: query Loki for the span's trace id. Logs are OTel records,
+      # so the trace id lives in structured metadata; the filter syntax below
+      # works for both labels and structured metadata.
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: "-5m"
+        spanEndTimeShift: "5m"
+        filterByTraceID: true
+        filterBySpanID: false
+        customQuery: true
+        query: '{service_name="${__span.tags.service.name}"} | trace_id="${__span.traceId}"'
+        tags:
+          - key: service.name
+            value: service_name
+      # Span -> metrics: filter Prometheus series by the span's service name.
+      tracesToMetrics:
+        datasourceUid: prometheus
+        spanStartTimeShift: "-5m"
+        spanEndTimeShift: "5m"
+        tags:
+          - key: service.name
+            value: service_name
+      # Service graph and node graph use the span metrics remote-written by
+      # Tempo's metrics-generator.
+      serviceMap:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true
+      lokiSearch:
+        datasourceUid: loki
+
+  - name: Alertmanager
+    uid: alertmanager
+    type: alertmanager
+    url: http://alertmanager:9093
+    editable: false
+    jsonData:
+      implementation: prometheus
+      # Grafana displays Alertmanager alerts here. Grafana-managed rules are
+      # forwarded through the explicit "Alertmanager" contact point in
+      # alerting.yaml, so do not also enable "receive all Grafana alerts" on the
+      # datasource (that would duplicate notifications).
+      handleGrafanaManagedAlerts: false

@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
 	"github.com/runcodes-icmc/judge/internal/config"
+	"github.com/runcodes-icmc/judge/internal/telemetry"
 )
 
 // S3 is a path-style S3 client for SeaweedFS.
@@ -34,6 +36,10 @@ func NewS3(ctx context.Context, cfg config.S3Config) (*S3, error) {
 		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
 			cfg.AccessKey, cfg.SecretKey, "",
 		)),
+		// Propagate the claimed commit's trace context to every S3 request.
+		awsconfig.WithHTTPClient(&http.Client{
+			Transport: telemetry.Transport(http.DefaultTransport),
+		}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("load aws config: %w", err)

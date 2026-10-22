@@ -32,6 +32,7 @@ import (
 	"github.com/runcodes-icmc/judge/internal/podman"
 	"github.com/runcodes-icmc/judge/internal/storage"
 	"github.com/runcodes-icmc/judge/internal/store"
+	"github.com/runcodes-icmc/judge/internal/telemetry"
 	"github.com/runcodes-icmc/judge/internal/worker"
 )
 
@@ -43,13 +44,38 @@ func main() {
 }
 
 func run() error {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel()}))
-	slog.SetDefault(logger)
-
 	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
+
+	// Listen for SIGINT and SIGTERM to gracefully shut down the server. The
+	// context also cancels the telemetry setup and shutdown.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	telemetryShutdown, telemetryErr := telemetry.Setup(ctx)
+
+	logger := slog.New(telemetry.NewLogHandler(telemetry.ServiceName(),
+		slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel()}),
+	))
+	slog.SetDefault(logger)
+
+	if telemetryErr != nil {
+		logger.Warn("OpenTelemetry could not be initialized; continuing without it",
+			"error", telemetryErr,
+		)
+		telemetryShutdown = func(context.Context) error { return nil }
+	}
+	if telemetry.Enabled() {
+		logger.Info("OpenTelemetry enabled",
+			"service", telemetry.ServiceName(),
+			"endpoint", os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+		)
+	} else {
+		logger.Info("OpenTelemetry disabled (set OTEL_EXPORTER_OTLP_ENDPOINT to enable)")
+	}
+	defer shutdownTelemetry(telemetryShutdown)
 
 	cfg.LogInsecureTransportWarnings()
 
@@ -62,10 +88,6 @@ func run() error {
 				"Set the token, or JUDGE_ALLOW_INSECURE=true for a local instance")
 		}
 	}
-
-	// Listen for SIGINT and SIGTERM to gracefully shut down the server.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	// open the database connection pool and defer its closure
 	st, err := store.New(cfg)
@@ -172,5 +194,15 @@ func logLevel() slog.Level {
 		return slog.LevelError
 	default:
 		return slog.LevelInfo
+	}
+}
+
+// shutdownTelemetry gives the batch exporters a bounded chance to flush when the
+// process receives SIGTERM. An unreachable collector must not delay shutdown.
+func shutdownTelemetry(shutdown func(context.Context) error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := shutdown(ctx); err != nil {
+		slog.Debug("telemetry shutdown error", "error", err)
 	}
 }

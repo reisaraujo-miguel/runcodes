@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/runcodes-icmc/runcodes/config"
+	"github.com/runcodes-icmc/runcodes/telemetry"
 )
 
 var (
@@ -23,14 +24,22 @@ var (
 	ErrOutputNotFound = errors.New("output archive not found")
 
 	// readyClient bounds the pre-registration readiness probe.
-	readyClient = &http.Client{Timeout: 2 * time.Second}
+	readyClient = &http.Client{
+		Timeout:   2 * time.Second,
+		Transport: telemetry.Transport(http.DefaultTransport),
+	}
 
 	// streamClient has no overall timeout: SSE responses are long-lived.
-	streamClient = &http.Client{}
+	streamClient = &http.Client{
+		Transport: telemetry.Transport(http.DefaultTransport),
+	}
 
 	// outputClient bounds a download of a generated archive. The judge is on the
 	// internal network; a request that stalls must still release the handler.
-	outputClient = &http.Client{Timeout: 60 * time.Second}
+	outputClient = &http.Client{
+		Timeout:   60 * time.Second,
+		Transport: telemetry.Transport(http.DefaultTransport),
+	}
 )
 
 /*

@@ -18,6 +18,7 @@ import (
 
 	"github.com/runcodes-icmc/judge/internal/config"
 	"github.com/runcodes-icmc/judge/internal/events"
+	"github.com/runcodes-icmc/judge/internal/telemetry"
 )
 
 // DBHealth reports whether Postgres is reachable.
@@ -64,6 +65,9 @@ func New(
 // bearer token when one is configured.
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
+	r.Use(telemetry.HTTPMiddleware(r))
+	r.Use(telemetry.TraceContextMiddleware)
+	r.Use(telemetry.HTTPMetricsMiddleware())
 	r.Use(middleware.Recoverer)
 
 	r.Get("/healthz", s.handleHealth)

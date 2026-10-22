@@ -1,0 +1,126 @@
+# OpenTelemetry Collector (contrib distribution) — gateway for all application
+# telemetry.
+#
+#   backend/judge --OTLP/HTTP--> collector
+#     traces  -> otlp/tempo (gRPC) -> Tempo
+#     metrics -> prometheus exporter (:8889) -> scraped by Prometheus
+#     logs    -> otlphttp/loki (/otlp/v1/logs) -> Loki
+#
+# The collector is the only process that receives telemetry from applications,
+# so sampling, batching, retries and memory protection are configured in one
+# place. Collector internal metrics are exposed on :8888 for Prometheus.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+
+  # Low-cardinality identity attributes. Applications set service.name,
+  # service.version, service.instance.id and deployment.environment.name;
+  # this only fills the shared namespace and normalizes the environment.
+  resource:
+    attributes:
+      - key: service.namespace
+        value: runcodes
+        action: insert
+      - key: deployment.environment.name
+        value: ${env:DEPLOYMENT_ENVIRONMENT}
+        action: upsert
+
+  batch:
+    timeout: 5s
+    send_batch_size: 512
+    send_batch_max_size: 1024
+
+exporters:
+  otlp_grpc/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+    timeout: 10s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 4
+      queue_size: 5000
+
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    add_metric_suffixes: true
+    send_timestamps: true
+    metric_expiration: 5m
+    # Promote the OTel resource attributes (service.name, deployment.environment.name,
+    # ...) to labels on every application metric, so dashboards can group by
+    # service_name without joining target_info.
+    resource_constant_labels:
+      # Only the low-cardinality identity attributes. service.instance.id and
+      # host.name change on every restart and would create a new Prometheus
+      # series per restart; they remain available in target_info.
+      included:
+        - "service.name"
+        - "service.namespace"
+        - "service.version"
+        - "deployment.environment.name"
+
+  otlp_http/loki:
+    endpoint: http://loki:3100/otlp
+    compression: gzip
+    timeout: 10s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 4
+      queue_size: 5000
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+    path: /health/status
+
+service:
+  extensions: [health_check]
+
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      level: basic
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp_grpc/tempo]
+
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [prometheus]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp_http/loki]

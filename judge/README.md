@@ -222,3 +222,25 @@ configured token they return `503` unless `JUDGE_ALLOW_INSECURE=true` is set.
   `server_error`. Claiming is otherwise crash-safe and multi-instance safe.
 - Finished runs remain replayable in memory for `JUDGE_EVENT_RETENTION`; after
   that, clients must read the terminal state from the backend's database.
+
+## Observability
+
+The judge is instrumented with the OpenTelemetry Go SDK (traces, HTTP metrics,
+structured logs) and is a no-op unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set. The
+Compose observability overlay points it at the collector with
+`service.name=runcodes-judge`.
+
+- Inbound requests use `otelchi` spans; S3 downloads use `otelhttp`; database
+  claims/queries use `otelsql`.
+- Each claimed commit starts a root `judge.process_commit` span with
+  `runcodes.commit.id`, because the HTTP request that queued it has already
+  returned. Individual compilation and test-case steps are not separately
+  instrumented yet.
+- Logs include `trace_id`/`span_id` when a context is available and are also
+  forwarded over OTLP to Loki.
+- `/healthz` and `/readyz` remain the liveness/readiness endpoints; only
+  `/healthz` is used by the Docker `HEALTHCHECK`.
+
+The full stack, dashboard and validation commands are documented in
+[`../docs/observability/README.md`](../docs/observability/README.md). Browser
+tracing is not implemented in the frontend; see the known limitations there.

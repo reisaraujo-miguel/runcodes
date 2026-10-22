@@ -41,3 +41,9 @@ bin/
 database/.tools/
 
 .dsh-preview
+
+# Local Go build caches used during development (never committed).
+.cache/
+
+# Generated observability secrets and runtime state.
+.observability/

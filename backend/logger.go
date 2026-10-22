@@ -4,10 +4,10 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/runcodes-icmc/runcodes/telemetry"
+
 	"github.com/go-chi/httplog/v3"
-	"github.com/go-chi/traceid"
 	"github.com/golang-cz/devslog"
-	_ "github.com/lib/pq"
 )
 
 var (
@@ -16,19 +16,24 @@ var (
 )
 
 /*
-SetupLogger uses go-chi/httplog and go-chi/traceid as middleware for
-structured HTTP logging.
+SetupLogger uses go-chi/httplog as middleware for structured HTTP logging and
+wraps the console handler with the OpenTelemetry log handler.
 
 For dev environments (debug mode), uses golang-cz/devslog for pretty printing
-logs.
+logs. In both modes every record also carries trace_id/span_id when a request
+has an active span, and is forwarded to the collector when telemetry is enabled
+(see the telemetry package). The stdout copy is never dropped: it is what
+`docker logs` and the container runtime expose.
 */
 func SetupLogger(debug bool) {
 	LogFormat = httplog.SchemaECS.Concise(debug)
 
-	Logger = slog.New(logHandler(debug, &slog.HandlerOptions{
-		AddSource:   !debug,
-		ReplaceAttr: LogFormat.ReplaceAttr,
-	}))
+	Logger = slog.New(telemetry.NewLogHandler(telemetry.ServiceName(),
+		logHandler(debug, &slog.HandlerOptions{
+			AddSource:   !debug,
+			ReplaceAttr: LogFormat.ReplaceAttr,
+		}),
+	))
 
 	// Set as a default logger for both slog and log.
 	slog.SetDefault(Logger)
@@ -48,8 +53,6 @@ func logHandler(
 		})
 	}
 
-	// JSON logs for production with "traceId".
-	return traceid.LogHandler(
-		slog.NewJSONHandler(os.Stdout, handlerOpts),
-	)
+	// JSON logs for production; trace identity is added by NewLogHandler.
+	return slog.NewJSONHandler(os.Stdout, handlerOpts)
 }
