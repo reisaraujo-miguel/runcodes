@@ -29,7 +29,8 @@ const (
 	defaultS3Region       = "sa-east-1"
 	defaultS3Prefix       = "runcodes"
 	defaultJudgeURL       = "http://judge:9000"
-	defaultStaleTimeout   = 15 * time.Minute
+	defaultStaleTimeout   = 35 * time.Minute
+	defaultMaxQueueDepth  = 100
 	defaultSMTPPort       = "587"
 )
 
@@ -113,6 +114,10 @@ type JudgeConfig struct {
 	URL          string
 	Token        string
 	StaleTimeout time.Duration
+	// MaxQueueDepth bounds the number of submissions waiting for a judge
+	// worker. The backend refuses new submissions above it instead of letting
+	// the durable queue grow without bound.
+	MaxQueueDepth int
 }
 
 // MailConfig describes the SMTP submission endpoint used for account email.
@@ -158,6 +163,11 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	maxQueueDepth, err := envInt("RUNCODES_JUDGE_MAX_QUEUE_DEPTH", defaultMaxQueueDepth)
+	if err != nil {
+		return nil, err
+	}
+
 	// A prefix of only dashes trims down to nothing, which would leave the
 	// buckets named "-commits" and so on.
 	prefix := strings.Trim(env("RUNCODES_S3_BUCKET_PREFIX", defaultS3Prefix), "-")
@@ -196,9 +206,10 @@ func Load() (*Config, error) {
 		},
 		Judge: JudgeConfig{
 			// The base URL is concatenated with a path, so keep no trailing slash.
-			URL:          strings.TrimRight(env("RUNCODES_JUDGE_URL", defaultJudgeURL), "/"),
-			Token:        os.Getenv("RUNCODES_JUDGE_TOKEN"),
-			StaleTimeout: staleTimeout,
+			URL:           strings.TrimRight(env("RUNCODES_JUDGE_URL", defaultJudgeURL), "/"),
+			Token:         os.Getenv("RUNCODES_JUDGE_TOKEN"),
+			StaleTimeout:  staleTimeout,
+			MaxQueueDepth: maxQueueDepth,
 		},
 		Mail: MailConfig{
 			Host:     os.Getenv("RUNCODES_SMTP_HOST"),
@@ -286,6 +297,13 @@ func (c *Config) validate() error {
 	if c.Judge.StaleTimeout <= 0 {
 		return fmt.Errorf(
 			"RUNCODES_JUDGE_STALE_TIMEOUT must be positive, got %s", c.Judge.StaleTimeout,
+		)
+	}
+
+	if c.Judge.MaxQueueDepth <= 0 {
+		return fmt.Errorf(
+			"RUNCODES_JUDGE_MAX_QUEUE_DEPTH must be positive, got %d",
+			c.Judge.MaxQueueDepth,
 		)
 	}
 

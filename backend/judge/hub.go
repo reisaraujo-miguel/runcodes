@@ -249,14 +249,18 @@ func (h *Hub) stream(ctx context.Context) error {
 
 /*
 handleEvent persists an event, broadcasts it to subscribers and, for the
-terminal events, shuts the hub down. Any persistence failure is returned so the
+terminal event, shuts the hub down. Any persistence failure is returned so the
 caller reconnects from the last persisted sequence and the judge replays the
-event; the writes are idempotent upserts, so a replayed event is safe. Terminal
-events are retried in-line before the failure is returned.
+event; the writes are idempotent upserts, so a replayed event is safe. The
+terminal event is retried in-line before the failure is returned.
+
+Only `finished` is terminal. The judge sends `error` as a diagnostic and then a
+`finished` carrying the real status (for example `timeout`); closing the hub on
+`error` would discard that status and leave the commit as `server_error`.
 */
 func (h *Hub) handleEvent(ctx context.Context, ev *Event, raw []byte) error {
-	if ev.Type != "finished" && ev.Type != "error" {
-		// A non-terminal event (status, compilation, case_result) is now also
+	if ev.Type != "finished" {
+		// A non-terminal event (status, compilation, case_result, error) is
 		// persisted before broadcast and must not be lost: return the failure
 		// so the cursor is not advanced past an unpersisted event.
 		if err := PersistEvent(ctx, ev); err != nil {
@@ -267,9 +271,9 @@ func (h *Hub) handleEvent(ctx context.Context, ev *Event, raw []byte) error {
 		return nil
 	}
 
-	// Terminal events carry the authoritative result: persist them before closing
-	// the hub, so a transient database failure cannot lose the result and leave
-	// the commit non-terminal until reconciliation.
+	// The terminal event carries the authoritative result: persist it before
+	// closing the hub, so a transient database failure cannot lose the result
+	// and leave the commit non-terminal until reconciliation.
 	if err := persistTerminalEvent(ctx, ev); err != nil {
 		return err
 	}

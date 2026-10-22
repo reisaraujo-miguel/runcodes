@@ -847,7 +847,7 @@ func addOfferingMemberRow(
 		return nil, ErrInvalidMemberRole
 	}
 
-	email := strings.TrimSpace(req.Email)
+	email := validation.NormalizeEmail(req.Email)
 	if err := validation.ValidateEmailFormat(ctx, email); err != nil {
 		return nil, err
 	}

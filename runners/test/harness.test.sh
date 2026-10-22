@@ -165,6 +165,16 @@ if [ -e ../container.config ]; then
     echo "config was still readable during compilation" >&2
     exit 1
 fi
+if [ -e ../compile-warning ]; then
+    echo "warning: this compiler warning must not fail the run" >&2
+fi
+if [ -e ../compile-failure ]; then
+    echo "error: the compiler failed" >&2
+    exit 1
+fi
+if [ -e ../compile-failure-silent ]; then
+    exit 1
+fi
 "${LIMITS_PROBE}" >../compile-limits.txt
 CHECK
     chmod +x "${ws}/src/compile-check.sh"
@@ -224,6 +234,38 @@ check_eq "the per-case memory limit is applied" "as_bytes=67108864" \
     "$(grep '^as_bytes=' "${ws}/1.output")"
 check_eq "the per-case stack limit is applied" "stack_bytes=1048576" \
     "$(grep '^stack_bytes=' "${ws}/1.output")"
+
+echo "==> compiler warnings do not fail valid submissions"
+ws_warn="${work}/ws-warning"
+prep_workspace "${ws_warn}" "nonce-warning"
+: >"${ws_warn}/compile-warning"
+if ! (cd "${ws_warn}" && "${image}") >"${work}/log-warning" 2>&1; then
+    echo "the harness failed a compilation that only warned" >&2
+    cat "${work}/log-warning" >&2
+    exit 1
+fi
+check "a warning-only compilation continued to the run" \
+    grep -q '^run.done nonce-warning$' "${work}/log-warning"
+check "the warning was not left in compilation.err" \
+    test ! -s "${ws_warn}/compilation.err"
+check "the warning was preserved as a diagnostic" \
+    grep -q 'this compiler warning must not fail the run' "${ws_warn}/compilation.warnings"
+check "the warning was copied to the output files" \
+    test -e "${ws_warn}/outputfiles/compilation.warnings"
+
+echo "==> a failed compilation with empty stderr still stops the run"
+ws_fail="${work}/ws-compile-failure"
+prep_workspace "${ws_fail}" "nonce-compile-failure"
+: >"${ws_fail}/compile-failure-silent"
+if (cd "${ws_fail}" && "${image}") >"${work}/log-compile-failure" 2>&1; then
+    echo "the harness accepted a compiler that exited non-zero" >&2
+    cat "${work}/log-compile-failure" >&2
+    exit 1
+fi
+check "the silent compiler failure produced an error" \
+    test -s "${ws_fail}/compilation.err"
+check "the run never started after the failed compilation" \
+    bash -c '! grep -q "^run.start" "$1"' _ "${work}/log-compile-failure"
 
 # 4. Nothing the graded program left behind touched the results.
 check_eq "the daemonising case reported normally" "ok" \
@@ -318,13 +360,17 @@ ws_timeout="${work}/ws-timeout"
 prep_workspace "${ws_timeout}" "nonce-timeout"
 rm -rf "${ws_timeout}/test_2"
 sed -i 's/^compilation_timeout=10$/compilation_timeout=3/' "${ws_timeout}/container.config"
-if ! (cd "${ws_timeout}" && timeout 30 "${image_timeout}") >"${work}/log-timeout" 2>&1; then
-    echo "the harness did not survive the judge's compilation timeout" >&2
+if (cd "${ws_timeout}" && timeout 30 "${image_timeout}") >"${work}/log-timeout" 2>&1; then
+    echo "the harness accepted a compilation that timed out" >&2
     cat "${work}/log-timeout" >&2
     exit 1
 fi
 check "the compile phase was cut off instead of running for 600 seconds" \
-    bash -c 'test -e "$1/1.output"' _ "${ws_timeout}"
+    bash -c 'test ! -e "$1/1.output"' _ "${ws_timeout}"
+check "the run did not execute tests after the compile timeout" \
+    bash -c '! grep -q "^run.start" "$1"' _ "${work}/log-timeout"
+check "the compile timeout was reported as a compilation error" \
+    grep -Eq 'SIGKILL|timeout|exit status' "${ws_timeout}/compilation.err"
 check "the run reported the compile phase" \
     grep -q '^compilation.done nonce-timeout$' "${work}/log-timeout"
 
@@ -348,15 +394,17 @@ sleep 5
 touch ../compiled-late
 SLOW
 chmod +x "${ws_fallback}/src/slow-compile.sh"
-if ! (cd "${ws_fallback}" && timeout 30 "${image_timeout_fallback}") >"${work}/log-timeout-fallback" 2>&1; then
-    echo "the harness did not survive its own compilation timeout" >&2
+if (cd "${ws_fallback}" && timeout 30 "${image_timeout_fallback}") >"${work}/log-timeout-fallback" 2>&1; then
+    echo "the harness accepted its own compile timeout" >&2
     cat "${work}/log-timeout-fallback" >&2
     exit 1
 fi
 check "the image's timeout cut the compile off" \
     bash -c 'test ! -e "$1/compiled-late"' _ "${ws_fallback}"
-check "the run continued after it" \
-    bash -c 'test -e "$1/1.output"' _ "${ws_fallback}"
+check "the run did not start after the image's compile timeout" \
+    bash -c 'test ! -e "$1/1.output"' _ "${ws_fallback}"
+check "the image's compile timeout was reported" \
+    grep -Eq 'SIGKILL|timeout|exit status' "${ws_fallback}/compilation.err"
 
 echo "==> a submission cannot fake a milestone"
 ws_forge="${work}/ws-forge"

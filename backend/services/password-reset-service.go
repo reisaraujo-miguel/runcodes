@@ -18,6 +18,7 @@ import (
 	"github.com/runcodes-icmc/runcodes/config"
 	"github.com/runcodes-icmc/runcodes/database"
 	"github.com/runcodes-icmc/runcodes/mailer"
+	"github.com/runcodes-icmc/runcodes/validation"
 )
 
 const (
@@ -46,6 +47,8 @@ confirm the account, so the user still has to open a verification link before
 they can sign in.
 */
 func RequestPasswordReset(ctx context.Context, email string) error {
+	email = validation.NormalizeEmail(email)
+
 	var (
 		id   int
 		name string

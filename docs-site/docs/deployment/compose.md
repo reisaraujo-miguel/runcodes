@@ -92,6 +92,8 @@ Optional and commonly set:
 | `FRONTEND_HTTP_PORT` / `FRONTEND_HTTPS_PORT` | `8080` / `8444` | host ports |
 | `PODMAN_SOCKET` | `/run/user/1000/podman/podman.sock` | rootless socket path |
 | `JUDGE_UID` / `JUDGE_GID` | `0` / `0` | container identity for the judge |
+| `RUNCODES_JUDGE_STALE_TIMEOUT` | `35m` | backend age before a claimed run is marked stale |
+| `JUDGE_MAX_RUN_DURATION` | `30m` | judge end-to-end budget per claim |
 | `CONTACT_EMAIL` / `CONTACT_DISCLAIMER` | example values | build-time fallbacks only |
 
 The full list is in [Configuration](../reference/configuration.md).

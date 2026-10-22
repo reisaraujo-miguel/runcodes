@@ -163,6 +163,16 @@ func CreateSubmission(w http.ResponseWriter, r *http.Request) {
 			WriteResponse(w, http.StatusBadRequest,
 				models.Error{Message: services.ErrInvalidFileType.Error()},
 			)
+		case errors.Is(err, services.ErrSubmissionLimit):
+			w.Header().Set("Retry-After", "30")
+			WriteResponse(w, http.StatusTooManyRequests,
+				models.Error{Message: services.ErrSubmissionLimit.Error()},
+			)
+		case errors.Is(err, services.ErrQueueFull):
+			w.Header().Set("Retry-After", "30")
+			WriteResponse(w, http.StatusServiceUnavailable,
+				models.Error{Message: services.ErrQueueFull.Error()},
+			)
 		case errors.Is(err, services.ErrJudgeUnavailable):
 			WriteResponse(w, http.StatusServiceUnavailable,
 				models.Error{Message: services.ErrJudgeUnavailable.Error()},
@@ -287,7 +297,7 @@ func GetSubmissionSource(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 
-	if _, err := io.Copy(w, source.Body); err != nil {
+	if _, err := io.Copy(newDeadlineWriter(w), source.Body); err != nil {
 		slog.ErrorContext(ctx, "failed to stream submitted source",
 			slog.Int64("commit_id", commitID),
 			slog.String("error", err.Error()),
@@ -365,7 +375,7 @@ func GetSubmissionOutput(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 
-	if _, err := io.Copy(w, archive.Body); err != nil {
+	if _, err := io.Copy(newDeadlineWriter(w), archive.Body); err != nil {
 		slog.ErrorContext(ctx, "failed to stream generated output",
 			slog.Int64("commit_id", commitID),
 			slog.String("error", err.Error()),

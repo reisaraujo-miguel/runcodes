@@ -58,7 +58,9 @@ owner's authoring routes; the panel uses its own endpoints.
 
 ## Enrollment
 
-- Students join with an **enrollment code**, case-insensitively. New classes get
+- Students join with an **enrollment code**, case-insensitively; an account is
+  limited to five attempts per minute because legacy classes may still have
+  four-character codes. New classes get
   six-character codes; classes created before the change keep their
   four-character codes, which are still accepted. Joining is idempotent: entering
   the code twice leaves one enrollment.

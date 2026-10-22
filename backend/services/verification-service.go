@@ -18,6 +18,7 @@ import (
 	"github.com/runcodes-icmc/runcodes/config"
 	"github.com/runcodes-icmc/runcodes/database"
 	"github.com/runcodes-icmc/runcodes/mailer"
+	"github.com/runcodes-icmc/runcodes/validation"
 
 	"github.com/lib/pq"
 	"github.com/lib/pq/pqerror"
@@ -119,6 +120,8 @@ both a silent success: the endpoint is public, and answering differently would
 turn it into a way to ask whether an email has an account here.
 */
 func ResendVerification(ctx context.Context, email string) error {
+	email = validation.NormalizeEmail(email)
+
 	var (
 		id          int
 		name        string

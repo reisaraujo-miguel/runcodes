@@ -91,6 +91,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Judge.StaleTimeout != defaultStaleTimeout {
 		t.Errorf("Judge.StaleTimeout = %s, want %s", cfg.Judge.StaleTimeout, defaultStaleTimeout)
 	}
+	if cfg.Judge.MaxQueueDepth != defaultMaxQueueDepth {
+		t.Errorf("Judge.MaxQueueDepth = %d, want %d", cfg.Judge.MaxQueueDepth, defaultMaxQueueDepth)
+	}
 	if cfg.PublicURL != "https://runcodes.example" {
 		t.Errorf("PublicURL = %q", cfg.PublicURL)
 	}
@@ -270,6 +273,16 @@ func TestLoadRejectsMalformedValues(t *testing.T) {
 			name:  "negative stale timeout",
 			env:   map[string]string{"RUNCODES_JUDGE_STALE_TIMEOUT": "-1m"},
 			names: "RUNCODES_JUDGE_STALE_TIMEOUT",
+		},
+		{
+			name:  "non-numeric queue depth",
+			env:   map[string]string{"RUNCODES_JUDGE_MAX_QUEUE_DEPTH": "many"},
+			names: "RUNCODES_JUDGE_MAX_QUEUE_DEPTH",
+		},
+		{
+			name:  "zero queue depth",
+			env:   map[string]string{"RUNCODES_JUDGE_MAX_QUEUE_DEPTH": "0"},
+			names: "RUNCODES_JUDGE_MAX_QUEUE_DEPTH",
 		},
 		{
 			name:  "judge url has no scheme",

@@ -38,6 +38,8 @@ created unconfirmed: the caller sends the verification email, and LogIn refuses
 it until the link is used.
 */
 func SignUp(ctx context.Context, req *models.SignUpRequest) (int, error) {
+	req.Email = validation.NormalizeEmail(req.Email)
+
 	var password string
 	var err error
 	if password, err = hashPassword(req.Password); err != nil {
@@ -88,6 +90,8 @@ func SignUp(ctx context.Context, req *models.SignUpRequest) (int, error) {
 }
 
 func LogIn(ctx context.Context, req *models.LogInRequest) (map[string]any, error) {
+	email := validation.NormalizeEmail(req.Email)
+
 	var id int
 	var name string
 	var passwordHash string
@@ -96,7 +100,7 @@ func LogIn(ctx context.Context, req *models.LogInRequest) (map[string]any, error
 	var tokenVersion int
 	if err := database.DB.QueryRowContext(ctx,
 		"SELECT id, name, password_hash, role, confirmed, token_version FROM users WHERE email = $1",
-		req.Email).Scan(&id, &name, &passwordHash, &role, &confirmed, &tokenVersion); err != nil {
+		email).Scan(&id, &name, &passwordHash, &role, &confirmed, &tokenVersion); err != nil {
 		if err == sql.ErrNoRows {
 			slog.InfoContext(ctx,
 				"someone tried to login as an user that does not exist",
@@ -148,7 +152,7 @@ func LogIn(ctx context.Context, req *models.LogInRequest) (map[string]any, error
 	claims := map[string]any{
 		"id":            id,
 		"name":          name,
-		"email":         req.Email,
+		"email":         email,
 		"role":          role,
 		"token_version": tokenVersion,
 	}
@@ -187,6 +191,8 @@ func GetUserByID(ctx context.Context, id int) (*models.User, error) {
 CheckEmailExistence checks if the given email is already in use
 */
 func CheckEmailExistence(ctx context.Context, email string) error {
+	email = validation.NormalizeEmail(email)
+
 	var id int
 	err := database.DB.QueryRowContext(ctx,
 		`SELECT id FROM users WHERE email = $1`,
@@ -276,8 +282,8 @@ func UpdateProfile(
 
 	emailChanged := false
 	if req.Email != nil {
-		newEmail := strings.TrimSpace(*req.Email)
-		if newEmail != profile.Email {
+		newEmail := validation.NormalizeEmail(*req.Email)
+		if newEmail != validation.NormalizeEmail(profile.Email) {
 			if req.CurrentPassword == "" {
 				return nil, ErrCurrentPasswordRequired
 			}
@@ -312,7 +318,8 @@ func UpdateProfile(
 		if pgErr, ok := err.(*pq.Error); ok &&
 			pgErr.Code == pqerror.UniqueViolation {
 			switch pgErr.Constraint {
-			case "users_email_key", "users_pending_email_key":
+			case "users_email_key", "users_pending_email_key",
+				"users_email_lower_key", "users_pending_email_lower_key":
 				return nil, ErrEmailExists
 			case "users_org_id_key":
 				return nil, ErrOrgIDExists

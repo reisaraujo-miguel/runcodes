@@ -97,11 +97,16 @@ func PersistEvent(ctx context.Context, ev *Event) error {
 		)
 		return nil
 	case "error":
+		// The judge sends `error` as a diagnostic before the authoritative
+		// `finished` event. Persisting `server_error` here would make that
+		// terminal event a no-op and turn a genuine timeout into an
+		// infrastructure error. If the stream ends without `finished`, the hub's
+		// failServerError path settles the commit.
 		slog.ErrorContext(ctx, "judge reported an error",
 			slog.Int64("commit_id", ev.CommitID),
 			slog.String("message", ev.Message),
 		)
-		return MarkCommitServerError(ctx, ev.CommitID)
+		return nil
 	default:
 		slog.WarnContext(ctx, "ignoring unknown judge event type",
 			slog.Int64("commit_id", ev.CommitID),

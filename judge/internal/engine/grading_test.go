@@ -4,12 +4,15 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/runcodes-icmc/judge/internal/config"
 	"github.com/runcodes-icmc/judge/internal/model"
+	"github.com/runcodes-icmc/judge/internal/storage"
 )
 
 func TestReadMonitor(t *testing.T) {
@@ -137,5 +140,62 @@ func TestScoreRun(t *testing.T) {
 	_, score, status = scoreRun(nil, nil)
 	if score != 100 || status != model.RunCompleted {
 		t.Fatalf("empty run got score=%v status=%s", score, status)
+	}
+}
+
+// TestGradeCaseIgnoresStderrWhenAnswerIsCorrect covers the silent failure where
+// a program writes a diagnostic to stderr but exits cleanly and prints the
+// expected answer. Stderr is not a verdict.
+func TestGradeCaseIgnoresStderrWhenAnswerIsCorrect(t *testing.T) {
+	expectedBody := "42\n"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(expectedBody))
+	}))
+	t.Cleanup(server.Close)
+
+	s3, err := storage.NewS3(context.Background(), config.S3Config{
+		Endpoint:   server.URL,
+		Region:     "us-east-1",
+		AccessKey:  "test-key",
+		SecretKey:  "test-secret",
+		BucketBase: "test",
+	})
+	if err != nil {
+		t.Fatalf("NewS3: %v", err)
+	}
+
+	dir := t.TempDir()
+	ws := &workspace{
+		BaseDir:     dir,
+		ExpectedDir: t.TempDir(),
+	}
+	if err := os.WriteFile(filepath.Join(dir, "7.output"), []byte(expectedBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "7.error"), []byte("warning: harmless\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "7.monitor_out"), []byte("[info]\nexit_status=0\nsignal=\ntime=0.01\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	e := &Engine{
+		cfg: &config.Config{
+			MaxOutputFileSize:   1024,
+			MaxCompareFileBytes: 1024,
+		},
+		s3:     s3,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	result, err := e.gradeCase(context.Background(), model.TestCase{ID: 7}, ws)
+	if err != nil {
+		t.Fatalf("gradeCase: %v", err)
+	}
+	if result.Status != model.CaseCorrect {
+		t.Fatalf("gradeCase status = %s, want correct", result.Status)
+	}
+	if result.ErrorMessage != "" {
+		t.Fatalf("ErrorMessage = %q, want empty for a successful case", result.ErrorMessage)
 	}
 }

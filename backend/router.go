@@ -3,6 +3,7 @@ package main
 import (
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -86,7 +87,13 @@ func createRoutes(router *chi.Mux) {
 			r.Get("/api/v1/user/offerings/{id}", handlers.GetMyOffering)
 			r.Get("/api/v1/user/exercises", handlers.ListMyOpenExercises)
 
-			r.Post("/api/v1/offerings/enroll", handlers.Enroll)
+			// Enrollment codes are the class-join secret. A six-character code is
+			// strong, but legacy four-character codes are still accepted, so this
+			// route gets a per-account budget independent of the API-wide IP limit.
+			// Five attempts a minute keeps the legacy space out of reach while still
+			// tolerating a mistyped code or two.
+			r.With(httprate.LimitBy(5, time.Minute, authenticatedUserKey)).
+				Post("/api/v1/offerings/enroll", handlers.Enroll)
 			r.Delete("/api/v1/offerings/{id}/enrollment", handlers.Unenroll)
 
 			r.Post("/api/v1/submissions", handlers.CreateSubmission)
@@ -286,4 +293,20 @@ func limitRequestBody(next http.Handler) http.Handler {
 // clientIPKey returns the canonicalized client IP address for rate limiting
 func clientIPKey(r *http.Request) (string, error) {
 	return httprate.CanonicalizeIP(middleware.GetClientIP(r.Context())), nil
+}
+
+/*
+authenticatedUserKey keys a rate limit by the authenticated account, falling
+back to the client IP when the claim is unavailable. It is used on credential-like
+routes where an attacker could otherwise get a fresh budget by changing address.
+*/
+func authenticatedUserKey(r *http.Request) (string, error) {
+	_, claims, err := jwtauth.FromContext(r.Context())
+	if err == nil {
+		if id, ok := claims["id"].(float64); ok {
+			return "user:" + strconv.FormatInt(int64(id), 10), nil
+		}
+	}
+
+	return clientIPKey(r)
 }

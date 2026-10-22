@@ -99,3 +99,44 @@ func TestVerifyBcryptPasswordRejectsAnUnusableHash(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckEmailExistenceNormalizesEmail(t *testing.T) {
+	mock := newMockDB(t)
+	mock.ExpectQuery(`SELECT id FROM users WHERE email = \$1`).
+		WithArgs("ada@example.com").
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
+
+	if err := CheckEmailExistence(context.Background(), "  Ada@Example.COM  "); err != nil {
+		t.Fatalf("CheckEmailExistence = %v, want nil", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLogInNormalizesEmail(t *testing.T) {
+	hash, err := bcrypt.GenerateFromPassword([]byte("correct horse"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mock := newMockDB(t)
+	mock.ExpectQuery(`SELECT id, name, password_hash, role, confirmed, token_version FROM users`).
+		WithArgs("ada@example.com").
+		WillReturnRows(sqlmock.NewRows(
+			[]string{"id", "name", "password_hash", "role", "confirmed", "token_version"},
+		).AddRow(7, "Ada", string(hash), "student", true, 1))
+
+	claims, err := LogIn(context.Background(), &models.LogInRequest{
+		Email: "  Ada@Example.COM  ", Password: "correct horse",
+	})
+	if err != nil {
+		t.Fatalf("LogIn = %v, want nil", err)
+	}
+	if claims["email"] != "ada@example.com" {
+		t.Fatalf("claims email = %v, want normalized address", claims["email"])
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

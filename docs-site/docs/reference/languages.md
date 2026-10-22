@@ -72,7 +72,10 @@ which contains `/usr/bin/runcodes` and `/usr/bin/monitor`. See
    behaviour applies.
 
 For zip submissions, the judge inspects the archive and standardises extensions
-to pick a language; `zip` remains its own case.
+to pick a language; it then passes a matching file from the archive to the image
+as `src_file` (a top-level file first, then the shortest path, then the
+lexicographically smallest name). An archive with a top-level Makefile still
+uses the harness's `make` path. `zip` remains its own case.
 
 ## Compilable vs interpreted
 
