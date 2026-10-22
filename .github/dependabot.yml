@@ -22,6 +22,23 @@ updates:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
 
+  # --- DOCUMENTATION SITE DEPENDENCIES ---
+  - package-ecosystem: "npm"
+    directory: "/docs-site/"
+    schedule:
+      interval: "weekly"
+    groups:
+      docs-dependencies:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(docs/deps)"
+      prefix-development: "chore(docs/dev-deps)"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
   # --- BACKEND AND JUDGE DEPENDENCIES ---
   - package-ecosystem: "gomod"
     directories: ["/backend/", "/judge/"]
