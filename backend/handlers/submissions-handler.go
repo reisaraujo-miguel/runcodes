@@ -391,6 +391,7 @@ func StreamSubmissionEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID, okID := claims["id"].(float64)
+	role, _ := claims["role"].(string)
 	if !okID {
 		WriteResponse(w, http.StatusUnauthorized, nil)
 		return
@@ -424,6 +425,7 @@ func StreamSubmissionEvents(w http.ResponseWriter, r *http.Request) {
 	// owner or a member of staff who teaches the commit's offering may subscribe;
 	// being a professor elsewhere on the platform is not enough.
 	owned := snapshot.Commit.UserID != nil && *snapshot.Commit.UserID == int64(userID)
+	isStaff := false
 
 	if !owned {
 		allowed := false
@@ -450,12 +452,39 @@ func StreamSubmissionEvents(w http.ResponseWriter, r *http.Request) {
 			)
 			return
 		}
+		isStaff = true
+	} else if role == "professor" || role == "admin" {
+		// The owner may also be staff of this class (a professor trying their own
+		// exercise). They keep the full result; a student owner does not.
+		if snapshot.Commit.ExerciseID != nil {
+			staff, err := services.CanAuthorExercise(
+				ctx, *snapshot.Commit.ExerciseID, claims,
+			)
+			if err == nil {
+				isStaff = staff
+			}
+		}
 	}
 
 	// These fields are implementation details of the backend/judge handshake.
 	// No viewer needs them, and they name the submitter and an internal object.
 	snapshot.Commit.S3Key = nil
 	snapshot.Commit.IP = nil
+
+	// A case whose output the author did not release is redacted for students,
+	// in the snapshot and in every live frame. The judge sends the raw output to
+	// the backend, so this is the enforcement point.
+	var hidden map[int64]struct{}
+	if !isStaff {
+		hidden, err = services.HiddenTestCaseIDs(ctx, commitID)
+		if err != nil {
+			WriteResponse(w, http.StatusInternalServerError,
+				models.Error{Message: services.ErrServer.Error()},
+			)
+			return
+		}
+		services.RedactSnapshotOutput(snapshot, hidden)
+	}
 
 	// Artifact events are transient and never persisted. Ask the judge whether
 	// the generated archive exists so a reloading client can show the files
@@ -526,6 +555,17 @@ func StreamSubmissionEvents(w http.ResponseWriter, r *http.Request) {
 		case frame, ok := <-subscription.Events:
 			if !ok {
 				return
+			}
+			if !isStaff {
+				frame = redactCaseResultFrame(frame, hidden)
+				if frame == nil {
+					// A hidden case_result frame that could not be parsed: dropping
+					// it is safer than forwarding output the author hid.
+					slog.ErrorContext(ctx, "dropping malformed case_result frame",
+						slog.Int64("commit_id", commitID),
+					)
+					continue
+				}
 			}
 			if err := writeSSE(w, controller, flusher, frame); err != nil {
 				return
