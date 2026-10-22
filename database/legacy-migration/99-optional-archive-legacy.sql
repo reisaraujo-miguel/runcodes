@@ -6,7 +6,21 @@
 -- these rows around. Structures are copied with constraints; data is copied
 -- verbatim (ids included).
 
-CREATE SCHEMA IF NOT EXISTS legacy;
+-- This script copies rows without a natural key for every table, so a second
+-- run would silently duplicate the archive. Fail early instead; drop the
+-- schema explicitly if a partial run has to be redone.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.schemata WHERE schema_name = 'legacy'
+  ) THEN
+    RAISE EXCEPTION
+      'legacy schema already exists; drop schema legacy cascade before rerunning 99-optional-archive-legacy.sql';
+  END IF;
+END
+$$;
+
+CREATE SCHEMA legacy;
 
 CREATE TABLE legacy.courses (LIKE old.courses INCLUDING ALL);
 INSERT INTO legacy.courses SELECT * FROM old.courses;

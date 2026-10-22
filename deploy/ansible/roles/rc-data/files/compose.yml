@@ -15,6 +15,7 @@ services:
       POSTGRES_DB: runcodes
       POSTGRES_PASSWORD: ${DB_OWNER_PASSWORD}
       RUNCODES_DB_APP_PASSWORD: ${DB_APP_PASSWORD}
+      RUNCODES_DB_JUDGE_PASSWORD: ${DB_JUDGE_PASSWORD}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=en_US.utf8 --lc-ctype=en_US.utf8"
     ports:
       - "${PRIVATE_IP}:5432:5432"

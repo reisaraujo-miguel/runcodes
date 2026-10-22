@@ -48,6 +48,7 @@ in a root `.env` file, which is gitignored):
 export RUNCODES_JWT_SECRET="$(openssl rand -hex 32)"
 export RUNCODES_DB_PASSWORD="$(openssl rand -hex 24)"
 export RUNCODES_DB_APP_PASSWORD="$(openssl rand -hex 24)"
+export RUNCODES_DB_JUDGE_PASSWORD="$(openssl rand -hex 24)"
 export RUNCODES_REDIS_PASSWORD="$(openssl rand -hex 24)"
 export RUNCODES_JUDGE_TOKEN="$(openssl rand -hex 32)"
 export RUNCODES_S3_CREDENTIALS_KEY="$(openssl rand -hex 16)"
@@ -58,7 +59,8 @@ export RUNCODES_S3_CREDENTIALS_SECRET="$(openssl rand -hex 24)"
 | --- | --- | --- |
 | `RUNCODES_JWT_SECRET` | backend | signs session tokens; a default would be a forgeable session |
 | `RUNCODES_DB_PASSWORD` | database, migrations | owner role; initializes the cluster |
-| `RUNCODES_DB_APP_PASSWORD` | backend, judge | `runcodes_app` role the services log in as |
+| `RUNCODES_DB_APP_PASSWORD` | backend | `runcodes_app` role the backend logs in as |
+| `RUNCODES_DB_JUDGE_PASSWORD` | judge | narrower `runcodes_judge` role |
 | `RUNCODES_REDIS_PASSWORD` | Redis, backend | authenticates the cache; an open cache is writable by any container on the bridge |
 | `RUNCODES_JUDGE_TOKEN` | backend, judge | shared bearer token for the judge API |
 | `RUNCODES_S3_CREDENTIALS_KEY` / `_SECRET` | backend, judge, SeaweedFS | S3 identity for submissions and cases |

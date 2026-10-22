@@ -66,6 +66,7 @@ runcodes_judge_poll_interval: "{{ config_runcodes_judge_poll_interval }}"
 runcodes_judge_container_memory_bytes: "{{ config_runcodes_judge_container_memory_bytes }}"
 runcodes_judge_container_pids_limit: "{{ config_runcodes_judge_container_pids_limit }}"
 runcodes_judge_container_cpu_quota: "{{ config_runcodes_judge_container_cpu_quota }}"
+runcodes_judge_container_tmpfs_bytes: "{{ config_runcodes_judge_container_tmpfs_bytes }}"
 
 # ---------------------------------------------------------------------------
 # OpenTelemetry instrumentation (application side)
@@ -111,6 +112,7 @@ runcodes_run_submission_smoke_test: "{{ config_runcodes_run_submission_smoke_tes
 runcodes_jwt_secret: "{{ vault_runcodes_jwt_secret }}"
 runcodes_db_owner_password: "{{ vault_runcodes_db_owner_password }}"
 runcodes_db_app_password: "{{ vault_runcodes_db_app_password }}"
+runcodes_db_judge_password: "{{ vault_runcodes_db_judge_password }}"
 runcodes_judge_token: "{{ vault_runcodes_judge_token }}"
 runcodes_s3_access_key: "{{ vault_runcodes_s3_access_key }}"
 runcodes_s3_secret_key: "{{ vault_runcodes_s3_secret_key }}"

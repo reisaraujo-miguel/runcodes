@@ -48,7 +48,7 @@ fragment. Sessions last 30 minutes and slide with `POST /api/v1/auth/refresh`.
 | `RUNCODES_DB_HOST` | — | ✓ | PostgreSQL host |
 | `RUNCODES_DB_PORT` | — | ✓ | PostgreSQL port |
 | `RUNCODES_DB_NAME` | — | ✓ | database name |
-| `RUNCODES_DB_USER` | — | ✓ | role; use `runcodes_app` in deployments |
+| `RUNCODES_DB_USER` | — | ✓ | role; use `runcodes_app` for the backend and `runcodes_judge` for the judge |
 | `RUNCODES_DB_PASSWORD` | — | ✓ | role password |
 | `RUNCODES_DB_SSLMODE` | `disable` | | lib/pq SSL mode |
 
@@ -162,6 +162,7 @@ Without a token the judge refuses `/v1` with `503` unless
 | `JUDGE_CONTAINER_MEMORY_BYTES` | `1536 MiB` | cgroup memory/swap cap |
 | `JUDGE_CONTAINER_PIDS_LIMIT` | `256` | cgroup pid cap |
 | `JUDGE_CONTAINER_CPU_QUOTA` | `100000` | CPU quota per 100 ms period |
+| `JUDGE_CONTAINER_TMPFS_BYTES` | `256 MiB` | writable `/tmp` cap when the rootfs is read-only |
 | `JUDGE_MAX_COMPARE_FILE_BYTES` | `16 MiB` | max file a case is graded from |
 | `JUDGE_MAX_ARTIFACT_BYTES` | `64 MiB` | max output archive |
 | `JUDGE_ARTIFACT_TTL` | `168h` | retention for output archives; `0` keeps them |
@@ -183,7 +184,7 @@ Validation rules:
 | `RUNCODES_DB_HOST` | `localhost` | PostgreSQL host |
 | `RUNCODES_DB_PORT` | `5432` | port |
 | `RUNCODES_DB_NAME` | `runcodes` | database |
-| `RUNCODES_DB_USER` | `runcodes` (`RUNCODES_DB_USERNAME` accepted) | use `runcodes_app` |
+| `RUNCODES_DB_USER` | `runcodes` (`RUNCODES_DB_USERNAME` accepted) | use `runcodes_judge` |
 | `RUNCODES_DB_PASSWORD` | empty | password |
 | `RUNCODES_DB_SSLMODE` | `disable` | lib/pq SSL mode |
 | `RUNCODES_S3_ENDPOINT` | `http://localhost:8333` | S3 endpoint |
@@ -238,7 +239,8 @@ Source: `docker-compose.yml`, `.env.example`.
 | --- | :-: | --- | --- |
 | `RUNCODES_JWT_SECRET` | ✓ | backend | session signing |
 | `RUNCODES_DB_PASSWORD` | ✓ | database | owner password |
-| `RUNCODES_DB_APP_PASSWORD` | ✓ | backend, judge, database init | app role password |
+| `RUNCODES_DB_APP_PASSWORD` | ✓ | backend, database init | app role password |
+| `RUNCODES_DB_JUDGE_PASSWORD` | ✓ | judge, database init | judge role password |
 | `RUNCODES_REDIS_PASSWORD` | ✓ | Redis, backend | cache password |
 | `RUNCODES_JUDGE_TOKEN` | ✓ | backend, judge | shared token |
 | `RUNCODES_S3_CREDENTIALS_KEY` | ✓ | backend, judge, SeaweedFS | S3 key |
@@ -357,6 +359,7 @@ Source: `deploy/ansible/inventories/group_vars/all/config.yml.example` and
 | `config_runcodes_judge_container_memory_bytes` | `1610612736` | 1.5 GiB |
 | `config_runcodes_judge_container_pids_limit` | `256` | pid cap |
 | `config_runcodes_judge_container_cpu_quota` | `100000` | CPU quota |
+| `config_runcodes_judge_container_tmpfs_bytes` | `268435456` | read-only rootfs `/tmp` cap |
 
 Keep the stale timeout above the max run duration.
 
@@ -398,6 +401,7 @@ Keep the stale timeout above the max run duration.
 | `vault_runcodes_judge_token` | backend ↔ judge |
 | `vault_runcodes_db_owner_password` | PostgreSQL owner |
 | `vault_runcodes_db_app_password` | app role |
+| `vault_runcodes_db_judge_password` | judge role |
 | `vault_runcodes_s3_access_key` / `_secret_key` | SeaweedFS S3 |
 | `vault_runcodes_redis_password` | Redis |
 | `vault_runcodes_admin_password` | seeded admin |

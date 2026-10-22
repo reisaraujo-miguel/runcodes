@@ -152,6 +152,7 @@
           - vault_runcodes_judge_token | default('') | length >= 32
           - vault_runcodes_db_owner_password | default('') | length >= 16
           - vault_runcodes_db_app_password | default('') | length >= 16
+          - vault_runcodes_db_judge_password | default('') | length >= 16
           - vault_runcodes_s3_access_key | default('') | length >= 8
           - vault_runcodes_s3_secret_key | default('') | length >= 16
           - vault_runcodes_redis_password | default('') | length >= 16
@@ -161,6 +162,7 @@
           - vault_runcodes_judge_token is not match('^REPLACE_WITH')
           - vault_runcodes_db_owner_password is not match('^REPLACE_WITH')
           - vault_runcodes_db_app_password is not match('^REPLACE_WITH')
+          - vault_runcodes_db_judge_password is not match('^REPLACE_WITH')
           - vault_runcodes_s3_access_key is not match('^REPLACE_WITH')
           - vault_runcodes_s3_secret_key is not match('^REPLACE_WITH')
           - vault_runcodes_redis_password is not match('^REPLACE_WITH')
@@ -196,6 +198,7 @@
           - vault_runcodes_judge_token is match('^[A-Za-z0-9._~+/=-]+$')
           - vault_runcodes_db_owner_password is match('^[A-Za-z0-9._~+/=-]+$')
           - vault_runcodes_db_app_password is match('^[A-Za-z0-9._~+/=-]+$')
+          - vault_runcodes_db_judge_password is match('^[A-Za-z0-9._~+/=-]+$')
           - vault_runcodes_s3_access_key is match('^[A-Za-z0-9._~+/=-]+$')
           - vault_runcodes_s3_secret_key is match('^[A-Za-z0-9._~+/=-]+$')
           - vault_runcodes_redis_password is match('^[A-Za-z0-9._~+/=-]+$')
@@ -224,6 +227,7 @@
           - vault_runcodes_judge_token is not search('\$')
           - vault_runcodes_db_owner_password is not search('\$')
           - vault_runcodes_db_app_password is not search('\$')
+          - vault_runcodes_db_judge_password is not search('\$')
           - vault_runcodes_s3_access_key is not search('\$')
           - vault_runcodes_s3_secret_key is not search('\$')
           - vault_runcodes_redis_password is not search('\$')

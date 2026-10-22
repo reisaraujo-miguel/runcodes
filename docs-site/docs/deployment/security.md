@@ -74,8 +74,10 @@ limits.
 - `no-new-privileges` and `cap_drop=ALL`, so setuid, file capabilities or the
   runtime's default capability set cannot elevate.
 - Core dumps are disabled (`RLIMIT_CORE=0`), so a crash cannot fill the workspace.
-- One mount (the workspace), a non-root user, a zero umask, and a harness that
-  deletes `container.config` before running submitted code.
+- The image filesystem is read-only; only the workspace and size-capped
+  `/tmp`/`/run` tmpfs are writable.
+- One persistent mount (the workspace), a non-root user, a zero umask, and a
+  harness that deletes `container.config` before running submitted code.
 - The judge stops the container before grading and reads only regular files from
   the workspace, with expected outputs in a private directory.
 - Leftover containers are pruned at startup; abandoned workspaces and output
@@ -87,6 +89,8 @@ limits.
   requires a password, and the SeaweedFS S3 gateway is configured with the
   backend/judge credentials instead of accepting anonymous requests.
 - Ansible verifies SSH host keys; provision `known_hosts` before the first run.
+- The judge connects with a separate database role that can only reach commits
+  and exercise/test-case tables; RLS policies deny it the backend-only tables.
 - Ansible Vault encrypts deployment secrets; they are rendered into files owned
   by the deployment user on the hosts. `.env` files are 0600; mounted secret
   files are left readable by the service container that consumes them. They are

@@ -262,6 +262,15 @@ func (c *Client) Create(ctx context.Context, rc RunConfig) (*Container, error) {
 // nothing here was private from the container to begin with.
 const containerUmask = "0000"
 
+// The root filesystem is read-only; these are the only writable tmpfs mounts.
+// /tmp is for compiler and runtime scratch files, /run for tools that expect a
+// writable runtime directory. Both are sized so a submission cannot fill host
+// memory through them.
+const (
+	defaultTmpfsBytes = 256 << 20
+	runTmpfsBytes     = 16 << 20
+)
+
 // specFor renders the spec of a graded run's container. Everything that keeps a
 // submission inside it — namespaces, the missing network, the cgroup limits, the
 // mount options — is decided here, and the function is separate from Create so
@@ -296,15 +305,47 @@ func specFor(rc RunConfig, limits Limits) *specgen.SpecGenerator {
 	// See containerUmask: without it the judge cannot clean up what the run
 	// wrote, because the container's uid is not the judge's.
 	s.Umask = containerUmask
-	s.Mounts = []spec.Mount{{
-		Type:        "bind",
-		Source:      rc.MountSource,
-		Destination: "/root",
-		// "z" relabels the workspace for container access (required on
-		// SELinux hosts, ignored elsewhere); without it the container's
-		// user cannot write to the bind mount even at 0777.
-		Options: []string{"rw", "z"},
-	}}
+
+	// Freeze the image filesystem. The workspace is the only writable bind
+	// mount; compilers and runtimes get size-capped scratch space instead of a
+	// writable image, so a submission cannot modify the harness or persist
+	// anything outside its own run.
+	readOnly := true
+	s.ReadOnlyFilesystem = &readOnly
+	// Do not let podman add its own uncapped /tmp: the explicit mounts below are
+	// the only writable tmpfs and both carry a size option.
+	readWriteTmpfs := false
+	s.ReadWriteTmpfs = &readWriteTmpfs
+
+	tmpfsBytes := limits.TmpfsBytes
+	if tmpfsBytes <= 0 {
+		tmpfsBytes = defaultTmpfsBytes
+	}
+	s.Mounts = []spec.Mount{
+		{
+			Type:        "bind",
+			Source:      rc.MountSource,
+			Destination: "/root",
+			// "z" relabels the workspace for container access (required on
+			// SELinux hosts, ignored elsewhere); without it the container's
+			// user cannot write to the bind mount even at 0777.
+			Options: []string{"rw", "z"},
+		},
+		{
+			Type:        "tmpfs",
+			Destination: "/tmp",
+			Options: []string{
+				"rw", "nosuid", "nodev", fmt.Sprintf("size=%d", tmpfsBytes),
+			},
+		},
+		{
+			Type:        "tmpfs",
+			Destination: "/run",
+			Options: []string{
+				"rw", "nosuid", "nodev", fmt.Sprintf("size=%d", runTmpfsBytes),
+			},
+		},
+	}
 
 	return s
 }

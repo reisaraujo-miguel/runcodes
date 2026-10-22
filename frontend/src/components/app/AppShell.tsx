@@ -63,6 +63,7 @@ function SidebarNav({
 }) {
   return (
     <nav
+      aria-label="Navegação principal"
       className={cn(
         "flex-1 space-y-6 overflow-y-auto py-4",
         collapsed ? "px-2" : "px-3",
@@ -198,7 +199,15 @@ export function AppShell() {
 
   return (
     <div className="bg-muted/30 min-h-svh">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:bg-background focus:ring-ring focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-md focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:ring-2"
+      >
+        Pular para o conteúdo
+      </a>
+
       <aside
+        aria-label="Barra lateral"
         className={cn(
           "fixed inset-y-0 left-0 z-40 hidden border-r transition-[width] duration-200 ease-out lg:block",
           collapsed ? "w-16" : "w-64",
@@ -215,6 +224,7 @@ export function AppShell() {
 
       <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
         <SheetContent
+          id="mobile-navigation"
           side="left"
           showCloseButton={false}
           className="bg-sidebar w-72 gap-0 p-0"
@@ -240,6 +250,9 @@ export function AppShell() {
             variant="ghost"
             size="icon"
             aria-label="Abrir menu"
+            aria-expanded={menuOpen}
+            aria-controls="mobile-navigation"
+            aria-haspopup="dialog"
             onClick={() => {
               setMenuOpen(true);
             }}
@@ -254,6 +267,8 @@ export function AppShell() {
         </header>
 
         <main
+          id="main-content"
+          tabIndex={-1}
           className={cn(
             "w-full",
             workspaceLayout

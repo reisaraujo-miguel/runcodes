@@ -62,6 +62,9 @@ type Config struct {
 	ContainerMemoryBytes int64
 	ContainerPidsLimit   int64
 	ContainerCPUQuota    int64
+	// ContainerTmpfsBytes caps the writable tmpfs at /tmp when the root
+	// filesystem is read-only (compilers and runtimes need scratch space).
+	ContainerTmpfsBytes int64
 
 	// MaxCompareFileBytes bounds the two files a test case is graded from, so a
 	// submission cannot force the judge to allocate without limit.
@@ -186,6 +189,7 @@ func Load() (*Config, error) {
 		ContainerMemoryBytes: envInt64("JUDGE_CONTAINER_MEMORY_BYTES", 1536*1024*1024),
 		ContainerPidsLimit:   envInt64("JUDGE_CONTAINER_PIDS_LIMIT", 256),
 		ContainerCPUQuota:    envInt64("JUDGE_CONTAINER_CPU_QUOTA", 100000),
+		ContainerTmpfsBytes:  envInt64("JUDGE_CONTAINER_TMPFS_BYTES", 256*1024*1024),
 
 		MaxCompareFileBytes: envInt64("JUDGE_MAX_COMPARE_FILE_BYTES", 16*1024*1024),
 		MaxArtifactBytes:    envInt64("JUDGE_MAX_ARTIFACT_BYTES", 64*1024*1024),
@@ -239,6 +243,10 @@ func (c *Config) validate() error {
 	// configuration mistake rather than a way to disable it.
 	if c.ContainerMemoryBytes < 0 || c.ContainerPidsLimit < 0 || c.ContainerCPUQuota < 0 {
 		return fmt.Errorf("container limits must not be negative")
+	}
+
+	if c.ContainerTmpfsBytes <= 0 {
+		return fmt.Errorf("JUDGE_CONTAINER_TMPFS_BYTES must be positive")
 	}
 
 	// 0 means "use whatever the language image sets"; a negative value is a mistake.

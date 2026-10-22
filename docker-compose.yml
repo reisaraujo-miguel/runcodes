@@ -135,14 +135,16 @@ services:
       JUDGE_PODMAN_URI: "unix:///run/podman/podman.sock"
       JUDGE_EXEC_DIR: "/exec"
       JUDGE_EXEC_DIR_REMOTE: "${PWD}/exec"
+      JUDGE_CONTAINER_TMPFS_BYTES: "${JUDGE_CONTAINER_TMPFS_BYTES:-268435456}"
       # Required: without it the judge refuses every /v1 request, because the API
       # serves other people's submissions and outputs.
       JUDGE_AUTH_TOKEN: "${RUNCODES_JUDGE_TOKEN:?RUNCODES_JUDGE_TOKEN must be set}"
       RUNCODES_DB_HOST: "database"
       RUNCODES_DB_PORT: "5432"
-      # The application role, not the database owner (database/schema/05-app-role.sh).
-      RUNCODES_DB_USER: "runcodes_app"
-      RUNCODES_DB_PASSWORD: "${RUNCODES_DB_APP_PASSWORD:?RUNCODES_DB_APP_PASSWORD must be set}"
+      # The judge role, not the backend role: it can only read exercises/test
+      # cases and claim/update commits (database/schema/05-app-role.sh).
+      RUNCODES_DB_USER: "runcodes_judge"
+      RUNCODES_DB_PASSWORD: "${RUNCODES_DB_JUDGE_PASSWORD:?RUNCODES_DB_JUDGE_PASSWORD must be set}"
       RUNCODES_DB_NAME: "runcodes"
       RUNCODES_S3_ENDPOINT: "http://seaweed:8333"
       RUNCODES_S3_REGION: "sa-east-1"
@@ -176,8 +178,9 @@ services:
       POSTGRES_USER: runcodes
       POSTGRES_DB: runcodes
       POSTGRES_PASSWORD: "${RUNCODES_DB_PASSWORD:?RUNCODES_DB_PASSWORD must be set}"
-      # Only read by 05-app-role.sh, which creates the role the services use.
+      # Only read by 05-app-role.sh, which creates the roles the services use.
       RUNCODES_DB_APP_PASSWORD: "${RUNCODES_DB_APP_PASSWORD:?RUNCODES_DB_APP_PASSWORD must be set}"
+      RUNCODES_DB_JUDGE_PASSWORD: "${RUNCODES_DB_JUDGE_PASSWORD:?RUNCODES_DB_JUDGE_PASSWORD must be set}"
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=en_US.utf8 --lc-ctype=en_US.utf8"
     volumes:
       - runcodes-db-vol:/var/lib/postgresql/

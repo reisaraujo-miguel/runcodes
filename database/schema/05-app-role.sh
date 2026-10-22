@@ -1,17 +1,24 @@
 #!/bin/bash
 #
-# Creates the role the services log in as, and grants it what it needs.
+# Creates the two service roles and grants each what it needs.
 #
 # The backend and the judge must not connect as the database owner: `runcodes` is
 # the superuser the postgres image creates from POSTGRES_USER, so a SQL injection
 # in either service would be able to read every database on the host, disable
-# constraints, and drop the schema. This role owns nothing and cannot change the
-# schema; a CI check asserts exactly that (see .github/workflows/tests.yml).
+# constraints, and drop the schema. Both roles own nothing and cannot change the
+# schema; CI asserts what each one can and cannot reach.
+#
+# The judge gets a narrower role than the backend on purpose. It only reads the
+# exercise/test-case tables and claims/updates commits; it has no access to
+# users, tokens, enrollments, offerings or platform settings. RLS policies on
+# the backend-only tables (see the enable_rls migration) deny it again even if a
+# future grant is too broad.
 #
 # Runs as the database image's init step (as POSTGRES_USER), and is idempotent so
 # it can also be re-run against a live database to rotate the password:
 #
-#   RUNCODES_DB_APP_PASSWORD='...' PGHOST=localhost PGPORT=5432 PGUSER=runcodes \
+#   RUNCODES_DB_APP_PASSWORD='...' RUNCODES_DB_JUDGE_PASSWORD='...' \
+#     PGHOST=localhost PGPORT=5432 PGUSER=runcodes \
 #     PGPASSWORD="$RUNCODES_DB_PASSWORD" PGDATABASE=runcodes \
 #     ./database/schema/05-app-role.sh
 #
@@ -21,13 +28,15 @@
 set -eu
 
 app_password="${RUNCODES_DB_APP_PASSWORD:?RUNCODES_DB_APP_PASSWORD must be set}"
+judge_password="${RUNCODES_DB_JUDGE_PASSWORD:?RUNCODES_DB_JUDGE_PASSWORD must be set}"
 
 db_user="${POSTGRES_USER:-${PGUSER:-postgres}}"
 db_name="${POSTGRES_DB:-${PGDATABASE:-${db_user}}}"
 
 psql -v ON_ERROR_STOP=1 \
 	--username "${db_user}" --dbname "${db_name}" \
-	--set app_password="${app_password}" <<'EOSQL'
+	--set app_password="${app_password}" \
+	--set judge_password="${judge_password}" <<'EOSQL'
 -- Create the role unless it is already there. \gexec runs the row the query
 -- returns as SQL, which is how this avoids a DO block around a utility command.
 SELECT 'CREATE ROLE runcodes_app'
@@ -44,6 +53,30 @@ ALTER ROLE runcodes_app WITH
 	NOINHERIT
 	NOBYPASSRLS
 	PASSWORD :'app_password';
+
+-- The judge has its own role. It cannot read users, tokens, enrollments,
+-- offerings or platform settings; the RLS migration denies those tables again
+-- as defense in depth.
+SELECT 'CREATE ROLE runcodes_judge'
+ WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'runcodes_judge') \gexec
+
+ALTER ROLE runcodes_judge WITH
+	LOGIN
+	NOSUPERUSER
+	NOCREATEDB
+	NOCREATEROLE
+	NOINHERIT
+	NOBYPASSRLS
+	PASSWORD :'judge_password';
+
+REVOKE ALL ON SCHEMA public FROM runcodes_judge;
+GRANT USAGE ON SCHEMA public TO runcodes_judge;
+
+-- The judge's entire database surface: claim/update commits, read exercises and
+-- test cases. No sequences: it only updates existing rows.
+GRANT SELECT, UPDATE ON commits TO runcodes_judge;
+GRANT SELECT ON exercises, exercises_test_cases,
+	exercises_test_cases_files, exercises_compilation_files TO runcodes_judge;
 
 -- Row access, and nothing else: no ownership, and no CREATE on the schema
 -- (which PostgreSQL 15+ stopped granting to PUBLIC too).
@@ -63,4 +96,4 @@ ALTER DEFAULT PRIVILEGES FOR ROLE runcodes IN SCHEMA public
 	GRANT USAGE, SELECT ON SEQUENCES TO runcodes_app;
 EOSQL
 
-echo "app-role: runcodes_app reads and writes rows; it cannot change the schema"
+echo "app-role: runcodes_app reads/writes rows; runcodes_judge reads only judging tables"
