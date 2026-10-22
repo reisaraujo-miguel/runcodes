@@ -61,8 +61,12 @@ func initStorage() error {
 	opts := []func(*awsconfig.LoadOptions) error{
 		awsconfig.WithRegion(s3Config.Region),
 		// Client spans for every S3 request; the SDK propagates the request
-		// context, so these become children of the submission's trace.
+		// context, so these become children of the submission's trace. The timeout
+		// bounds a stalled SeaweedFS: handlers inherit the request context, which
+		// has no deadline of its own, so without this a single hung read holds an
+		// HTTP goroutine (and sometimes an open transaction) indefinitely.
 		awsconfig.WithHTTPClient(&http.Client{
+			Timeout:   60 * time.Second,
 			Transport: telemetry.Transport(http.DefaultTransport),
 		}),
 	}
@@ -279,6 +283,71 @@ func DeleteFileObject(ctx context.Context, key string) error {
 		Key:    aws.String(key),
 	}); err != nil {
 		return fmt.Errorf("deleting file object: %w", err)
+	}
+
+	return nil
+}
+
+// deleteObjectsBatchSize is the S3 DeleteObjects limit per request.
+const deleteObjectsBatchSize = 1000
+
+/*
+DeleteCaseObjects removes several objects from the cases bucket in batches, so
+deleting a class does not make one HTTP request per test-case file.
+*/
+func DeleteCaseObjects(ctx context.Context, keys []string) error {
+	return deleteObjectsInBucket(ctx, func(b Buckets) string { return b.Cases }, keys)
+}
+
+/*
+DeleteFileObjects removes several objects from the files bucket in batches.
+*/
+func DeleteFileObjects(ctx context.Context, keys []string) error {
+	return deleteObjectsInBucket(ctx, func(b Buckets) string { return b.Files }, keys)
+}
+
+/*
+DeleteCommitObjects removes several submitted sources from the commits bucket
+in batches.
+*/
+func DeleteCommitObjects(ctx context.Context, keys []string) error {
+	return deleteObjectsInBucket(ctx, func(b Buckets) string { return b.Commits }, keys)
+}
+
+func deleteObjectsInBucket(
+	ctx context.Context, bucketName func(Buckets) string, keys []string,
+) error {
+	if len(keys) == 0 {
+		return nil
+	}
+
+	client, buckets, err := Client()
+	if err != nil {
+		return err
+	}
+	bucket := bucketName(buckets)
+
+	for start := 0; start < len(keys); start += deleteObjectsBatchSize {
+		end := min(start+deleteObjectsBatchSize, len(keys))
+
+		objects := make([]types.ObjectIdentifier, 0, end-start)
+		for _, key := range keys[start:end] {
+			objects = append(objects, types.ObjectIdentifier{Key: aws.String(key)})
+		}
+
+		out, err := client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+			Bucket: aws.String(bucket),
+			Delete: &types.Delete{Objects: objects, Quiet: aws.Bool(true)},
+		})
+		if err != nil {
+			return fmt.Errorf("deleting %d object(s) from %s: %w", len(objects), bucket, err)
+		}
+		if out != nil && len(out.Errors) > 0 {
+			return fmt.Errorf(
+				"deleting objects from %s: %d failed, first: %s",
+				bucket, len(out.Errors), aws.ToString(out.Errors[0].Message),
+			)
+		}
 	}
 
 	return nil

@@ -1026,6 +1026,22 @@ func deleteFileObjectBestEffort(ctx context.Context, key string) {
 }
 
 /*
+canReadExerciseContent reports whether the caller may read an exercise's
+attachments. It applies the same enrollment and visibility rules as GetExercise
+and ListTestCases: a removed or not-yet-open exercise is hidden from students,
+not just from the exercise metadata endpoint.
+*/
+func canReadExerciseContent(acc *exerciseAccess) error {
+	if !acc.canAuthor && !acc.isEnrolled {
+		return ErrNotEnrolled
+	}
+	if !acc.canAuthor && !exerciseVisible(acc.exercise, nowFunc()) {
+		return ErrExerciseNotFound
+	}
+	return nil
+}
+
+/*
 ListAttachedFiles returns an exercise's attachments. Owners and enrolled
 students may read them.
 */
@@ -1040,8 +1056,8 @@ func ListAttachedFiles(
 	if err != nil {
 		return nil, err
 	}
-	if !acc.canAuthor && !acc.isEnrolled {
-		return nil, ErrNotEnrolled
+	if err := canReadExerciseContent(acc); err != nil {
+		return nil, err
 	}
 	return queryAttachedFiles(ctx, exerciseID)
 }
@@ -1101,8 +1117,8 @@ func GetAttachedFile(
 	if err != nil {
 		return nil, err
 	}
-	if !acc.canAuthor && !acc.isEnrolled {
-		return nil, ErrNotEnrolled
+	if err := canReadExerciseContent(acc); err != nil {
+		return nil, err
 	}
 
 	var path string

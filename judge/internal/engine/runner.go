@@ -283,6 +283,18 @@ func (e *Engine) runContainer(ctx context.Context, commit *model.Commit, ws *wor
 		outcome.compilationMessage = readLimited(filepath.Join(ws.BaseDir, "compilation.out"), e.cfg.MaxOutputFileSize)
 		outcome.compilationError = readLimited(filepath.Join(ws.BaseDir, "compilation.err"), e.cfg.MaxOutputFileSize)
 
+		// The compiler's stderr is not the only failure signal: a compiler can
+		// fail while writing nothing to stderr, and the harness wraps it in
+		// `timeout`, which reports expiry as exit status 124. Treat a non-zero
+		// compile status as a compilation error so the student does not get a
+		// run graded against an executable that was never produced.
+		if outcome.compilationError == "" {
+			compileInfo := readMonitor(filepath.Join(ws.BaseDir, "compilation.monitor_out"))
+			if reason, failed := exitFailureMessage(compileInfo); failed {
+				outcome.compilationError = fmt.Sprintf("compilation failed: %s", reason)
+			}
+		}
+
 		// If there was a compilation error, set the outcome status to RunCompilationError and report it to the event hub.
 		if outcome.compilationError != "" {
 			outcome.status = model.RunCompilationError

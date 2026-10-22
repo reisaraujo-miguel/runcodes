@@ -1,6 +1,11 @@
 package main
 
 import (
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -67,4 +72,44 @@ func hasRoute(router chi.Routes, path string) bool {
 		router.Match(chi.NewRouteContext(), "POST", path) ||
 		router.Match(chi.NewRouteContext(), "PUT", path) ||
 		router.Match(chi.NewRouteContext(), "DELETE", path)
+}
+
+func TestLimitRequestBodyCapsAllNonMultipart(t *testing.T) {
+	// The cap must not depend on the Content-Type header: a client can omit it.
+	for _, contentType := range []string{"application/json", ""} {
+		t.Run("content type "+contentType, func(t *testing.T) {
+			var readErr error
+			handler := limitRequestBody(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				_, readErr = io.ReadAll(r.Body)
+			}))
+
+			request := httptest.NewRequest(http.MethodPost, "/",
+				strings.NewReader(strings.Repeat("a", maxRequestBodyBytes+1)))
+			if contentType != "" {
+				request.Header.Set("Content-Type", contentType)
+			}
+			handler.ServeHTTP(httptest.NewRecorder(), request)
+
+			var maxBytesErr *http.MaxBytesError
+			if !errors.As(readErr, &maxBytesErr) {
+				t.Fatalf("body read error = %v, want *http.MaxBytesError", readErr)
+			}
+		})
+	}
+}
+
+func TestLimitRequestBodyLeavesMultipartAlone(t *testing.T) {
+	var readErr error
+	handler := limitRequestBody(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		_, readErr = io.ReadAll(r.Body)
+	}))
+
+	body := strings.Repeat("a", maxRequestBodyBytes+1)
+	request := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	request.Header.Set("Content-Type", "multipart/form-data; boundary=x")
+	handler.ServeHTTP(httptest.NewRecorder(), request)
+
+	if readErr != nil {
+		t.Fatalf("multipart body was capped: %v", readErr)
+	}
 }

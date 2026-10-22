@@ -173,8 +173,10 @@ password. Hex/base64url output is safe. The preflight rejects `$` and the
 `REPLACE_WITH` placeholders.
 :::
 
-Secrets are rendered into root-owned `.env` files and secret files on the hosts.
-They are never committed and never baked into images.
+Secrets are rendered into `.env` files and secret files owned by the deployment
+user on the hosts. `.env` files are 0600; mounted secret files are left readable
+by the service container that consumes them. They are never committed and never
+baked into images.
 
 ## 4. Application images
 
