@@ -62,6 +62,13 @@ Enumerated types:
 Indexes cover foreign keys and a partial index on `commits (created_at) WHERE
 status = 'queued'` for the queue claim.
 
+Foreign keys the application always writes are `NOT NULL`: offerings have an
+owner, exercises belong to an offering and creator, test cases/files belong to
+their exercise, and commits belong to a user and exercise. The exceptions are
+intentional: `alerts.offering_id`/`user_id` may be global, and
+`system_logs.user_id`/`user_messages.user_id` are nullable for system/broadcast
+rows.
+
 ## Role model
 
 Two roles matter:
