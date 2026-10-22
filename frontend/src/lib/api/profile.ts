@@ -10,6 +10,8 @@ export interface Profile {
   confirmed: boolean;
   code_editor_enabled: boolean;
   created_at: string;
+  /** A requested email change waiting for the link sent to the new address. */
+  pending_email: string;
 }
 
 /** Fields the caller may change on their own account. */
@@ -18,6 +20,8 @@ export interface ProfilePayload {
   email?: string;
   org_id?: string;
   code_editor_enabled?: boolean;
+  /** Required only when email changes. */
+  current_password?: string;
 }
 
 export interface PasswordPayload {

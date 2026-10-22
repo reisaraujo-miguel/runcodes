@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Spinner } from "@/components/ui/spinner";
+import { useAuth } from "@/hooks/use-auth";
 import { useSubmit } from "@/hooks/use-submit";
 import { changePassword } from "@/lib/api/profile";
 
@@ -29,6 +30,7 @@ function isValidPassword(password: string): boolean {
 
 /** Replaces the caller's password after checking the current one. */
 export function PasswordForm() {
+  const { signOut } = useAuth();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -58,9 +60,10 @@ export function PasswordForm() {
         new_password: newPassword,
         new_password_confirmation: confirmation,
       });
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmation("");
+      // The password change bumps the account's token version, so the current
+      // cookie is already invalid. Drop the client session and let the route
+      // guard send the user to the login page.
+      await signOut();
     }, "Senha alterada com sucesso.");
   }
 

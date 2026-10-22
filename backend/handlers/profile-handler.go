@@ -63,7 +63,18 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 
 	profile, err := services.UpdateProfile(ctx, userID, &req)
 	if err != nil {
-		writeServiceError(ctx, w, err)
+		switch {
+		case errors.Is(err, services.ErrCurrentPasswordRequired):
+			WriteResponse(w, http.StatusBadRequest,
+				models.Error{Message: err.Error()},
+			)
+		case errors.Is(err, services.ErrInvalidCredentials):
+			WriteResponse(w, http.StatusUnauthorized,
+				models.Error{Message: "current password is incorrect"},
+			)
+		default:
+			writeServiceError(ctx, w, err)
+		}
 		return
 	}
 
@@ -72,8 +83,8 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 
 /*
 ChangePassword replaces the caller's password after checking the current one.
-The session cookie is left in place: it is a stateless token, so the client keeps
-working with it until it expires.
+The update bumps the account's token_version, so the current cookie stops working
+on the next request; the client must sign in again with the new password.
 */
 func ChangePassword(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

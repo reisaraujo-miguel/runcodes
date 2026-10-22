@@ -189,11 +189,11 @@ func setSessionCookie(w http.ResponseWriter, tokenString string) {
 /*
 LogOut clears the session cookie.
 
-There is no server-side session store, so the token itself stays valid until it
-expires: this ends the browser's session (the credential is dropped, so the next
-request is unauthenticated) rather than revoking the token. Rotating
-RUNCODES_JWT_SECRET invalidates all issued tokens; changing a password does not
-revoke existing sessions (a known limitation).
+There is no server-side session store, so logout itself only clears the browser
+cookie: a copied token stays valid until it expires. Changing the password,
+completing an email change, or an admin changing the account's role or
+confirmation bumps the account's token_version, which invalidates every issued
+token; rotating RUNCODES_JWT_SECRET invalidates all tokens at once.
 */
 func LogOut(w http.ResponseWriter, _ *http.Request) {
 	http.SetCookie(w, &http.Cookie{
@@ -307,10 +307,11 @@ func RefreshAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	newClaims := map[string]any{
-		"id":    user.ID,
-		"name":  user.Name,
-		"email": user.Email,
-		"role":  user.Role,
+		"id":            user.ID,
+		"name":          user.Name,
+		"email":         user.Email,
+		"role":          user.Role,
+		"token_version": user.TokenVersion,
 	}
 	jwtauth.SetIssuedAt(newClaims, time.Now())
 	jwtauth.SetExpiryIn(newClaims, validation.SessionTTL)

@@ -54,9 +54,13 @@ verification".
 { "token": "<token from the link>" }
 ```
 
-Consumes the token and marks the account confirmed. Returns `204`. An unknown,
+Consumes the token and marks the account confirmed. Returns `204`. The same
+endpoint completes a pending email change: the token issued to the new address
+swaps `pending_email` into `email`, clears the pending value, confirms the
+account and bumps `token_version` (signing out existing sessions). An unknown,
 consumed or expired token returns `400` with one message, so the link's state is
-not disclosed. Rate limited to 10 requests/minute per IP.
+not disclosed; a pending address taken by another account returns `409`. Rate
+limited to 10 requests/minute per IP.
 
 ### `POST /user/resend-verification`
 
@@ -148,8 +152,10 @@ than trusting stale claims. Returns the same shape as `GET /auth`.
 ### `POST /user/logout`
 
 Clears the `jwt` cookie and returns `204`. Available even to an unconfirmed
-account, so the browser can always drop a dead session. There is no server-side
-revocation: the token remains valid until it expires if it was copied elsewhere.
+account, so the browser can always drop a dead session. Logout itself does not
+bump the account's session version, so a copied token remains valid until it
+expires; password changes, email changes and admin role/confirmation changes do
+invalidate every issued token.
 
 ## Profile routes
 
@@ -164,7 +170,8 @@ revocation: the token remains valid until it expires if it was copied elsewhere.
   "role": "professor",
   "confirmed": true,
   "code_editor_enabled": true,
-  "created_at": "2026-01-10T12:00:00Z"
+  "created_at": "2026-01-10T12:00:00Z",
+  "pending_email": ""
 }
 ```
 
@@ -177,14 +184,22 @@ Partial update. All fields are optional:
   "name": "Ada L.",
   "email": "ada@example.org",
   "org_id": "7654321",
-  "code_editor_enabled": false
+  "code_editor_enabled": false,
+  "current_password": "S3cure!pass"
 }
 ```
+
+`current_password` is required only when `email` changes. An email change is
+two-step: the new address is stored as `pending_email`, a verification link is
+sent to it, and the advertised `email` only changes after that link is used. The
+current address stays active until then. `pending_email` in the response is the
+address awaiting confirmation.
 
 | Status | Meaning |
 | --- | --- |
 | `200` | updated profile |
-| `400` | invalid input |
+| `400` | invalid input or `current_password` missing for an email change |
+| `401` | `current_password` is incorrect |
 | `409` | email or organization id already in use |
 
 Role and confirmation are not editable here; an admin changes them through

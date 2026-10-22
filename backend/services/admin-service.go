@@ -139,6 +139,8 @@ func AdminUpdateUser(
 		return nil, ErrServer
 	}
 
+	oldEmail, oldRole, oldConfirmed := user.Email, user.Role, user.Confirmed
+
 	if req.Name != nil {
 		user.Name = strings.TrimSpace(*req.Name)
 		if err := validation.ValidateRequiredString(
@@ -171,12 +173,29 @@ func AdminUpdateUser(
 		user.Confirmed = *req.Confirmed
 	}
 
+	emailChanged := user.Email != oldEmail
+	if emailChanged && req.Confirmed == nil {
+		// A new address the owner has not proved control of is not confirmed. An
+		// admin who explicitly sets confirmed=true in the same request overrides
+		// this, which is the deliberate trusted-admin path.
+		user.Confirmed = false
+	}
+
+	bumpVersion := 0
+	if emailChanged || user.Role != oldRole || user.Confirmed != oldConfirmed {
+		bumpVersion = 1
+	}
+
 	_, err = database.DB.ExecContext(ctx, `
 		UPDATE users
 		SET name = $1, email = $2, org_id = NULLIF($3, ''), role = $4,
-		    confirmed = $5, updated_at = now()
+		    confirmed = $5,
+		    pending_email = CASE WHEN $7 THEN NULL ELSE pending_email END,
+		    token_version = token_version + $8,
+		    updated_at = now()
 		WHERE id = $6`,
 		user.Name, user.Email, user.OrgID, user.Role, user.Confirmed, user.ID,
+		emailChanged, bumpVersion,
 	)
 	if err != nil {
 		if pgErr, ok := err.(*pq.Error); ok &&
