@@ -42,6 +42,7 @@ environment or in a root `.env` (see [`.env.example`](.env.example)):
 export RUNCODES_JWT_SECRET="$(openssl rand -hex 32)"
 export RUNCODES_DB_PASSWORD="$(openssl rand -hex 24)"
 export RUNCODES_DB_APP_PASSWORD="$(openssl rand -hex 24)"
+export RUNCODES_DB_JUDGE_PASSWORD="$(openssl rand -hex 24)"
 export RUNCODES_REDIS_PASSWORD="$(openssl rand -hex 24)"
 export RUNCODES_JUDGE_TOKEN="$(openssl rand -hex 32)"
 export RUNCODES_S3_CREDENTIALS_KEY="$(openssl rand -hex 16)"

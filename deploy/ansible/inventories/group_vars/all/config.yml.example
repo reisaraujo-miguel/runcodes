@@ -110,6 +110,7 @@ config_runcodes_judge_poll_interval: "1s"
 config_runcodes_judge_container_memory_bytes: 1610612736
 config_runcodes_judge_container_pids_limit: 256
 config_runcodes_judge_container_cpu_quota: 100000
+config_runcodes_judge_container_tmpfs_bytes: 268435456
 
 # ---------------------------------------------------------------------------
 # OpenTelemetry (application side)

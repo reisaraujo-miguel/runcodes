@@ -89,6 +89,8 @@ limits.
   requires a password, and the SeaweedFS S3 gateway is configured with the
   backend/judge credentials instead of accepting anonymous requests.
 - Ansible verifies SSH host keys; provision `known_hosts` before the first run.
+- The judge connects with a separate database role that can only reach commits
+  and exercise/test-case tables; RLS policies deny it the backend-only tables.
 - Ansible Vault encrypts deployment secrets; they are rendered into files owned
   by the deployment user on the hosts. `.env` files are 0600; mounted secret
   files are left readable by the service container that consumes them. They are

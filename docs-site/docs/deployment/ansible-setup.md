@@ -168,7 +168,8 @@ ansible-vault encrypt inventories/group_vars/all/vault.yml
 | `vault_runcodes_jwt_secret` | session signing | `openssl rand -hex 32` |
 | `vault_runcodes_judge_token` | backend ↔ judge | `openssl rand -hex 32` |
 | `vault_runcodes_db_owner_password` | PostgreSQL owner / migrations | `openssl rand -hex 24` |
-| `vault_runcodes_db_app_password` | `runcodes_app` | `openssl rand -hex 24` |
+| `vault_runcodes_db_app_password` | `runcodes_app` (backend) | `openssl rand -hex 24` |
+| `vault_runcodes_db_judge_password` | `runcodes_judge` (judge) | `openssl rand -hex 24` |
 | `vault_runcodes_s3_access_key` | SeaweedFS S3 | `openssl rand -hex 16` |
 | `vault_runcodes_s3_secret_key` | SeaweedFS S3 | `openssl rand -hex 24` |
 | `vault_runcodes_redis_password` | Redis `requirepass` | `openssl rand -hex 24` |

@@ -71,25 +71,35 @@ rows.
 
 ## Role model
 
-Two roles matter:
+Three roles matter:
 
 | Role | Used by | Privileges |
 | --- | --- | --- |
 | `runcodes` | database container, migrations, bootstrap | owner/superuser; can change schema |
-| `runcodes_app` | backend and judge | row read/write; cannot change schema, create roles or read `pg_authid` |
+| `runcodes_app` | backend | row read/write; cannot change schema, create roles or read `pg_authid` |
+| `runcodes_judge` | judge | claim/update commits and read exercises/test cases only |
 
-`database/schema/05-app-role.sh` creates `runcodes_app` and grants it table and
-sequence access plus default privileges for future tables. It is idempotent and
-can be re-run to rotate the application password:
+`database/schema/05-app-role.sh` creates both service roles. `runcodes_app` gets
+table and sequence access plus default privileges for future tables;
+`runcodes_judge` gets only `SELECT` on the exercise/test-case tables and
+`SELECT, UPDATE` on `commits`, with no sequence or future-table defaults. The
+script is idempotent and can be re-run to rotate either password:
 
 ```bash
-RUNCODES_DB_APP_PASSWORD='...' PGHOST=localhost PGPORT=5432 PGUSER=runcodes \
+RUNCODES_DB_APP_PASSWORD='...' RUNCODES_DB_JUDGE_PASSWORD='...' \
+  PGHOST=localhost PGPORT=5432 PGUSER=runcodes \
   PGPASSWORD="$RUNCODES_DB_PASSWORD" PGDATABASE=runcodes \
   ./database/schema/05-app-role.sh
 ```
 
-The backend and judge use the application role. Migrations and the importer use
-the owner. CI asserts that `runcodes_app` cannot read the migration history or
+The backend uses the application role and the judge uses the judge role.
+Migrations and the importer use the owner. In addition, the RLS migration
+enables row-level security on backend-only tables (users, tokens, enrollments,
+offerings, settings, messages) with a policy for `runcodes_app` only; the judge
+is denied those tables even if a grant is later broadened. This is a
+service-role boundary, not per-user row filtering.
+
+CI asserts that `runcodes_app` cannot read the migration history or
 `pg_authid`.
 
 ## Bootstrapping a fresh database

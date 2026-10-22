@@ -31,6 +31,7 @@ fail() { printf '\033[0;31mFAIL\033[0m %s\n' "$*" >&2; exit 1; }
 export RUNCODES_JWT_SECRET="${RUNCODES_JWT_SECRET:-validation-only-not-a-secret}"
 export RUNCODES_DB_PASSWORD="${RUNCODES_DB_PASSWORD:-validation-only}"
 export RUNCODES_DB_APP_PASSWORD="${RUNCODES_DB_APP_PASSWORD:-validation-only}"
+export RUNCODES_DB_JUDGE_PASSWORD="${RUNCODES_DB_JUDGE_PASSWORD:-validation-only}"
 export RUNCODES_REDIS_PASSWORD="${RUNCODES_REDIS_PASSWORD:-validation-only}"
 export RUNCODES_JUDGE_TOKEN="${RUNCODES_JUDGE_TOKEN:-validation-only}"
 export RUNCODES_S3_CREDENTIALS_KEY="${RUNCODES_S3_CREDENTIALS_KEY:-validation-only}"
