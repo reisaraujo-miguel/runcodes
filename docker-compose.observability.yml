@@ -361,7 +361,7 @@ services:
     restart: unless-stopped
     environment:
       TZ: "America/Sao_Paulo"
-      REDIS_ADDR: "redis://redis:6379"
+      REDIS_ADDR: "redis://:${RUNCODES_REDIS_PASSWORD:?RUNCODES_REDIS_PASSWORD must be set}@redis:6379"
     ports:
       - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${REDIS_EXPORTER_PORT:-9121}:9121"
     mem_limit: 128m
