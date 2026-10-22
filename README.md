@@ -9,6 +9,14 @@ The original compiler engine and language images live in separate repositories
 (`compiler-engine`, `compiler-images`); they were folded into this one as
 `judge/`, `runners/` and `monitor/`.
 
+## Documentation
+
+The full documentation — architecture, the web client and every service, the
+HTTP API, both deployment paths, operations and observability — is published at
+<https://reisaraujo-miguel.github.io/runcodes/>. It is built with VitePress from
+[`docs-site/`](docs-site/); run `npm ci && npm run dev` there to work on it
+locally, or read [`docs-site/README.md`](docs-site/README.md).
+
 ## Architecture
 
 ```mermaid
@@ -74,7 +82,8 @@ nonce and the per-case limits) is in the same file.
 ├── monitor/        In-container process monitor (limits, timing, report)
 ├── database/       PostgreSQL schema, seeds, migrations and legacy import
 ├── observability/  Collector, Prometheus, Loki, Tempo, Grafana, Pyroscope and Alertmanager config
-├── docs/           Architecture, runbooks and observability guide
+├── docs/           Observability architecture and runbooks
+├── docs-site/      The documentation website (VitePress, GitHub Pages)
 ├── scripts/        Developer and observability validation scripts
 ├── docker-compose.yml
 └── docker-compose.observability.yml

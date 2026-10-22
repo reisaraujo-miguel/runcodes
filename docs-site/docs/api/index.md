@@ -1,0 +1,189 @@
+---
+title: API overview & authentication
+description: Base URLs, authentication, error format, rate limits, trace headers and the complete endpoint index.
+---
+
+# API overview & authentication
+
+The backend exposes a JSON API under `/api/v1`. In both supported deployments
+it is reached through Caddy at the same origin as the SPA, so the base URL is:
+
+```text
+http://localhost:8080/api/v1        # Docker Compose
+https://<your-domain>/api/v1        # four-machine deployment
+```
+
+The backend itself listens on `:8443` and is loopback-only in Compose. The judge
+has a separate internal API; see [Judge API](./judge.md).
+
+## Authentication
+
+The browser uses a session cookie:
+
+```http
+Set-Cookie: jwt=<signed JWT>; HttpOnly; SameSite=Strict; Secure; Path=/
+```
+
+It is set by `POST /api/v1/user/login` and is valid for 30 minutes, sliding.
+`POST /api/v1/auth/refresh` renews it. The frontend calls the API with
+`credentials: "include"`; JavaScript cannot read the token.
+
+Scripts can send the token as a bearer header instead:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" https://<host>/api/v1/user/profile
+```
+
+There is no API-key or OAuth flow. `POST /api/v1/user/login` returns an empty
+body and the cookie; to obtain a token for a script, capture the `jwt` cookie
+from the login response:
+
+```bash
+curl -c cookies.txt -H 'Content-Type: application/json' \
+  -d '{"email":"admin@admin.com","password":"..."}' \
+  http://localhost:8080/api/v1/user/login
+
+TOKEN=$(awk '$6 == "jwt" { print $7 }' cookies.txt)
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/v1/user/profile
+```
+
+## Authorization
+
+Authentication is checked by the JWT middleware. Authorization is checked per
+route:
+
+| Requirement | Routes |
+| --- | --- |
+| signed in | all protected routes |
+| confirmed email | everything except logout |
+| professor or admin | class management routes |
+| class owner or co-professor | exercise/test-case/file authoring |
+| class membership | reading and submitting to a class |
+| admin | `/api/v1/admin/*` |
+
+A caller who is authenticated but not allowed receives `403`; a missing or
+expired session receives `401`.
+
+## Request and response conventions
+
+- Requests and responses are JSON unless noted (submissions and authoring
+  uploads are `multipart/form-data`; source/output downloads are streams).
+- Times are RFC 3339 strings with an offset.
+- Errors use a single key:
+
+  ```json
+  { "error_msg": "the deadline for this exercise has passed" }
+  ```
+
+- `201 Created` responses include the created object (or, for a submission, the
+  commit handle).
+- `204 No Content` responses have no body.
+- There is no pagination. Lists that can grow are bounded by the API: submission
+  history returns at most 50 entries.
+
+## Rate limits
+
+| Scope | Limit |
+| --- | --- |
+| API (all routes) | 100 requests/minute per client IP |
+| Verification (verify + resend) | 10 requests/minute per client IP |
+
+The client IP is taken from the first `X-Forwarded-For` hop (Caddy). Limits are
+in-memory per process; a multi-instance deployment does not share them.
+
+## Tracing headers
+
+Every response carries:
+
+| Header | Meaning |
+| --- | --- |
+| `TraceId` | 32 hex-character trace id, even when tracing is disabled |
+| `X-Trace-Sampled` | whether the trace was sampled |
+
+The id can be pasted into Tempo or grepped in Loki. Send a W3C `traceparent` to
+join an existing trace.
+
+## CORS
+
+The API allows exactly one frontend origin (`FRONTEND_ORIGIN`, default
+`http://localhost:5173`), with credentials enabled. The production SPA is
+same-origin through Caddy, so CORS is only relevant for a separate development
+origin. A wildcard origin is rejected at startup.
+
+## Endpoint index
+
+### Probes and public settings
+
+| Method | Path | Description |
+| --- | --- | --- |
+| GET | `/healthz` | liveness (no dependencies) |
+| GET | `/readyz` | PostgreSQL required, judge informational |
+| GET | `/api/v1/settings/public` | contact email and disclaimer |
+
+### Accounts
+
+| Method | Path | Who |
+| --- | --- | --- |
+| POST | `/api/v1/user/signup` | public |
+| POST | `/api/v1/user/login` | public |
+| POST | `/api/v1/user/verify-email` | public |
+| POST | `/api/v1/user/resend-verification` | public |
+| POST | `/api/v1/user/logout` | signed in |
+| GET | `/api/v1/auth` | signed in |
+| POST | `/api/v1/auth/refresh` | signed in |
+| GET / PUT | `/api/v1/user/profile` | signed in |
+| PUT | `/api/v1/user/password` | signed in |
+
+### Classes and exercises
+
+| Method | Path | Who |
+| --- | --- | --- |
+| GET | `/api/v1/user/offerings` | signed in |
+| GET | `/api/v1/user/offerings/{id}` | class member |
+| GET | `/api/v1/user/exercises` | signed in |
+| POST | `/api/v1/offerings/enroll` | signed in |
+| DELETE | `/api/v1/offerings/{id}/enrollment` | signed in |
+| GET | `/api/v1/offerings` | professor/admin |
+| POST | `/api/v1/offerings/create` | professor/admin |
+| GET / PUT / DELETE | `/api/v1/offerings/{id}` | owner / admin |
+| GET / POST | `/api/v1/offerings/{id}/members` | owner |
+| PUT / DELETE | `/api/v1/offerings/{id}/members/{userId}` | owner |
+| POST | `/api/v1/offerings/{offeringId}/exercises` | staff |
+| GET | `/api/v1/offerings/{offeringId}/exercises` | member/staff |
+| GET / PUT / DELETE | `/api/v1/exercises/{id}` | member / staff |
+| GET / POST | `/api/v1/exercises/{id}/test-cases` | member / staff |
+| PUT / DELETE | `/api/v1/exercises/{id}/test-cases/{caseId}` | staff |
+| GET / POST | `/api/v1/exercises/{id}/compilation-files` | member / staff |
+| GET / DELETE | `/api/v1/exercises/{id}/compilation-files/{fileId}` | member / staff |
+| GET / POST | `/api/v1/exercises/{id}/attached-files` | member / staff |
+| GET / DELETE | `/api/v1/exercises/{id}/attached-files/{fileId}` | member / staff |
+| GET | `/api/v1/allowed-file-types` | signed in |
+
+### Submissions
+
+| Method | Path | Who |
+| --- | --- | --- |
+| POST | `/api/v1/submissions` | enrolled student or staff |
+| GET | `/api/v1/submissions/{id}/events` | owner, professor, admin |
+| GET | `/api/v1/submissions/{id}/source` | owner |
+| GET | `/api/v1/submissions/{id}/output` | owner |
+| GET | `/api/v1/exercises/{id}/submissions` | owner |
+
+### Administration
+
+| Method | Path | Who |
+| --- | --- | --- |
+| GET | `/api/v1/admin/users` | admin |
+| PUT / DELETE | `/api/v1/admin/users/{id}` | admin |
+| GET | `/api/v1/admin/offerings` | admin |
+| PUT / DELETE | `/api/v1/admin/offerings/{id}` | admin |
+| GET | `/api/v1/admin/offerings/{id}/members` | admin |
+| GET / PUT | `/api/v1/admin/settings` | admin |
+
+The detailed pages document request bodies, responses and edge cases:
+
+- [Users & accounts](./auth.md)
+- [Classes & exercises](./classes.md)
+- [Submissions & events](./submissions.md)
+- [Administration](./admin.md)
+- [Judge API](./judge.md)
