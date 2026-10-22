@@ -51,7 +51,7 @@ groups:
       - alert: RunCodesObservabilityTargetDown
         expr: |
           up{
-            job=~"prometheus|alertmanager|loki|tempo|grafana|otel-collector|otel-collector-internal|node-exporter|postgres-exporter|redis-exporter|blackbox-http"
+            job=~"prometheus|alertmanager|loki|tempo|grafana|pyroscope|alloy|otel-collector|otel-collector-internal|node-exporter|postgres-exporter|redis-exporter|blackbox-http"
           } == 0
         for: 2m
         labels:
@@ -100,6 +100,36 @@ groups:
         annotations:
           summary: "{{ $labels.service }} has more than 5% error spans"
           description: "Tempo span metrics show a {{ $value | humanizePercentage }} error ratio. Open the service in Tempo to find the failing span."
+
+      - alert: RunCodesJudgeQueueDepthHigh
+        expr: runcodes_judge_queue_depth > 10
+        for: 10m
+        labels:
+          severity: warning
+          component: judge
+        annotations:
+          summary: "The judge queue has {{ $value }} waiting commits"
+          description: "More than 10 commits have been queued for 10 minutes. Check judge worker capacity, podman health, and the judge logs; this is the backlog students are waiting in."
+
+      - alert: RunCodesJudgeQueueStalled
+        expr: runcodes_judge_queue_depth > 0 and runcodes_judge_queue_oldest_age_seconds > 300
+        for: 5m
+        labels:
+          severity: critical
+          component: judge
+        annotations:
+          summary: "The oldest queued commit has waited more than 5 minutes"
+          description: "The judge is not draining the queue. Check that the judge is running, can reach podman, and is not stuck on an image pull or database lock."
+
+      - alert: RunCodesProfilesNotArriving
+        expr: sum(rate(pyroscope_distributor_profiles_received_total[10m])) == 0
+        for: 15m
+        labels:
+          severity: warning
+          component: profiling
+        annotations:
+          summary: "No profiles have reached Pyroscope in 15 minutes"
+          description: "Alloy is not scraping the backend/judge pprof endpoints, or the write to Pyroscope is failing. Check Alloy's component health and pyroscope_write_dropped_profiles_total."
 
       - alert: RunCodesPostgresDown
         expr: pg_up == 0

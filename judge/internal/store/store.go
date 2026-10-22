@@ -67,6 +67,25 @@ func (s *Store) Close() error { return s.db.Close() }
 // Ping reports whether Postgres is reachable (used by /readyz).
 func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
 
+// QueueStats reports how many commits are waiting and how long the oldest one
+// has been waiting. It is used by the async OTel queue metrics callback; the
+// query is intentionally independent of the claim transaction so it never
+// blocks a worker.
+func (s *Store) QueueStats(ctx context.Context) (model.QueueStats, error) {
+	var stats model.QueueStats
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT count(*),
+		       COALESCE(EXTRACT(EPOCH FROM (now() - min(created_at))), 0)::float8
+		FROM commits
+		WHERE status = 'queued'`).Scan(&stats.Depth, &stats.OldestSeconds)
+	if err != nil {
+		return model.QueueStats{}, fmt.Errorf("query queue stats: %w", err)
+	}
+
+	return stats, nil
+}
+
 // Claim atomically takes the oldest `queued` commit, marking it `compiling`.
 // It returns (nil, nil) when the queue is empty.
 func (s *Store) Claim(ctx context.Context) (*model.Commit, error) {

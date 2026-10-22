@@ -77,6 +77,14 @@ scrape_configs:
   # Synthetic probes of the platform's own health endpoints. These also make
   # /readyz call the judge, so a backend->judge trace is produced regularly even
   # when nobody uses the API.
+  - job_name: pyroscope
+    static_configs:
+      - targets: ["pyroscope:4040"]
+
+  - job_name: alloy
+    static_configs:
+      - targets: ["alloy:12345"]
+
   - job_name: blackbox-http
     metrics_path: /probe
     params:

@@ -16,6 +16,7 @@ set -euo pipefail
 root="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 state_dir="$root/.observability"
 password_file="$state_dir/grafana_admin_password"
+webhook_file="$state_dir/alertmanager_webhook_url"
 
 mkdir -p "$state_dir"
 chmod 0755 "$state_dir"
@@ -38,5 +39,19 @@ else
 fi
 
 chmod 0644 "$password_file"
+
+# Alertmanager reads its webhook URL from this file. The default is the local
+# alert sink so the smoke test works out of the box; replace the contents with a
+# real Slack/PagerDuty-compatible webhook in a real deployment, ideally through
+# your secret manager. Never commit the real URL.
+if [[ ! -s "$webhook_file" ]]; then
+  printf '%s\n' "http://alert-sink:8080/alerts" > "$webhook_file"
+  echo "observability: generated Alertmanager webhook file at $webhook_file"
+else
+  echo "observability: keeping existing Alertmanager webhook file"
+fi
+chmod 0644 "$webhook_file"
+
 echo "observability: admin user is '${GRAFANA_ADMIN_USER:-admin}'"
 echo "observability: password file $password_file (do not commit it)"
+echo "observability: Alertmanager webhook file $webhook_file (do not commit a real URL)"

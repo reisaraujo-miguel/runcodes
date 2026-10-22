@@ -56,12 +56,47 @@ bun run lint
 
 ## Observability
 
-The SPA is not instrumented with OpenTelemetry yet: browser requests are not
-traced, so traces start at Caddy/backend. The backend returns a `TraceId`
-response header and its CORS configuration allows `traceparent`/`tracestate`, so
-adding `@opentelemetry/sdk-trace-web` (or Grafana Faro) is a contained follow-up.
-See [`../docs/observability/README.md`](../docs/observability/README.md#known-limitations)
-for the full-stack context and the collector CORS requirement.
+The SPA has an opt-in OpenTelemetry Web SDK integration
+(`src/lib/telemetry/`). With the observability overlay, the frontend is built
+with:
+
+```bash
+VITE_OTEL_ENABLED=true
+VITE_OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+VITE_OTEL_SERVICE_NAME=runcodes-frontend
+```
+
+`FetchInstrumentation` creates a span for every API call and injects
+`traceparent`; the backend continues the trace, so a browser click and its API
+request (and, for submissions, the judge work) appear in one trace. The
+collector must allow the SPA's origin in its OTLP HTTP CORS configuration
+(`http://localhost:8080` and `http://localhost:5173` by default). The SDK is
+lazy-loaded and is a no-op when the variables are absent.
+
+For local `bun run dev`, copy the telemetry variables from `.env.example` and
+start the observability overlay. For a split deployment, set
+`VITE_API_ENDPOINT` to the absolute API origin as well; the SDK propagates trace
+headers only to the SPA origin and that API origin.
+
+The browser path has a real Playwright test:
+
+```bash
+# first run only
+bun run test:e2e:install
+
+# with the observability stack running
+cd ..
+make observability-browser-smoke-test
+```
+
+The test loads the SPA at `http://localhost:8080`, issues a fetch, extracts the
+`traceparent` injected by `FetchInstrumentation`, and waits for the same trace
+to appear in Tempo with both `runcodes-frontend` and `runcodes-backend` spans.
+It runs Chromium headless and keeps a trace/screenshot on failure. Set
+`PLAYWRIGHT_BROWSERS_PATH` if the browsers live outside the default cache.
+
+See [`../docs/observability/README.md`](../docs/observability/README.md) for the
+full stack, collector CORS and browser configuration.
 
 ## License
 

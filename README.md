@@ -73,7 +73,7 @@ nonce and the per-case limits) is in the same file.
 ├── runners/        Language images the judge runs submissions in
 ├── monitor/        In-container process monitor (limits, timing, report)
 ├── database/       PostgreSQL schema, seeds, migrations and legacy import
-├── observability/  Collector, Prometheus, Loki, Tempo, Grafana and Alertmanager config
+├── observability/  Collector, Prometheus, Loki, Tempo, Grafana, Pyroscope and Alertmanager config
 ├── docs/           Architecture, runbooks and observability guide
 ├── scripts/        Developer and observability validation scripts
 ├── docker-compose.yml
@@ -227,11 +227,14 @@ schema and the migration directory disagree.
 ## Observability
 
 The platform ships an opt-in OpenTelemetry stack: the backend and judge emit
-traces, metrics and structured logs over OTLP to an OpenTelemetry Collector,
-which writes traces to Tempo, logs to Loki and exposes application metrics for
-Prometheus. Grafana provides dashboards, Explore and trace/log correlation, and
-Alertmanager routes alerts from Prometheus rules (plus a Grafana-managed example
-rule) to a webhook receiver.
+traces, metrics and structured logs, and the browser SPA emits fetch traces, all
+over OTLP to an OpenTelemetry Collector. The collector writes traces to Tempo,
+logs to Loki and exposes application metrics for Prometheus. Judge queue gauges and per-test-case spans are included.
+Grafana provides dashboards, Explore, trace/log correlation and span-to-profile
+links; Alloy scrapes the Go pprof endpoints into Pyroscope, and the
+`otel-profiling-go` bridge adds trace/span labels so a span opens its matching
+flame graph. Alertmanager routes alerts from Prometheus rules (plus a
+Grafana-managed example rule) using a secret-backed receiver URL.
 
 The overlay is separate from the normal stack and publishes every UI on
 loopback only:
@@ -240,6 +243,8 @@ loopback only:
 make observability-init       # generate the local Grafana admin password
 make observability-up         # start app + Prometheus, Loki, Tempo, Grafana, ...
 make observability-smoke-test # generate traffic and validate every signal
+make observability-browser-smoke-test # real Chromium trace (install once: cd frontend && bun run test:e2e:install)
+SMOKE_ADMIN_PASSWORD='...' make observability-submission-smoke-test # authenticated submission + per-case span
 ```
 
 | URL | Purpose |
@@ -249,6 +254,8 @@ make observability-smoke-test # generate traffic and validate every signal
 | <http://localhost:9093> | Alertmanager |
 | <http://localhost:3100/ready> | Loki readiness |
 | <http://localhost:3200/ready> | Tempo readiness |
+| <http://localhost:4040/ready> | Pyroscope readiness |
+| <http://localhost:12345> | Alloy UI/health |
 
 The Grafana password is generated into `.observability/` (gitignored) and is
 never committed. `make observability-down` keeps the telemetry volumes;
@@ -258,6 +265,8 @@ See [`docs/observability/README.md`](docs/observability/README.md) for the
 architecture, data flow, ports, configuration, retention and production
 guidance, and [`docs/observability/runbook.md`](docs/observability/runbook.md)
 for start/stop, validation, failure modes, alert testing and adding services.
+The browser and submission checks are optional and need Playwright Chromium and
+an admin password, respectively.
 
 ## Releases
 
@@ -289,7 +298,9 @@ scanned from source by `.github/workflows/images.yml`; they are not published �
 
 API surface: only the frontend is published on a network interface. The backend,
 the judge, SeaweedFS and smtp4dev are bound to loopback, and the judge refuses
-its API unless `RUNCODES_JUDGE_TOKEN` is set. Graded containers get no network
+its API unless `RUNCODES_JUDGE_TOKEN` is set. The observability overlay publishes
+its UIs/APIs on loopback only; the Go pprof listeners are internal and are not
+published at all. Graded containers get no network
 namespace, are capped in memory, PIDs and CPU (`JUDGE_CONTAINER_*`), and cannot
 gain privileges through a setuid binary in an image (`no-new-privileges`).
 

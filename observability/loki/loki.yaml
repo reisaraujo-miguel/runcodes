@@ -5,8 +5,8 @@
 # otlphttp exporter appends /v1/logs to the configured /otlp endpoint.
 #
 # The filesystem backend and an in-memory ring make this a single-node setup.
-# For production use an object store (S3/GCS/Azure), a shared ring or the
-# loki-distributed Helm chart, and the same schema/retention settings.
+# For production use an object store (S3/GCS/Azure), a shared ring in a
+# distributed Loki deployment, and the same schema/retention settings.
 
 auth_enabled: false
 

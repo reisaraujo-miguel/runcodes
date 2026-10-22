@@ -264,6 +264,12 @@ are listed in [`../docs/observability/README.md`](../docs/observability/README.m
   in Loki with the native trace context.
 - Responses include `TraceId` (32 hex chars) and `X-Trace-Sampled`; `TraceId` can
   be pasted into Tempo or grepped in Loki.
+- `PPROF_ADDR` (optional, e.g. `:6060`) starts an internal pprof listener for
+  Alloy/Pyroscope. It is never exposed by the API listener. The OpenTelemetry
+  provider is wrapped with `otel-profiling-go`, so pprof samples carry trace and
+  span ids and backend spans expose `pyroscope.profile.id` to Tempo/Grafana.
+- A browser fetch that carries `traceparent` continues the same trace; browser
+  instrumentation lives in `frontend/src/lib/telemetry`.
 
 See [`docs/observability/runbook.md`](../docs/observability/runbook.md) for
 dashboard, trace/log correlation and alert usage.

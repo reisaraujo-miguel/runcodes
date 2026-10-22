@@ -101,6 +101,15 @@ func run() error {
 	}
 	defer shutdownTelemetry(telemetryShutdown)
 
+	// Continuous profiling (for Alloy/Pyroscope) is opt-in and lives on a
+	// separate internal listener, never the public API.
+	pprofShutdown, err := telemetry.StartPprof(os.Getenv("PPROF_ADDR"))
+	if err != nil {
+		slog.Warn("pprof server disabled", slog.String("error", err.Error()))
+	} else if pprofShutdown != nil {
+		defer shutdownPprof(pprofShutdown)
+	}
+
 	if err := database.InitDB(); err != nil {
 		return fmt.Errorf("initializing database: %w", err)
 	}
@@ -170,5 +179,13 @@ func shutdownTelemetry(shutdown func(context.Context) error) {
 	defer cancel()
 	if err := shutdown(ctx); err != nil {
 		slog.Debug("telemetry shutdown error", slog.String("error", err.Error()))
+	}
+}
+
+func shutdownPprof(shutdown func(context.Context) error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := shutdown(ctx); err != nil {
+		slog.Debug("pprof shutdown error", slog.String("error", err.Error()))
 	}
 }
