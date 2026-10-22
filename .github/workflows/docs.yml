@@ -1,0 +1,85 @@
+name: Docs
+
+# Build the VitePress documentation site and deploy it to GitHub Pages.
+# Pull requests build only, so a broken link or a failed build blocks review
+# before it reaches the live site.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs-site/**"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "docs-site/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+# One deployment at a time. Do not cancel an in-progress deployment: a
+# half-published Pages artifact is worse than a queued one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # Pages deployment needs an OIDC token and permission to publish the artifact.
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    name: Build documentation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: Install dependencies
+        working-directory: docs-site
+        run: npm ci
+
+      - name: Build site
+        working-directory: docs-site
+        env:
+          # Project pages are served from https://<owner>.github.io/<repo>/.
+          # Override with a repository variable for a custom domain or a root
+          # deployment.
+          DOCS_BASE: ${{ vars.DOCS_BASE || '/runcodes/' }}
+        run: npm run build
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-site/docs/.vitepress/dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    # Deploy only from the default branch or a manual run; a pull request build
+    # must never publish.
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
