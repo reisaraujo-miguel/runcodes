@@ -104,6 +104,19 @@ Prefer keys and NOPASSWD sudo. If a host still requires a password, put
 `ansible_ssh_pass` / `ansible_become_password` in vaulted inventory vars, never
 in the tracked example.
 
+Ansible verifies SSH host keys. Before the first run, add the four keys after
+checking their fingerprints against a source you trust (provider console,
+serial console, or a previous `known_hosts`), then scan them:
+
+```bash
+ssh-keyscan -H 203.0.113.10 203.0.113.11 203.0.113.12 203.0.113.13 \
+  >> ~/.ssh/known_hosts
+```
+
+`ssh-keyscan` only learns the key the host presents; the fingerprint check is
+what prevents a man-in-the-middle from receiving vault-derived secrets on the
+first deployment.
+
 ## 2. Configuration
 
 Every deployment value lives in an untracked file:

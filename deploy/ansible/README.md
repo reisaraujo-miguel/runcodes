@@ -56,6 +56,12 @@ cp inventories/group_vars/all/vault.yml.example \
 $EDITOR inventories/group_vars/all/vault.yml
 ansible-vault encrypt inventories/group_vars/all/vault.yml
 
+# Once, before the first run: add the four host keys after verifying their
+# fingerprints out of band (provider console, serial console, or a prior
+# known-hosts entry). Host-key checking is enabled.
+ssh-keyscan -H 203.0.113.10 203.0.113.11 203.0.113.12 203.0.113.13 \
+  >> ~/.ssh/known_hosts
+
 ansible-playbook playbooks/site.yml --ask-vault-pass
 ```
 
