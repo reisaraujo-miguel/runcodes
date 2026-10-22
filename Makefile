@@ -10,7 +10,7 @@ SHELL := /bin/bash
 COMPOSE ?= podman-compose
 OBS_COMPOSE = $(COMPOSE) -f docker-compose.yml -f docker-compose.observability.yml
 
-.PHONY: help observability-init observability-up observability-down observability-status observability-logs observability-smoke-test observability-browser-smoke-test observability-submission-smoke-test observability-validate observability-destroy
+.PHONY: help rootfs-smoke observability-init observability-up observability-down observability-status observability-logs observability-smoke-test observability-browser-smoke-test observability-submission-smoke-test observability-validate observability-destroy
 
 help:
 	@echo "RunCodes developer targets:"
@@ -23,6 +23,11 @@ help:
 	@echo "  make observability-submission-smoke-test  authenticated submission + per-case span (needs SMOKE_ADMIN_PASSWORD)"
 	@echo "  make observability-validate    validate configs (compose, promtool, amtool, collector)"
 	@echo "  make observability-destroy     DESTRUCTIVE: remove observability volumes (prompts; FORCE=1 skips)"
+	@echo "  make rootfs-smoke              compile/run a C case under the read-only runner rootfs (Podman host)"
+
+# Real-container check of the runner's read-only rootfs and capped tmpfs.
+rootfs-smoke:
+	./judge/test/rootfs-smoke.sh
 
 # Generate the local Grafana admin password (gitignored).
 observability-init:

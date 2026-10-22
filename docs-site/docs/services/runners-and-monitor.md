@@ -204,6 +204,42 @@ the monitor, that a daemonised helper cannot touch another case's results, and
 that the judge's globals are not overridden by language defaults. CI runs both
 suites on every push and pull request.
 
+## Read-only rootfs smoke test
+
+The judge runs every submission with a read-only image filesystem and
+size-capped tmpfs at `/tmp` and `/run`; only the workspace bind mount is
+persistent. The Go tests assert the generated spec, but the compiler, harness and
+monitor still have to work under those mounts on a real runtime.
+
+Run the smoke test on a host with rootless Podman and user namespaces enabled:
+
+```sh
+make rootfs-smoke
+# equivalent:
+./judge/test/rootfs-smoke.sh
+```
+
+It defaults to `ghcr.io/runcodes-icmc/runcodes-runner-c:latest`. For a locally
+built image:
+
+```sh
+podman build -t ghcr.io/runcodes-icmc/runcodes-monitor:latest monitor
+make -C runners build-base build-c
+./judge/test/rootfs-smoke.sh ghcr.io/runcodes-icmc/runcodes-runner-c:latest
+```
+
+The script checks that `/` is mounted `ro`, writes to `/tmp` and `/root`, verifies
+that an 80 MiB write to a 64 MiB tmpfs fails, then compiles and runs a C case
+through `/usr/bin/runcodes` and checks the monitor reports and output. It uses
+no network. `KEEP_WORKDIR=1` preserves the temporary workspace on failure;
+`SMOKE_TMPFS_SIZE`, `SMOKE_MEMORY`, `RUNCODES_SMOKE_IMAGE` and `PODMAN` override
+the defaults.
+
+If the guard fails with "root filesystem is not read-only", the runtime ignored
+`--read-only`; if `dd` succeeds, the tmpfs size option was not applied. A compile
+failure usually means a toolchain writes outside `/root` and `/tmp`; add that
+path to the writable set deliberately, not by dropping the read-only mount.
+
 ## Changing the contract
 
 `container.config`, the milestones and the monitor report are shared between the
