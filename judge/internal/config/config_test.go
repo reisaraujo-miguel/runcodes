@@ -17,7 +17,7 @@ func clearEnv(t *testing.T) {
 		"JUDGE_DEFAULT_EXEC_TIMEOUT", "JUDGE_DEFAULT_CASE_TIMEOUT",
 		"JUDGE_MONITOR_MAX_FILE_SIZE", "JUDGE_MONITOR_MAX_MEM_SIZE",
 		"JUDGE_CONTAINER_MEMORY_BYTES", "JUDGE_CONTAINER_PIDS_LIMIT",
-		"JUDGE_CONTAINER_CPU_QUOTA", "JUDGE_MAX_RUN_DURATION",
+		"JUDGE_CONTAINER_CPU_QUOTA", "JUDGE_MAX_RUN_DURATION", "JUDGE_ARTIFACT_TTL",
 		"RUNCODES_DB_HOST", "RUNCODES_DB_PORT", "RUNCODES_DB_NAME",
 		"RUNCODES_DB_USER", "RUNCODES_DB_USERNAME", "RUNCODES_DB_PASSWORD",
 		"RUNCODES_DB_SSLMODE",
@@ -62,6 +62,9 @@ func TestLoadDefaults(t *testing.T) {
 		t.Errorf("monitor limits = %d/%d, want 0/0 (use the image's own)",
 			cfg.MonitorMaxMemSize, cfg.MonitorMaxFileSize)
 	}
+	if cfg.ArtifactTTL != 7*24*time.Hour {
+		t.Errorf("ArtifactTTL = %s, want 168h", cfg.ArtifactTTL)
+	}
 	if cfg.DB.User != "runcodes" {
 		t.Errorf("DB.User = %q, want runcodes", cfg.DB.User)
 	}
@@ -79,6 +82,7 @@ func TestLoadOverrides(t *testing.T) {
 	t.Setenv("JUDGE_CONCURRENCY", "8")
 	t.Setenv("JUDGE_POLL_INTERVAL", "250ms")
 	t.Setenv("JUDGE_AUTH_TOKEN", "s3cret")
+	t.Setenv("JUDGE_ARTIFACT_TTL", "24h")
 	t.Setenv("RUNCODES_DB_USERNAME", "legacy")
 	t.Setenv("RUNCODES_S3_BUCKET_PREFIX", "mycode")
 
@@ -104,6 +108,18 @@ func TestLoadOverrides(t *testing.T) {
 	}
 	if cfg.S3.CommitsBucket() != "mycode-commits" {
 		t.Errorf("CommitsBucket = %q", cfg.S3.CommitsBucket())
+	}
+	if cfg.ArtifactTTL != 24*time.Hour {
+		t.Errorf("ArtifactTTL = %s, want 24h", cfg.ArtifactTTL)
+	}
+}
+
+func TestLoadRejectsNegativeArtifactTTL(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JUDGE_ARTIFACT_TTL", "-1h")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected an error for a negative JUDGE_ARTIFACT_TTL")
 	}
 }
 

@@ -70,6 +70,9 @@ type Config struct {
 	// MaxArtifactBytes bounds the output archive published for a commit, so a
 	// submission cannot fill the shared execution directory with output files.
 	MaxArtifactBytes int64
+	// ArtifactTTL is how long a published output archive is kept. Old archives
+	// are swept periodically; 0 disables archive deletion.
+	ArtifactTTL time.Duration
 
 	// MaxExtractFileBytes bounds a single entry and MaxExtractBytes the total
 	// expanded size when unpacking a zip submission, so a zip bomb cannot fill
@@ -186,6 +189,7 @@ func Load() (*Config, error) {
 
 		MaxCompareFileBytes: envInt64("JUDGE_MAX_COMPARE_FILE_BYTES", 16*1024*1024),
 		MaxArtifactBytes:    envInt64("JUDGE_MAX_ARTIFACT_BYTES", 64*1024*1024),
+		ArtifactTTL:         envDuration("JUDGE_ARTIFACT_TTL", 7*24*time.Hour),
 
 		MaxExtractFileBytes: envInt64("JUDGE_MAX_EXTRACT_FILE_BYTES", 64*1024*1024),
 		MaxExtractBytes:     envInt64("JUDGE_MAX_EXTRACT_BYTES", 256*1024*1024),
@@ -267,6 +271,10 @@ func (c *Config) validate() error {
 
 	if c.MaxArtifactBytes <= 0 {
 		return fmt.Errorf("JUDGE_MAX_ARTIFACT_BYTES must be positive")
+	}
+
+	if c.ArtifactTTL < 0 {
+		return fmt.Errorf("JUDGE_ARTIFACT_TTL must not be negative")
 	}
 
 	if c.MaxRunDuration <= 0 {

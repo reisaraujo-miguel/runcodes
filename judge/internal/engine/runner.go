@@ -239,7 +239,7 @@ func (e *Engine) runContainer(ctx context.Context, commit *model.Commit, ws *wor
 		Name:        name,
 		Image:       image,
 		MountSource: ws.RemoteDir,
-		Labels:      map[string]string{"io.runcodes.commit": fmt.Sprintf("%d", commit.ID)},
+		Labels:      map[string]string{podman.CommitLabel: fmt.Sprintf("%d", commit.ID)},
 	})
 	if err != nil {
 		return outcome, err

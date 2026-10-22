@@ -78,11 +78,30 @@ func workspaceName(commitID int64) string {
 	return fmt.Sprintf("commit_%d", commitID)
 }
 
-// prepareWorkspace creates the run directory and downloads every input.
-func (e *Engine) prepareWorkspace(ctx context.Context, commit *model.Commit) (*workspace, error) {
+// prepareWorkspace creates the run directory and downloads every input. A
+// failure after the directories exist removes them: Process only cleans up a
+// workspace it received, so returning nil without this defer would leak the
+// world-writable tree and the private expected-output directory.
+func (e *Engine) prepareWorkspace(ctx context.Context, commit *model.Commit) (ws *workspace, err error) {
 	name := workspaceName(commit.ID)
 	baseDir := filepath.Join(e.cfg.ExecDir, name)
 	remoteDir := filepath.Join(e.cfg.ExecDirRemote, name)
+
+	var expectedDir string
+	cleanup := true
+	defer func() {
+		if !cleanup {
+			return
+		}
+		if err := os.RemoveAll(baseDir); err != nil {
+			e.logger.Warn("failed workspace cleanup", "dir", baseDir, "error", err)
+		}
+		if expectedDir != "" {
+			if err := os.RemoveAll(expectedDir); err != nil {
+				e.logger.Warn("failed expected-output cleanup", "dir", expectedDir, "error", err)
+			}
+		}
+	}()
 
 	// Remove any existing workspace to ensure a clean state.
 	if err := os.RemoveAll(baseDir); err != nil {
@@ -100,7 +119,7 @@ func (e *Engine) prepareWorkspace(ctx context.Context, commit *model.Commit) (*w
 		return nil, fmt.Errorf("create source dir: %w", err)
 	}
 
-	expectedDir, err := e.prepareExpectedDir(commit.ID)
+	expectedDir, err = e.prepareExpectedDir(commit.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +129,7 @@ func (e *Engine) prepareWorkspace(ctx context.Context, commit *model.Commit) (*w
 		return nil, err
 	}
 
-	ws := &workspace{
+	ws = &workspace{
 		BaseDir: baseDir, RemoteDir: remoteDir, SourceDir: srcDir,
 		ExpectedDir: expectedDir, RunNonce: nonce,
 	}
@@ -145,6 +164,7 @@ func (e *Engine) prepareWorkspace(ctx context.Context, commit *model.Commit) (*w
 		return nil, err
 	}
 
+	cleanup = false
 	return ws, nil
 }
 

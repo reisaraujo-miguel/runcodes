@@ -132,6 +132,18 @@ chmod +x "${work}/stack.sh"
 check "the stack limit is applied to the command" \
     grep -q '^1024$' "${work}/stack_out"
 
+# Core dumps are disabled unconditionally: a crashing submission must not fill
+# the workspace with a core file.
+cat >"${work}/core.sh" <<'EOF'
+#!/bin/bash
+ulimit -c
+EOF
+chmod +x "${work}/core.sh"
+"${monitor}" -o "${work}/core_out" -e "${work}/err" -r "${work}/core_report" \
+    -c "${work}/core.sh"
+check "core dumps are disabled" \
+    grep -q '^0$' "${work}/core_out"
+
 # -m: the address space limit stops an oversized allocation.
 "${monitor}" -o "${work}/out" -e "${work}/err" -r "${work}/mem_report" \
     -m 16777216 -c "${work}/allocate"
