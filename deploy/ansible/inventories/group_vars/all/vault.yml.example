@@ -45,6 +45,13 @@ vault_runcodes_smtp_password: ""
 # Optional: real Alertmanager receiver. Empty sends everything to alert-sink.
 vault_alertmanager_webhook_url: ""
 
+# Optional: Gmail app password for Alertmanager email notifications. Create it
+# for the sending account under Google Account -> Security -> 2-Step
+# Verification -> App passwords; it is not the account password. Required only
+# when config_runcodes_alertmanager_gmail_enabled is true. Remove the spaces
+# Google displays.
+vault_alertmanager_gmail_app_password: ""
+
 # Optional: GHCR credentials for private images / rate limits.
 vault_registry_username: ""
 vault_registry_password: ""

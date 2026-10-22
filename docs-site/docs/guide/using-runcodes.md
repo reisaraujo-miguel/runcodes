@@ -17,6 +17,9 @@ link in the verification email before trying to sign in (the login page explains
 this and can resend the link). In a local Compose stack, the mail is caught by
 smtp4dev at <http://localhost:8081>.
 
+If you forget your password later, use **Esqueceu a senha?** on the login page
+to receive a recovery link. Reset the password, then sign in with the new one.
+
 ### 2. Join a class
 
 A class is called an **offering**. Open **Classes**, enter the enrollment code
@@ -79,8 +82,8 @@ administrator to change your role.
 ### 1. Create a class
 
 **Professor → Classes → New class**. Set a name, an end date and an optional
-description. The server generates an enrollment code. Share that code with
-students; add co-professors and monitors from the class page by email.
+description. The server generates a six-character enrollment code. Share that
+code with students; add co-professors and monitors from the class page by email.
 
 - **Co-professor** (`professor` enrollment) can author exercises, test cases and
   files, but cannot manage members.

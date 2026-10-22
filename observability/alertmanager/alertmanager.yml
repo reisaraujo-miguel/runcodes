@@ -8,6 +8,10 @@
 # Replace the receiver with Slack, PagerDuty, email or an on-call webhook for
 # production. Never commit those credentials: use a mounted secret and
 # Alertmanager's *_file settings.
+#
+# For Gmail email notifications, copy alertmanager.gmail.example.yml to
+# .observability/alertmanager.yml and point ALERTMANAGER_CONFIG_FILE at the copy;
+# see https://reisaraujo-miguel.github.io/runcodes/observability/runbook.html#configuring-gmail-notifications.
 global:
   resolve_timeout: 5m
 

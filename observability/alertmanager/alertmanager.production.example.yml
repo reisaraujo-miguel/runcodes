@@ -5,31 +5,52 @@
 #
 # Every credential is read from a file, which Alertmanager re-reads for each
 # notification. Mount these files from your secret manager:
+#   /etc/alertmanager/secrets/gmail_app_password
 #   /etc/alertmanager/secrets/slack_webhook_url
 #   /etc/alertmanager/secrets/pagerduty_routing_key
 #   /etc/alertmanager/secrets/webhook_url
 #
-# Do not commit real URLs or keys. The local stack uses alertmanager.yml with a
-# webhook URL file pointing at the test sink.
+# Do not commit real URLs, keys or addresses. The local stack uses
+# alertmanager.yml with a webhook URL file pointing at the test sink.
 global:
   resolve_timeout: 5m
+  # Gmail SMTP over STARTTLS. Use a Google app password (2-Step Verification
+  # must be on), not the account password, and remove the spaces Google shows.
+  smtp_smarthost: "smtp.gmail.com:587"
+  smtp_from: "your-account@gmail.com"
+  smtp_auth_username: "your-account@gmail.com"
+  smtp_auth_password_file: /etc/alertmanager/secrets/gmail_app_password
+  smtp_require_tls: true
 
 route:
-  receiver: on-call
+  receiver: gmail
   group_by: [alertname, service_name, severity, cluster]
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
   routes:
+    # Critical alerts page on-call, then continue to the email route below.
     - matchers:
         - severity="critical"
       receiver: on-call
+      continue: true
       group_wait: 0s
       repeat_interval: 1h
 
+    # Every alert is also emailed. Remove this route to email only
+    # non-critical alerts; critical alerts then go to on-call only.
+    - receiver: gmail
+
 receivers:
-  # Choose one or more of these receivers. Slack and PagerDuty are examples;
-  # remove the ones you do not use and keep the credentials in secret files.
+  # Choose one or more of these receivers. Slack, PagerDuty and Gmail are
+  # examples; remove the ones you do not use and keep the credentials in
+  # secret files.
+  - name: gmail
+    email_configs:
+      # `to` is a comma-separated string for multiple recipients.
+      - to: "oncall@example.com"
+        send_resolved: true
+
   - name: on-call
     slack_configs:
       - api_url_file: /etc/alertmanager/secrets/slack_webhook_url
@@ -44,7 +65,7 @@ receivers:
         description: '{{ .CommonAnnotations.summary }}'
 
   # Generic webhook fallback (for an incident tool that accepts Alertmanager's
-  # webhook payload).
+  # webhook payload). It is defined but not routed by this example.
   - name: webhook
     webhook_configs:
       - url_file: /etc/alertmanager/secrets/webhook_url

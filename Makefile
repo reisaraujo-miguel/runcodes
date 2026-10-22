@@ -7,7 +7,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-COMPOSE ?= docker compose
+COMPOSE ?= podman-compose
 OBS_COMPOSE = $(COMPOSE) -f docker-compose.yml -f docker-compose.observability.yml
 
 .PHONY: help observability-init observability-up observability-down observability-status observability-logs observability-smoke-test observability-browser-smoke-test observability-submission-smoke-test observability-validate observability-destroy

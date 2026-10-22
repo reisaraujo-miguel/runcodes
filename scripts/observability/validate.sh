@@ -81,6 +81,15 @@ docker run --rm --security-opt label=disable --entrypoint amtool \
   check-config /etc/alertmanager/alertmanager.yml
 pass "amtool check-config"
 
+info "validating the Alertmanager example configs"
+for config in alertmanager.gmail.example.yml alertmanager.production.example.yml; do
+  docker run --rm --security-opt label=disable --entrypoint amtool \
+    -v "$ROOT/observability/alertmanager:/etc/alertmanager:ro" \
+    "$ALERTMANAGER_IMAGE" \
+    check-config "/etc/alertmanager/$config"
+  pass "amtool check-config ($config)"
+done
+
 info "validating OpenTelemetry Collector config"
 docker run --rm --security-opt label=disable \
   -e DEPLOYMENT_ENVIRONMENT=development \

@@ -1,4 +1,5 @@
-h1:aBNFOdul+bWggSYlfod8MHR7Ksm7mI4gIG1RkD5FSdU=
+h1:yfTH2QHETPReSHGCbl9HHcmrLyo2GPOYOmeMAUm1i2Y=
 20261020150022_baseline.sql h1:lH82Kx6gK/CEJuhe2Frs4qg8ruVTkzK0fVq2OOCYRTw=
 20261020150023_add_code_editor_preference.sql h1:+O6onQoRPu9aPFE/ARdhA/tDPaZ1a1F0IlHThsnlHlQ=
 20261020160000_add_email_verification_tokens.sql h1:trEVBFEHbF5TltShrpZIN1FmvhdtexcLifl9WXa9ams=
+20261022100000_add_password_reset_tokens.sql h1:gWK0nWRGZrzDB5b5oPu21KgGDBqgjmt9A/mZlmcAmAw=

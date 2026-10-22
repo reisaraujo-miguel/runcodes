@@ -22,7 +22,7 @@ page describes the deployed variant; the local stack is in
 | Availability | frontend, backend, judge, observability services | blackbox-exporter | Prometheus | Grafana / PromQL |
 | Application logs | backend, judge | OTel logs → collector → Loki | Loki | Grafana / LogQL |
 | CPU profiles | backend, judge pprof | Alloy → Pyroscope | Pyroscope | Grafana / span profiles |
-| Alerts | Prometheus rules + Grafana-managed rule | Alertmanager | Alertmanager / receiver / alert-sink | Alertmanager UI, webhook |
+| Alerts | Prometheus rules + Grafana-managed rule | Alertmanager | Alertmanager / receiver / alert-sink | Alertmanager UI, webhook/email |
 | Dashboards | provisioned JSON | Grafana provisioning | Grafana SQLite | Grafana |
 
 The in-container monitor is not a separate telemetry service. Its per-case
@@ -225,6 +225,15 @@ default route delivers to the URL in
 - if it is empty, Ansible writes the alert-sink URL, so alerts are still
   delivered locally for validation.
 
+When `config_runcodes_alertmanager_gmail_enabled` is true, the `default`
+receiver also emails alerts through the configured Gmail/Workspace SMTP host
+(`smtp.gmail.com:587` by default), and webhook delivery continues. The Google
+app password is mounted from
+`/opt/runcodes/secrets/alertmanager_gmail_app_password`; see
+[Ansible setup](../deployment/ansible-setup.md#gmail-alert-email) for the
+variables and [Ansible operations](../deployment/ansible-operations.md#alerts-do-not-arrive-at-the-receiver)
+for SMTP failure modes.
+
 The `ObservabilitySmokeTest` alert is always routed to the `alert-sink` receiver,
 so `verify.yml` can prove the full rule → Alertmanager → webhook path without
 touching the production receiver. Critical alerts get a shorter group wait, and
@@ -417,7 +426,8 @@ or managed environment, keep the same signal split but change the storage:
 - **Coarse judge internals.** The container's compile/test loop is one span.
 - **Browser tracing is build-time.**
 - **Span profiles are sampling-dependent.**
-- **Alerting is a webhook** to a receiver; the bundled sink is a test fixture.
+- **Alerting is webhook- or email-based**; the bundled sink is a test fixture,
+  and Gmail email is optional.
 - **No metamonitoring.** A down observability host is detected by users.
 - **No configuration drift detection.** Use git and Ansible diffs.
 

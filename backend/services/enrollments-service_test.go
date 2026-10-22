@@ -114,6 +114,50 @@ func TestEnrollRules(t *testing.T) {
 }
 
 /*
+TestEnrollAcceptsCurrentAndLegacyCodeLengths keeps old offerings joinable after
+the switch to six-character codes. The lookup compares the stored code with the
+normalised input, so it must not assume the new width: four-character codes
+issued before the switch are still credentials.
+*/
+func TestEnrollAcceptsCurrentAndLegacyCodeLengths(t *testing.T) {
+	claims := map[string]any{"id": float64(2), "role": "student"}
+
+	tests := []struct {
+		name string
+		code string
+		want string
+	}{
+		{name: "current six-character code", code: "ab12cd", want: "AB12CD"},
+		{name: "legacy four-character code", code: " ab12 ", want: "AB12"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := newMockDB(t)
+			mock.ExpectQuery(`FROM offerings o`).
+				WithArgs(tc.want, int64(2)).
+				WillReturnRows(sqlmock.NewRows([]string{
+					"id", "name", "description", "end_date", "owner_id",
+					"visible_to_enroll", "role", "banned", "enrolled", "owner_name",
+				}).AddRow(
+					int64(3), "Turma", "", time.Now().Add(time.Hour), int64(7),
+					true, "", false, false, "Professor",
+				))
+			mock.ExpectExec(`INSERT INTO enrollments`).
+				WillReturnResult(sqlmock.NewResult(0, 1))
+
+			if _, err := Enroll(context.Background(),
+				&models.EnrollRequest{EnrollmentCode: tc.code}, claims); err != nil {
+				t.Fatalf("Enroll(%q) = %v, want nil", tc.code, err)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+/*
 TestUnenrollKeepsBannedEnrollments pins the ban: it lives on the enrollment row,
 so a banned student must not be able to delete the row and walk back in with the
 same enrollment code.

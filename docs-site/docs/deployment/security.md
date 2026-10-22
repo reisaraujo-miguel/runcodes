@@ -39,7 +39,11 @@ truth. In a Compose install, only the frontend publishes on a network interface.
   route. A session issued before an account was unconfirmed stops working.
 - Verification tokens are stored only as SHA-256, expire after 24 hours, and a
   resend invalidates the previous one.
-- Login and verification routes are rate limited.
+- Password recovery tokens are stored only as SHA-256, expire after 1 hour, and
+  are single use; a new request invalidates the previous one. The request route
+  answers the same way for every address, so it does not disclose accounts.
+- Login and the email routes (verification, resend, forgot, reset) are rate
+  limited.
 
 ### Authorization
 
@@ -74,8 +78,8 @@ limits.
 - Compose requires secrets explicitly and fails fast when one is missing.
 - Ansible Vault encrypts deployment secrets; they are rendered into root-owned
   files on the hosts and never committed or baked into images.
-- The Grafana admin password is a mounted file; the Alertmanager webhook URL is a
-  mounted file (`*_file`), not YAML.
+- The Grafana admin password is a mounted file; the Alertmanager webhook URL and
+  Gmail app password are mounted files (`*_file`), not YAML.
 - The local observability stack generates the Grafana password into
   `.observability/` (gitignored).
 
@@ -204,7 +208,8 @@ Leave free disk for compactions. The `RunCodesHostDiskSpaceLow` alert fires belo
 2. **Preserve** — capture logs (`journalctl --user`, `podman logs`), a database
    dump if integrity is in question, and the image digests in use.
 3. **Rotate** — JWT secret (invalidates sessions), judge token, database
-   passwords, S3 keys, Redis password, SMTP and Alertmanager credentials.
+   passwords, S3 keys, Redis password, SMTP credentials, and the Alertmanager
+   webhook URL and Gmail app password.
 4. **Restore** — restore PostgreSQL and SeaweedFS from the last known-good
    backup, then run `verify.yml`.
 5. **Review** — compare the host against the deployment repo; Podman does not

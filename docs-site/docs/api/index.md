@@ -86,7 +86,7 @@ expired session receives `401`.
 | Scope | Limit |
 | --- | --- |
 | API (all routes) | 100 requests/minute per client IP |
-| Verification (verify + resend) | 10 requests/minute per client IP |
+| Email flows (verify, resend, forgot, reset) | 10 requests/minute per client IP |
 
 The client IP is taken from the first `X-Forwarded-For` hop (Caddy). Limits are
 in-memory per process; a multi-instance deployment does not share them.
@@ -128,6 +128,8 @@ origin. A wildcard origin is rejected at startup.
 | POST | `/api/v1/user/login` | public |
 | POST | `/api/v1/user/verify-email` | public |
 | POST | `/api/v1/user/resend-verification` | public |
+| POST | `/api/v1/user/forgot-password` | public |
+| POST | `/api/v1/user/reset-password` | public |
 | POST | `/api/v1/user/logout` | signed in |
 | GET | `/api/v1/auth` | signed in |
 | POST | `/api/v1/auth/refresh` | signed in |

@@ -33,6 +33,8 @@ browser sees one origin and no CORS.
 | `/login` | public | sign in; `?mode=signup` shows registration |
 | `/signup` | public | redirects to `/login?mode=signup` |
 | `/verify-email` | public | consumes the email verification link |
+| `/forgot-password` | public | requests a password recovery link |
+| `/reset-password` | public | consumes the recovery link and sets a new password |
 | `/` | signed in | dashboard of open exercises and classes |
 | `/exercises` | signed in | exercises across the caller's classes |
 | `/exercises/:exerciseId/submit` | signed in | full-width submission workspace with editor |
@@ -67,8 +69,11 @@ control.
 - **Admin panel** — account search and role management, class management,
   platform settings.
 - **Theming** — light/dark mode preference.
-- **Verification flow** — resend a verification link from the login page and
-  land on a dedicated `/verify-email` page.
+- **Verification flow** — when login fails because the email is unconfirmed,
+  resend the verification link directly from the login card and land on a
+  dedicated `/verify-email` page.
+- **Password recovery** — request a recovery link from `/forgot-password` and
+  choose a new password on `/reset-password`.
 
 ## Development
 
@@ -168,8 +173,8 @@ frontend/
 │   ├── components/          app shell, editor, submission, admin, UI primitives
 │   ├── hooks/               auth, drafts, layout, theme, platform settings
 │   ├── lib/                 API client, telemetry, formatting, roles, deadlines
-│   ├── routes/              login, verify-email, home, exercises, classes,
-│   │                        professor, admin, profile
+│   ├── routes/              login, verify-email, forgot/reset-password, home,
+│   │                        exercises, classes, professor, admin, profile
 │   ├── App.tsx              root layout and providers
 │   └── routes.ts            route table
 ├── e2e/                     Playwright telemetry test

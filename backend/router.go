@@ -31,15 +31,18 @@ func createRoutes(router *chi.Mux) {
 		r.Post("/api/v1/user/signup", handlers.SignUp)
 		r.Post("/api/v1/user/login", handlers.LogIn)
 
-		// Account verification is public: the link arrives by email and may be
-		// opened in a browser that has no session. Both routes are limited more
-		// tightly than the API as a whole because they send mail and accept a
-		// secret from an unauthenticated caller.
+		// Account email flows are public: the links arrive by email and may be
+		// opened in a browser that has no session. These routes are limited
+		// more tightly than the API as a whole because they send mail and
+		// accept a secret from an unauthenticated caller.
 		r.Group(func(r chi.Router) {
 			r.Use(httprate.LimitBy(10, time.Minute, clientIPKey))
 
 			r.Post("/api/v1/user/verify-email", handlers.VerifyEmail)
 			r.Post("/api/v1/user/resend-verification", handlers.ResendVerification)
+
+			r.Post("/api/v1/user/forgot-password", handlers.ForgotPassword)
+			r.Post("/api/v1/user/reset-password", handlers.ResetPassword)
 		})
 
 		// The contact information the login page shows. It is public by

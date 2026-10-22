@@ -25,6 +25,20 @@ type ResendVerificationRequest struct {
 	Email string `json:"email"`
 }
 
+// ForgotPasswordRequest is the JSON body of
+// POST /api/v1/user/forgot-password.
+type ForgotPasswordRequest struct {
+	Email string `json:"email"`
+}
+
+// ResetPasswordRequest is the JSON body of
+// POST /api/v1/user/reset-password.
+type ResetPasswordRequest struct {
+	Token                string `json:"token"`
+	Password             string `json:"password"`
+	PasswordConfirmation string `json:"password_confirmation"`
+}
+
 // User is the public representation of a user, as returned by the API.
 type User struct {
 	ID    int    `json:"id"`

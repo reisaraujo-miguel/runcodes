@@ -76,7 +76,7 @@ The full endpoint reference starts at [API](../api/index.md).
 
 | Group | Examples | Who |
 | --- | --- | --- |
-| Public | signup, login, verify email, resend, public settings | anyone |
+| Public | signup, login, verify email, resend, password recovery, public settings | anyone |
 | Session | auth, refresh, logout | signed in |
 | Self-service | profile, password, my classes, open exercises | signed in + confirmed |
 | Submissions | create, events, source, output, history | signed in + confirmed |
@@ -101,7 +101,7 @@ Order matters. The backend installs, in order:
 6. **CORS** — one explicit frontend origin, credentials allowed.
 7. **Trusted-proxy hop count** — one proxy (Caddy) in front of the API.
 8. **Rate limiting** — 100 requests/minute per client IP, with a stricter
-   10/minute limit on the two verification routes.
+   10/minute limit on the verification and password-recovery routes.
 
 A malformed payload is logged with a replayable `curl` command (the
 `Authorization` header is removed) when body logging is enabled.

@@ -24,7 +24,7 @@ dependency; the overlay adds it without changing the application's behaviour.
 | Logs | Loki | OTel application logs, queryable by service and trace |
 | Traces | Grafana Tempo | distributed traces + span metrics / service graph |
 | Visualisation | Grafana | dashboards, Explore, cross-signal correlation |
-| Alerting | Alertmanager + Prometheus rules | routing, grouping, inhibition, webhooks |
+| Alerting | Alertmanager + Prometheus rules | routing, grouping, inhibition, webhooks or Gmail email |
 | Instrumentation | OpenTelemetry Go and Web SDKs | Go traces/metrics/logs; browser fetch traces |
 | Profiles | Pyroscope + Alloy | continuous pprof profiles from backend and judge |
 
@@ -168,8 +168,8 @@ Versions are pinned in `docker-compose.observability.yml` and in
   journal / `podman-compose logs`.
 - **Single-node storage, no HA, no TLS.** The overlay is for development; the
   four-machine deployment is private and retention-capped but still single-node.
-- **Alerting is a webhook.** The bundled sink is a test fixture, not a paging
-  product.
+- **Alerting is webhook- or email-based.** The bundled sink is a test fixture,
+  not a paging product; Gmail email is optional and uses a Google app password.
 - **No metamonitoring.** A down observability host is detected by users, not by a
   second watcher.
 

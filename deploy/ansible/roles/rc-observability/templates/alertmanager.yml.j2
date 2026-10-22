@@ -1,12 +1,24 @@
 # Alertmanager routing for the four-machine deployment.
 #
-# Production alerts go to the receiver URL stored in the secret file. The
-# bundled alert-sink is kept as a real, local receiver for the end-to-end smoke
-# test: the upstream smoke test injects an alert named ObservabilitySmokeTest
-# and asserts that it arrives there. This route also proves delivery when no
-# external receiver is configured yet.
+# Production alerts go to the default receiver: the webhook URL stored in the
+# secret file, plus Gmail email when runcodes_alertmanager_gmail_enabled is
+# true. The bundled alert-sink is kept as a real, local receiver for the
+# end-to-end smoke test: the upstream smoke test injects an alert named
+# ObservabilitySmokeTest and asserts that it arrives there.
+{% set gmail_enabled = runcodes_alertmanager_gmail_enabled | bool %}
 global:
   resolve_timeout: 5m
+{% if gmail_enabled %}
+  # Gmail SMTP over STARTTLS. smtp_from must be the Gmail account (or a verified
+  # alias) that authenticates; the app password is a mounted secret written by
+  # Ansible from vault_alertmanager_gmail_app_password. The smarthost is
+  # configurable for a Google Workspace SMTP relay.
+  smtp_smarthost: '{{ runcodes_alertmanager_gmail_smarthost }}'
+  smtp_from: '{{ runcodes_alertmanager_gmail_from }}'
+  smtp_auth_username: '{{ runcodes_alertmanager_gmail_from }}'
+  smtp_auth_password_file: /etc/alertmanager/secrets/gmail_app_password
+  smtp_require_tls: true
+{% endif %}
 
 route:
   receiver: default
@@ -36,6 +48,14 @@ receivers:
       - url_file: /etc/alertmanager/secrets/webhook_url
         send_resolved: true
         max_alerts: 0
+{% if gmail_enabled %}
+    # Gmail is an additional integration on this receiver: the webhook is still
+    # notified and the same alert is also emailed.
+    email_configs:
+      # A comma-separated string; Ansible joins the recipient list.
+      - to: '{{ runcodes_alertmanager_gmail_to | join(', ') }}'
+        send_resolved: true
+{% endif %}
 
   - name: alert-sink
     webhook_configs:

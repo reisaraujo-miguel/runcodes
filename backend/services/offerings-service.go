@@ -971,21 +971,22 @@ func removeOfferingMemberRow(
 
 const (
 	alphabet string = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	base     int64  = int64(len(alphabet))      // 36
-	space    int64  = base * base * base * base // 36^4 = 1,679,616
-	prime    int64  = 1_276_043                 // Coprime with space (36^4 = 2^8 * 3^8, any prime ≠ 2,3 works)
+	base     int64  = int64(len(alphabet))                    // 36
+	codeLen  int    = 6                                       // six-character enrollment codes
+	space    int64  = base * base * base * base * base * base // 36^6 = 2,176,782,336
+	prime    int64  = 1_276_043                               // Coprime with space (36^6 = 2^12 * 3^12, any prime ≠ 2,3 works)
 )
 
 /*
-encode converts a non-negative integer "n" into a fixed-width 4-character
-string using the constant "alphabet". It is the inverse of the base-36
-positional notation, right-padded with the zero character ('A').
+encode converts a non-negative integer "n" into a fixed-width six-character
+string using the constant "alphabet". It is the base-36 positional notation,
+left-padded with the zero character ('A').
 
 n must be in [0, space). Behaviour is undefined outside this range.
 */
 func encode(n int64) string {
-	digits := make([]byte, 4)
-	for i := 3; i >= 0; i-- {
+	digits := make([]byte, codeLen)
+	for i := codeLen - 1; i >= 0; i-- {
 		digits[i] = alphabet[n%base]
 		n /= base
 	}
@@ -993,7 +994,7 @@ func encode(n int64) string {
 }
 
 /*
-IDToCode converts a unique offering ID into a 4-character enrollment code.
+IDToCode converts a unique offering ID into a six-character enrollment code.
 
 The mapping is deterministic and collision-free: distinct IDs always produce
 distinct codes. This is achieved through a multiplicative permutation —
@@ -1003,7 +1004,12 @@ over [0, space), so no uniqueness check against the database is needed.
 The resulting codes appear non-sequential, making it harder for students to
 guess or enumerate codes for other class offerings.
 
-id must be in [0, 1,679,615]. If your dataset may exceed this range,
+Offerings created before the switch to six characters keep their stored
+four-character codes. Those remain valid and can never collide with a generated
+six-character code, because enrollment matches the stored code as a whole
+string.
+
+id must be in [0, 2,176,782,335]. If your dataset may exceed this range,
 increase the code length or expand the alphabet before deploying.
 */
 func IDToCode(id int64) string {

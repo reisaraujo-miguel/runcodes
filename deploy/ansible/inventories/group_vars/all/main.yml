@@ -83,6 +83,10 @@ runcodes_tempo_retention_hours: "{{ config_runcodes_tempo_retention_hours }}"
 runcodes_grafana_admin_user: "{{ config_runcodes_grafana_admin_user }}"
 runcodes_grafana_root_url: "{{ config_runcodes_grafana_root_url }}"
 runcodes_alertmanager_webhook_url: "{{ vault_alertmanager_webhook_url | default('') }}"
+runcodes_alertmanager_gmail_enabled: "{{ config_runcodes_alertmanager_gmail_enabled | default(false) }}"
+runcodes_alertmanager_gmail_smarthost: "{{ config_runcodes_alertmanager_gmail_smarthost | default('smtp.gmail.com:587') }}"
+runcodes_alertmanager_gmail_from: "{{ config_runcodes_alertmanager_gmail_from | default('') }}"
+runcodes_alertmanager_gmail_to: "{{ config_runcodes_alertmanager_gmail_to | default([]) }}"
 
 # ---------------------------------------------------------------------------
 # Host management and firewall
@@ -113,6 +117,7 @@ runcodes_s3_secret_key: "{{ vault_runcodes_s3_secret_key }}"
 runcodes_redis_password: "{{ vault_runcodes_redis_password }}"
 runcodes_admin_password: "{{ vault_runcodes_admin_password }}"
 runcodes_grafana_admin_password: "{{ vault_grafana_admin_password }}"
+runcodes_alertmanager_gmail_app_password: "{{ vault_alertmanager_gmail_app_password | default('') }}"
 
 # ---------------------------------------------------------------------------
 # Registry credentials (optional; defined in vault.yml)

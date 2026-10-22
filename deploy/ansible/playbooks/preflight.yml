@@ -171,6 +171,24 @@
           to inventories/group_vars/all/vault.yml, fill it in and encrypt it with
           ansible-vault. See docs/DEPLOYMENT.md.
 
+    - name: Require the Gmail notification settings when enabled
+      ansible.builtin.assert:
+        that:
+          - runcodes_alertmanager_gmail_smarthost is match('^[A-Za-z0-9.-]+:[0-9]+$')
+          - runcodes_alertmanager_gmail_from is match('^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$')
+          - runcodes_alertmanager_gmail_to | type_debug == 'list'
+          - runcodes_alertmanager_gmail_to | length > 0
+          - (runcodes_alertmanager_gmail_to | select('match', '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$') | list | length) == (runcodes_alertmanager_gmail_to | length)
+          - runcodes_alertmanager_gmail_app_password | trim | length > 0
+        fail_msg: >-
+          config_runcodes_alertmanager_gmail_enabled is true, but the Gmail
+          settings are incomplete. Set config_runcodes_alertmanager_gmail_from,
+          a non-empty config_runcodes_alertmanager_gmail_to list, a non-empty
+          config_runcodes_alertmanager_gmail_smarthost, and
+          vault_alertmanager_gmail_app_password. See
+          docs/DEPLOYMENT.md#gmail-alert-notifications.
+      when: runcodes_alertmanager_gmail_enabled | bool
+
     - name: Require .env-safe secret characters
       ansible.builtin.assert:
         that:

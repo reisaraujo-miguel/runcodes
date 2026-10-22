@@ -35,7 +35,7 @@ logged only when the request carries `Debug: reveal-body-logs`.
 | Variable | Default | Required | Meaning |
 | --- | --- | :-: | --- |
 | `RUNCODES_JWT_SECRET` | — | ✓ | HS256 session signing key |
-| `RUNCODES_PUBLIC_URL` | — | ✓ | absolute browser-facing origin used in verification links |
+| `RUNCODES_PUBLIC_URL` | — | ✓ | absolute browser-facing origin used in verification and recovery links |
 | `RUNCODES_LEGACY_PASSWORD_SALT` | empty | | old platform salt for migrated password hashes |
 
 `RUNCODES_PUBLIC_URL` must be `http(s)://host[:port]` with no path, query or
@@ -241,7 +241,7 @@ Source: `docker-compose.yml`, `.env.example`.
 | `RUNCODES_JUDGE_TOKEN` | ✓ | backend, judge | shared token |
 | `RUNCODES_S3_CREDENTIALS_KEY` | ✓ | backend, judge | S3 key |
 | `RUNCODES_S3_CREDENTIALS_SECRET` | ✓ | backend, judge | S3 secret |
-| `RUNCODES_PUBLIC_URL` | | backend | verification link origin |
+| `RUNCODES_PUBLIC_URL` | | backend | verification and recovery link origin |
 | `RUNCODES_SMTP_FROM` | | backend | sender |
 | `RUNCODES_SMTP_USERNAME` / `_PASSWORD` | | backend | relay credentials |
 | `RUNCODES_LEGACY_PASSWORD_SALT` | | backend | legacy hashes |
@@ -285,12 +285,14 @@ Source: `docker-compose.observability.yml`, `.env.example`.
 | `PROMETHEUS_RETENTION_TIME` | `15d` | Prometheus TSDB |
 | `PROMETHEUS_RETENTION_SIZE` | `8GB` | Prometheus TSDB |
 | `PYROSCOPE_CONFIG_FILE` | `./observability/pyroscope/config.yaml` | alternate config |
+| `ALERTMANAGER_CONFIG_FILE` | `./observability/alertmanager/alertmanager.yml` | alternate Alertmanager config (Gmail example) |
 | `FRONTEND_OTEL_ENABLED` | `true` | browser build input |
 | `PUBLIC_OTEL_HTTP_URL` | `http://localhost:4318` | browser collector URL |
 | `VITE_OTEL_TRACES_SAMPLER_ARG` | `1.0` | browser sampling |
 
-The Grafana admin password and Alertmanager webhook URL are files in
-`.observability/`, created by `scripts/observability/init-secrets.sh`.
+The Grafana admin password, Alertmanager webhook URL and optional Gmail app
+password are files in `.observability/`, created by
+`scripts/observability/init-secrets.sh`.
 
 ## Ansible deployment
 
@@ -368,6 +370,10 @@ Keep the stale timeout above the max run duration.
 | `config_runcodes_tempo_retention_hours` | `168` | Tempo |
 | `config_runcodes_grafana_admin_user` | `admin` | Grafana |
 | `config_runcodes_grafana_root_url` | `http://localhost:3000` | Grafana links |
+| `config_runcodes_alertmanager_gmail_enabled` | `false` | email alerts through Gmail |
+| `config_runcodes_alertmanager_gmail_smarthost` | `smtp.gmail.com:587` | Gmail/Workspace SMTP host |
+| `config_runcodes_alertmanager_gmail_from` | example address | sender and SMTP username |
+| `config_runcodes_alertmanager_gmail_to` | `["oncall@example.com"]` | recipient list |
 
 ### Firewall and verification
 
@@ -397,6 +403,7 @@ Keep the stale timeout above the max run duration.
 | `vault_runcodes_legacy_password_salt` | legacy users |
 | `vault_runcodes_smtp_username` / `_password` | SMTP relay |
 | `vault_alertmanager_webhook_url` | alert receiver |
+| `vault_alertmanager_gmail_app_password` | Gmail alert email |
 | `vault_registry_username` / `_password` | private GHCR |
 
 Never use a literal `$` in a secret: `podman-compose` interpolates `.env`

@@ -1,0 +1,65 @@
+# Local Alertmanager configuration that emails alerts through Gmail.
+#
+# This file is an example, not the default. Copy it to
+# .observability/alertmanager.yml (gitignored), replace the placeholder address
+# and recipients, write the Google app password to
+# .observability/alertmanager_gmail_app_password, and set
+# ALERTMANAGER_CONFIG_FILE=./.observability/alertmanager.yml before starting the
+# stack. See
+# https://reisaraujo-miguel.github.io/runcodes/observability/runbook.html#configuring-gmail-notifications.
+#
+# Gmail SMTP requires a Google app password (2-Step Verification must be on),
+# not the account password. Remove the spaces Google displays in the
+# 16-character password. smtp_from must be the account that authenticates, or a
+# verified alias for it.
+global:
+  resolve_timeout: 5m
+  smtp_smarthost: "smtp.gmail.com:587"
+  smtp_from: "your-account@gmail.com"
+  smtp_auth_username: "your-account@gmail.com"
+  smtp_auth_password_file: /etc/alertmanager/secrets/gmail_app_password
+  smtp_require_tls: true
+
+route:
+  receiver: gmail
+  group_by: [alertname, service_name, severity]
+  group_wait: 5s
+  group_interval: 30s
+  repeat_interval: 4h
+
+  routes:
+    # The smoke test must still reach the local sink when Gmail is enabled.
+    - matchers:
+        - alertname="ObservabilitySmokeTest"
+      receiver: alert-sink
+      group_wait: 0s
+      repeat_interval: 1h
+
+    - matchers:
+        - severity="critical"
+      receiver: gmail
+      group_wait: 0s
+      repeat_interval: 1h
+
+receivers:
+  - name: gmail
+    email_configs:
+      # `to` is a comma-separated string: 'oncall@example.com, lead@example.com'.
+      - to: "oncall@example.com"
+        send_resolved: true
+
+  - name: alert-sink
+    webhook_configs:
+      - url: http://alert-sink:8080/alerts
+        send_resolved: true
+        max_alerts: 0
+
+  - name: "null"
+
+inhibit_rules:
+  # A critical alert for a service silences its warnings with the same name.
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
+    equal: [alertname, service_name]
