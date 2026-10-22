@@ -1,0 +1,147 @@
+# RunCodes data host: PostgreSQL, Redis, SeaweedFS and their exporters.
+#
+# Every published port binds to PRIVATE_IP (the host's private address), never
+# 0.0.0.0. Only the edge host has public ports.
+
+services:
+  database:
+    image: ${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/runcodes-database:${IMAGE_TAG}
+    container_name: runcodes-data-database
+    restart: always
+    stop_grace_period: 60s
+    environment:
+      TZ: ${TZ}
+      POSTGRES_USER: runcodes
+      POSTGRES_DB: runcodes
+      POSTGRES_PASSWORD: ${DB_OWNER_PASSWORD}
+      RUNCODES_DB_APP_PASSWORD: ${DB_APP_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=en_US.utf8 --lc-ctype=en_US.utf8"
+    ports:
+      - "${PRIVATE_IP}:5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/
+      # Only used by the first-deployment admin bootstrap task. The script is
+      # read inside the container, not executed on the host.
+      - ../../bootstrap/bootstrap-admin.sh:/bootstrap/bootstrap-admin.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    shm_size: 256mb
+    mem_limit: ${DB_MEM_LIMIT}
+    networks:
+      - data
+
+  redis:
+    image: redis:8-alpine
+    container_name: runcodes-data-redis
+    restart: always
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD}
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+    environment:
+      TZ: ${TZ}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    ports:
+      - "${PRIVATE_IP}:6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -qx PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    mem_limit: ${REDIS_MEM_LIMIT}
+    networks:
+      - data
+
+  seaweed:
+    image: chrislusf/seaweedfs:4.48
+    container_name: runcodes-data-seaweed
+    restart: always
+    command: >-
+      server -s3 -s3.config=/etc/seaweedfs/s3.json -dir=/data
+      -volume.max=50 -master.volumeSizeLimitMB=256
+      -ip=127.0.0.1 -ip.bind=0.0.0.0
+    environment:
+      TZ: ${TZ}
+    ports:
+      # S3 gateway. The backend and judge reach it over the private network.
+      - "${PRIVATE_IP}:8333:8333"
+    volumes:
+      - seaweed-data:/data
+      - ../../config/data/s3.json:/etc/seaweedfs/s3.json:ro
+    mem_limit: ${SEAWEED_MEM_LIMIT}
+    networks:
+      - data
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.20.1
+    container_name: runcodes-data-postgres-exporter
+    restart: always
+    environment:
+      TZ: ${TZ}
+      DATA_SOURCE_URI: "database:5432/runcodes?sslmode=disable"
+      DATA_SOURCE_USER: runcodes_app
+      DATA_SOURCE_PASS: ${DB_APP_PASSWORD}
+      PG_EXPORTER_AUTO_DISCOVER_DATABASES: "false"
+      PG_EXPORTER_DISABLE_SETTINGS_METRICS: "false"
+    ports:
+      - "${PRIVATE_IP}:9187:9187"
+    depends_on:
+      - database
+    mem_limit: ${EXPORTER_MEM_LIMIT}
+    networks:
+      - data
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.95.0
+    container_name: runcodes-data-redis-exporter
+    restart: always
+    environment:
+      TZ: ${TZ}
+      REDIS_ADDR: "redis://:${REDIS_PASSWORD}@redis:6379"
+    ports:
+      - "${PRIVATE_IP}:9121:9121"
+    depends_on:
+      - redis
+    mem_limit: ${EXPORTER_MEM_LIMIT}
+    networks:
+      - data
+
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    container_name: runcodes-data-node-exporter
+    restart: always
+    command:
+      - "--path.rootfs=/host"
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|var/lib/(docker|containers/storage)/.+)($|/)"
+    ports:
+      - "${PRIVATE_IP}:9100:9100"
+    volumes:
+      - /:/host:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    security_opt:
+      - label=disable
+    mem_limit: ${NODE_EXPORTER_MEM_LIMIT}
+    networks:
+      - data
+
+networks:
+  data:
+    name: runcodes-data
+
+volumes:
+  db-data:
+  redis-data:
+  seaweed-data:

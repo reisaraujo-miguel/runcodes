@@ -1,0 +1,50 @@
+---
+# Deployment secrets. Copy to inventories/group_vars/all/vault.yml and encrypt:
+#
+#   cp inventories/group_vars/all/vault.yml.example inventories/group_vars/all/vault.yml
+#   $EDITOR inventories/group_vars/all/vault.yml
+#   ansible-vault encrypt inventories/group_vars/all/vault.yml
+#
+# Generate values without a literal `$`: podman-compose performs variable
+# substitution on .env values, and a `$` can silently corrupt a password.
+# Hex or base64url output is safe. Examples:
+#
+#   openssl rand -hex 32   # JWT, judge token
+#   openssl rand -hex 24   # DB owner/app, Redis, S3 secret
+#   openssl rand -hex 16   # S3 access key
+#   openssl rand -base64 24 | tr -d '/+=' | cut -c1-24  # admin/Grafana
+#
+# The four required machine addresses are in inventories/hosts.yml, not here.
+
+# Application
+vault_runcodes_jwt_secret: "REPLACE_WITH_64_HEX_CHARS"
+vault_runcodes_judge_token: "REPLACE_WITH_64_HEX_CHARS"
+
+# PostgreSQL: the owner (`runcodes`) and the row-only application role.
+vault_runcodes_db_owner_password: "REPLACE_WITH_48_HEX_CHARS"
+vault_runcodes_db_app_password: "REPLACE_WITH_48_HEX_CHARS"
+
+# SeaweedFS S3 identity.
+vault_runcodes_s3_access_key: "REPLACE_WITH_32_HEX_CHARS"
+vault_runcodes_s3_secret_key: "REPLACE_WITH_48_HEX_CHARS"
+
+# Redis requirepass.
+vault_runcodes_redis_password: "REPLACE_WITH_48_HEX_CHARS"
+
+# Seeded admin bootstrap and Grafana admin.
+vault_runcodes_admin_password: "REPLACE_WITH_A_STRONG_PASSWORD"
+vault_grafana_admin_password: "REPLACE_WITH_A_STRONG_PASSWORD"
+
+# Optional: legacy password salt for accounts imported from the old platform.
+vault_runcodes_legacy_password_salt: ""
+
+# Optional: external SMTP relay credentials. Leave empty with smtp4dev.
+vault_runcodes_smtp_username: ""
+vault_runcodes_smtp_password: ""
+
+# Optional: real Alertmanager receiver. Empty sends everything to alert-sink.
+vault_alertmanager_webhook_url: ""
+
+# Optional: GHCR credentials for private images / rate limits.
+vault_registry_username: ""
+vault_registry_password: ""

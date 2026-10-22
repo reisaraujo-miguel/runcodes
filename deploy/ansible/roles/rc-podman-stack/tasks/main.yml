@@ -1,0 +1,74 @@
+---
+- name: Require a stack name and directory
+  ansible.builtin.assert:
+    that:
+      - stack_name is defined
+      - stack_name | length > 0
+      - stack_dir is defined
+      - stack_dir | length > 0
+    fail_msg: "rc-podman-stack requires stack_name and stack_dir."
+
+- name: Ensure the user systemd unit directory exists
+  ansible.builtin.file:
+    path: "{{ stack_user_home }}/.config/systemd/user"
+    state: directory
+    owner: "{{ stack_user }}"
+    group: "{{ stack_user }}"
+    mode: "0755"
+
+- name: Install the user systemd unit for the stack
+  ansible.builtin.template:
+    src: runcodes-stack.service.j2
+    dest: "{{ stack_user_home }}/.config/systemd/user/runcodes-{{ stack_name }}.service"
+    owner: "{{ stack_user }}"
+    group: "{{ stack_user }}"
+    mode: "0644"
+
+- name: Reload the user systemd manager
+  ansible.builtin.command:
+    argv: [systemctl, --user, daemon-reload]
+  environment:
+    HOME: "{{ stack_user_home }}"
+    XDG_RUNTIME_DIR: "/run/user/{{ stack_user_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ stack_user_uid }}/bus"
+  changed_when: false
+
+- name: Enable the user stack at boot
+  ansible.builtin.command:
+    argv: [systemctl, --user, enable, "runcodes-{{ stack_name }}.service"]
+  environment:
+    HOME: "{{ stack_user_home }}"
+    XDG_RUNTIME_DIR: "/run/user/{{ stack_user_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ stack_user_uid }}/bus"
+  changed_when: false
+
+- name: Pull the stack images
+  ansible.builtin.command:
+    argv:
+      - "{{ podman_compose_bin }}"
+      - -p
+      - "runcodes-{{ stack_name }}"
+      - -f
+      - compose.yml
+      - pull
+    chdir: "{{ stack_dir }}"
+  environment:
+    HOME: "{{ stack_user_home }}"
+    XDG_RUNTIME_DIR: "/run/user/{{ stack_user_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ stack_user_uid }}/bus"
+  register: rc_podman_stack_pull
+  changed_when: false
+  when: stack_pull | bool
+
+# The unit is the lifecycle owner: restarting it stops the current containers
+# and runs `podman-compose up --force-recreate`, which applies image and
+# configuration changes (podman-compose does not diff container config the way
+# Docker Compose does). It is a user unit, enabled at boot through linger.
+- name: Apply the stack through its user systemd unit
+  ansible.builtin.command:
+    argv: [systemctl, --user, restart, "runcodes-{{ stack_name }}.service"]
+  environment:
+    HOME: "{{ stack_user_home }}"
+    XDG_RUNTIME_DIR: "/run/user/{{ stack_user_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ stack_user_uid }}/bus"
+  changed_when: true

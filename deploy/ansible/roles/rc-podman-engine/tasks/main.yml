@@ -1,0 +1,46 @@
+---
+- name: Install Podman and podman-compose
+  ansible.builtin.apt:
+    name: "{{ rc_podman_engine_packages }}"
+    state: present
+    update_cache: true
+
+- name: Warn when Docker is still running
+  ansible.builtin.debug:
+    msg: >-
+      docker.service is still running on {{ inventory_hostname }}. Stop the
+      old container stack before the Podman stack starts; both bind the same
+      ports. This deployment does not remove Docker automatically.
+  when:
+    - "'docker.service' in ansible_facts.services"
+    - ansible_facts.services['docker.service'].state == 'running'
+
+- name: Verify Podman is available
+  ansible.builtin.command:
+    argv: [podman, --version]
+  register: rc_podman_engine_version
+  changed_when: false
+
+- name: Verify podman-compose is available
+  ansible.builtin.command:
+    argv: [podman-compose, --version]
+  register: rc_podman_engine_compose_version
+  changed_when: false
+
+- name: Locate the podman-compose executable
+  ansible.builtin.command:
+    argv: [sh, -c, "command -v podman-compose"]
+  register: rc_podman_engine_compose_path
+  changed_when: false
+
+- name: Record the podman-compose path for the stack units
+  ansible.builtin.set_fact:
+    rc_podman_compose_bin: "{{ rc_podman_engine_compose_path.stdout | trim }}"
+
+- name: Show the Podman versions
+  ansible.builtin.debug:
+    msg:
+      - "{{ inventory_hostname }}: {{ rc_podman_engine_version.stdout }}"
+      - "{{ inventory_hostname }}: {{ rc_podman_engine_compose_version.stdout }}"
+      - "{{ inventory_hostname }}: podman-compose at {{ rc_podman_compose_bin }}"
+    verbosity: 1

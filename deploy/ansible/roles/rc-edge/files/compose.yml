@@ -1,0 +1,160 @@
+# RunCodes edge host: Caddy + SPA, backend API, local mail catcher, and the
+# host's observability agents. This is the only host with public ports.
+
+services:
+  frontend:
+    # Built and published by .github/workflows/app-images.yml with the
+    # same-origin /otel browser telemetry endpoint baked in.
+    image: ${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/runcodes-frontend:${IMAGE_TAG}
+    container_name: runcodes-edge-frontend
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    # Rootless Caddy must be allowed to bind 80/443 inside its own network
+    # namespace. The host sets the same sysctl for rootlessport.
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 80
+    environment:
+      TZ: ${TZ}
+      RUNCODES_DOMAIN: ${RUNCODES_DOMAIN}
+      BACKEND_UPSTREAM: "http://backend:8443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+      - ../../config/edge/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - backend
+    mem_limit: ${FRONTEND_MEM_LIMIT}
+    networks:
+      - edge
+
+  backend:
+    image: ${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/runcodes-backend:${IMAGE_TAG}
+    container_name: runcodes-edge-backend
+    restart: always
+    ports:
+      # Private-only. The browser reaches the API through Caddy; this binding
+      # exists for blackbox probes and operator diagnostics.
+      - "${PRIVATE_IP}:8443:8443"
+    environment:
+      TZ: ${TZ}
+      RUNCODES_API_PORT: "8443"
+      RUNCODES_JWT_SECRET: ${JWT_SECRET}
+      DEBUG_MODE: ${DEBUG_MODE}
+      RUNCODES_LEGACY_PASSWORD_SALT: ${LEGACY_PASSWORD_SALT}
+      RUNCODES_DB_HOST: ${DATA_IP}
+      RUNCODES_DB_PORT: "5432"
+      RUNCODES_DB_USER: runcodes_app
+      RUNCODES_DB_PASSWORD: ${DB_APP_PASSWORD}
+      RUNCODES_DB_NAME: runcodes
+      RUNCODES_DB_SSLMODE: disable
+      RUNCODES_JUDGE_URL: "http://${COMPUTE_IP}:9000"
+      RUNCODES_JUDGE_TOKEN: ${JUDGE_TOKEN}
+      RUNCODES_JUDGE_STALE_TIMEOUT: ${JUDGE_STALE_TIMEOUT}
+      RUNCODES_S3_ENDPOINT: "http://${DATA_IP}:8333"
+      RUNCODES_S3_REGION: ${S3_REGION}
+      RUNCODES_S3_CREDENTIALS_KEY: ${S3_ACCESS_KEY}
+      RUNCODES_S3_CREDENTIALS_SECRET: ${S3_SECRET_KEY}
+      RUNCODES_S3_BUCKET_PREFIX: ${S3_BUCKET_PREFIX}
+      RUNCODES_REDIS_ADDR: "${DATA_IP}:6379"
+      RUNCODES_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      RUNCODES_REDIS_DB: ${REDIS_DB}
+      RUNCODES_PUBLIC_URL: ${PUBLIC_URL}
+      RUNCODES_SMTP_HOST: ${SMTP_HOST}
+      RUNCODES_SMTP_PORT: ${SMTP_PORT}
+      RUNCODES_SMTP_FROM: ${SMTP_FROM}
+      RUNCODES_SMTP_USERNAME: ${SMTP_USERNAME}
+      RUNCODES_SMTP_PASSWORD: ${SMTP_PASSWORD}
+      FRONTEND_ORIGIN: ${PUBLIC_URL}
+      # OpenTelemetry: traces, metrics and logs to the collector on the
+      # observability host. pprof stays inside this compose network.
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://${OBS_IP}:4318"
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_EXPORTER_OTLP_TIMEOUT: "10000"
+      OTEL_SERVICE_NAME: runcodes-backend
+      OTEL_SERVICE_VERSION: ${RUNCODES_VERSION}
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG}
+      OTEL_METRIC_EXPORT_INTERVAL: "10000"
+      OTEL_BSP_SCHEDULE_DELAY: "2000"
+      OTEL_BLRP_SCHEDULE_DELAY: "2000"
+      OTEL_SDK_DISABLED: "false"
+      PPROF_ADDR: ":6060"
+    depends_on:
+      - smtp4dev
+    mem_limit: ${BACKEND_MEM_LIMIT}
+    networks:
+      - edge
+
+  # Local mail catcher. It accepts every message, so it is for bootstrap and
+  # testing only; point RUNCODES_SMTP_* at a real relay for production mail.
+  smtp4dev:
+    image: rnwood/smtp4dev:v3.15
+    container_name: runcodes-edge-smtp4dev
+    restart: always
+    ports:
+      - "127.0.0.1:8081:80"
+      - "127.0.0.1:1025:25"
+    environment:
+      TZ: ${TZ}
+      ServerOptions__HostName: smtp4dev
+    volumes:
+      - smtp4dev-data:/smtp4dev
+    mem_limit: ${SMTP_MEM_LIMIT}
+    networks:
+      - edge
+
+  alloy:
+    image: grafana/alloy:v1.21.1
+    container_name: runcodes-edge-alloy
+    restart: always
+    command:
+      - "run"
+      - "--server.http.listen-addr=0.0.0.0:12345"
+      - "--storage.path=/var/lib/alloy/data"
+      - "/etc/alloy/config.alloy"
+    ports:
+      - "${PRIVATE_IP}:12345:12345"
+    volumes:
+      - ../../config/edge/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+    security_opt:
+      - label=disable
+    depends_on:
+      - backend
+    mem_limit: ${ALLOY_MEM_LIMIT}
+    networks:
+      - edge
+
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    container_name: runcodes-edge-node-exporter
+    restart: always
+    command:
+      - "--path.rootfs=/host"
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|var/lib/(docker|containers/storage)/.+)($|/)"
+    ports:
+      - "${PRIVATE_IP}:9100:9100"
+    volumes:
+      - /:/host:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    security_opt:
+      - label=disable
+    mem_limit: ${NODE_EXPORTER_MEM_LIMIT}
+    networks:
+      - edge
+
+networks:
+  edge:
+    name: runcodes-edge
+
+volumes:
+  caddy_data:
+  caddy_config:
+  smtp4dev-data:
+  alloy-data:

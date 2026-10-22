@@ -1,0 +1,10 @@
+---
+podman_compose_bin: "{{ rc_podman_compose_bin | default('/usr/bin/podman-compose') }}"
+stack_user: "{{ runcodes_deploy_user }}"
+stack_user_home: "{{ runcodes_user_home | default(ansible_facts['user_dir']) }}"
+stack_user_uid: "{{ runcodes_uid | default(ansible_facts['user_uid']) }}"
+stack_after: ""
+stack_requires: ""
+stack_wait_socket: false
+stack_exec_start_pre: ""
+stack_pull: "{{ runcodes_pull_images | bool }}"

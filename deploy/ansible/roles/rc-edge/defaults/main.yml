@@ -1,0 +1,6 @@
+---
+rc_edge_frontend_mem_limit: "128m"
+rc_edge_backend_mem_limit: "512m"
+rc_edge_smtp_mem_limit: "128m"
+rc_edge_alloy_mem_limit: "256m"
+rc_edge_node_exporter_mem_limit: "128m"

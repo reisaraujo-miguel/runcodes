@@ -1,0 +1,103 @@
+---
+# The application images are built in CI. Only a few controller-side files are
+# needed at runtime: the admin bootstrap script, the Atlas migration tooling on
+# the data host, and the verification scripts on the observability host.
+- name: Ensure the database asset directories exist
+  ansible.builtin.file:
+    path: "{{ runcodes_root }}/database/{{ item }}"
+    state: directory
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0755"
+  loop:
+    - schema
+    - migrations
+    - legacy-migration
+    - old_schema
+  when: inventory_hostname in groups['data']
+
+- name: Install the admin bootstrap script
+  ansible.builtin.copy:
+    src: "{{ runcodes_repo_root }}/database/bootstrap-admin.sh"
+    dest: "{{ runcodes_root }}/bootstrap/bootstrap-admin.sh"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0755"
+  when: inventory_hostname in groups['data']
+
+- name: Install the Atlas runner
+  ansible.builtin.copy:
+    src: "{{ runcodes_repo_root }}/database/atlas.sh"
+    dest: "{{ runcodes_root }}/database/atlas.sh"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0755"
+  when: inventory_hostname in groups['data']
+
+- name: Install the Atlas project configuration
+  ansible.builtin.copy:
+    src: "{{ runcodes_repo_root }}/database/atlas.hcl"
+    dest: "{{ runcodes_root }}/database/atlas.hcl"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+  when: inventory_hostname in groups['data']
+
+- name: Install the Atlas desired schema
+  ansible.builtin.copy:
+    src: "{{ runcodes_repo_root }}/database/schema/02-schema.sql"
+    dest: "{{ runcodes_root }}/database/schema/02-schema.sql"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+  when: inventory_hostname in groups['data']
+
+- name: Install the versioned migrations
+  ansible.builtin.copy:
+    src: "{{ runcodes_repo_root }}/database/migrations/"
+    dest: "{{ runcodes_root }}/database/migrations/"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+    directory_mode: "0755"
+  when: inventory_hostname in groups['data']
+
+- name: Install the one-shot legacy migration SQL
+  ansible.builtin.copy:
+    src: "{{ runcodes_repo_root }}/database/legacy-migration/"
+    dest: "{{ runcodes_root }}/database/legacy-migration/"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+    directory_mode: "0755"
+  when: inventory_hostname in groups['data']
+
+- name: Install the legacy schema for the one-shot migration
+  ansible.builtin.copy:
+    src: "{{ runcodes_repo_root }}/database/old_schema/"
+    dest: "{{ runcodes_root }}/database/old_schema/"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+    directory_mode: "0755"
+  when: inventory_hostname in groups['data']
+
+- name: Make the legacy migration runner executable
+  ansible.builtin.file:
+    path: "{{ runcodes_root }}/database/legacy-migration/migrate.sh"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0755"
+  when: inventory_hostname in groups['data']
+
+- name: Install the smoke-test scripts
+  ansible.builtin.copy:
+    src: "{{ runcodes_repo_root }}/scripts/observability/{{ item }}"
+    dest: "{{ runcodes_root }}/scripts/observability/{{ item }}"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0755"
+  loop:
+    - smoke-test.sh
+    - submission-smoke-test.sh
+  when: inventory_hostname in groups['observability']

@@ -1,0 +1,141 @@
+# Prometheus configuration for the four-machine RunCodes deployment.
+#
+# The observability host owns Prometheus. Application metrics arrive through the
+# local OpenTelemetry Collector's Prometheus exporter (:8889); infrastructure
+# exporters and the edge/compute Alloy instances are scraped across the private
+# network. Tempo's metrics-generator remote-writes span metrics back here.
+{% set edge = hostvars[groups['edge'][0]] %}
+{% set data = hostvars[groups['data'][0]] %}
+{% set compute = hostvars[groups['compute'][0]] %}
+{% set obs = hostvars[groups['observability'][0]] %}
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: "{{ runcodes_cluster_name }}"
+    environment: "{{ runcodes_environment }}"
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels:
+          node: "{{ groups['observability'][0] }}"
+
+  # OTLP metrics from the backend and judge, converted by the collector.
+  - job_name: otel-collector
+    scrape_interval: 10s
+    static_configs:
+      - targets: ["otel-collector:8889"]
+        labels:
+          node: "{{ groups['observability'][0] }}"
+
+  - job_name: otel-collector-internal
+    scrape_interval: 10s
+    static_configs:
+      - targets: ["otel-collector:8888"]
+        labels:
+          node: "{{ groups['observability'][0] }}"
+
+  - job_name: alertmanager
+    static_configs:
+      - targets: ["alertmanager:9093"]
+        labels:
+          node: "{{ groups['observability'][0] }}"
+
+  - job_name: loki
+    static_configs:
+      - targets: ["loki:3100"]
+        labels:
+          node: "{{ groups['observability'][0] }}"
+
+  - job_name: tempo
+    static_configs:
+      - targets: ["tempo:3200"]
+        labels:
+          node: "{{ groups['observability'][0] }}"
+
+  - job_name: grafana
+    static_configs:
+      - targets: ["grafana:3000"]
+        labels:
+          node: "{{ groups['observability'][0] }}"
+
+  - job_name: pyroscope
+    static_configs:
+      - targets: ["pyroscope:4040"]
+        labels:
+          node: "{{ groups['observability'][0] }}"
+
+  # Host metrics for all four machines. The data host also runs the database
+  # and cache exporters; the edge and compute hosts run their own Alloy.
+  - job_name: node-exporter
+    static_configs:
+{% for host in groups['runcodes'] | sort %}
+      - targets: ["{{ hostvars[host].private_ip }}:9100"]
+        labels:
+          node: "{{ host }}"
+{% endfor %}
+
+  - job_name: postgres-exporter
+    static_configs:
+      - targets: ["{{ data.private_ip }}:9187"]
+        labels:
+          node: "{{ groups['data'][0] }}"
+
+  - job_name: redis-exporter
+    static_configs:
+      - targets: ["{{ data.private_ip }}:9121"]
+        labels:
+          node: "{{ groups['data'][0] }}"
+
+  # Alloy instances scrape backend/judge pprof and write to Pyroscope. Their
+  # own UI/metrics endpoint is scraped here so a stopped profiler is visible.
+  - job_name: alloy
+    static_configs:
+      - targets: ["{{ edge.private_ip }}:12345"]
+        labels:
+          node: "{{ groups['edge'][0] }}"
+          service: "runcodes-backend"
+      - targets: ["{{ compute.private_ip }}:12345"]
+        labels:
+          node: "{{ groups['compute'][0] }}"
+          service: "runcodes-judge"
+
+  # Synthetic probes of the public entry point, the private app health
+  # endpoints, and the observability stack itself.
+  - job_name: blackbox-http
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - "{{ runcodes_public_url }}/"
+          - "http://{{ edge.private_ip }}:8443/healthz"
+          - "http://{{ edge.private_ip }}:8443/readyz"
+          - "http://{{ compute.private_ip }}:9000/healthz"
+          - "http://{{ compute.private_ip }}:9000/readyz"
+          - "http://{{ obs.private_ip }}:3000/api/health"
+          - "http://{{ obs.private_ip }}:4040/ready"
+          - "http://{{ obs.private_ip }}:13133/health/status"
+          - "http://prometheus:9090/-/ready"
+          - "http://loki:3100/ready"
+          - "http://tempo:3200/ready"
+          - "http://alertmanager:9093/-/ready"
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

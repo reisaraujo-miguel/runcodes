@@ -1,0 +1,107 @@
+---
+- name: Install rootless podman prerequisites
+  ansible.builtin.apt:
+    name: "{{ rc_podman_packages }}"
+    state: present
+
+- name: Read the deployment user's subordinate UID range
+  ansible.builtin.command:
+    argv: [getent, subuid, "{{ runcodes_deploy_user }}"]
+  register: rc_podman_subuid
+  changed_when: false
+  failed_when: false
+
+- name: Read the deployment user's subordinate GID range
+  ansible.builtin.command:
+    argv: [getent, subgid, "{{ runcodes_deploy_user }}"]
+  register: rc_podman_subgid
+  changed_when: false
+  failed_when: false
+
+- name: Allocate a subordinate UID range
+  ansible.builtin.lineinfile:
+    path: /etc/subuid
+    line: "{{ runcodes_deploy_user }}:{{ rc_podman_subuid_start }}:{{ rc_podman_subid_count }}"
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+  when: rc_podman_subuid.stdout | length == 0
+
+- name: Allocate a subordinate GID range
+  ansible.builtin.lineinfile:
+    path: /etc/subgid
+    line: "{{ runcodes_deploy_user }}:{{ rc_podman_subuid_start }}:{{ rc_podman_subid_count }}"
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+  when: rc_podman_subgid.stdout | length == 0
+
+- name: Enable systemd linger for the deployment user
+  ansible.builtin.command:
+    argv: [loginctl, enable-linger, "{{ runcodes_deploy_user }}"]
+    creates: "/var/lib/systemd/linger/{{ runcodes_deploy_user }}"
+
+- name: Start the user systemd manager
+  ansible.builtin.systemd:
+    name: "user@{{ runcodes_uid }}.service"
+    state: started
+
+- name: Enable and start the rootless podman API socket
+  ansible.builtin.command:
+    argv: [systemctl, --user, enable, --now, podman.socket]
+  become: true
+  become_user: "{{ runcodes_deploy_user }}"
+  environment:
+    HOME: "{{ runcodes_user_home }}"
+    XDG_RUNTIME_DIR: "/run/user/{{ runcodes_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ runcodes_uid }}/bus"
+  register: rc_podman_socket_enable
+  changed_when: false
+  until: rc_podman_socket_enable.rc == 0
+  retries: 10
+  delay: 3
+
+- name: Wait for the rootless podman socket
+  ansible.builtin.wait_for:
+    path: "/run/user/{{ runcodes_uid }}/podman/podman.sock"
+    state: present
+    timeout: 60
+
+- name: Verify rootless podman is usable
+  ansible.builtin.command:
+    argv: [podman, info, --format, "{{ '{{.Host.Security.Rootless}}' }}"]
+  become: true
+  become_user: "{{ runcodes_deploy_user }}"
+  environment:
+    HOME: "{{ runcodes_user_home }}"
+    XDG_RUNTIME_DIR: "/run/user/{{ runcodes_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ runcodes_uid }}/bus"
+  register: rc_podman_rootless
+  changed_when: false
+  until: rc_podman_rootless.stdout | trim == 'true'
+  retries: 12
+  delay: 5
+
+- name: Log rootless podman in to the container registry
+  ansible.builtin.command:
+    argv:
+      - podman
+      - login
+      - "{{ runcodes_registry }}"
+      - --username
+      - "{{ runcodes_registry_username }}"
+      - --password-stdin
+    stdin: "{{ runcodes_registry_password }}"
+  become: true
+  become_user: "{{ runcodes_deploy_user }}"
+  environment:
+    HOME: "{{ runcodes_user_home }}"
+    XDG_RUNTIME_DIR: "/run/user/{{ runcodes_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ runcodes_uid }}/bus"
+  when:
+    - runcodes_registry_username | length > 0
+    - runcodes_registry_password | length > 0
+  no_log: true
+  changed_when: false

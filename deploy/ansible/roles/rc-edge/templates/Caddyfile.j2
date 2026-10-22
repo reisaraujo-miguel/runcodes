@@ -1,0 +1,34 @@
+# Single public entry point for the SPA and the API.
+#
+# RUNCODES_DOMAIN is a hostname (automatic HTTPS) or ":80" for a no-DNS
+# deployment. The API is same-origin: the SPA calls /api/v1/... and Caddy
+# proxies it to the backend, preserving the path and disabling buffering for
+# the SSE stream.
+{$RUNCODES_DOMAIN::80} {
+	route {
+		@api path /api/*
+		reverse_proxy @api {$BACKEND_UPSTREAM:http://backend:8443} {
+			flush_interval -1
+		}
+
+		# Browser traces only. The collector's public surface is reduced to
+		# the OTLP/HTTP traces path; the browser posts to /otel/v1/traces on
+		# this same origin, so the request is not cross-origin. Everything
+		# else on the collector stays on the private network.
+		handle /otel/v1/traces {
+			# Browser trace batches are small; cap the public OTLP body so the
+			# unauthenticated path cannot be used as a large-payload proxy.
+			request_body {
+				max_size 4MB
+			}
+			uri strip_prefix /otel
+			reverse_proxy {{ hostvars[groups['observability'][0]].private_ip }}:4318
+		}
+
+		# Everything else is the single-page app.
+		encode gzip
+		root * /usr/share/caddy
+		try_files {path} /index.html
+		file_server
+	}
+}

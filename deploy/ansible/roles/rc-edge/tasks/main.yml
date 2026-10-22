@@ -1,0 +1,76 @@
+---
+- name: Render the edge host environment file
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ runcodes_root }}/compose/edge/.env"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0600"
+  no_log: true
+
+- name: Render the Caddy site configuration
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ runcodes_root }}/config/edge/Caddyfile"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+
+- name: Render the Alloy profiling scraper
+  ansible.builtin.template:
+    src: alloy.alloy.j2
+    dest: "{{ runcodes_root }}/config/edge/config.alloy"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+
+- name: Install the edge host compose file
+  ansible.builtin.copy:
+    src: compose.yml
+    dest: "{{ runcodes_root }}/compose/edge/compose.yml"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+
+- name: Deploy the edge stack
+  ansible.builtin.include_role:
+    name: rc-podman-stack
+  vars:
+    stack_name: edge
+    stack_dir: "{{ runcodes_root }}/compose/edge"
+    stack_after: ""
+    stack_requires: ""
+    stack_wait_socket: false
+    stack_pull: "{{ runcodes_pull_images | bool }}"
+
+- name: Wait for the backend liveness endpoint
+  ansible.builtin.uri:
+    url: "http://{{ private_ip }}:8443/healthz"
+    status_code: 200
+    return_content: true
+  register: rc_edge_backend_health
+  until: rc_edge_backend_health.status == 200
+  retries: 40
+  delay: 3
+
+- name: Wait for the backend readiness endpoint
+  ansible.builtin.uri:
+    url: "http://{{ private_ip }}:8443/readyz"
+    status_code: 200
+    return_content: true
+  register: rc_edge_backend_ready
+  until: rc_edge_backend_ready.status == 200
+  retries: 40
+  delay: 3
+
+- name: Show the edge stack status
+  ansible.builtin.command:
+    argv: [podman-compose, -p, runcodes-edge, -f, compose.yml, ps]
+    chdir: "{{ runcodes_root }}/compose/edge"
+  register: rc_edge_ps
+  changed_when: false
+
+- name: Print the edge stack status
+  ansible.builtin.debug:
+    var: rc_edge_ps.stdout_lines
+    verbosity: 1

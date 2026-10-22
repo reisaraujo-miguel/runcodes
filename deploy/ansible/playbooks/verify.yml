@@ -1,0 +1,219 @@
+---
+# End-to-end verification. Safe to run on its own after any deployment:
+#
+#   ansible-playbook playbooks/verify.yml --ask-vault-pass
+#
+# Set -e runcodes_run_smoke_test=false to skip the slower upstream smoke test
+# (it generates traffic, injects a test alert and checks every signal).
+- name: Verify the four-machine deployment
+  hosts: observability
+  become: false
+  gather_facts: false
+  vars:
+    edge_host: "{{ groups['edge'][0] }}"
+    data_host: "{{ groups['data'][0] }}"
+    compute_host: "{{ groups['compute'][0] }}"
+    obs_host: "{{ groups['observability'][0] }}"
+    edge_ip: "{{ hostvars[edge_host].private_ip }}"
+    data_ip: "{{ hostvars[data_host].private_ip }}"
+    compute_ip: "{{ hostvars[compute_host].private_ip }}"
+    obs_ip: "{{ hostvars[obs_host].private_ip }}"
+  tasks:
+    - name: Wait for every service health endpoint
+      ansible.builtin.uri:
+        url: "{{ item.url }}"
+        status_code: 200
+        validate_certs: "{{ runcodes_verify_tls }}"
+      loop:
+        - { name: "frontend", url: "{{ runcodes_public_url }}/" }
+        - { name: "backend liveness", url: "http://{{ edge_ip }}:8443/healthz" }
+        - { name: "backend readiness", url: "http://{{ edge_ip }}:8443/readyz" }
+        - { name: "judge liveness", url: "http://{{ compute_ip }}:9000/healthz" }
+        - { name: "judge readiness", url: "http://{{ compute_ip }}:9000/readyz" }
+        - { name: "collector", url: "http://{{ obs_ip }}:13133/health/status" }
+        - { name: "prometheus", url: "http://{{ obs_ip }}:9090/-/ready" }
+        - { name: "alertmanager", url: "http://{{ obs_ip }}:9093/-/ready" }
+        - { name: "loki", url: "http://{{ obs_ip }}:3100/ready" }
+        - { name: "tempo", url: "http://{{ obs_ip }}:3200/ready" }
+        - { name: "pyroscope", url: "http://{{ obs_ip }}:4040/ready" }
+        - { name: "grafana", url: "http://{{ obs_ip }}:3000/api/health" }
+        - { name: "alert-sink", url: "http://{{ obs_ip }}:8085/healthz" }
+      register: rc_verify_health
+      until: rc_verify_health.status == 200
+      retries: 30
+      delay: 3
+      when: runcodes_verify_public_url | bool or item.name != 'frontend'
+
+    - name: Read Prometheus active targets
+      ansible.builtin.uri:
+        url: "http://{{ obs_ip }}:9090/api/v1/targets?state=active"
+        status_code: 200
+      register: rc_verify_targets
+      until: >-
+        rc_verify_targets.json.data.activeTargets is defined and
+        (rc_verify_targets.json.data.activeTargets
+         | rejectattr('health', 'equalto', 'up') | list | length) == 0
+      retries: 40
+      delay: 5
+      failed_when: false
+
+    - name: Collect unhealthy Prometheus targets
+      ansible.builtin.set_fact:
+        rc_verify_down_targets: >-
+          {{ rc_verify_targets.json.data.activeTargets
+             | rejectattr('health', 'equalto', 'up') | list }}
+
+    - name: Every Prometheus target must be up
+      ansible.builtin.assert:
+        that:
+          - rc_verify_targets.json.data.activeTargets is defined
+          - rc_verify_targets.json.data.activeTargets | length > 0
+          - rc_verify_down_targets | length == 0
+        fail_msg: >-
+          Unhealthy Prometheus targets:
+          {{ rc_verify_down_targets | map(attribute='scrapeUrl') | join(', ') }}
+          (see the target's lastError through the Prometheus UI).
+
+    - name: Query synthetic probe results
+      ansible.builtin.uri:
+        url: "http://{{ obs_ip }}:9090/api/v1/query?query=probe_success"
+        status_code: 200
+      register: rc_verify_probes
+      until: >-
+        rc_verify_probes.json.data.result is defined and
+        (rc_verify_probes.json.data.result | length) > 0 and
+        ((rc_verify_probes.json.data.result | map(attribute='value') | map('last')
+          | select('equalto', '1') | list | length)
+         == (rc_verify_probes.json.data.result | length))
+      retries: 40
+      delay: 5
+      failed_when: false
+
+    - name: Every blackbox probe must succeed
+      ansible.builtin.assert:
+        that:
+          - rc_verify_probes.json.data.result is defined
+          - rc_verify_probes.json.data.result | length > 0
+          - >-
+            (rc_verify_probes.json.data.result | map(attribute='value') | map('last')
+             | select('equalto', '1') | list | length)
+            == (rc_verify_probes.json.data.result | length)
+        fail_msg: >-
+          One or more synthetic probes are failing. Query probe_success on
+          Prometheus or open the blackbox target in the Prometheus UI.
+
+    - name: Generate one API request for the metrics check
+      ansible.builtin.uri:
+        url: "http://{{ edge_ip }}:8443/api/v1/settings/public?verify=1"
+        status_code: 200
+      changed_when: false
+
+    - name: Allow the OTel metric export interval to elapse
+      ansible.builtin.pause:
+        seconds: 12
+
+    - name: Query backend HTTP metrics
+      ansible.builtin.uri:
+        url: "http://{{ obs_ip }}:9090/api/v1/query"
+        method: POST
+        body_format: form-urlencoded
+        body:
+          query: 'sum(http_server_request_duration_seconds_count{service_name="runcodes-backend"})'
+        status_code: 200
+      register: rc_verify_backend_metrics
+      until: >-
+        rc_verify_backend_metrics.json.data.result is defined and
+        (rc_verify_backend_metrics.json.data.result | length) > 0 and
+        ((rc_verify_backend_metrics.json.data.result[0].value[1] | float) > 0)
+      retries: 20
+      delay: 5
+      failed_when: false
+      changed_when: false
+
+    - name: Application metrics must reach Prometheus through the collector
+      ansible.builtin.assert:
+        that:
+          - rc_verify_backend_metrics.json.data.result is defined
+          - rc_verify_backend_metrics.json.data.result | length > 0
+          - (rc_verify_backend_metrics.json.data.result[0].value[1] | float) > 0
+        fail_msg: >-
+          No backend HTTP metric reached Prometheus. Check the collector's
+          :8889 exporter, the backend's OTEL_EXPORTER_OTLP_ENDPOINT, and the
+          otel-collector scrape target.
+
+    - name: Query the judge queue gauge
+      ansible.builtin.uri:
+        url: "http://{{ obs_ip }}:9090/api/v1/query?query=runcodes_judge_queue_depth"
+        status_code: 200
+      register: rc_verify_queue_metric
+      until: >-
+        rc_verify_queue_metric.json.data.result is defined and
+        (rc_verify_queue_metric.json.data.result | length) > 0
+      retries: 20
+      delay: 5
+      failed_when: false
+
+    - name: Judge queue metrics must be exported
+      ansible.builtin.assert:
+        that:
+          - rc_verify_queue_metric.json.data.result is defined
+          - rc_verify_queue_metric.json.data.result | length > 0
+        fail_msg: >-
+          runcodes_judge_queue_depth is missing. The judge is not exporting
+          metrics or the collector pipeline is dropping them.
+
+    - name: Run the end-to-end observability smoke test
+      ansible.builtin.command:
+        argv:
+          - ./smoke-test.sh
+        chdir: "{{ runcodes_root }}/scripts/observability"
+      environment:
+        SMOKE_START: "0"
+        SMOKE_BUILD: "0"
+        SMOKE_TIMEOUT: "240"
+        BACKEND_URL: "http://{{ edge_ip }}:8443"
+        FRONTEND_URL: "{{ runcodes_public_url }}"
+        JUDGE_URL: "http://{{ compute_ip }}:9000"
+        PROMETHEUS_URL: "http://{{ obs_ip }}:9090"
+        LOKI_URL: "http://{{ obs_ip }}:3100"
+        TEMPO_URL: "http://{{ obs_ip }}:3200"
+        GRAFANA_URL: "http://{{ obs_ip }}:3000"
+        ALERTMANAGER_URL: "http://{{ obs_ip }}:9093"
+        ALERT_SINK_URL: "http://{{ obs_ip }}:8085"
+        COLLECTOR_HEALTH_URL: "http://{{ obs_ip }}:13133/health/status"
+        COLLECTOR_HTTP_URL: "http://{{ obs_ip }}:4318"
+        PYROSCOPE_URL: "http://{{ obs_ip }}:4040"
+        ALLOY_URL: "http://{{ edge_ip }}:12345"
+        BROWSER_ORIGIN: "{{ runcodes_public_url }}"
+        GRAFANA_ADMIN_USER: "{{ runcodes_grafana_admin_user }}"
+        GRAFANA_ADMIN_PASSWORD: "{{ runcodes_grafana_admin_password }}"
+      register: rc_verify_smoke
+      changed_when: false
+      when: runcodes_run_smoke_test | bool
+
+
+    - name: Run the authenticated submission smoke test
+      ansible.builtin.command:
+        argv:
+          - ./submission-smoke-test.sh
+        chdir: "{{ runcodes_root }}/scripts/observability"
+      environment:
+        SMOKE_ADMIN_PASSWORD: "{{ runcodes_admin_password }}"
+        SMOKE_ADMIN_EMAIL: "{{ runcodes_admin_email }}"
+        BACKEND_URL: "http://{{ edge_ip }}:8443"
+        TEMPO_URL: "http://{{ obs_ip }}:3200"
+        SMOKE_TIMEOUT: "300"
+      register: rc_verify_submission_smoke
+      changed_when: false
+      when: runcodes_run_submission_smoke_test | bool
+
+    - name: Print the operator entry points
+      ansible.builtin.debug:
+        msg:
+          - "Application: {{ runcodes_public_url }}"
+          - "Grafana (private): http://{{ obs_ip }}:3000"
+          - "Prometheus (private): http://{{ obs_ip }}:9090"
+          - "Alertmanager (private): http://{{ obs_ip }}:9093"
+          - >-
+            Tunnel: ssh -L 3000:{{ obs_ip }}:3000 -L 9090:{{ obs_ip }}:9090
+            -L 9093:{{ obs_ip }}:9093 {{ ansible_user }}@{{ hostvars[edge_host].ansible_host }}

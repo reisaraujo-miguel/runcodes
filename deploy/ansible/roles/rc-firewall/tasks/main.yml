@@ -1,0 +1,63 @@
+---
+- name: Require explicit SSH source ranges before enabling UFW
+  ansible.builtin.assert:
+    that:
+      - runcodes_firewall_ssh_cidrs | length > 0
+    fail_msg: >-
+      runcodes_firewall_enabled=true requires runcodes_firewall_ssh_cidrs.
+      Refusing to enable a default-deny firewall without an SSH allow rule.
+
+- name: Install UFW
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+
+- name: Allow SSH from the operator ranges
+  community.general.ufw:
+    rule: allow
+    port: "{{ rc_firewall_ssh_port }}"
+    proto: tcp
+    from_ip: "{{ item }}"
+  loop: "{{ runcodes_firewall_ssh_cidrs }}"
+
+- name: Allow all traffic from the other deployment peers
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ item }}"
+  loop: "{{ runcodes_firewall_private_sources }}"
+  when: item != private_ip
+
+- name: Allow the container networks to reach host-published services
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ item }}"
+  loop: "{{ runcodes_firewall_container_sources }}"
+
+- name: Allow public HTTP and HTTPS on the edge node only
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop: "{{ rc_firewall_http_ports }}"
+  when: inventory_hostname in groups['edge']
+
+- name: Set the default incoming policy to deny
+  community.general.ufw:
+    default: deny
+    direction: incoming
+
+- name: Allow outgoing traffic
+  community.general.ufw:
+    default: allow
+    direction: outgoing
+
+- name: Keep container networking forwarded traffic working
+  community.general.ufw:
+    default: allow
+    direction: routed
+  when: rc_firewall_manage_forward_policy
+
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled
+    logging: low

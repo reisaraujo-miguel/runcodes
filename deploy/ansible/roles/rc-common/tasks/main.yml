@@ -1,0 +1,137 @@
+---
+- name: Require a Debian-family host
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] == 'Debian'
+    fail_msg: >-
+      {{ inventory_hostname }} is {{ ansible_facts['distribution'] }}
+      {{ ansible_facts['distribution_version'] }}. This deployment supports
+      Debian and Ubuntu hosts (apt). Add a dnf task set before using RHEL,
+      Fedora or AlmaLinux.
+
+- name: Require a supported distribution
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] in ['Debian', 'Ubuntu']
+    fail_msg: >-
+      {{ inventory_hostname }} is {{ ansible_facts['distribution'] }}. This
+      deployment supports Debian and Ubuntu hosts (apt).
+
+- name: Require the architecture used by the published images
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['architecture'] == 'x86_64'
+    fail_msg: >-
+      {{ inventory_hostname }} is {{ ansible_facts['architecture'] }}. The
+      application images and the runner images are published for linux/amd64.
+
+- name: Require systemd
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['service_mgr'] == 'systemd'
+    fail_msg: "{{ inventory_hostname }} does not use systemd."
+
+- name: Require private_ip to be assigned to this host
+  ansible.builtin.assert:
+    that:
+      - private_ip is defined
+      - private_ip in ansible_facts['all_ipv4_addresses']
+    fail_msg: >-
+      private_ip ({{ private_ip | default('undefined') }}) is not assigned to
+      {{ inventory_hostname }}. Fix inventories/hosts.yml before deploying;
+      every private service binds to this address.
+
+- name: Look up the deployment user
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ runcodes_deploy_user }}"
+
+- name: Record the deployment user's uid, gid and home
+  ansible.builtin.set_fact:
+    runcodes_uid: "{{ getent_passwd[runcodes_deploy_user][1] }}"
+    runcodes_gid: "{{ getent_passwd[runcodes_deploy_user][2] }}"
+    runcodes_user_home: "{{ getent_passwd[runcodes_deploy_user][4] }}"
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name: "{{ rc_common_packages }}"
+    state: present
+
+- name: Set the platform timezone
+  community.general.timezone:
+    name: "{{ runcodes_timezone }}"
+
+- name: Stop systemd-timesyncd when chrony takes over
+  ansible.builtin.systemd:
+    name: systemd-timesyncd
+    state: stopped
+    enabled: false
+  when: "'systemd-timesyncd.service' in ansible_facts.services"
+
+- name: Enable chrony
+  ansible.builtin.systemd:
+    name: chrony
+    state: started
+    enabled: true
+
+- name: Ensure the journald drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Bound journald disk usage
+  ansible.builtin.template:
+    src: journald-runcodes.conf.j2
+    dest: /etc/systemd/journald.conf.d/90-runcodes.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart systemd-journald
+
+- name: Apply kernel and inotify settings
+  ansible.builtin.template:
+    src: sysctl-runcodes.conf.j2
+    dest: /etc/sysctl.d/90-runcodes.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Apply sysctl settings
+
+- name: Create the deployment directory tree
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop: "{{ rc_common_directories }}"
+
+- name: Remove the obsolete full-source sync tree
+  ansible.builtin.file:
+    path: "{{ runcodes_root }}/src"
+    state: absent
+
+- name: Create the per-host compose and config directories
+  ansible.builtin.file:
+    path: "{{ runcodes_root }}/{{ item }}"
+    state: directory
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0755"
+  loop:
+    - compose/edge
+    - compose/data
+    - compose/compute
+    - compose/observability
+    - config/edge
+    - config/data
+    - config/compute
+    - config/observability

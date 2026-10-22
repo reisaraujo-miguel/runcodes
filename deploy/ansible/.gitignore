@@ -1,0 +1,12 @@
+# Real inventory and secrets are deployment-specific.
+inventories/hosts.yml
+inventories/group_vars/all/config.yml
+inventories/group_vars/all/vault.yml
+.vault_pass
+vault-pass.txt
+
+# Ansible state.
+.ansible-home/
+.ansible-venv/
+*.retry
+ansible-debug.log

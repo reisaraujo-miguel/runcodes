@@ -1,0 +1,10 @@
+---
+- name: Deploy the telemetry storage and query stack
+  hosts: observability
+  become: false
+  environment:
+    HOME: "{{ runcodes_user_home | default(ansible_facts['user_dir']) }}"
+    XDG_RUNTIME_DIR: "/run/user/{{ runcodes_uid | default(ansible_facts['user_uid']) }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ runcodes_uid | default(ansible_facts['user_uid']) }}/bus"
+  roles:
+    - role: rc-observability

@@ -1,0 +1,30 @@
+// Grafana Alloy on the edge host: scrape the backend's internal pprof listener
+// and write CPU profiles to Pyroscope on the observability host.
+//
+// pprof stays unpublished: this container shares the edge compose network with
+// the backend and reaches backend:6060 directly.
+
+pyroscope.scrape "runcodes" {
+  targets = [
+    {
+      "__address__" = "backend:6060",
+      "service_name" = "runcodes-backend",
+    },
+  ]
+
+  scrape_interval = "15s"
+  scrape_timeout  = "10s"
+  forward_to      = [pyroscope.write.default.receiver]
+}
+
+pyroscope.write "default" {
+  endpoint {
+    url = "http://{{ hostvars[groups['observability'][0]].private_ip }}:4040"
+  }
+
+  external_labels = {
+    "cluster"                = "{{ runcodes_cluster_name }}",
+    "deployment_environment" = "{{ runcodes_environment }}",
+    "node"                   = "{{ inventory_hostname }}",
+  }
+}

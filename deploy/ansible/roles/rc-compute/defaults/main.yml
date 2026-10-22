@@ -1,0 +1,4 @@
+---
+rc_compute_judge_mem_limit: "512m"
+rc_compute_alloy_mem_limit: "256m"
+rc_compute_node_exporter_mem_limit: "128m"

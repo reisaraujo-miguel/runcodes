@@ -1,0 +1,161 @@
+---
+# Deployment configuration.
+#
+# Copy this file to config.yml (which is gitignored) and edit it there:
+#
+#   cp inventories/group_vars/all/config.yml.example \
+#      inventories/group_vars/all/config.yml
+#
+# Ansible loads every file in inventories/group_vars/all/, so config.yml and
+# main.yml are read together. main.yml maps these config_* names to the
+# runcodes_* names used by the roles and templates; do not put deployment values
+# in main.yml.
+#
+# The values below match the example four-host inventory. Replace the
+# addresses and domain with your own; see the firewall note at the bottom.
+
+# ---------------------------------------------------------------------------
+# Release and images
+# ---------------------------------------------------------------------------
+config_runcodes_cluster_name: "runcodes-prod"
+config_runcodes_environment: "production"
+# OTel service.version for backend/judge; use the release tag you deploy.
+config_runcodes_version: "latest"
+
+# Application images are built and published by
+# .github/workflows/app-images.yml. The deployment pulls them from here; it
+# does not build them.
+# Registry and namespace that publish the four application images. The example
+# uses a placeholder namespace; set it to yours, and keep the runner prefix
+# below on the same registry/namespace.
+config_runcodes_image_registry: "ghcr.io"
+config_runcodes_image_namespace: "runcodes-icmc"
+config_runcodes_image_tag: "latest"
+config_runcodes_pull_images: true
+
+# Runner images are pulled by the judge at run time. They are pre-pulled into
+# the rootless podman storage on the compute host so the first submission does
+# not wait for 20+ images.
+config_runcodes_runner_tag: "latest"
+config_runcodes_runner_image_prefix: "ghcr.io/runcodes-icmc/runcodes-runner-"
+config_runcodes_prepull_runner_images: true
+config_runcodes_runner_languages:
+  - c
+  - cpp
+  - c-omp
+  - c-omp-mpi
+  - cpp-omp
+  - cpp-omp-mpi
+  - dotnet
+  - fortran
+  - go
+  - haskell
+  - java
+  - julia
+  - lua
+  - octave
+  - pascal
+  - portugol
+  - prolog
+  - python
+  - r
+  - rust
+  - verilog
+  - zig
+
+# ---------------------------------------------------------------------------
+# Edge address and TLS
+# ---------------------------------------------------------------------------
+config_runcodes_domain: "runcodes.example.com"
+config_runcodes_public_url: "https://runcodes.example.com"
+# Only for an HTTP-only lab: the backend marks its session cookie Secure unless
+# DEBUG_MODE is true, so logins over plain HTTP need this. Never enable it on an
+# HTTPS production deployment.
+config_runcodes_backend_debug_mode: false
+
+# ---------------------------------------------------------------------------
+# Filesystem layout
+# ---------------------------------------------------------------------------
+config_runcodes_deploy_user: "runcodes"
+config_runcodes_root: "/opt/runcodes"
+# ---------------------------------------------------------------------------
+# Application
+# ---------------------------------------------------------------------------
+# The schema and database/schema/05-app-role.sh use these literal names.
+config_runcodes_db_name: "runcodes"
+config_runcodes_db_owner: "runcodes"
+config_runcodes_redis_db: 0
+config_runcodes_s3_region: "sa-east-1"
+config_runcodes_s3_bucket_prefix: "runcodes"
+
+# Bundled smtp4dev is the default so a fresh deployment can create and verify
+# accounts without an external service. For a real relay, set host/port/from
+# here and put the optional credentials in vault.yml.
+config_runcodes_smtp_host: "smtp4dev"
+config_runcodes_smtp_port: 25
+config_runcodes_smtp_from: "RunCodes <no-reply@runcodes.example.com>"
+
+config_runcodes_bootstrap_admin: true
+config_runcodes_admin_email: "admin@admin.com"
+
+# ---------------------------------------------------------------------------
+# Judge / execution
+# ---------------------------------------------------------------------------
+config_runcodes_judge_concurrency: 4
+config_runcodes_judge_exec_dir: "/opt/runcodes/exec"
+config_runcodes_judge_stale_timeout: "20m"
+config_runcodes_judge_max_run_duration: "15m"
+config_runcodes_judge_compilation_wait: "2m"
+config_runcodes_judge_poll_interval: "1s"
+config_runcodes_judge_container_memory_bytes: 1610612736
+config_runcodes_judge_container_pids_limit: 256
+config_runcodes_judge_container_cpu_quota: 100000
+
+# ---------------------------------------------------------------------------
+# OpenTelemetry (application side)
+# ---------------------------------------------------------------------------
+config_runcodes_otel_traces_sampler: "parentbased_always_on"
+config_runcodes_otel_traces_sampler_arg: "1.0"
+config_runcodes_otel_metric_export_interval: "10000"
+
+# ---------------------------------------------------------------------------
+# Observability storage and UI
+# ---------------------------------------------------------------------------
+config_runcodes_prometheus_retention_time: "15d"
+config_runcodes_prometheus_retention_size: "8GB"
+config_runcodes_tempo_retention_hours: 168
+config_runcodes_grafana_admin_user: "admin"
+# Grafana is private. Use an SSH tunnel and keep this as localhost, or set the
+# private address you reach through the tunnel.
+config_runcodes_grafana_root_url: "http://localhost:3000"
+
+# ---------------------------------------------------------------------------
+# Host management and firewall
+# ---------------------------------------------------------------------------
+config_runcodes_timezone: "America/Sao_Paulo"
+# The node addresses are used as the private/management network. The example
+# uses RFC 5737 documentation addresses; the provider firewall (or UFW) must
+# allow only these peers to reach the non-public ports. UFW is off by default
+# to avoid locking out an operator; review the SSH sources before enabling it.
+config_runcodes_firewall_enabled: false
+config_runcodes_firewall_private_sources:
+  - "203.0.113.10"
+  - "203.0.113.11"
+  - "203.0.113.13"
+  - "203.0.113.12"
+config_runcodes_firewall_ssh_cidrs:
+  - "203.0.113.0/24"
+# Podman container networks (rootless deployments commonly use 10.88/16 or
+# 10.89/16) need to reach host-published ports for blackbox probes and
+# node-exporter scraping. These rules are source-restricted; keep them if you
+# enable UFW.
+config_runcodes_firewall_container_sources:
+  - "10.88.0.0/16"
+  - "10.89.0.0/16"
+
+# Verification: runs the upstream observability smoke test from the
+# observability host. The authenticated submission test is opt-in.
+config_runcodes_verify_public_url: true
+config_runcodes_verify_tls: true
+config_runcodes_run_smoke_test: true
+config_runcodes_run_submission_smoke_test: false

@@ -1,0 +1,97 @@
+---
+- name: Ensure the shared judge execution directory is writable
+  ansible.builtin.file:
+    path: "{{ runcodes_judge_exec_dir }}"
+    state: directory
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0775"
+
+# The judge would pull a language image on the first submission. Pre-pulling
+# the full set into rootless storage makes the first run predictable and proves
+# the runner prefix/tag combination is available before a student finds out.
+- name: Pre-pull the runner images into rootless podman storage
+  ansible.builtin.command:
+    argv:
+      - podman
+      - pull
+      - --quiet
+      - "{{ runcodes_runner_image_prefix }}{{ item }}:{{ runcodes_runner_tag }}"
+  environment:
+    HOME: "{{ runcodes_user_home | default(ansible_facts['user_dir']) }}"
+    XDG_RUNTIME_DIR: "/run/user/{{ runcodes_uid | default(ansible_facts['user_uid']) }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ runcodes_uid | default(ansible_facts['user_uid']) }}/bus"
+  loop: "{{ runcodes_runner_languages }}"
+  register: rc_compute_runner_pull
+  changed_when: false
+  retries: 3
+  delay: 5
+  when: runcodes_prepull_runner_images | bool
+
+- name: Render the compute host environment file
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ runcodes_root }}/compose/compute/.env"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0600"
+  no_log: true
+
+- name: Render the Alloy profiling scraper
+  ansible.builtin.template:
+    src: alloy.alloy.j2
+    dest: "{{ runcodes_root }}/config/compute/config.alloy"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+
+- name: Install the compute host compose file
+  ansible.builtin.copy:
+    src: compose.yml
+    dest: "{{ runcodes_root }}/compose/compute/compose.yml"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+
+- name: Deploy the compute stack
+  ansible.builtin.include_role:
+    name: rc-podman-stack
+  vars:
+    stack_name: compute
+    stack_dir: "{{ runcodes_root }}/compose/compute"
+    stack_after: podman.socket
+    stack_requires: podman.socket
+    stack_wait_socket: true
+    stack_pull: "{{ runcodes_pull_images | bool }}"
+
+- name: Wait for the judge liveness endpoint
+  ansible.builtin.uri:
+    url: "http://{{ private_ip }}:9000/healthz"
+    status_code: 200
+    return_content: true
+  register: rc_compute_judge_health
+  until: rc_compute_judge_health.status == 200
+  retries: 40
+  delay: 3
+
+- name: Wait for judge readiness (database and podman)
+  ansible.builtin.uri:
+    url: "http://{{ private_ip }}:9000/readyz"
+    status_code: 200
+    return_content: true
+  register: rc_compute_judge_ready
+  until: rc_compute_judge_ready.status == 200
+  retries: 40
+  delay: 3
+
+- name: Show the compute stack status
+  ansible.builtin.command:
+    argv: [podman-compose, -p, runcodes-compute, -f, compose.yml, ps]
+    chdir: "{{ runcodes_root }}/compose/compute"
+  register: rc_compute_ps
+  changed_when: false
+
+- name: Print the compute stack status
+  ansible.builtin.debug:
+    var: rc_compute_ps.stdout_lines
+    verbosity: 1
