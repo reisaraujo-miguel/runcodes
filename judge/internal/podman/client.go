@@ -202,7 +202,7 @@ func (c *Client) Create(ctx context.Context, rc RunConfig) (*Container, error) {
 
 // containerUmask is the umask every graded run starts with.
 //
-// The run's image is non-root (see `runners/README.md`): it runs as a
+// The run's image is non-root (see `docs-site/docs/services/judge.md#isolation`): it runs as a
 // system user, which rootless podman maps to a subuid — a different uid from
 // the judge's, and one the judge is not allowed to chmod. Everything a run
 // creates therefore has to be world-writable for the judge to be able to grade

@@ -5,6 +5,9 @@ This directory contains the RunCodes documentation website, built with
 
 **Live site:** <https://reisaraujo-miguel.github.io/runcodes/>
 
+This is the **canonical documentation**. Repository READMEs are short entry
+points that link here; do not add long-form guides back to them.
+
 ## Local development
 
 Requires Node.js 20 or 22.
@@ -31,6 +34,7 @@ DOCS_BASE=/ npm run dev
 - Diagrams use fenced `mermaid` blocks.
 - Use relative `.md` links between pages; link to repository files with full
   GitHub URLs.
+- Prefer linking to a page over repeating its content in a README.
 
 When adding a page, add it to the sidebar array for its section in the config
 and link it from at least one other page.
@@ -50,7 +54,8 @@ domain in the repository's Pages settings.
 In **Settings → Pages**, set **Source** to **GitHub Actions**. Then push to
 `main` or run the **Docs** workflow manually.
 
-## Content map
+## Documentation map
 
-See `docs/reference/source-map.md` for the mapping from the repository's source
-documents to pages on this site.
+See [`docs/reference/source-map.md`](docs/reference/source-map.md) for every page,
+the repository entry points, and the old files that were consolidated into this
+site.

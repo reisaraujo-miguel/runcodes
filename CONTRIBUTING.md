@@ -1,44 +1,69 @@
-# Contributing to **RunCodes**
+# Contributing to RunCodes
 
-Thank you for considering contributing to our project! Here's how you can help:
+Thanks for taking the time to contribute. The full contributor guide, including
+development setup, tests and the documentation workflow, is on the docs site:
+[Contributing](https://reisaraujo-miguel.github.io/runcodes/contributing.html).
 
-## Reporting Bugs or Suggesting Enhancements
+## Issues and pull requests
 
-- Please use the [GitHub Issues](https://github.com/reisaraujo-miguel/runcodes/issues) page to report bugs or suggest new features.
+- Report bugs and suggest features on
+  [GitHub Issues](https://github.com/reisaraujo-miguel/runcodes/issues).
+- Fork the repository, make the change in a branch, and open a pull request.
+- Describe **what** changed and **why**; reference an issue when there is one.
+- Keep the relevant checks green (see below).
 
-## Making Code Changes
+## Development
 
-- Fork the repository.
-- Make your changes in your fork.
-- Submit a pull request through GitHub.
-- Schema changes are generated as versioned migrations with Atlas; see
-  [`database/README.md`](database/README.md).
+```bash
+# Frontend
+cd frontend && bun install && bun run dev
 
-Try to make your pull request descritive, indicating the changes you made and the reason for them. If the pull request is
-related to an issue, please reference it in the description.
+# Backend (needs a .env or environment variables)
+cd backend && go run . -debug
 
-## Development setup
-
-### Frontend
-
-The frontend is a [Bun](https://bun.sh) project:
-
-```sh
-cd frontend
-bun install
+# Judge (needs the rootless Podman socket and ./exec)
+cd judge && make run
 ```
 
-Installing also enables the repository's Git hooks (`.githooks/`). The
-`pre-commit` hook runs `bun run check-svg` and refuses the commit when a source
-SVG is not optimised; fix it by running `bun run optimize-svg` and staging the
-result. To enable the hooks without installing dependencies, run:
+For the complete stack use `docker compose up --build`. The
+[contributor guide](https://reisaraujo-miguel.github.io/runcodes/contributing.html#development-setup)
+covers dependencies, the observability overlay and each service's commands.
 
-```sh
-git config core.hooksPath .githooks
-```
+## Checks
 
-## Questions?
+| Area | Command |
+| --- | --- |
+| Backend | `cd backend && gofmt -l . && go vet ./... && go test -race ./...` |
+| Judge | `cd judge && make test` |
+| Frontend | `cd frontend && bun run lint && bun run check-svg && bun test && bun run build` |
+| Monitor & harness | `./monitor/test/monitor.test.sh && ./runners/test/harness.test.sh` |
+| Docs site | `cd docs-site && npm ci && npm run build` |
 
-- Feel free to ask in the comments of the relevant issue or pull request.
+`bun install` enables the repository Git hooks. To enable them without installing
+dependencies, run `git config core.hooksPath .githooks`. The pre-commit hook runs
+`bun run check-svg`; fix a failure with `bun run optimize-svg`.
 
-Thank you for your interest in **RunCodes**! Your contributions make this project better for everyone.
+## Database changes
+
+Schema changes are generated as versioned Atlas migrations; do not edit a live
+database by hand. The workflow is in
+[`database/README.md`](database/README.md) and the
+[Database guide](https://reisaraujo-miguel.github.io/runcodes/services/database.html#migrations).
+CI fails when the schema and migrations disagree.
+
+## Documentation changes
+
+The published site is the canonical documentation; the service READMEs are short
+entry points. Documentation source lives in [`docs-site/`](docs-site/), built with
+VitePress. When behaviour changes, update the relevant page and run
+`npm run build` in `docs-site/`. See the
+[documentation guide](https://reisaraujo-miguel.github.io/runcodes/documentation.html).
+
+## Questions
+
+Ask in the comments of the relevant issue or pull request.
+
+## License
+
+Contributions are distributed under the GNU Affero General Public License v3.0
+(see [LICENSE](LICENSE)).

@@ -148,11 +148,13 @@ A new judge against old images logs nonce-less milestones and times out.
 
 ## Contributing to these docs
 
-The documentation site is in `docs-site/`. See
+The published site is the canonical documentation; repository READMEs are short
+entry points. The source is in `docs-site/` — see
 [Documentation site](./documentation.md) for the structure, local commands and
-deployment. When behaviour changes, update the relevant page, the configuration
-reference if a variable changed, and the
-[coverage map](./reference/source-map.md) if a source document was added.
+deployment. When behaviour changes, update the relevant page and the
+configuration reference if a variable changed. Do not duplicate the content in a
+service README; link to the page instead. The
+[documentation map](./reference/source-map.md) lists every page and retired file.
 
 ## Contributors
 

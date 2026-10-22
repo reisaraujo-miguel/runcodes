@@ -1,9 +1,15 @@
 # Deployment
 
-The four-machine Ansible deployment lives in [`ansible/`](ansible/README.md).
+The four-machine Ansible deployment lives in [`ansible/`](ansible/README.md). It
+deploys the frontend/backend, judge, PostgreSQL, Redis, SeaweedFS and the full
+observability stack with **rootless Podman**.
 
-It deploys the full RunCodes stack (frontend/backend, judge, PostgreSQL, Redis,
-SeaweedFS) plus the complete observability stack with rootless Podman.
+**Full documentation:**
 
-Start with [`ansible/README.md`](ansible/README.md). The topology and placement
-rationale are in [`ansible/docs/ARCHITECTURE.md`](ansible/docs/ARCHITECTURE.md).
+- [Deployment overview](https://reisaraujo-miguel.github.io/runcodes/deployment/)
+- [Ansible setup](https://reisaraujo-miguel.github.io/runcodes/deployment/ansible-setup.html)
+- [Ansible operations](https://reisaraujo-miguel.github.io/runcodes/deployment/ansible-operations.html)
+- [Security & scaling](https://reisaraujo-miguel.github.io/runcodes/deployment/security.html)
+- [Four-machine observability](https://reisaraujo-miguel.github.io/runcodes/observability/production.html)
+
+For a single host, use [Docker Compose](https://reisaraujo-miguel.github.io/runcodes/deployment/compose.html).

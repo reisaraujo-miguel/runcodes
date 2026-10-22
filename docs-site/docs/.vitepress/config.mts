@@ -99,7 +99,7 @@ const referenceSidebar = [
       { text: 'CI/CD & releases', link: '/ci-cd' },
       { text: 'Contributing', link: '/contributing' },
       { text: 'Documentation site', link: '/documentation' },
-      { text: 'Documentation coverage', link: '/reference/source-map' }
+      { text: 'Documentation map', link: '/reference/source-map' }
     ]
   }
 ]

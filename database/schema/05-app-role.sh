@@ -56,7 +56,7 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO runcodes_app;
 
 -- Migrations run as `runcodes`, the owner. These defaults make every table and
 -- sequence a migration creates carry the same grants, so a migration never has
--- to remember them (see database/migration/README.md).
+-- to remember them (see docs-site/docs/services/database.md#role-model).
 ALTER DEFAULT PRIVILEGES FOR ROLE runcodes IN SCHEMA public
 	GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO runcodes_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE runcodes IN SCHEMA public

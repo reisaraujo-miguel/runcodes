@@ -1,254 +1,63 @@
-# RunCodes — Judge
+# Judge
 
-The execution engine for RunCodes submissions. It is the successor to the
-legacy Python `compiler-engine` and runs the language images from `runners/`
-with **rootless podman** instead of Docker.
-The image a run uses is `ghcr.io/runcodes-icmc/runcodes-runner-<language>`
-(`JUDGE_IMAGE_FORMAT` overrides the format), built together with the in-container
-monitor from `monitor/` — the three parts are released as one contract.
+The compute-only execution engine for RunCodes submissions. The judge claims
+queued commits from PostgreSQL, reads source and test cases from SeaweedFS, runs
+the matching language image with **rootless Podman**, grades the output, and
+streams events to the backend. It never writes results or artifacts.
 
-The judge is **compute-only**: it claims queued commits from PostgreSQL, reads
-its inputs from S3, runs the container, grades the outputs and streams the
-results to the backend over SSE. It never writes results or artifacts itself —
-the backend owns all Postgres/S3 persistence (see `DESIGN.md` for the full
-contract).
+**Full documentation:** [Judge](https://reisaraujo-miguel.github.io/runcodes/services/judge.html)
+· [Judge design & API](https://reisaraujo-miguel.github.io/runcodes/api/judge.html)
 
-## How a submission flows
+## Build and run
 
-1. The backend registers the commit (`status = 'queued'`), uploads the source
-   and test-case files to S3, and calls `POST /v1/runs/{id}` to wake the judge.
-2. A worker claims the commit from Postgres with
-   `SELECT ... FOR UPDATE SKIP LOCKED` (writing only the claim), so at most
-   `JUDGE_CONCURRENCY` containers run at once and no submission is ever lost.
-3. The worker prepares a per-commit workspace, mounts it into the language
-   image at `/root` and drives the image's script through the
-   `compilation.start/done` and `run.start/done` milestones.
-4. Each status change, per-case verdict and the terminal `finished` event is
-   published to the per-commit event log, which the backend consumes through
-   `GET /v1/runs/{id}/events` (SSE, replayable).
-
-## Build & run
-
-```sh
-make build        # produces bin/judge
+```bash
+cd judge
+make build        # bin/judge
 make test
 make run
 ```
 
-The build **requires** the podman remote/storage opt-out tags (see the
-`Makefile`): without them the podman bindings need `gpgme`/`btrfs` development
-headers that a judge host does not have.
+The build requires the Podman remote/storage opt-out tags handled by the
+`Makefile`. The judge needs a rootless Podman socket and a writable shared
+execution directory:
 
-Rootless podman must expose its API socket:
-
-```sh
-systemctl --user start podman.socket   # unix:///run/user/$UID/podman/podman.sock
+```bash
+systemctl --user start podman.socket
+mkdir -p ../exec && chmod 0777 ../exec
 ```
 
-### Shared execution directory
+In Compose, the `judge-exec-init` service prepares `./exec` and the socket is
+mounted automatically. Read `readyz` to confirm both dependencies:
 
-The judge creates one workspace per commit under `JUDGE_EXEC_DIR` (mounted at
-`/exec`) and shares it with the podman service through `JUDGE_EXEC_DIR_REMOTE`,
-so the language containers can bind-mount it. The directory must exist and be
-writable by the judge's UID.
-
-When running through the root `docker-compose.yml` this is handled
-automatically: the directory is tracked in the repository (`exec/.gitkeep`) and
-the one-shot `judge-exec-init` service makes it writable before the judge
-starts, so a fresh checkout needs no manual setup. Committing the directory
-matters under podman, which — unlike Docker — refuses to create a missing
-bind-mount source. When running the judge directly (outside Compose), create it
-yourself:
-
-```sh
-mkdir -p ./exec && chmod 0777 ./exec
+```bash
+curl -s http://localhost:9000/readyz
 ```
 
 ## Configuration
 
-All configuration is via environment variables; see `.env.example`.
+All configuration is environment-based; see [`judge/.env.example`](.env.example)
+and the [configuration reference](https://reisaraujo-miguel.github.io/runcodes/reference/configuration.html#judge).
+`JUDGE_AUTH_TOKEN` (or `RUNCODES_JUDGE_TOKEN`) is required for `/v1`; the judge
+refuses those routes when it is unset.
 
-**API authentication.** `JUDGE_AUTH_TOKEN` (or `RUNCODES_JUDGE_TOKEN`) is the
-shared bearer token the backend presents. While it is unset the judge refuses
-every `/v1` request instead of serving them to anyone who can reach the port,
-because that API exposes other people's submissions and outputs. A local
-instance that is not reachable from anywhere else can opt out with
-`JUDGE_ALLOW_INSECURE=true`, which logs a warning at startup.
+## Integration test
 
-**Container limits.** Graded code is untrusted, so every container is capped from
-outside with cgroup limits, independently of the in-container monitor (which the
-submission shares privileges with and can defeat):
-
-| Variable                       | Default  | Purpose                                 |
-| ------------------------------ | -------- | --------------------------------------- |
-| `JUDGE_CONTAINER_MEMORY_BYTES` | 1536 MiB | memory and swap cap, per concurrent run |
-| `JUDGE_CONTAINER_PIDS_LIMIT`   | 256      | process/thread cap (fork bombs)         |
-| `JUDGE_CONTAINER_CPU_QUOTA`    | 100000   | CPU per 100 ms period (1 full core)     |
-
-The memory cap is deliberately above the largest default a language image sets
-(1 GiB, for the memory-hungry toolchains): a run that reaches the image's own
-limit is reported as exceeding it, while one that reaches the cgroup cap is only
-seen as a process killed by a signal. It applies per concurrent run, so
-`JUDGE_CONCURRENCY` multiplies it.
-
-The equivalent limits _inside_ the container are the image's business. The judge
-writes `monitor_max_fs` / `monitor_max_ms` / `compilation_timeout` into
-`container.config` only when `JUDGE_MONITOR_MAX_FILE_SIZE` /
-`JUDGE_MONITOR_MAX_MEM_SIZE` / `JUDGE_DEFAULT_COMPILATION_TIMEOUT` are set (all
-default to 0, which sends nothing and leaves each language image's own value in
-place — `monitor_max_ms` is 1 GiB for Python and unset for the JVM images, and Go
-and C# compile with a 60 s timeout). An operator who sets one overrides every
-language, which is what those variables are for.
-
-The judge's own patience for the compilation phase is a separate number:
-`JUDGE_COMPILATION_WAIT` (default 2m) is how long it waits for the
-`compilation.*` milestones. It has to outlast the image's compilation timeout
-plus container startup, or the judge abandons a compilation the container is
-still allowed to finish and reports a milestone timeout instead of the
-compiler's error. The two are validated against each other when both are set.
-
-Containers are also created with **no network namespace**, so submitted code
-cannot reach the internet or the other services on the compose network, and with
-**no-new-privileges**, so a setuid binary or a file capability in any language
-image cannot hand a submission rights the monitor does not have. Both are
-asserted in `internal/podman/spec_test.go`, together with the namespaces and the
-workspace mount: the entire boundary between a submission and the rest of the
-platform is that spec.
-
-**Read bounds.** Expected outputs are downloaded into a private directory beside
-the workspace (never into it), and the two files a case is graded from are read
-under `JUDGE_MAX_COMPARE_FILE_BYTES` (default 16 MiB). An output larger than that
-is a failed case rather than a truncation. The published output archive is capped
-by `JUDGE_MAX_ARTIFACT_BYTES` (default 64 MiB).
-
-**Run budget.** `JUDGE_MAX_RUN_DURATION` (default 30m) bounds one claimed commit
-end to end, so a stalled image pull, container create or S3 read cannot pin a
-worker slot forever. Keep it above the longest legitimate run and aligned with
-the backend's `RUNCODES_JUDGE_STALE_TIMEOUT`.
-
-**Container images.** The judge writes `run_nonce` into `container.config` and only
-accepts progress milestones that carry it, and it sends the exercise's per-case
-limits as `ms_<id>` / `fs_<id>` / `stack_<id>`. Both are part of the contract in
-`DESIGN.md`, so the language images must be rebuilt from `runners/`
-together with the judge: an image built from an older base script prints bare
-milestones, which the judge logs as a warning and ignores (the run then times
-out).
-
-Zip submissions are unpacked with a per-entry limit
-(`JUDGE_MAX_EXTRACT_FILE_BYTES`, default 64 MiB) and a total expanded-size limit
-(`JUDGE_MAX_EXTRACT_BYTES`, default 256 MiB) so an archive cannot fill the
-shared execution directory.
-
-## Troubleshooting
-
-**`readiness: podman unavailable` … `dial unix /run/podman/podman.sock: connect:
-connection refused`.** Nothing is accepting connections on that path _inside the
-container_. The judge reaches podman through a socket Compose bind-mounts when
-the container is created, and a bind mount pins whatever it pointed at:
-
-- the container was created **before** the socket existed, so the mount is a
-  directory (Docker creates the missing source path) — a fresh `docker compose up`
-  started before `systemctl --user start podman.socket` leaves exactly this;
-- or `podman.socket` was **restarted** afterwards, which creates a new socket, so
-  the container still holds the old one and every connect is refused.
-
-Either way the fix is on the host, and the container has to be recreated (a
-restart re-uses it, mounts included):
-
-```sh
-systemctl --user status podman.socket              # is it active?
-docker compose up -d --force-recreate judge
-docker compose exec judge ls -l /run/podman/podman.sock  # must be an 's', not a 'd'
-curl -s http://localhost:9000/readyz               # {"status":"ok"}
+```bash
+make integration
 ```
 
-The judge logs the same diagnosis at startup and on every readiness probe. While
-podman is unreachable the backend refuses submissions with `503`, so nothing is
-queued or lost.
+Starts ephemeral PostgreSQL and SeaweedFS containers and runs the real engine
+against a real language image through rootless Podman. See the
+[integration notes](integration/README.md).
 
-**`readiness: podman unavailable` … `dial unix /run/podman/podman.sock: connect:
-permission denied`.** Unlike the case above the mount is alive — the socket is
-there and only the access check fails. Two settings are load-bearing on a
-rootless podman host, and both are easy to lose in an override file:
+## Layout
 
-- **SELinux.** Fedora enables it by default and labels the rootless socket
-  `user_tmp_t`. A container runs as `container_t`, cannot connect to it, and the
-  kernel reports the denial as a plain `EACCES`. The judge therefore disables
-  SELinux separation for itself (`security_opt: [label=disable]`); relabelling
-  the socket with `:z` is not a fix, because systemd recreates it with
-  `user_tmp_t` the next time `podman.socket` restarts.
-- **The UID.** Rootless podman maps container root to the host user, so a
-  container started as uid 1000 is a host _subuid_ (524288 and up) — neither in
-  the socket's group nor its owner, which is what a `0660` socket checks. The
-  judge therefore runs as root inside its namespace (`user:` defaults to `0:0`),
-  which _is_ the host user; that also makes the workspaces it writes in `./exec`
-  belong to the host user, so the host podman can relabel them (`:z`) and mount
-  them into the runner containers. `judge-exec-init` needs the same ownership to
-  `chmod 0777 ./exec`.
+`internal/worker` claims and processes commits; `internal/podman` builds the
+container spec; `internal/engine` runs and grades; `internal/events` is the
+replayable event hub; `internal/language` maps file extensions to images.
 
-A recreated judge is enough; verify it with:
+## Related
 
-```sh
-docker compose exec judge id                      # uid=0(root), not 1000
-curl -s http://localhost:9000/readyz              # {"status":"ok"}
-```
-
-**`could not claim commit: begin claim tx: context deadline exceeded`.** The
-judge could not get a database connection within its 10 s claim budget, which is
-what a database container that was recreated under a running judge looks like:
-the pool's old connections point at an address that no longer answers. The poll
-loop retries every `JUDGE_POLL_INTERVAL`, so a single occurrence clears itself;
-the fix for a persistent one is the same as above — recreate the judge container
-along with the database.
-
-## Endpoints
-
-| Method | Path                   | Description                                     |
-| ------ | ---------------------- | ----------------------------------------------- |
-| GET    | `/healthz`             | liveness                                        |
-| GET    | `/readyz`              | Postgres + podman reachable (backend pre-check) |
-| POST   | `/v1/runs/{id}`        | wake the poll loop for a commit                 |
-| GET    | `/v1/runs/{id}/events` | SSE event stream (`?from=<seq>` to resume)      |
-| GET    | `/v1/runs/{id}/output` | the generated output archive                    |
-| HEAD   | `/v1/runs/{id}/output` | whether the output archive exists               |
-
-`/v1` endpoints require `Authorization: Bearer $JUDGE_AUTH_TOKEN`. Without a
-configured token they return `503` unless `JUDGE_ALLOW_INSECURE=true` is set.
-
-## Limitations
-
-- A run that is in flight when the judge crashes stays `compiling`/`running` in
-  Postgres; the backend's reconciliation sweeper marks such rows
-  `server_error`. Claiming is otherwise crash-safe and multi-instance safe.
-- Finished runs remain replayable in memory for `JUDGE_EVENT_RETENTION`; after
-  that, clients must read the terminal state from the backend's database.
-
-## Observability
-
-The judge is instrumented with the OpenTelemetry Go SDK (traces, HTTP metrics,
-structured logs) and is a no-op unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set. The
-Compose observability overlay points it at the collector with
-`service.name=runcodes-judge`.
-
-- Inbound requests use `otelchi` spans; S3 downloads use `otelhttp`; database
-  claims/queries use `otelsql`.
-- Each claimed commit starts a root `judge.process_commit` span with
-  `runcodes.commit.id`. The worker adds `judge.prepare_workspace` and
-  `judge.run_container`, and grading adds one `judge.grade_test_case` span per
-  test case with the case id, verdict, CPU time and memory usage. The container's
-  internal loop remains a single `judge.run_container` span.
-- Async gauges `runcodes.judge.queue.depth` and
-  `runcodes.judge.queue.oldest_age` expose the durable PostgreSQL queue.
-- `PPROF_ADDR` (optional, e.g. `:6060`) starts an internal pprof listener that
-  Alloy scrapes into Pyroscope; it is never exposed by the judge API. The
-  `otel-profiling-go` bridge labels the profiles with trace/span ids and adds
-  `pyroscope.profile.id` to every span (including per-case grading), so Grafana
-  can open the matching flame graph.
-- Logs include `trace_id`/`span_id` when a context is available and are also
-  forwarded over OTLP to Loki.
-- `/healthz` and `/readyz` remain the liveness/readiness endpoints; only
-  `/healthz` is used by the Docker `HEALTHCHECK`.
-
-The full stack, dashboard and validation commands are documented in
-[`../docs/observability/README.md`](../docs/observability/README.md). Browser
-tracing is not implemented in the frontend; see the known limitations there.
+- [Runner images & monitor](https://reisaraujo-miguel.github.io/runcodes/services/runners-and-monitor.html)
+- [Architecture](https://reisaraujo-miguel.github.io/runcodes/guide/architecture.html)
+- [Observability](https://reisaraujo-miguel.github.io/runcodes/observability/)

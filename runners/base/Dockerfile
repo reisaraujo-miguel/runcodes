@@ -15,7 +15,7 @@ RUN chmod +x /usr/bin/runcodes
 #
 # A system user is used so the uid comes from the range the distribution keeps
 # free: a fixed one would collide, because some of the language images are built
-# on a distribution that already occupies 1000 (see `README.md`), and nothing
+# on a distribution that already occupies 1000 (see `docs-site/docs/services/runners-and-monitor.md#the-user-a-run-executes-as`), and nothing
 # outside this image depends on the number. The home directory is `/root`
 # because that is where the judge bind-mounts the run's workspace, and because
 # the toolchains write their caches relative to `$HOME`.
