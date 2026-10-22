@@ -1,7 +1,7 @@
-import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { useMemo } from "react";
 
+import { sanitizeRichText } from "@/lib/rich-text";
 import { cn } from "@/lib/utils";
 
 marked.setOptions({ gfm: true, breaks: true });
@@ -15,10 +15,7 @@ export function Markdown({
   className?: string;
 }) {
   const html = useMemo(
-    () =>
-      DOMPurify.sanitize(marked.parse(children, { async: false }), {
-        USE_PROFILES: { html: true },
-      }),
+    () => sanitizeRichText(marked.parse(children, { async: false })),
     [children],
   );
 

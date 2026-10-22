@@ -15,7 +15,6 @@ import {
   keymap,
   placeholder as placeholderExtension,
 } from "@codemirror/view";
-import DOMPurify from "dompurify";
 import { CodeIcon, EyeIcon, FileTextIcon, PencilIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -23,6 +22,7 @@ import { Markdown } from "@/components/submission/Markdown";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/hooks/use-theme";
 import { editorTheme } from "@/lib/editor/editor-theme";
+import { sanitizeRichText } from "@/lib/rich-text";
 import { cn } from "@/lib/utils";
 
 /** The markup formats the prose editor can edit. */
@@ -256,7 +256,7 @@ function readOnlyExtensions(readOnly: boolean) {
 
 /** Renders the HTML preview after removing anything unsafe to insert. */
 function SanitizedHtml({ source }: { source: string }) {
-  const sanitized = useMemo(() => DOMPurify.sanitize(source), [source]);
+  const sanitized = useMemo(() => sanitizeRichText(source), [source]);
 
   return (
     <div
