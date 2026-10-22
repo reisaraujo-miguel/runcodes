@@ -26,6 +26,11 @@ type monitorInfo struct {
 	Time   float64
 	Mem    int64
 	HasMem bool
+	// ExitStatus is the status the monitored command exited with. It is only
+	// meaningful when HasExit is true: the monitor initializes it to -1 when its
+	// child was terminated by a signal instead of exiting normally.
+	ExitStatus int
+	HasExit    bool
 }
 
 // maxMonitorBytes bounds the monitor output the judge parses. The file is written
@@ -71,6 +76,11 @@ func readMonitor(path string) monitorInfo {
 		switch key {
 		case "signal":
 			info.Signal = value
+		case "exit_status":
+			if n, err := strconv.Atoi(value); err == nil {
+				info.ExitStatus = n
+				info.HasExit = true
+			}
 		case "time":
 			info.Time, _ = strconv.ParseFloat(value, 64)
 		case "mem", "memory", "mem_usage", "memused":
@@ -83,6 +93,26 @@ func readMonitor(path string) monitorInfo {
 	}
 
 	return info
+}
+
+// exitFailureMessage reports whether a monitor exit status means the monitored
+// command did not complete successfully, and the student-facing reason. A
+// non-zero exit is a verdict, not a diagnostic: the harness runs the program
+// through `timeout`, so a timeout is reported as exit status 124 (or 128+signal
+// when the command itself was killed), with no signal in the monitor report.
+func exitFailureMessage(info monitorInfo) (string, bool) {
+	if !info.HasExit || info.ExitStatus == 0 {
+		return "", false
+	}
+
+	if info.ExitStatus == 124 {
+		return "timeout", true
+	}
+	if info.ExitStatus > 128 && info.ExitStatus < 256 {
+		return fmt.Sprintf("killed by signal %d", info.ExitStatus-128), true
+	}
+
+	return fmt.Sprintf("exit status %d", info.ExitStatus), true
 }
 
 // gradeAll grades every test case, downloading expected outputs from S3.
@@ -152,6 +182,7 @@ func (e *Engine) gradeCase(ctx context.Context, tc model.TestCase, ws *workspace
 	// Read the submission's output up front, under the comparison bound, so both
 	// sides of the comparison below are data the judge read itself.
 	userOutput, outputErr := readRegularBounded(outputPath, e.cfg.MaxCompareFileBytes)
+	exitMsg, exitFailed := exitFailureMessage(info)
 
 	switch {
 	case outputErr != nil:
@@ -164,6 +195,14 @@ func (e *Engine) gradeCase(ctx context.Context, tc model.TestCase, ws *workspace
 		)
 		result.Status = model.CaseKilledBySignal
 		result.ErrorMessage = "the output of this test case could not be read"
+
+	case exitFailed:
+		// A non-zero exit status is authoritative even when the program wrote the
+		// expected output: the harness wraps the command in `timeout`, which
+		// reports expiry as exit status 124 with no signal and no stderr.
+		result.Status = model.CaseKilledBySignal
+		result.StatusMsg = exitMsg
+		result.ErrorMessage = errContent
 
 	case info.Signal != "" || errContent != "":
 		// If the monitor indicates a signal or there is error output, we consider the case killed by a signal.
