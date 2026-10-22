@@ -593,3 +593,69 @@ func ParseClientIP(clientIP, remoteAddr string) *string {
 
 	return nil
 }
+
+/*
+HiddenTestCaseIDs returns the ids of the cases whose program output the exercise
+author chose not to release (`show_user_output = false`). It resolves a ghost
+exercise to the real exercise that owns the test cases, matching the judge.
+*/
+func HiddenTestCaseIDs(
+	ctx context.Context, commitID int64,
+) (map[int64]struct{}, error) {
+	rows, err := database.DB.QueryContext(ctx, `
+		SELECT tc.id
+		FROM commits c
+		JOIN exercises e ON e.id = c.exercise_id
+		JOIN exercises_test_cases tc
+		  ON tc.exercise_id = CASE
+		       WHEN e.ghost AND e.real_id IS NOT NULL THEN e.real_id
+		       ELSE e.id
+		     END
+		WHERE c.id = $1 AND tc.show_user_output = FALSE`, commitID)
+	if err != nil {
+		slog.ErrorContext(ctx, "error fetching hidden test cases",
+			slog.Int64("commit_id", commitID),
+			slog.String("error", err.Error()),
+		)
+		return nil, ErrServer
+	}
+	defer rows.Close()
+
+	hidden := make(map[int64]struct{})
+	for rows.Next() {
+		var caseID int64
+		if err := rows.Scan(&caseID); err != nil {
+			slog.ErrorContext(ctx, "error scanning hidden test case",
+				slog.Int64("commit_id", commitID),
+				slog.String("error", err.Error()),
+			)
+			return nil, ErrServer
+		}
+		hidden[caseID] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		slog.ErrorContext(ctx, "error iterating hidden test cases",
+			slog.Int64("commit_id", commitID),
+			slog.String("error", err.Error()),
+		)
+		return nil, ErrServer
+	}
+
+	return hidden, nil
+}
+
+/*
+RedactSnapshotOutput removes the program output of hidden cases from a snapshot
+before it is sent to the submission's owner. Staff viewers keep the full result.
+*/
+func RedactSnapshotOutput(
+	snapshot *models.Snapshot, hidden map[int64]struct{},
+) {
+	for i := range snapshot.Results {
+		if _, ok := hidden[snapshot.Results[i].ExerciseTestCaseID]; !ok {
+			continue
+		}
+		snapshot.Results[i].UserOutput = nil
+		snapshot.Results[i].ErrorMessage = nil
+	}
+}

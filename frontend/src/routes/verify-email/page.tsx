@@ -59,10 +59,12 @@ export function VerifyEmailPage() {
           message:
             error instanceof ApiRequestError && error.status === 400
               ? "O link de verificação é inválido ou expirou. Entre na sua conta e peça um novo link."
-              : errorMessage(
-                  error,
-                  "Não foi possível verificar o seu email. Tente novamente.",
-                ),
+              : error instanceof ApiRequestError && error.status === 409
+                ? "O endereço solicitado não está mais disponível. Entre na sua conta e peça a troca novamente."
+                : errorMessage(
+                    error,
+                    "Não foi possível verificar o seu email. Tente novamente.",
+                  ),
         });
       });
   }, [token]);
@@ -89,8 +91,9 @@ export function VerifyEmailPage() {
               <MailCheckIcon aria-hidden />
               <AlertTitle>Email confirmado</AlertTitle>
               <AlertDescription>
-                A sua conta está ativa. Agora você já pode entrar com o seu
-                email e a sua senha.
+                A sua conta está ativa. Se você acabou de alterar o email, entre
+                com o novo endereço e a sua senha; as sessões antigas foram
+                encerradas.
               </AlertDescription>
             </Alert>
           ) : null}

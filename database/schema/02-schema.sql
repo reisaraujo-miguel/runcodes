@@ -11,6 +11,13 @@ CREATE TABLE users (
   password_hash text NOT NULL,
   role user_t DEFAULT 'student' NOT NULL,
   confirmed boolean DEFAULT FALSE NOT NULL,
+  -- Incremented to invalidate every session issued for the account. A JWT
+  -- carries the value it was issued with; the request guard compares it with
+  -- this column.
+  token_version integer DEFAULT 1 NOT NULL,
+  -- An email change requested but not yet verified. The current email stays
+  -- active until the link sent to this address is used.
+  pending_email text,
   -- Whether the in-browser code editor is enabled for this user. New users
   -- start with it on; the preference is editable on the profile and submission
   -- pages.
@@ -262,6 +269,11 @@ CREATE INDEX idx_commits_exercise_id ON commits (exercise_id);
 CREATE INDEX idx_results_exercise_test_case_id ON commits_exercise_test_cases_results (exercise_test_case_id);
 CREATE INDEX idx_system_logs_user_id ON system_logs (user_id);
 CREATE INDEX idx_user_messages_user_id ON user_messages (user_id);
+
+-- At most one in-flight email change per address. The partial predicate keeps
+-- the many NULL pending_email rows out of the index.
+CREATE UNIQUE INDEX users_pending_email_key ON users (pending_email)
+  WHERE pending_email IS NOT NULL;
 
 -- The judge's claim loop runs continuously against the fastest-growing table in
 -- the schema:

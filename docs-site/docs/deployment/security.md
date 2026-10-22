@@ -33,18 +33,21 @@ truth. In a Compose install, only the frontend publishes on a network interface.
 
 - JWT (HS256) in an `HttpOnly`, `SameSite=Strict`, `Secure` cookie; 30-minute
   sliding lifetime.
-- No server-side revocation. Rotating the JWT secret invalidates issued tokens;
-  a password change does not revoke sessions that are already issued. Logout
-  clears the cookie.
+- Every token carries the account's `token_version`; every protected request
+  compares it (and the role) with the database. Password changes, completed email
+  changes and admin role/confirmation changes bump it, invalidating every issued
+  token. Logout only clears the browser cookie, so a copied token remains valid
+  until it expires; rotating the JWT secret invalidates all tokens.
 - Email confirmation is required for login and checked again on every protected
-  route. A session issued before an account was unconfirmed stops working.
+  route. A session issued before an account was unconfirmed stops working. Email
+  changes keep the old address active until the new one is verified.
 - Verification tokens are stored only as SHA-256, expire after 24 hours, and a
   resend invalidates the previous one.
 - Password recovery tokens are stored only as SHA-256, expire after 1 hour, and
   are single use; a new request invalidates the previous one. The request route
   answers the same way for every address, so it does not disclose accounts.
-- Login and the email routes (verification, resend, forgot, reset) are rate
-  limited.
+- The API-wide limit is 600 requests/minute per client IP (sized for a classroom
+  behind one NAT); login/signup get 20 and the email routes 10 per minute.
 
 ### Authorization
 

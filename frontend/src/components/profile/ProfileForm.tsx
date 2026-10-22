@@ -3,7 +3,7 @@ import { useState, type SubmitEvent } from "react";
 import { PlatformRoleBadge } from "@/components/app/RoleBadge";
 import { SectionCard } from "@/components/app/SectionCard";
 import { ErrorState, LoadingState } from "@/components/app/states";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +36,7 @@ function ProfileFields({
   const [name, setName] = useState(profile.name);
   const [email, setEmail] = useState(profile.email);
   const [orgId, setOrgId] = useState(profile.org_id);
+  const [currentPassword, setCurrentPassword] = useState("");
 
   function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,10 +49,19 @@ function ProfileFields({
       return;
     }
 
+    const emailChanged = nextEmail !== profile.email;
+    if (emailChanged && !currentPassword) {
+      setError("Informe a senha atual para alterar o email.");
+      return;
+    }
+
     // The API does a partial update, so unchanged fields are left out entirely.
     const payload: ProfilePayload = {};
     if (nextName !== profile.name) payload.name = nextName;
-    if (nextEmail !== profile.email) payload.email = nextEmail;
+    if (emailChanged) {
+      payload.email = nextEmail;
+      payload.current_password = currentPassword;
+    }
     if (nextOrgId !== profile.org_id) payload.org_id = nextOrgId;
 
     if (Object.keys(payload).length === 0) {
@@ -59,13 +69,24 @@ function ProfileFields({
       return;
     }
 
+    const successMessage = emailChanged
+      ? "Enviamos um link de confirmação para o novo email. O endereço atual continua ativo até a confirmação."
+      : "Dados atualizados com sucesso.";
+
     void run(async () => {
-      await updateProfile(payload);
+      const updated = await updateProfile(payload);
+      setCurrentPassword("");
+      if (emailChanged) {
+        // Keep the form showing the active address; the pending one is called
+        // out by the banner above.
+        setEmail(updated.email);
+      }
       // The sidebar shows the name and email, and the token still carries the
-      // old ones, so the session is renewed after a change.
+      // old ones, so the session is renewed after a change. The email itself is
+      // only changed after the verification link is used.
       await reloadSession();
       onSaved();
-    }, "Dados atualizados com sucesso.");
+    }, successMessage);
   }
 
   return (
@@ -76,6 +97,16 @@ function ProfileFields({
           handleSubmit(event);
         }}
       >
+        {profile.pending_email ? (
+          <Alert>
+            <AlertTitle>Confirmação de email pendente</AlertTitle>
+            <AlertDescription>
+              Enviamos um link para {profile.pending_email}. O email atual
+              continua ativo até a confirmação.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
         <div className="space-y-2">
           <Label htmlFor="profile-name">Nome</Label>
           <Input
@@ -102,6 +133,25 @@ function ProfileFields({
             required
           />
         </div>
+
+        {email.trim() !== profile.email ? (
+          <div className="space-y-2">
+            <Label htmlFor="profile-current-password">Senha atual</Label>
+            <Input
+              id="profile-current-password"
+              type="password"
+              value={currentPassword}
+              onChange={(event) => {
+                setCurrentPassword(event.target.value);
+              }}
+              autoComplete="current-password"
+              required
+            />
+            <p className="text-muted-foreground text-xs">
+              Necessária para confirmar a troca de email.
+            </p>
+          </div>
+        ) : null}
 
         <div className="space-y-2">
           <Label htmlFor="profile-org-id">ID da organização</Label>

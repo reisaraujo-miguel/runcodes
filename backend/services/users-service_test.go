@@ -38,11 +38,11 @@ func TestLogInRejectsAnUnconfirmedAccount(t *testing.T) {
 	}
 
 	mock := newMockDB(t)
-	mock.ExpectQuery(`SELECT id, name, password_hash, role, confirmed FROM users`).
+	mock.ExpectQuery(`SELECT id, name, password_hash, role, confirmed, token_version FROM users`).
 		WithArgs("ada@example.com").
 		WillReturnRows(sqlmock.NewRows(
-			[]string{"id", "name", "password_hash", "role", "confirmed"},
-		).AddRow(7, "Ada", string(hash), "student", false))
+			[]string{"id", "name", "password_hash", "role", "confirmed", "token_version"},
+		).AddRow(7, "Ada", string(hash), "student", false, 3))
 
 	_, err = LogIn(context.Background(), &models.LogInRequest{
 		Email: "ada@example.com", Password: "correct horse",
@@ -62,11 +62,11 @@ func TestLogInAcceptsAConfirmedAccount(t *testing.T) {
 	}
 
 	mock := newMockDB(t)
-	mock.ExpectQuery(`SELECT id, name, password_hash, role, confirmed FROM users`).
+	mock.ExpectQuery(`SELECT id, name, password_hash, role, confirmed, token_version FROM users`).
 		WithArgs("ada@example.com").
 		WillReturnRows(sqlmock.NewRows(
-			[]string{"id", "name", "password_hash", "role", "confirmed"},
-		).AddRow(7, "Ada", string(hash), "student", true))
+			[]string{"id", "name", "password_hash", "role", "confirmed", "token_version"},
+		).AddRow(7, "Ada", string(hash), "student", true, 3))
 
 	claims, err := LogIn(context.Background(), &models.LogInRequest{
 		Email: "ada@example.com", Password: "correct horse",
@@ -74,7 +74,7 @@ func TestLogInAcceptsAConfirmedAccount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LogIn = %v, want nil", err)
 	}
-	if claims["id"] != 7 || claims["role"] != "student" {
+	if claims["id"] != 7 || claims["role"] != "student" || claims["token_version"] != 3 {
 		t.Fatalf("claims = %+v", claims)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {

@@ -37,9 +37,18 @@ func VerifyEmail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := services.VerifyEmail(ctx, req.Token); err != nil {
-		if errors.Is(err, services.ErrInvalidVerificationToken) {
+		switch {
+		case errors.Is(err, services.ErrInvalidVerificationToken):
 			WriteResponse(w, http.StatusBadRequest,
 				models.Error{Message: services.ErrInvalidVerificationToken.Error()},
+			)
+			return
+		case errors.Is(err, services.ErrEmailExists):
+			// The address was registered by someone else between the request and
+			// the click. The pending change stays in place; a new request can
+			// target a different address.
+			WriteResponse(w, http.StatusConflict,
+				models.Error{Message: "that email address is no longer available"},
 			)
 			return
 		}
@@ -89,15 +98,17 @@ func ResendVerification(w http.ResponseWriter, r *http.Request) {
 }
 
 /*
-RequireVerifiedEmail rejects a session whose account has not confirmed its email.
+RequireCurrentSession rejects a session whose account changed since the token was
+issued: the email is unconfirmed, the role was changed, or the password/email was
+changed and the account's token_version was bumped. Login already refuses an
+unconfirmed account, but a session outlives the state it was issued in, and a
+stateless JWT cannot be withdrawn without a server-side comparison.
 
-Login already refuses an unconfirmed account, but a session outlives the state it
-was issued in: an admin can uncheck an account, or a migrated row can be
-unconfirmed. Checking the database here makes "verified" a property of the
-account rather than of the token. It is one indexed primary-key lookup per
-request, next to the queries the handlers already run.
+The check is one indexed primary-key lookup per request, next to the queries the
+handlers already run. Tokens issued before token_version existed have no claim
+and are rejected, so a deployment of this change signs everyone out once.
 */
-func RequireVerifiedEmail(next http.Handler) http.Handler {
+func RequireCurrentSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
@@ -111,13 +122,13 @@ func RequireVerifiedEmail(next http.Handler) http.Handler {
 			return
 		}
 
-		confirmed, err := services.IsEmailVerified(ctx, userID)
+		state, err := services.GetSessionState(ctx, userID)
 		if err != nil {
 			if errors.Is(err, services.ErrUserNotFound) {
 				WriteResponse(w, http.StatusUnauthorized, nil)
 				return
 			}
-			slog.ErrorContext(ctx, "error checking account verification",
+			slog.ErrorContext(ctx, "error checking account session state",
 				slog.Int("user_id", userID),
 				slog.String("error", err.Error()),
 			)
@@ -126,7 +137,15 @@ func RequireVerifiedEmail(next http.Handler) http.Handler {
 			)
 			return
 		}
-		if !confirmed {
+
+		claimVersion, ok := claims["token_version"].(float64)
+		claimRole, _ := claims["role"].(string)
+		if !ok || int(claimVersion) != state.TokenVersion || claimRole != state.Role {
+			WriteResponse(w, http.StatusUnauthorized, nil)
+			return
+		}
+
+		if !state.Confirmed {
 			WriteResponse(w, http.StatusForbidden,
 				models.Error{Message: services.ErrEmailNotVerified.Error()},
 			)

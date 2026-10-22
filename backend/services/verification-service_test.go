@@ -12,6 +12,7 @@ import (
 	"github.com/runcodes-icmc/runcodes/mailer"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
+	"github.com/lib/pq"
 )
 
 // valueRecorder accepts any argument and remembers the last string it saw, so a
@@ -51,7 +52,7 @@ func TestVerifyEmailConfirmsTheAccount(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectQuery(`UPDATE email_verification_tokens`).
 		WithArgs(verificationTokenHash("token")).
-		WillReturnRows(sqlmock.NewRows([]string{"user_id"}).AddRow(7))
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "pending_email"}).AddRow(7, ""))
 	mock.ExpectExec(`UPDATE users SET confirmed = TRUE`).
 		WithArgs(7).
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -69,10 +70,10 @@ func TestVerifyEmailRejectsAnUnknownToken(t *testing.T) {
 	mock := newMockDB(t)
 	mock.ExpectBegin()
 	mock.ExpectQuery(`UPDATE email_verification_tokens`).
-		WillReturnRows(sqlmock.NewRows([]string{"user_id"}))
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "pending_email"}))
 	mock.ExpectRollback()
-	mock.ExpectQuery(`SELECT u.confirmed`).
-		WillReturnRows(sqlmock.NewRows([]string{"confirmed"}))
+	mock.ExpectQuery(`SELECT u.confirmed, COALESCE\(u.pending_email`).
+		WillReturnRows(sqlmock.NewRows([]string{"confirmed", "pending_email"}))
 
 	err := VerifyEmail(context.Background(), "unknown-token")
 	if !errors.Is(err, ErrInvalidVerificationToken) {
@@ -89,10 +90,10 @@ func TestVerifyEmailIsIdempotentAfterConfirmation(t *testing.T) {
 	mock := newMockDB(t)
 	mock.ExpectBegin()
 	mock.ExpectQuery(`UPDATE email_verification_tokens`).
-		WillReturnRows(sqlmock.NewRows([]string{"user_id"}))
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "pending_email"}))
 	mock.ExpectRollback()
-	mock.ExpectQuery(`SELECT u.confirmed`).
-		WillReturnRows(sqlmock.NewRows([]string{"confirmed"}).AddRow(true))
+	mock.ExpectQuery(`SELECT u.confirmed, COALESCE\(u.pending_email`).
+		WillReturnRows(sqlmock.NewRows([]string{"confirmed", "pending_email"}).AddRow(true, ""))
 
 	if err := VerifyEmail(context.Background(), "used-token"); err != nil {
 		t.Fatalf("VerifyEmail = %v, want nil", err)
@@ -106,10 +107,10 @@ func TestVerifyEmailRejectsAnExpiredTokenForAnUnconfirmedAccount(t *testing.T) {
 	mock := newMockDB(t)
 	mock.ExpectBegin()
 	mock.ExpectQuery(`UPDATE email_verification_tokens`).
-		WillReturnRows(sqlmock.NewRows([]string{"user_id"}))
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "pending_email"}))
 	mock.ExpectRollback()
-	mock.ExpectQuery(`SELECT u.confirmed`).
-		WillReturnRows(sqlmock.NewRows([]string{"confirmed"}).AddRow(false))
+	mock.ExpectQuery(`SELECT u.confirmed, COALESCE\(u.pending_email`).
+		WillReturnRows(sqlmock.NewRows([]string{"confirmed", "pending_email"}).AddRow(false, ""))
 
 	err := VerifyEmail(context.Background(), "expired-token")
 	if !errors.Is(err, ErrInvalidVerificationToken) {
@@ -190,5 +191,87 @@ func TestVerificationLinkUsesTheConfiguredOrigin(t *testing.T) {
 func TestVerificationTokenTTL(t *testing.T) {
 	if VerificationTokenTTL != 24*time.Hour {
 		t.Fatalf("VerificationTokenTTL = %s, want 24h", VerificationTokenTTL)
+	}
+}
+
+// A verification token issued for an email change swaps the address only after
+// the link is consumed, and bumps token_version so existing sessions stop working.
+func TestVerifyEmailAppliesAPendingEmailChange(t *testing.T) {
+	mock := newMockDB(t)
+	mock.ExpectBegin()
+	mock.ExpectQuery(`UPDATE email_verification_tokens`).
+		WithArgs(verificationTokenHash("change-token")).
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "pending_email"}).
+			AddRow(7, "new@example.com"))
+	mock.ExpectExec(`UPDATE users`).
+		WithArgs("new@example.com", 7).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	if err := VerifyEmail(context.Background(), "change-token"); err != nil {
+		t.Fatalf("VerifyEmail = %v, want nil", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// If the pending address was taken by another account between request and click,
+// the change fails without consuming the token.
+func TestVerifyEmailRejectsATakenPendingEmail(t *testing.T) {
+	mock := newMockDB(t)
+	mock.ExpectBegin()
+	mock.ExpectQuery(`UPDATE email_verification_tokens`).
+		WithArgs(verificationTokenHash("change-token")).
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "pending_email"}).
+			AddRow(7, "new@example.com"))
+	mock.ExpectExec(`UPDATE users`).
+		WithArgs("new@example.com", 7).
+		WillReturnError(&pq.Error{Code: "23505"})
+	mock.ExpectRollback()
+
+	err := VerifyEmail(context.Background(), "change-token")
+	if !errors.Is(err, ErrEmailExists) {
+		t.Fatalf("VerifyEmail = %v, want ErrEmailExists", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A resend while an email change is pending must keep the link addressed to the
+// new address; sending an account-verification link to the old one would let it
+// complete the change without proving control of the new address.
+func TestResendVerificationKeepsAPendingEmailChangeOnTheNewAddress(t *testing.T) {
+	previousConfig := config.C
+	config.C = &config.Config{PublicURL: "https://runcodes.example"}
+	t.Cleanup(func() { config.C = previousConfig })
+
+	previousSend := sendMail
+	var sent mailer.Message
+	sendMail = func(_ context.Context, msg mailer.Message) error {
+		sent = msg
+		return nil
+	}
+	t.Cleanup(func() { sendMail = previousSend })
+
+	mock := newMockDB(t)
+	mock.ExpectQuery(`SELECT id, name, confirmed, COALESCE\(pending_email`).
+		WithArgs("old@example.com").
+		WillReturnRows(sqlmock.NewRows(
+			[]string{"id", "name", "confirmed", "pending_email"},
+		).AddRow(7, "Ada", true, "new@example.com"))
+	mock.ExpectExec(`INSERT INTO email_verification_tokens`).
+		WithArgs(7, sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	if err := ResendVerification(context.Background(), "old@example.com"); err != nil {
+		t.Fatalf("ResendVerification: %v", err)
+	}
+	if sent.To != "new@example.com" {
+		t.Fatalf("mail sent to %q, want new@example.com", sent.To)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }
