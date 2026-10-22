@@ -130,3 +130,14 @@ func ValidatePassword(password string) error {
 
 	return nil
 }
+
+/*
+NormalizeEmail canonicalises an address for storage and lookup. The domain and
+local part are treated case-insensitively: a user who signed up as
+Ada@Example.com must be able to sign in, reset a password or be looked up by an
+administrator with ada@example.com. The database keeps a unique index on
+lower(email) so two case variants cannot become separate accounts.
+*/
+func NormalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}

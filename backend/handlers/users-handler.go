@@ -28,7 +28,7 @@ func SignUp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req.Name = strings.TrimSpace(req.Name)
-	req.Email = strings.TrimSpace(req.Email)
+	req.Email = validation.NormalizeEmail(req.Email)
 
 	if err := validation.ValidateRequiredString(req.Name, 100); err != nil {
 		slog.InfoContext(ctx, "someone tried to register with an invalid user name")
@@ -115,7 +115,7 @@ func LogIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req.Email = strings.TrimSpace(req.Email)
+	req.Email = validation.NormalizeEmail(req.Email)
 
 	if err := validation.ValidateEmailFormat(ctx, req.Email); err != nil {
 		slog.InfoContext(ctx, "someone tried to login with an invalid email")

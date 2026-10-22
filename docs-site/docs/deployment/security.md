@@ -75,7 +75,11 @@ limits.
   runtime's default capability set cannot elevate.
 - Core dumps are disabled (`RLIMIT_CORE=0`), so a crash cannot fill the workspace.
 - The image filesystem is read-only; only the workspace and size-capped
-  `/tmp`/`/run` tmpfs are writable.
+  `/tmp`/`/run` tmpfs are writable. The workspace is a host bind mount with no
+  aggregate per-run quota: the per-file and zip-entry limits bound the most
+  obvious cases, but the exec filesystem must live on a volume sized and
+  monitored for untrusted output. Full workspace quotas are a deployment
+  responsibility.
 - One persistent mount (the workspace), a non-root user, a zero umask, and a
   harness that deletes `container.config` before running submitted code.
 - The judge stops the container before grading and reads only regular files from

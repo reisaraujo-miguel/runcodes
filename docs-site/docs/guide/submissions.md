@@ -42,7 +42,8 @@ The API refuses the request before creating anything in these cases:
 | `404` | the exercise does not exist or is not visible to the caller |
 | `413` | the file exceeds 10 MiB |
 | `422` | the deadline has passed for the caller |
-| `503` | the judge or S3 is unavailable |
+| `429` | the caller already has the maximum number of unfinished submissions |
+| `503` | the judge is unavailable, or its queued backlog is at the configured depth |
 
 Staff (class owner or co-professor) can submit to their own exercises without
 being enrolled and after the deadline: the deadline is a rule for graded

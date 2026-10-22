@@ -82,7 +82,8 @@ Buckets: `<prefix>-commits`, `<prefix>-cases`, `<prefix>-files`,
 | --- | --- | --- |
 | `RUNCODES_JUDGE_URL` | `http://judge:9000` | absolute http(s) base URL |
 | `RUNCODES_JUDGE_TOKEN` | empty | shared bearer token |
-| `RUNCODES_JUDGE_STALE_TIMEOUT` | `15m` | age after which a claimed commit is marked `server_error` |
+| `RUNCODES_JUDGE_STALE_TIMEOUT` | `35m` | age after which a claimed commit is marked `server_error` |
+| `RUNCODES_JUDGE_MAX_QUEUE_DEPTH` | `100` | queued submissions above which new ones are refused with `503` |
 
 `RUNCODES_JUDGE_STALE_TIMEOUT` must be positive and should be longer than the
 judge's `JUDGE_MAX_RUN_DURATION` plus margin.
@@ -168,6 +169,7 @@ Without a token the judge refuses `/v1` with `503` unless
 | `JUDGE_ARTIFACT_TTL` | `168h` | retention for output archives; `0` keeps them |
 | `JUDGE_MAX_EXTRACT_FILE_BYTES` | `64 MiB` | max single zip entry |
 | `JUDGE_MAX_EXTRACT_BYTES` | `256 MiB` | max total expanded zip |
+| `JUDGE_MAX_EXTRACT_ENTRIES` | `1000` | max entries in a zip submission |
 
 Validation rules:
 

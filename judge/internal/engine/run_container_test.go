@@ -77,6 +77,19 @@ func newTestEngine(t *testing.T, messages ...string) (*Engine, *fakeContainer, s
 		KeepWorkspaces:     true,
 	}
 
+	// The fake container produces no files. Give runContainer the successful
+	// compilation report a real image would write; otherwise the authoritative
+	// exit-status check correctly treats the missing report as a failed compile
+	// and never reaches the run phase these tests exercise.
+	for name, contents := range map[string]string{
+		"compilation.monitor_out": "[info]\nexit_status=0\nsignal=\ntime=0.01\n",
+		"compilation.err":         "",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(contents), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
 	engine := New(cfg, nil, nil, runtime, events.New(time.Minute),
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 

@@ -29,7 +29,11 @@ type workspace struct {
 	// RunNonce authenticates the progress milestones the image prints. It is kept
 	// with the workspace only until it has been written to the container config;
 	// it never appears in the judge's log or events.
-	RunNonce   string
+	RunNonce string
+	// SourceFile is the entry point relative to SourceDir. It differs from the
+	// commit's filename for a zip submission, where the uploaded archive is
+	// extracted and the language script must compile a file inside it.
+	SourceFile string
 	Language   *language.Language
 	Extension  string
 	Compilable bool
@@ -207,11 +211,17 @@ func (e *Engine) resolveLanguage(ws *workspace, sourcePath string) error {
 		}
 
 		ext = deduced
-		if err := extractZip(sourcePath, ws.SourceDir, e.cfg.MaxExtractFileBytes, e.cfg.MaxExtractBytes); err != nil {
+		if err := extractZip(sourcePath, ws.SourceDir, e.cfg.MaxExtractFileBytes, e.cfg.MaxExtractBytes, e.cfg.MaxExtractEntries); err != nil {
 			return fmt.Errorf("extract archive: %w", err)
 		}
 
 		ws.Language = language.FromExtension(ext)
+
+		sourceFile, err := archiveEntryPoint(sourcePath, ext)
+		if err != nil {
+			return err
+		}
+		ws.SourceFile = sourceFile
 	} else {
 		ws.Language = language.FromFilename(fname)
 	}
@@ -244,6 +254,62 @@ func deduceArchiveLanguage(sourcePath string) (string, error) {
 	}
 
 	return language.DeduceFromArchive(names)
+}
+
+/*
+archiveEntryPoint chooses the file a language script should compile or run
+inside an extracted zip. The archive's language is already known; prefer a
+top-level file with that language, then the shortest path, then the
+lexicographically smallest name so the choice is deterministic. A Makefile in
+the archive still takes precedence in the harness, in which case src_file is
+unused.
+*/
+func archiveEntryPoint(archivePath, ext string) (string, error) {
+	zr, err := zip.OpenReader(archivePath)
+	if err != nil {
+		return "", err
+	}
+	defer zr.Close()
+
+	want := language.FromExtension(ext)
+	if want == nil {
+		return "", fmt.Errorf("unsupported archive language %q", ext)
+	}
+
+	best := ""
+	bestDepth := 0
+
+	for _, f := range zr.File {
+		if f.FileInfo().IsDir() || f.Mode()&os.ModeSymlink != 0 {
+			continue
+		}
+
+		name := path.Clean(strings.TrimPrefix(f.Name, "./"))
+		if name == "." || strings.HasPrefix(name, "../") ||
+			strings.HasPrefix(name, "/") {
+			continue
+		}
+		// The harness passes src_file inside a monitor command that is split on
+		// spaces, so an entry with whitespace cannot be compiled reliably.
+		if strings.ContainsAny(name, " \t\r\n") {
+			continue
+		}
+		if language.FromFilename(name) != want {
+			continue
+		}
+
+		depth := strings.Count(name, "/")
+		if best == "" || depth < bestDepth ||
+			(depth == bestDepth && name < best) {
+			best, bestDepth = name, depth
+		}
+	}
+
+	if best == "" {
+		return "", fmt.Errorf("archive has no source file for language %q", ext)
+	}
+
+	return best, nil
 }
 
 // fetchCompilationFiles downloads any additional files needed for compilation from S3.
@@ -320,7 +386,11 @@ func (e *Engine) writeContainerConfig(commit *model.Commit, ws *workspace) error
 	}
 	fmt.Fprintf(&b, "run_nonce='%s'\n", shellSingleQuote(ws.RunNonce))
 
-	srcFile, err := shellWord(commit.Filename())
+	sourceName := commit.Filename()
+	if ws.SourceFile != "" {
+		sourceName = ws.SourceFile
+	}
+	srcFile, err := shellWord(sourceName)
 	if err != nil {
 		return err
 	}
@@ -374,13 +444,17 @@ func shellWord(value string) (string, error) {
 // from filling the shared execution directory: the per-entry and the running
 // total are checked both against the size declared in the archive header and
 // against the bytes actually written, since a header can lie.
-func extractZip(archivePath, dest string, maxFileBytes, maxTotalBytes int64) error {
+func extractZip(archivePath, dest string, maxFileBytes, maxTotalBytes int64, maxEntries int) error {
 	zr, err := zip.OpenReader(archivePath)
 	if err != nil {
 		return err
 	}
 
 	defer zr.Close()
+
+	if maxEntries > 0 && len(zr.File) > maxEntries {
+		return fmt.Errorf("archive has %d entries, exceeding the %d entry limit", len(zr.File), maxEntries)
+	}
 
 	var total int64
 

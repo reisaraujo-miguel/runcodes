@@ -1,6 +1,14 @@
 package services
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/runcodes-icmc/runcodes/config"
+
+	sqlmock "github.com/DATA-DOG/go-sqlmock"
+)
 
 func TestSanitizeFilename(t *testing.T) {
 	tests := []struct {
@@ -86,4 +94,58 @@ func TestParseClientIP(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCheckSubmissionAdmission(t *testing.T) {
+	previous := config.C
+	config.C = &config.Config{Judge: config.JudgeConfig{MaxQueueDepth: 2}}
+	t.Cleanup(func() { config.C = previous })
+
+	t.Run("per-user pending limit", func(t *testing.T) {
+		mock := newMockDB(t)
+		mock.ExpectQuery(`SELECT count\(\*\) FROM commits`).
+			WithArgs(int64(7)).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
+
+		err := checkSubmissionAdmission(context.Background(), 7)
+		if !errors.Is(err, ErrSubmissionLimit) {
+			t.Fatalf("checkSubmissionAdmission = %v, want ErrSubmissionLimit", err)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("global queue depth", func(t *testing.T) {
+		mock := newMockDB(t)
+		mock.ExpectQuery(`SELECT count\(\*\) FROM commits`).
+			WithArgs(int64(7)).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+		mock.ExpectQuery(`SELECT count\(\*\) FROM commits WHERE status = 'queued'`).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
+
+		err := checkSubmissionAdmission(context.Background(), 7)
+		if !errors.Is(err, ErrQueueFull) {
+			t.Fatalf("checkSubmissionAdmission = %v, want ErrQueueFull", err)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("admitted", func(t *testing.T) {
+		mock := newMockDB(t)
+		mock.ExpectQuery(`SELECT count\(\*\) FROM commits`).
+			WithArgs(int64(7)).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+		mock.ExpectQuery(`SELECT count\(\*\) FROM commits WHERE status = 'queued'`).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+
+		if err := checkSubmissionAdmission(context.Background(), 7); err != nil {
+			t.Fatalf("checkSubmissionAdmission = %v, want nil", err)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
+	})
 }

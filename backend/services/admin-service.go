@@ -150,7 +150,7 @@ func AdminUpdateUser(
 		}
 	}
 	if req.Email != nil {
-		user.Email = strings.TrimSpace(*req.Email)
+		user.Email = validation.NormalizeEmail(*req.Email)
 		if err := validation.ValidateEmailFormat(ctx, user.Email); err != nil {
 			return nil, err
 		}
@@ -173,7 +173,7 @@ func AdminUpdateUser(
 		user.Confirmed = *req.Confirmed
 	}
 
-	emailChanged := user.Email != oldEmail
+	emailChanged := validation.NormalizeEmail(user.Email) != validation.NormalizeEmail(oldEmail)
 	if emailChanged && req.Confirmed == nil {
 		// A new address the owner has not proved control of is not confirmed. An
 		// admin who explicitly sets confirmed=true in the same request overrides
@@ -201,7 +201,7 @@ func AdminUpdateUser(
 		if pgErr, ok := err.(*pq.Error); ok &&
 			pgErr.Code == pqerror.UniqueViolation {
 			switch pgErr.Constraint {
-			case "users_email_key":
+			case "users_email_key", "users_email_lower_key":
 				return nil, ErrEmailExists
 			case "users_org_id_key":
 				return nil, ErrOrgIDExists

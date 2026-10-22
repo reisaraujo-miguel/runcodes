@@ -928,7 +928,7 @@ func GetAttachedFile(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 
-	if _, err := io.Copy(w, file.Body); err != nil {
+	if _, err := io.Copy(newDeadlineWriter(w), file.Body); err != nil {
 		slog.ErrorContext(ctx, "failed to stream attached file",
 			slog.Int64("attached_file_id", fileID),
 			slog.String("error", err.Error()),

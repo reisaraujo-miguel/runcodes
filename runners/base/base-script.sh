@@ -6,6 +6,7 @@ compilation_monitor_error=compilation.monitor_err
 compilation_monitor_output=compilation.monitor_out
 compilation_error=compilation.err
 compilation_output=compilation.out
+compilation_warnings=compilation.warnings
 outputfiles_dir=outputfiles
 monitor_bin=/usr/bin/monitor
 user_bin=executable
@@ -140,9 +141,10 @@ kill_stragglers() {
 }
 
 compile() {
-    compilation_command=$1
-    pre_compilation_command=$2
-    post_compilation_command=$3
+    local compilation_command=$1
+    local pre_compilation_command=$2
+    local post_compilation_command=$3
+    local compile_status compile_signal
 
     milestone "${compilation_start_msg}"
 
@@ -166,13 +168,40 @@ compile() {
     cd "${wd}" || exit
 
     # A Makefile can run arbitrary code while "compiling", so the compilation
-    # phase is contained exactly like a test case.
+    # phase is contained exactly like a test case. Stop any leftover process
+    # before reading or copying the reports it could still modify.
     kill_stragglers
+
+    # The monitor's exit status is the compiler's exit status. A non-zero status
+    # is a compilation failure even when the compiler wrote nothing to stderr
+    # (a killed compiler or `timeout` are the usual cases), so make sure the
+    # error file is non-empty for the language scripts' existing check. On
+    # success, stderr is only diagnostics: preserve it as warnings so a compiler
+    # that warns about otherwise valid code does not fail the submission.
+    compile_status="$(sed -n 's/^exit_status=//p' "${compilation_monitor_output}" 2>/dev/null | tail -n 1)"
+    compile_signal="$(sed -n 's/^signal=//p' "${compilation_monitor_output}" 2>/dev/null | tail -n 1)"
+    if [ -z "${compile_status}" ]; then
+        if [ ! -s "${compilation_error}" ]; then
+            printf 'compilation failed: the monitor did not produce a report\n' >"${compilation_error}"
+        fi
+    elif [ "${compile_status}" != "0" ]; then
+        if [ ! -s "${compilation_error}" ]; then
+            if [ -n "${compile_signal}" ]; then
+                printf 'compilation failed: killed by signal %s\n' "${compile_signal}" >"${compilation_error}"
+            else
+                printf 'compilation failed: exit status %s\n' "${compile_status}" >"${compilation_error}"
+            fi
+        fi
+    elif [ -s "${compilation_error}" ]; then
+        cp "${compilation_error}" "${compilation_warnings}"
+        : >"${compilation_error}"
+    fi
 
     cp "${compilation_monitor_output}" "${outputfiles_dir}"
     cp "${compilation_monitor_error}" "${outputfiles_dir}"
     cp "${compilation_output}" "${outputfiles_dir}"
     cp "${compilation_error}" "${outputfiles_dir}"
+    [ ! -e "${compilation_warnings}" ] || cp "${compilation_warnings}" "${outputfiles_dir}"
 
     milestone "${compilation_done_msg}"
 }

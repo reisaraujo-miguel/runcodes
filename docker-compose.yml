@@ -54,6 +54,10 @@ services:
       RUNCODES_DB_NAME: "runcodes"
       RUNCODES_JUDGE_URL: "http://judge:9000"
       RUNCODES_JUDGE_TOKEN: "${RUNCODES_JUDGE_TOKEN:?RUNCODES_JUDGE_TOKEN must be set}"
+      # Must stay longer than the judge's end-to-end budget below. The backend
+      # marks a run stale after this age and closes its event stream.
+      RUNCODES_JUDGE_STALE_TIMEOUT: "${RUNCODES_JUDGE_STALE_TIMEOUT:-35m}"
+      RUNCODES_JUDGE_MAX_QUEUE_DEPTH: "${RUNCODES_JUDGE_MAX_QUEUE_DEPTH:-100}"
       RUNCODES_S3_ENDPOINT: "http://seaweed:8333"
       RUNCODES_S3_REGION: "sa-east-1"
       RUNCODES_S3_CREDENTIALS_KEY: "${RUNCODES_S3_CREDENTIALS_KEY:?RUNCODES_S3_CREDENTIALS_KEY must be set}"
@@ -139,6 +143,9 @@ services:
       # Required: without it the judge refuses every /v1 request, because the API
       # serves other people's submissions and outputs.
       JUDGE_AUTH_TOKEN: "${RUNCODES_JUDGE_TOKEN:?RUNCODES_JUDGE_TOKEN must be set}"
+      # Keep this below RUNCODES_JUDGE_STALE_TIMEOUT (35m by default).
+      JUDGE_MAX_RUN_DURATION: "${JUDGE_MAX_RUN_DURATION:-30m}"
+      JUDGE_MAX_EXTRACT_ENTRIES: "${JUDGE_MAX_EXTRACT_ENTRIES:-1000}"
       RUNCODES_DB_HOST: "database"
       RUNCODES_DB_PORT: "5432"
       # The judge role, not the backend role: it can only read exercises/test

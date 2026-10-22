@@ -77,11 +77,13 @@ type Config struct {
 	// are swept periodically; 0 disables archive deletion.
 	ArtifactTTL time.Duration
 
-	// MaxExtractFileBytes bounds a single entry and MaxExtractBytes the total
-	// expanded size when unpacking a zip submission, so a zip bomb cannot fill
-	// the shared execution directory.
+	// MaxExtractFileBytes bounds a single entry, MaxExtractBytes the total
+	// expanded size, and MaxExtractEntries the number of entries when unpacking
+	// a zip submission. The byte limits alone do not stop an archive made of
+	// millions of empty files from exhausting inodes.
 	MaxExtractFileBytes int64
 	MaxExtractBytes     int64
+	MaxExtractEntries   int
 
 	KeepWorkspaces bool
 
@@ -197,6 +199,7 @@ func Load() (*Config, error) {
 
 		MaxExtractFileBytes: envInt64("JUDGE_MAX_EXTRACT_FILE_BYTES", 64*1024*1024),
 		MaxExtractBytes:     envInt64("JUDGE_MAX_EXTRACT_BYTES", 256*1024*1024),
+		MaxExtractEntries:   envInt("JUDGE_MAX_EXTRACT_ENTRIES", 1000),
 
 		DB: DBConfig{
 			Host:     env("RUNCODES_DB_HOST", "localhost"),
@@ -237,6 +240,9 @@ func (c *Config) validate() error {
 		return fmt.Errorf("extraction size limits must be positive")
 	} else if c.MaxExtractFileBytes > c.MaxExtractBytes {
 		return fmt.Errorf("JUDGE_MAX_EXTRACT_FILE_BYTES must not exceed JUDGE_MAX_EXTRACT_BYTES")
+	}
+	if c.MaxExtractEntries <= 0 {
+		return fmt.Errorf("JUDGE_MAX_EXTRACT_ENTRIES must be positive, got %d", c.MaxExtractEntries)
 	}
 
 	// Container limits are optional (0 disables one), but a negative value is a

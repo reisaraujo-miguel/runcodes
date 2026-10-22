@@ -204,8 +204,9 @@ func (e *Engine) gradeCase(ctx context.Context, tc model.TestCase, ws *workspace
 		result.StatusMsg = exitMsg
 		result.ErrorMessage = errContent
 
-	case info.Signal != "" || errContent != "":
-		// If the monitor indicates a signal or there is error output, we consider the case killed by a signal.
+	case info.Signal != "":
+		// A signal is a failure. Stderr alone is not: a program may write
+		// warnings or debug output there and still produce the correct answer.
 		result.Status = model.CaseKilledBySignal
 		result.StatusMsg = info.Signal
 		result.ErrorMessage = errContent
@@ -225,6 +226,12 @@ func (e *Engine) gradeCase(ctx context.Context, tc model.TestCase, ws *workspace
 
 		// Compare the user's output with the expected output based on the expected output type.
 		result.Status = compareOutput(userOutput, expected, tc.ExpectedOutputType)
+
+		// Stderr is a diagnostic on a failed case, but it does not change the
+		// verdict when the output was correct.
+		if result.Status != model.CaseCorrect && errContent != "" {
+			result.ErrorMessage = errContent
+		}
 	}
 
 	// Read the user's output, limited to the configured maximum size, and store it in the result.

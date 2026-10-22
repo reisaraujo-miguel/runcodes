@@ -129,7 +129,7 @@ func TestExtractZip(t *testing.T) {
 	archive := makeZip(t, dir, map[string]string{"src/main.c": "int main(){}"})
 	out := filepath.Join(dir, "out")
 
-	if err := extractZip(archive, out, 1<<20, 1<<20); err != nil {
+	if err := extractZip(archive, out, 1<<20, 1<<20, 100); err != nil {
 		t.Fatalf("extractZip: %v", err)
 	}
 	content, err := os.ReadFile(filepath.Join(out, "src", "main.c"))
@@ -145,7 +145,7 @@ func TestExtractZipRejectsTraversal(t *testing.T) {
 	dir := t.TempDir()
 	archive := makeZip(t, dir, map[string]string{"../evil.txt": "boom"})
 
-	if err := extractZip(archive, filepath.Join(dir, "out"), 1<<20, 1<<20); err == nil {
+	if err := extractZip(archive, filepath.Join(dir, "out"), 1<<20, 1<<20, 100); err == nil {
 		t.Fatal("expected a path-traversal error")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "evil.txt")); err == nil {
@@ -153,11 +153,24 @@ func TestExtractZipRejectsTraversal(t *testing.T) {
 	}
 }
 
+func TestExtractZipRejectsTooManyEntries(t *testing.T) {
+	dir := t.TempDir()
+	entries := make(map[string]string, 3)
+	for _, name := range []string{"a.c", "b.c", "c.c"} {
+		entries[name] = ""
+	}
+	archive := makeZip(t, dir, entries)
+
+	if err := extractZip(archive, filepath.Join(dir, "out"), 1<<20, 1<<20, 2); err == nil {
+		t.Fatal("expected an entry-count error")
+	}
+}
+
 func TestExtractZipRejectsOversizedEntry(t *testing.T) {
 	dir := t.TempDir()
 	archive := makeZip(t, dir, map[string]string{"big.c": strings.Repeat("a", 4096)})
 
-	if err := extractZip(archive, filepath.Join(dir, "out"), 1024, 1<<20); err == nil {
+	if err := extractZip(archive, filepath.Join(dir, "out"), 1024, 1<<20, 100); err == nil {
 		t.Fatal("expected a per-file size-limit error")
 	}
 }
@@ -169,7 +182,7 @@ func TestExtractZipRejectsOversizedTotal(t *testing.T) {
 		"b.c": strings.Repeat("b", 1024),
 	})
 
-	if err := extractZip(archive, filepath.Join(dir, "out"), 1<<20, 1500); err == nil {
+	if err := extractZip(archive, filepath.Join(dir, "out"), 1<<20, 1500, 100); err == nil {
 		t.Fatal("expected a total size-limit error")
 	}
 }
@@ -221,5 +234,48 @@ func TestExecutionTimeout(t *testing.T) {
 	// base*(1+3) + 4 + default(3) + 2 = 20 + 9
 	if got, want := e.executionTimeout(cases), 29*time.Second; got != want {
 		t.Fatalf("executionTimeout = %s, want %s", got, want)
+	}
+}
+
+// TestZipSubmissionUsesExtractedEntryPoint pins the zip submission contract:
+// the language script must compile a file inside the extracted archive, not the
+// uploaded archive itself. Before SourceFile existed, the harness received
+// `solution.zip` as src_file and every non-Makefile zip failed to compile.
+func TestZipSubmissionUsesExtractedEntryPoint(t *testing.T) {
+	dir := t.TempDir()
+	archive := makeZip(t, dir, map[string]string{
+		"nested/main.c": "int main(void) { return 0; }",
+	})
+
+	ws := &workspace{
+		BaseDir:   filepath.Join(dir, "base"),
+		SourceDir: filepath.Join(dir, "src"),
+	}
+	if err := os.MkdirAll(ws.BaseDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	e := &Engine{cfg: &config.Config{
+		MaxExtractFileBytes: 1 << 20,
+		MaxExtractBytes:     1 << 20,
+		DefaultCaseTimeout:  3,
+	}}
+	if err := e.resolveLanguage(ws, archive); err != nil {
+		t.Fatalf("resolveLanguage: %v", err)
+	}
+	if ws.SourceFile != "nested/main.c" {
+		t.Fatalf("SourceFile = %q, want nested/main.c", ws.SourceFile)
+	}
+
+	commit := &model.Commit{ID: 1, S3Key: "uuid/solution.zip"}
+	if err := e.writeContainerConfig(commit, ws); err != nil {
+		t.Fatalf("writeContainerConfig: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(ws.BaseDir, "container.config"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "src_file='nested/main.c'") {
+		t.Fatalf("container.config did not name the extracted entry point:\n%s", raw)
 	}
 }

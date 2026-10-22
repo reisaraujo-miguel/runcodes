@@ -281,26 +281,46 @@ func (e *Engine) runContainer(ctx context.Context, commit *model.Commit, ws *wor
 		}
 
 		outcome.compilationMessage = readLimited(filepath.Join(ws.BaseDir, "compilation.out"), e.cfg.MaxOutputFileSize)
-		outcome.compilationError = readLimited(filepath.Join(ws.BaseDir, "compilation.err"), e.cfg.MaxOutputFileSize)
+		compileDiagnostics := readLimited(filepath.Join(ws.BaseDir, "compilation.err"), e.cfg.MaxOutputFileSize)
+		compileWarnings := readLimited(filepath.Join(ws.BaseDir, "compilation.warnings"), e.cfg.MaxOutputFileSize)
 
-		// The compiler's stderr is not the only failure signal: a compiler can
-		// fail while writing nothing to stderr, and the harness wraps it in
-		// `timeout`, which reports expiry as exit status 124. Treat a non-zero
-		// compile status as a compilation error so the student does not get a
-		// run graded against an executable that was never produced.
-		if outcome.compilationError == "" {
-			compileInfo := readMonitor(filepath.Join(ws.BaseDir, "compilation.monitor_out"))
-			if reason, failed := exitFailureMessage(compileInfo); failed {
-				outcome.compilationError = fmt.Sprintf("compilation failed: %s", reason)
-			}
+		// The compiler's exit status is authoritative. A compiler can fail while
+		// writing nothing to stderr (or be killed by `timeout`, which reports
+		// status 124), so a missing or non-zero status is a compilation error.
+		// On success, stderr is only diagnostics: warnings about otherwise valid
+		// code must not fail a submission.
+		compileInfo := readMonitor(filepath.Join(ws.BaseDir, "compilation.monitor_out"))
+		compileFailed := true
+		if compileInfo.HasExit {
+			compileFailed = compileInfo.ExitStatus != 0
 		}
 
-		// If there was a compilation error, set the outcome status to RunCompilationError and report it to the event hub.
-		if outcome.compilationError != "" {
+		if compileFailed {
+			outcome.compilationError = compileDiagnostics
+			if outcome.compilationError == "" {
+				reason := "the compiler did not exit successfully"
+				if msg, failed := exitFailureMessage(compileInfo); failed {
+					reason = msg
+				}
+				outcome.compilationError = fmt.Sprintf("compilation failed: %s", reason)
+			}
 			outcome.status = model.RunCompilationError
 			e.hub.Compilation(commit.ID, false, outcome.compilationMessage, outcome.compilationError, time.Now())
 			logger.Info("compilation failed")
 			return outcome, nil
+		}
+
+		// Older harnesses leave diagnostics in compilation.err even on success.
+		// Treat them as warnings so the student still sees them without failing
+		// the run.
+		if compileWarnings == "" {
+			compileWarnings = compileDiagnostics
+		}
+		if compileWarnings != "" {
+			if strings.TrimSpace(outcome.compilationMessage) != "" {
+				outcome.compilationMessage += "\n"
+			}
+			outcome.compilationMessage += "compiler warnings:\n" + compileWarnings
 		}
 	}
 

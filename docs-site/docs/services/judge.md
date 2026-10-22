@@ -115,7 +115,7 @@ monitor_max_fs=5242880        # only when JUDGE_MONITOR_MAX_FILE_SIZE is set
 monitor_max_ms=268435456      # only when JUDGE_MONITOR_MAX_MEM_SIZE is set
 compilation_timeout=10        # only when JUDGE_DEFAULT_COMPILATION_TIMEOUT is set
 run_nonce='7f3c…'
-src_file='submission.c'
+src_file='submission.c'       # or the selected entry point inside a zip
 t_<case_id>=5                 # wall-clock seconds for the case
 ms_<case_id>=67108864         # address space, only when the exercise sets one
 fs_<case_id>=1048576          # file size, only when the exercise sets one
@@ -189,6 +189,7 @@ and `stack_` keys. `JUDGE_MONITOR_MAX_FILE_SIZE` and
 | `JUDGE_ARTIFACT_TTL` | 168h | how long a published output archive is kept; 0 keeps it forever |
 | `JUDGE_MAX_EXTRACT_FILE_BYTES` | 64 MiB | max single entry when unpacking a zip |
 | `JUDGE_MAX_EXTRACT_BYTES` | 256 MiB | max total expanded zip size |
+| `JUDGE_MAX_EXTRACT_ENTRIES` | 1000 | max entries in a zip submission |
 | `JUDGE_MAX_OUTPUT_FILE_SIZE` | 1 MiB | max size of one output file collected |
 
 `JUDGE_COMPILATION_WAIT` must outlast the image's compilation timeout plus

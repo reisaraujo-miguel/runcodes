@@ -275,6 +275,13 @@ CREATE INDEX idx_user_messages_user_id ON user_messages (user_id);
 CREATE UNIQUE INDEX users_pending_email_key ON users (pending_email)
   WHERE pending_email IS NOT NULL;
 
+-- Email is case-insensitive in the application. These functional indexes make
+-- the database enforce the same rule and let lower(email) lookups use an index;
+-- the original case-sensitive UNIQUE constraints stay for compatibility.
+CREATE UNIQUE INDEX users_email_lower_key ON users (lower(email));
+CREATE UNIQUE INDEX users_pending_email_lower_key ON users (lower(pending_email))
+  WHERE pending_email IS NOT NULL;
+
 -- The judge's claim loop runs continuously against the fastest-growing table in
 -- the schema:
 --

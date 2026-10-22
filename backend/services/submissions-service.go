@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/runcodes-icmc/runcodes/config"
 	"github.com/runcodes-icmc/runcodes/database"
 	"github.com/runcodes-icmc/runcodes/judge"
 	"github.com/runcodes-icmc/runcodes/models"
@@ -26,6 +27,11 @@ const (
 	// SubmissionHistoryLimit bounds how many past submissions are returned for
 	// one exercise, keeping the response and the history dialog small.
 	SubmissionHistoryLimit = 50
+
+	// MaxPendingSubmissionsPerUser bounds a single account's unfinished runs.
+	// The judge concurrency is shared by the whole platform, so one student must
+	// not be able to occupy every worker for themselves.
+	MaxPendingSubmissionsPerUser = 2
 
 	// wakeTimeout bounds the judge wake-up call so a submission request cannot
 	// hang on an unresponsive judge.
@@ -57,6 +63,13 @@ func CreateSubmission(ctx context.Context, in SubmissionInput) (int64, error) {
 	}
 
 	if err := validateFileType(ctx, in.ExerciseID, in.Filename); err != nil {
+		return 0, err
+	}
+
+	// Refuse work before uploading anything when the caller already has runs in
+	// flight or the shared queue is full. This is admission control, not a
+	// security boundary: the checks are deliberately cheap and fail fast.
+	if err := checkSubmissionAdmission(ctx, in.UserID); err != nil {
 		return 0, err
 	}
 
@@ -158,6 +171,49 @@ func deleteSourceBestEffort(ctx context.Context, key string) {
 			slog.String("error", err.Error()),
 		)
 	}
+}
+
+/*
+checkSubmissionAdmission limits a single user's unfinished submissions and the
+global queue depth. The per-user limit keeps one account from occupying every
+judge worker; the queue limit keeps accepted work from growing without bound
+while the judge is slow or down. Both are best-effort checks: two concurrent
+requests can both observe room, which is acceptable for a classroom workload.
+*/
+func checkSubmissionAdmission(ctx context.Context, userID int64) error {
+	var pending int
+	err := database.DB.QueryRowContext(ctx, `
+		SELECT count(*) FROM commits
+		WHERE user_id = $1
+		  AND status IN ('pending', 'queued', 'compiling', 'running')`,
+		userID,
+	).Scan(&pending)
+	if err != nil {
+		slog.ErrorContext(ctx, "error counting pending submissions",
+			slog.Int64("user_id", userID),
+			slog.String("error", err.Error()),
+		)
+		return ErrServer
+	}
+	if pending >= MaxPendingSubmissionsPerUser {
+		return ErrSubmissionLimit
+	}
+
+	var queued int
+	if err := database.DB.QueryRowContext(ctx,
+		`SELECT count(*) FROM commits WHERE status = 'queued'`,
+	).Scan(&queued); err != nil {
+		slog.ErrorContext(ctx, "error counting queued submissions",
+			slog.String("error", err.Error()),
+		)
+		return ErrServer
+	}
+
+	if queued >= config.Get().Judge.MaxQueueDepth {
+		return ErrQueueFull
+	}
+
+	return nil
 }
 
 /*

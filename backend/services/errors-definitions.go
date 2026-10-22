@@ -26,8 +26,14 @@ var (
 	ErrDeadlinePassed   = errors.New("the deadline for this exercise has passed")
 	ErrInvalidFileType  = errors.New("file type is not allowed for this exercise")
 	ErrJudgeUnavailable = errors.New("the judge is unavailable, try again later")
-	ErrCommitNotFound   = errors.New("commit not found")
-	ErrCommitForbidden  = errors.New("you are not allowed to view this commit")
+	// ErrSubmissionLimit is per-user admission control: the caller already has
+	// the maximum number of runs waiting for the judge.
+	ErrSubmissionLimit = errors.New("you already have the maximum number of submissions waiting; wait for one to finish")
+	// ErrQueueFull is global admission control: the judge queue is at its
+	// configured depth, so accepting this submission would only delay everyone.
+	ErrQueueFull       = errors.New("the judging queue is full; try again in a moment")
+	ErrCommitNotFound  = errors.New("commit not found")
+	ErrCommitForbidden = errors.New("you are not allowed to view this commit")
 	// ErrCommitSourceNotFound is reported when the source object is no longer
 	// in storage (for example, removed by an object-store cleanup).
 	ErrCommitSourceNotFound = errors.New("submitted source is not available")
