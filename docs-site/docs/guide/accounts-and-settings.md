@@ -89,17 +89,20 @@ login page offers a resend after the `403`).
 | Flags | `HttpOnly`, `SameSite=Strict`, `Secure` (except debug mode) |
 | Lifetime | 30 minutes, sliding |
 | Algorithm | HS256 |
-| Claims | `id`, `name`, `email`, `role`, `iat`, `exp` |
+| Claims | `id`, `name`, `email`, `role`, `token_version`, `iat`, `exp` |
 | Refresh | `POST /api/v1/auth/refresh` renews an active session |
 
 The cookie is set by `POST /api/v1/user/login`; the response body is empty.
 `GET /api/v1/auth` returns the current user and session expiry.
 `POST /api/v1/user/logout` clears the cookie with `204`.
 
-There is no server-side session store. Logout ends the browser session but does
-not revoke an already-issued token; changing the password or rotating
-`RUNCODES_JWT_SECRET` invalidates issued tokens. The frontend calls the API with
-`credentials: "include"` and relies on the cookie.
+There is no server-side session store, but every token carries the account's
+`token_version` and every protected request compares it with the database.
+Changing the password, completing an email change, or having an admin change the
+role/confirmation bumps the version, which invalidates every issued token.
+Logout itself only clears the browser cookie, so a copied token remains valid
+until it expires. The frontend calls the API with `credentials: "include"` and
+relies on the cookie.
 
 A cross-origin setup (for example `bun run dev` on `:5173` with the API on
 `:8443`) is supported through `FRONTEND_ORIGIN`; credentials require an explicit
@@ -108,8 +111,8 @@ origin, never a wildcard.
 ## Password changes and legacy accounts
 
 `PUT /api/v1/user/password` requires the current password and a confirmed new
-password. The existing session cookie is left in place, so sign in again after a
-password change as a matter of practice.
+password. The update bumps `token_version`, so the session cookie stops working
+on the next request; sign in again with the new password.
 
 Accounts imported from the legacy platform keep a
 `legacy-sha1$<hex>` hash. On the first successful login, the backend verifies it
@@ -123,11 +126,16 @@ Users created by the current system are unaffected by that variable.
 | Field | Editable | Notes |
 | --- | --- | --- |
 | `name` | yes | display name |
-| `email` | yes | uniqueness enforced |
+| `email` | yes, with the current password | two-step: `pending_email` then verification |
 | `org_id` | yes | organization identifier, unique when present |
 | `code_editor_enabled` | yes | whether the in-browser editor is enabled |
 | `role` | no | changed by an admin |
 | `confirmed` | no | changed by verification or an admin |
+
+An email change requires the current password and stores the new address as
+`pending_email`; a verification link is sent there, and the account keeps the old
+address until the link is used. Completing the change invalidates existing
+sessions, so sign in again with the new address.
 
 The profile page also exposes theme and editor preferences locally. The code
 editor preference is stored on the account so it follows the user between

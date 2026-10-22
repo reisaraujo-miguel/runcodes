@@ -58,7 +58,12 @@ Partial update. All fields optional:
 
 Valid roles are `student`, `professor`, `admin` and `dev`. Promoting a user to
 `admin` grants the entire admin panel; demoting an admin is subject to the
-self-management guard.
+self-management rules below.
+
+Changing the email, role or confirmation bumps the account's `token_version`,
+so every existing session is signed out. An email change also clears any pending
+email change and marks the account unconfirmed unless the same request explicitly
+sets `"confirmed": true`.
 
 ### `DELETE /admin/users/{id}`
 
