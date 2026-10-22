@@ -84,6 +84,12 @@ done
 {
   echo 'BEGIN;'
   for f in "$SCRIPT_DIR"/*.sql; do
+    # 99 is the optional archive, not a migration step: running it here would
+    # create the legacy schema (and copy every archived row) without the
+    # operator asking for it.
+    if [ "$(basename "$f")" = "99-optional-archive-legacy.sql" ]; then
+      continue
+    fi
     echo "-- ==> $(basename "$f")"
     cat "$f"
   done

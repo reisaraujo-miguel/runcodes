@@ -42,7 +42,10 @@ their `legacy-sha1$` hashes on first login.
 
 After reviewing the validation output, drop `old` and `_migration`. Run
 `99-optional-archive-legacy.sql` first if you want to keep legacy-only tables in
-a `legacy` schema.
+a `legacy` schema. The migration runner skips `99` because it is optional, not a
+step in the import. The archive is one-shot: it refuses to run when the `legacy`
+schema already exists, because copying the rows again would duplicate them. Drop
+`legacy` explicitly before retrying.
 
 The importer is not incremental: re-running on an already-migrated database
 duplicates rows. It does not migrate SeaweedFS objects.

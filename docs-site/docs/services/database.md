@@ -279,9 +279,11 @@ Mapping decisions:
 
 After validation, drop `old` and `_migration` once the data is verified. Run
 `99-optional-archive-legacy.sql` first if the legacy-only tables must be kept in
-a `legacy` schema. The importer is not incremental: re-running on an
-already-migrated database duplicates rows. It covers the relational database,
-**not** SeaweedFS objects.
+a `legacy` schema. The migration runner skips `99` because the archive is
+optional, not an import step. It is one-shot and refuses to run if `legacy`
+already exists; drop the schema explicitly before retrying. The importer is not
+incremental either: re-running on an already-migrated database duplicates rows.
+It covers the relational database, **not** SeaweedFS objects.
 
 ## Backups
 
