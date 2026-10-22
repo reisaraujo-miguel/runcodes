@@ -262,7 +262,7 @@ services:
         condition: service_started
 
   grafana:
-    image: grafana/grafana:12.4.13
+    image: grafana/grafana:13.2.4
     restart: unless-stopped
     environment:
       TZ: "America/Sao_Paulo"
