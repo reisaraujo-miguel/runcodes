@@ -183,8 +183,10 @@ body {
 }
 
 .VPHero .image-src {
-  max-width: 300px;
-  max-height: 300px;
+  width: 280px;
+  height: 280px;
+  max-width: 280px;
+  max-height: 280px;
   filter: drop-shadow(0 28px 45px rgba(60, 24, 160, 0.28));
 }
 
@@ -625,6 +627,11 @@ body {
 @media (max-width: 640px) {
   .VPHero {
     padding-top: 64px !important;
+  }
+
+  .VPHero .image-src {
+    width: 180px;
+    height: 180px;
   }
 
   .rc-grid {
