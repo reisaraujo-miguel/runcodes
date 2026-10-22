@@ -7,6 +7,7 @@ import (
 
 	"github.com/runcodes-icmc/runcodes/config"
 	"github.com/runcodes-icmc/runcodes/handlers"
+	"github.com/runcodes-icmc/runcodes/telemetry"
 	"github.com/runcodes-icmc/runcodes/validation"
 
 	"github.com/go-chi/chi/v5"
@@ -15,12 +16,15 @@ import (
 	"github.com/go-chi/httplog/v3"
 	"github.com/go-chi/httprate"
 	"github.com/go-chi/jwtauth/v5"
-	"github.com/go-chi/traceid"
 )
 
 func createRoutes(router *chi.Mux) {
 	// unauthenticated liveness probe (Docker HEALTHCHECK / orchestrators)
 	router.Get("/healthz", handlers.Health)
+
+	// readiness probe: the database is required, the judge is reported but does
+	// not make the API unready (submissions fail, the rest of the platform works)
+	router.Get("/readyz", handlers.Ready)
 
 	// public routes
 	router.Group(func(r chi.Router) {
@@ -142,10 +146,18 @@ func createRoutes(router *chi.Mux) {
 }
 
 /*
-configureMiddleware configures traceid, RequestLogger, Recoverer and cors.handler
+configureMiddleware configures OpenTelemetry, RequestLogger, Recoverer and
+cors.handler.
+
+The OpenTelemetry middleware runs first so the span exists before the request
+logger and the application log records run; telemetry.TraceContextMiddleware
+then guarantees every request (including one with tracing disabled) has a
+TraceId response header and a trace context for log correlation.
 */
 func configureMiddleware(router *chi.Mux, cfg *config.Config) {
-	router.Use(traceid.Middleware)
+	router.Use(telemetry.HTTPMiddleware(router))
+	router.Use(telemetry.TraceContextMiddleware)
+	router.Use(telemetry.HTTPMetricsMiddleware())
 
 	// Bodies (and, on a rejected payload, a replayable curl command) are only
 	// logged when the caller asks for them and the server runs in debug mode.
@@ -184,8 +196,8 @@ func configureMiddleware(router *chi.Mux, cfg *config.Config) {
 	router.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{cfg.FrontendOrigin},
 		AllowedMethods:   []string{"GET", "PUT", "POST", "DELETE", "HEAD", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
-		ExposedHeaders:   []string{"Link"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "Traceparent", "Tracestate"},
+		ExposedHeaders:   []string{"Link", "TraceId", "X-Trace-Sampled"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))

@@ -11,7 +11,9 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/XSAM/otelsql"
 	"github.com/lib/pq"
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 
 	"github.com/runcodes-icmc/judge/internal/config"
 	"github.com/runcodes-icmc/judge/internal/model"
@@ -26,12 +28,33 @@ type Store struct {
 // database that is not up yet does not prevent the process from starting;
 // readiness (and each claim) reports the failure instead.
 func New(cfg *config.Config) (*Store, error) {
-	db, err := sql.Open("postgres", cfg.DB.DSN())
+	driverName := "postgres"
+	instrumented, err := otelsql.Register("postgres",
+		otelsql.WithAttributes(semconv.DBSystemNamePostgreSQL),
+	)
+	if err != nil {
+		slog.Warn("could not instrument the database driver; using lib/pq directly",
+			slog.String("error", err.Error()),
+		)
+	} else {
+		driverName = instrumented
+	}
+
+	db, err := sql.Open(driverName, cfg.DB.DSN())
 	if err != nil {
 		return nil, fmt.Errorf("open postgres: %w", err)
 	}
 	db.SetMaxOpenConns(cfg.DB.MaxOpenConns)
 	db.SetMaxIdleConns(cfg.DB.MaxIdleConns)
+
+	if _, err := otelsql.RegisterDBStatsMetrics(db,
+		otelsql.WithAttributes(semconv.DBSystemNamePostgreSQL),
+	); err != nil {
+		slog.Debug("could not register database pool metrics",
+			slog.String("error", err.Error()),
+		)
+	}
+
 	return NewWithDB(db), nil
 }
 

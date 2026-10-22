@@ -13,6 +13,8 @@ func TestCreateRoutes(t *testing.T) {
 	createRoutes(router)
 
 	want := []string{
+		"/healthz",
+		"/readyz",
 		"/api/v1/user/signup",
 		"/api/v1/user/login",
 		"/api/v1/user/verify-email",

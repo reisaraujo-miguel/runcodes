@@ -10,6 +10,10 @@ import (
 
 	"github.com/runcodes-icmc/judge/internal/config"
 	"github.com/runcodes-icmc/judge/internal/model"
+	"github.com/runcodes-icmc/judge/internal/telemetry"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Store is the slice of the data layer the pool needs.
@@ -114,6 +118,18 @@ func (p *Pool) drain(ctx context.Context, sem chan struct{}, wg *sync.WaitGroup)
 			// capacity. On shutdown the pool's context still cancels first.
 			runCtx, cancel := context.WithTimeout(ctx, p.cfg.MaxRunDuration)
 			defer cancel()
+
+			// Each claimed commit gets its own root trace: the HTTP request that
+			// queued it has long returned by the time a worker picks it up, so
+			// there is no parent span to continue. The commit id links the trace
+			// back to the submission in PostgreSQL.
+			runCtx, span := telemetry.Tracer().Start(runCtx, "judge.process_commit",
+				trace.WithAttributes(
+					attribute.Int64("runcodes.commit.id", commit.ID),
+					attribute.Int64("runcodes.exercise.id", commit.ExerciseID),
+				),
+			)
+			defer span.End()
 
 			p.processor.Process(runCtx, commit)
 		})

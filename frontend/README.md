@@ -54,6 +54,15 @@ bun run preview
 bun run lint
 ```
 
+## Observability
+
+The SPA is not instrumented with OpenTelemetry yet: browser requests are not
+traced, so traces start at Caddy/backend. The backend returns a `TraceId`
+response header and its CORS configuration allows `traceparent`/`tracestate`, so
+adding `@opentelemetry/sdk-trace-web` (or Grafana Faro) is a contained follow-up.
+See [`../docs/observability/README.md`](../docs/observability/README.md#known-limitations)
+for the full-stack context and the collector CORS requirement.
+
 ## License
 
 For information on the license of this project, please see our [license file](../LICENSE).

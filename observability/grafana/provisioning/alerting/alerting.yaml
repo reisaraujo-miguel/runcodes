@@ -1,0 +1,98 @@
+apiVersion: 1
+
+# Grafana-managed example alert rule.
+#
+# The primary alert set lives in Prometheus (observability/prometheus/rules) and
+# is routed by Alertmanager. This rule exists to demonstrate Grafana's unified
+# alerting path and to link it to the same Alertmanager instance: Grafana
+# evaluates a Prometheus query, then forwards the alert to Alertmanager through
+# the alertmanager contact point below.
+
+contactPoints:
+  - orgId: 1
+    name: Alertmanager
+    receivers:
+      - uid: runcodes-alertmanager
+        # Grafana's contact-point integration name for a Prometheus
+        # Alertmanager. "alertmanager" is not a valid notifier type.
+        type: prometheus-alertmanager
+        settings:
+          url: http://alertmanager:9093
+
+policies:
+  - orgId: 1
+    receiver: Alertmanager
+    group_by:
+      - alertname
+      - grafana_folder
+      - service_name
+    group_wait: 10s
+    group_interval: 1m
+    repeat_interval: 4h
+
+groups:
+  - orgId: 1
+    name: RunCodes Grafana Alerts
+    folder: RunCodes Observability
+    interval: 1m
+    rules:
+      - uid: runcodes-http-5xx-grafana
+        title: RunCodes HTTP 5xx rate (Grafana-managed example)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              editorMode: code
+              expr: |
+                sum by (service_name) (
+                  rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m])
+                )
+                /
+                clamp_min(
+                  sum by (service_name) (
+                    rate(http_server_request_duration_seconds_count[5m])
+                  ),
+                  0.001
+                )
+              instant: false
+              range: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.05]
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+          source: grafana
+        annotations:
+          summary: "{{ $labels.service_name }} is returning more than 5% 5xx responses (Grafana-managed)"
+          description: "The 5xx ratio over 5m is {{ $values.B }}. This rule is evaluated by Grafana and forwarded to Alertmanager; the equivalent Prometheus rule is in observability/prometheus/rules/runcodes-alerts.yml."

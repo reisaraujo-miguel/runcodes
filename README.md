@@ -73,7 +73,11 @@ nonce and the per-case limits) is in the same file.
 ├── runners/        Language images the judge runs submissions in
 ├── monitor/        In-container process monitor (limits, timing, report)
 ├── database/       PostgreSQL schema, seeds, migrations and legacy import
-└── docker-compose.yml
+├── observability/  Collector, Prometheus, Loki, Tempo, Grafana and Alertmanager config
+├── docs/           Architecture, runbooks and observability guide
+├── scripts/        Developer and observability validation scripts
+├── docker-compose.yml
+└── docker-compose.observability.yml
 ```
 
 ## Getting started
@@ -219,6 +223,41 @@ ATLAS_DEV_URL='postgres://runcodes:PASSWORD@localhost:5432/atlas_dev?sslmode=dis
 See [`database/README.md`](database/README.md) for the disposable dev database,
 applying migrations and baselining an existing database. CI fails when the
 schema and the migration directory disagree.
+
+## Observability
+
+The platform ships an opt-in OpenTelemetry stack: the backend and judge emit
+traces, metrics and structured logs over OTLP to an OpenTelemetry Collector,
+which writes traces to Tempo, logs to Loki and exposes application metrics for
+Prometheus. Grafana provides dashboards, Explore and trace/log correlation, and
+Alertmanager routes alerts from Prometheus rules (plus a Grafana-managed example
+rule) to a webhook receiver.
+
+The overlay is separate from the normal stack and publishes every UI on
+loopback only:
+
+```bash
+make observability-init       # generate the local Grafana admin password
+make observability-up         # start app + Prometheus, Loki, Tempo, Grafana, ...
+make observability-smoke-test # generate traffic and validate every signal
+```
+
+| URL | Purpose |
+| --- | --- |
+| <http://localhost:3000> | Grafana (dashboard `runcodes-overview`) |
+| <http://localhost:9090> | Prometheus |
+| <http://localhost:9093> | Alertmanager |
+| <http://localhost:3100/ready> | Loki readiness |
+| <http://localhost:3200/ready> | Tempo readiness |
+
+The Grafana password is generated into `.observability/` (gitignored) and is
+never committed. `make observability-down` keeps the telemetry volumes;
+`make observability-destroy` removes them.
+
+See [`docs/observability/README.md`](docs/observability/README.md) for the
+architecture, data flow, ports, configuration, retention and production
+guidance, and [`docs/observability/runbook.md`](docs/observability/runbook.md)
+for start/stop, validation, failure modes, alert testing and adding services.
 
 ## Releases
 

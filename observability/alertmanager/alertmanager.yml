@@ -1,0 +1,45 @@
+# Alertmanager configuration for the local stack.
+#
+# Prometheus evaluates the rules in observability/prometheus/rules and sends
+# firing alerts here. The default receiver is the in-stack webhook sink, which
+# lets the smoke test prove the whole path
+# (rule -> Alertmanager -> receiver) without an external account.
+#
+# Replace the receiver with Slack, PagerDuty, email or an on-call webhook for
+# production. Never commit those credentials: use a mounted secret and
+# Alertmanager's *_file settings.
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: alert-sink
+  group_by: [alertname, service_name, severity]
+  group_wait: 5s
+  group_interval: 30s
+  repeat_interval: 4h
+
+  routes:
+    - matchers:
+        - severity="critical"
+      receiver: alert-sink
+      group_wait: 0s
+      repeat_interval: 1h
+
+receivers:
+  - name: alert-sink
+    webhook_configs:
+      - url: http://alert-sink:8080/alerts
+        send_resolved: true
+        max_alerts: 0
+
+  # Kept as a routing target for alerts that should be visible in the
+  # Alertmanager UI without being delivered anywhere.
+  - name: "null"
+
+inhibit_rules:
+  # A critical alert for a service silences its warnings with the same name.
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
+    equal: [alertname, service_name]
