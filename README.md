@@ -173,14 +173,14 @@ SMTP port and the Vite dev server. All of them are overridable:
 
 | Variable                                            | Purpose                                                  |
 | --------------------------------------------------- | -------------------------------------------------------- |
-| `RUNCODES_PUBLIC_URL`                               | Origin used in verification links (no path).             |
+| `RUNCODES_PUBLIC_URL`                               | Origin used in verification and recovery links (no path). |
 | `RUNCODES_SMTP_HOST`                                | SMTP server hostname; `smtp4dev` in Compose.             |
 | `RUNCODES_SMTP_PORT`                                | SMTP port; defaults to `587`.                            |
 | `RUNCODES_SMTP_FROM`                                | `From` address, e.g. `RunCodes <no-reply@example.com>`.  |
 | `RUNCODES_SMTP_USERNAME` / `RUNCODES_SMTP_PASSWORD` | Optional relay credentials; leave empty for smtp4dev.    |
 
-A database created before this feature needs the migration applied once (a
-fresh Compose volume already contains the table):
+A database created before the email features needs the migration applied once (a
+fresh Compose volume already contains the tables):
 
 ```bash
 export DATABASE_URL="postgres://runcodes:${RUNCODES_DB_PASSWORD}@localhost:5432/runcodes?sslmode=disable"
@@ -190,6 +190,18 @@ export DATABASE_URL="postgres://runcodes:${RUNCODES_DB_PASSWORD}@localhost:5432/
 Accounts migrated from the legacy system inherit their old `confirmed` flag, so
 an unconfirmed legacy account must be confirmed from the admin panel or by
 reissuing its verification link.
+
+### Password recovery
+
+A user who forgot their password can open **Esqueceu a senha?** on the login
+page, or call `POST /api/v1/user/forgot-password`. The route always answers
+`202`, whether or not the address has an account, so it cannot be used to
+enumerate users. The link points at `/reset-password?token=...`, expires after
+1 hour, is single use, and only its SHA-256 is stored (`password_reset_tokens`);
+requesting a new link invalidates the previous one.
+
+Resetting a password does not confirm an unconfirmed account. That user still
+needs a verification link, which the login page offers after a `403`.
 
 ### Configuration
 

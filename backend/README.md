@@ -40,7 +40,7 @@ for requests that ask for them with the `Debug: reveal-body-logs` header.
 `RUNCODES_DB_SSLMODE` (default `disable`) exists for a database that requires
 TLS; the Compose setup reaches PostgreSQL over the internal network.
 
-Account verification email is sent through `RUNCODES_SMTP_HOST`,
+Account verification and password recovery email are sent through `RUNCODES_SMTP_HOST`,
 `RUNCODES_SMTP_PORT` (default `587`), `RUNCODES_SMTP_FROM` and, for a relay that
 requires authentication, `RUNCODES_SMTP_USERNAME` / `RUNCODES_SMTP_PASSWORD`.
 STARTTLS is used automatically when the server advertises it. The link in the
@@ -70,6 +70,26 @@ account stops working too (the logout route is deliberately exempt).
 The resend endpoint always answers `202`, whether or not the address has an
 account, so it cannot be used to enumerate users. Both routes are rate limited
 per client IP.
+
+## Password recovery
+
+`POST /api/v1/user/forgot-password` accepts `{"email":"..."}` and sends a link
+to `RUNCODES_PUBLIC_URL/reset-password?token=...`. Like verification, only the
+SHA-256 of the token is stored (`password_reset_tokens`); the link expires after
+1 hour, is single use, and a new request invalidates the previous link. The
+endpoint always answers `202`, so it cannot be used to enumerate accounts.
+
+`POST /api/v1/user/reset-password` accepts the token, the new password and its
+confirmation, and replaces the stored bcrypt hash. Resetting does not confirm an
+unconfirmed account: the user still has to verify their email before logging in.
+
+| Route                                    | Who    | What                                                     |
+| ---------------------------------------- | ------ | -------------------------------------------------------- |
+| `POST /api/v1/user/forgot-password`      | public | send a recovery link; always the same answer             |
+| `POST /api/v1/user/reset-password`       | public | consume the token and store the new password             |
+
+Both recovery routes are in the same 10-requests-per-minute-per-IP group as the
+verification routes.
 
 ## Submissions & live judging
 

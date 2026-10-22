@@ -1,6 +1,6 @@
 ---
 title: Accounts & settings
-description: Signup, email verification, sessions, password policy and profile settings.
+description: Signup, email verification, password recovery, sessions, password policy and profile settings.
 ---
 
 # Accounts & settings
@@ -53,12 +53,33 @@ New accounts must be confirmed before they can log in.
 
 Reissuing a link invalidates the previous one. `POST
 /api/v1/user/resend-verification` always answers `202`, whether or not the
-address belongs to an account, so it cannot be used to enumerate users. Both
-verification routes are rate limited to 10 requests per minute per client IP.
+address belongs to an account, so it cannot be used to enumerate users. The
+verification and recovery routes are rate limited to 10 requests per minute per
+client IP.
 
 In the local Compose stack, verification mail is caught by **smtp4dev** at
 <http://localhost:8081>. For a real relay, configure `RUNCODES_SMTP_*`; see the
 [configuration reference](../reference/configuration.md#mail).
+
+## Password recovery
+
+The login page's **Esqueceu a senha?** link opens `/forgot-password`, which calls
+`POST /api/v1/user/forgot-password` with the account email. The route always
+answers `202`, whether or not the address belongs to an account, so it cannot be
+used to enumerate users.
+
+1. The backend creates a random token and stores only its **SHA-256** in
+   `password_reset_tokens`. The plaintext exists only in the emailed link.
+2. The link points at `RUNCODES_PUBLIC_URL/reset-password?token=...` and expires
+   after **1 hour**.
+3. `/reset-password` asks for the new password and confirmation, then calls
+   `POST /api/v1/user/reset-password`, which consumes the token and stores a new
+   bcrypt hash.
+4. The token is single use. Requesting another link invalidates the previous one.
+
+The password policy is the same as signup. Resetting a password does not confirm
+an unconfirmed account: the user still needs to open a verification link (the
+login page offers a resend after the `403`).
 
 ## Sessions
 
@@ -131,6 +152,7 @@ stateDiagram-v2
     Unconfirmed --> Confirmed: verification token
     Unconfirmed --> Unconfirmed: resend (new token)
     Confirmed --> SignedIn: login (cookie)
+    Confirmed --> Confirmed: password reset
     SignedIn --> Confirmed: logout / expiry
     Confirmed --> Unconfirmed: admin unconfirms
     Confirmed --> Deleted: admin deletes

@@ -1,6 +1,6 @@
 ---
 title: Users & accounts API
-description: Endpoints for signup, login, verification, sessions, profile and passwords.
+description: Endpoints for signup, login, verification, recovery, sessions, profile and passwords.
 ---
 
 # Users & accounts API
@@ -66,6 +66,44 @@ not disclosed. Rate limited to 10 requests/minute per IP.
 
 Always returns `202 Accepted`, whether or not the address belongs to an account.
 A resend invalidates the previous link. Rate limited to 10 requests/minute per IP.
+
+### `POST /user/forgot-password`
+
+```json
+{ "email": "ada@example.com" }
+```
+
+Sends a recovery link to the address if it belongs to an account. Requesting a
+new link invalidates the previous one.
+
+| Status | Meaning |
+| --- | --- |
+| `202` | request accepted; the same answer for every address |
+| `400` | malformed request or invalid email format |
+| `429` | rate limited |
+
+### `POST /user/reset-password`
+
+```json
+{
+  "token": "<token from the recovery link>",
+  "password": "N3w!pass",
+  "password_confirmation": "N3w!pass"
+}
+```
+
+Consumes the token and stores the new password. The token expires after 1 hour
+and is single use.
+
+| Status | Meaning |
+| --- | --- |
+| `204` | password changed |
+| `400` | invalid, consumed or expired token; passwords do not match; the new password fails the policy |
+| `429` | rate limited |
+
+An unknown, consumed or expired token gets one message, so the link's state is
+not disclosed. Resetting a password does not confirm an email address: an
+unconfirmed account still has to use the verification flow before it can log in.
 
 ### `GET /settings/public`
 
@@ -185,9 +223,17 @@ curl -s -X POST "$BASE/user/signup" -H 'Content-Type: application/json' \
 curl -s -X POST "$BASE/user/verify-email" -H 'Content-Type: application/json' \
   -d '{"token":"<token>"}'
 
-# Log in and keep the cookie
+# Request a password recovery link (also caught by smtp4dev)
+curl -s -X POST "$BASE/user/forgot-password" -H 'Content-Type: application/json' \
+  -d '{"email":"ada@example.com"}'
+
+# Reset the password with the token from that link
+curl -s -X POST "$BASE/user/reset-password" -H 'Content-Type: application/json' \
+  -d '{"token":"<token>","password":"N3w!pass","password_confirmation":"N3w!pass"}'
+
+# Log in with the new password and keep the cookie
 curl -s -c cookies.txt -X POST "$BASE/user/login" -H 'Content-Type: application/json' \
-  -d '{"email":"ada@example.com","password":"S3cure!pass"}'
+  -d '{"email":"ada@example.com","password":"N3w!pass"}'
 
 # Read the profile with the cookie
 curl -s -b cookies.txt "$BASE/user/profile"

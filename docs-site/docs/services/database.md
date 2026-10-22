@@ -46,6 +46,7 @@ runcodes`. The main tables:
 | `commits_exercise_test_cases_results` | per-case verdict, CPU time, output, diagnostics |
 | `platform_settings` | contact email and disclaimer edited by admins |
 | `email_verification_tokens` | SHA-256 of the verification token and expiry |
+| `password_reset_tokens` | SHA-256 of the password recovery token and expiry |
 | `alerts` | class/user announcements retained from the legacy model |
 | `system_*`, `mail_logs`, `user_messages` | retained operational/legacy tables |
 

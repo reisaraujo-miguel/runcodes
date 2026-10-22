@@ -12,7 +12,11 @@ var (
 	// consumed, or past its expiry; a caller sees one message, so the link's
 	// state is not disclosed.
 	ErrInvalidVerificationToken = errors.New("the verification link is invalid or has expired")
-	ErrOfferingNotFound         = errors.New("offering not found")
+	// ErrInvalidPasswordResetToken covers an unknown, consumed or expired
+	// recovery link. Like the verification message, it deliberately does not
+	// disclose which of those states the link is in.
+	ErrInvalidPasswordResetToken = errors.New("the password reset link is invalid or has expired")
+	ErrOfferingNotFound          = errors.New("offering not found")
 
 	ErrExerciseNotFound = errors.New("exercise not found")
 	ErrNotEnrolled      = errors.New("you are not enrolled in this exercise's offering")

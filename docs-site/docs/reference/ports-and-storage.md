@@ -163,9 +163,10 @@ free.
 | Uploaded file per output | 1 MiB |
 | Session lifetime | 30 minutes, sliding |
 | Verification token lifetime | 24 hours |
+| Password reset token lifetime | 1 hour |
 | Judge event retention | 10 minutes after finish |
 | API rate limit | 100/min per IP |
-| Verification rate limit | 10/min per IP |
+| Email route rate limit | 10/min per IP |
 
 ## Related pages
 

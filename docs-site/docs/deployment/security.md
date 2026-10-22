@@ -39,7 +39,11 @@ truth. In a Compose install, only the frontend publishes on a network interface.
   route. A session issued before an account was unconfirmed stops working.
 - Verification tokens are stored only as SHA-256, expire after 24 hours, and a
   resend invalidates the previous one.
-- Login and verification routes are rate limited.
+- Password recovery tokens are stored only as SHA-256, expire after 1 hour, and
+  are single use; a new request invalidates the previous one. The request route
+  answers the same way for every address, so it does not disclose accounts.
+- Login and the email routes (verification, resend, forgot, reset) are rate
+  limited.
 
 ### Authorization
 

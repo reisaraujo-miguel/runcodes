@@ -35,7 +35,7 @@ logged only when the request carries `Debug: reveal-body-logs`.
 | Variable | Default | Required | Meaning |
 | --- | --- | :-: | --- |
 | `RUNCODES_JWT_SECRET` | — | ✓ | HS256 session signing key |
-| `RUNCODES_PUBLIC_URL` | — | ✓ | absolute browser-facing origin used in verification links |
+| `RUNCODES_PUBLIC_URL` | — | ✓ | absolute browser-facing origin used in verification and recovery links |
 | `RUNCODES_LEGACY_PASSWORD_SALT` | empty | | old platform salt for migrated password hashes |
 
 `RUNCODES_PUBLIC_URL` must be `http(s)://host[:port]` with no path, query or
@@ -241,7 +241,7 @@ Source: `docker-compose.yml`, `.env.example`.
 | `RUNCODES_JUDGE_TOKEN` | ✓ | backend, judge | shared token |
 | `RUNCODES_S3_CREDENTIALS_KEY` | ✓ | backend, judge | S3 key |
 | `RUNCODES_S3_CREDENTIALS_SECRET` | ✓ | backend, judge | S3 secret |
-| `RUNCODES_PUBLIC_URL` | | backend | verification link origin |
+| `RUNCODES_PUBLIC_URL` | | backend | verification and recovery link origin |
 | `RUNCODES_SMTP_FROM` | | backend | sender |
 | `RUNCODES_SMTP_USERNAME` / `_PASSWORD` | | backend | relay credentials |
 | `RUNCODES_LEGACY_PASSWORD_SALT` | | backend | legacy hashes |

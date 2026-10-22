@@ -2,8 +2,7 @@ import { MailCheckIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
-import { Brand } from "@/components/app/Brand";
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { AuthShell } from "@/components/login/AuthShell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -69,52 +68,46 @@ export function VerifyEmailPage() {
   }, [token]);
 
   return (
-    <div className="bg-muted/40 flex min-h-svh flex-col">
-      <header className="flex items-center justify-between p-6">
-        <Brand />
-        <ThemeToggle />
-      </header>
-      <main className="flex flex-1 items-center justify-center p-6">
-        <Card className="w-full max-w-sm">
-          <CardHeader>
-            <CardTitle>Verificação de email</CardTitle>
-            <CardDescription>
-              Estamos confirmando o endereço da sua conta RunCodes.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {state.status === "verifying" ? (
-              <div className="text-muted-foreground flex items-center gap-3 text-sm">
-                <Spinner className="size-5" label="Verificando o seu email" />
-                Verificando o seu email…
-              </div>
-            ) : null}
+    <AuthShell>
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle>Verificação de email</CardTitle>
+          <CardDescription>
+            Estamos confirmando o endereço da sua conta RunCodes.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {state.status === "verifying" ? (
+            <div className="text-muted-foreground flex items-center gap-3 text-sm">
+              <Spinner className="size-5" label="Verificando o seu email" />
+              Verificando o seu email…
+            </div>
+          ) : null}
 
-            {state.status === "done" ? (
-              <Alert variant="success">
-                <MailCheckIcon aria-hidden />
-                <AlertTitle>Email confirmado</AlertTitle>
-                <AlertDescription>
-                  A sua conta está ativa. Agora você já pode entrar com o seu
-                  email e a sua senha.
-                </AlertDescription>
-              </Alert>
-            ) : null}
+          {state.status === "done" ? (
+            <Alert variant="success">
+              <MailCheckIcon aria-hidden />
+              <AlertTitle>Email confirmado</AlertTitle>
+              <AlertDescription>
+                A sua conta está ativa. Agora você já pode entrar com o seu
+                email e a sua senha.
+              </AlertDescription>
+            </Alert>
+          ) : null}
 
-            {state.status === "error" ? (
-              <Alert variant="destructive">
-                <AlertTitle>Não foi possível confirmar</AlertTitle>
-                <AlertDescription>{state.message}</AlertDescription>
-              </Alert>
-            ) : null}
-          </CardContent>
-          <CardFooter>
-            <Button size="lg" className="w-full" render={<Link to="/login" />}>
-              {state.status === "done" ? "Entrar" : "Ir para o login"}
-            </Button>
-          </CardFooter>
-        </Card>
-      </main>
-    </div>
+          {state.status === "error" ? (
+            <Alert variant="destructive">
+              <AlertTitle>Não foi possível confirmar</AlertTitle>
+              <AlertDescription>{state.message}</AlertDescription>
+            </Alert>
+          ) : null}
+        </CardContent>
+        <CardFooter>
+          <Button size="lg" className="w-full" render={<Link to="/login" />}>
+            {state.status === "done" ? "Entrar" : "Ir para o login"}
+          </Button>
+        </CardFooter>
+      </Card>
+    </AuthShell>
   );
 }

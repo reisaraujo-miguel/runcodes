@@ -292,7 +292,8 @@ vault_runcodes_smtp_password: "..."
 ```
 
 STARTTLS is used when the relay advertises it. `config_runcodes_public_url` must
-be the browser-facing origin because it builds the verification link. The
+be the browser-facing origin because it builds the verification and recovery
+links. The
 smtp4dev container remains but is unused; remove it from
 `roles/rc-edge/files/compose.yml` and the backend `depends_on` to drop it.
 

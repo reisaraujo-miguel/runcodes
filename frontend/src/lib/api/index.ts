@@ -1,9 +1,11 @@
 export {
   checkAuth,
+  forgotPassword,
   login,
   logout,
   refreshSession,
   resendVerification,
+  resetPassword,
   signUp,
   verifyEmail,
 } from "./auth";
@@ -11,6 +13,7 @@ export type {
   AuthUser,
   LoginPayload,
   LoginResponse,
+  ResetPasswordPayload,
   SignUpPayload,
   UserRole,
 } from "./auth";

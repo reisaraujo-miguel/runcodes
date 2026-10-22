@@ -17,6 +17,9 @@ link in the verification email before trying to sign in (the login page explains
 this and can resend the link). In a local Compose stack, the mail is caught by
 smtp4dev at <http://localhost:8081>.
 
+If you forget your password later, use **Esqueceu a senha?** on the login page
+to receive a recovery link. Reset the password, then sign in with the new one.
+
 ### 2. Join a class
 
 A class is called an **offering**. Open **Classes**, enter the enrollment code

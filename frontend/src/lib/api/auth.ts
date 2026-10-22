@@ -64,6 +64,28 @@ export function resendVerification(email: string): Promise<void> {
 }
 
 /**
+ * Ask for a password reset link. The API always answers the same way, so the UI
+ * must not promise that an account exists for the address.
+ */
+export function forgotPassword(email: string): Promise<void> {
+  return apiPost<undefined>("/api/v1/user/forgot-password", { email });
+}
+
+export interface ResetPasswordPayload {
+  token: string;
+  password: string;
+  password_confirmation: string;
+}
+
+/**
+ * Replace the password using the token from the recovery email. The token is
+ * single use and short lived; an invalid one is reported as a 400.
+ */
+export function resetPassword(payload: ResetPasswordPayload): Promise<void> {
+  return apiPost<undefined>("/api/v1/user/reset-password", payload);
+}
+
+/**
  * End the session. The backend clears the HttpOnly session cookie, which is the
  * only way to drop it since JavaScript cannot read or delete it.
  */

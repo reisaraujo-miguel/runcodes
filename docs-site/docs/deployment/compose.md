@@ -77,7 +77,7 @@ Optional and commonly set:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `RUNCODES_PUBLIC_URL` | `http://localhost:8080` | origin used in verification links |
+| `RUNCODES_PUBLIC_URL` | `http://localhost:8080` | origin used in verification and recovery links |
 | `RUNCODES_SMTP_FROM` | `RunCodes <no-reply@runcodes.local>` | sender address |
 | `RUNCODES_SMTP_HOST` / `_PORT` | Compose sets `smtp4dev:25` | real relay |
 | `RUNCODES_SMTP_USERNAME` / `_PASSWORD` | empty | relay credentials |

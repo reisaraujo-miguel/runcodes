@@ -19,6 +19,8 @@ func TestCreateRoutes(t *testing.T) {
 		"/api/v1/user/login",
 		"/api/v1/user/verify-email",
 		"/api/v1/user/resend-verification",
+		"/api/v1/user/forgot-password",
+		"/api/v1/user/reset-password",
 		"/api/v1/user/logout",
 		"/api/v1/user/profile",
 		"/api/v1/user/password",

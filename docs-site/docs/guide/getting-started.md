@@ -62,7 +62,7 @@ export RUNCODES_S3_CREDENTIALS_SECRET="$(openssl rand -hex 24)"
 | `RUNCODES_S3_CREDENTIALS_KEY` / `_SECRET` | backend, judge, SeaweedFS | S3 identity for submissions and cases |
 
 Optional variables include `RUNCODES_PUBLIC_URL` (origin used in verification
-links, default `http://localhost:8080`), `RUNCODES_SMTP_FROM`, SMTP relay
+and recovery links, default `http://localhost:8080`), `RUNCODES_SMTP_FROM`, SMTP relay
 credentials and `RUNCODES_LEGACY_PASSWORD_SALT`. See the
 [configuration reference](../reference/configuration.md).
 
@@ -133,6 +133,12 @@ The link points at `RUNCODES_PUBLIC_URL/verify-email?token=...`, expires after
 `POST /api/v1/user/resend-verification` (which invalidates the previous link).
 The resend route always answers `202`, whether or not the address exists, so it
 cannot be used to enumerate users.
+
+If someone forgets their password, **Esqueceu a senha?** on the login page sends
+a recovery link instead. It points at
+`RUNCODES_PUBLIC_URL/reset-password?token=...`, expires after 1 hour, is single
+use, and follows the same always-`202` rule. Resetting does not confirm an
+account, so an unconfirmed user still needs the verification link above.
 
 ::: info Using a real mail relay
 Set `RUNCODES_SMTP_HOST`, `RUNCODES_SMTP_PORT`, `RUNCODES_SMTP_FROM` and

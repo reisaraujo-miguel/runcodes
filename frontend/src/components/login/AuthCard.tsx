@@ -23,8 +23,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { login, resendVerification, signUp } from "@/lib/api/auth";
 import { ApiRequestError } from "@/lib/api/client";
 import { errorMessage } from "@/lib/errors";
-
-const SPECIAL_CHARACTER = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]/;
+import { passwordSchema } from "@/lib/password";
 
 const loginSchema = z.object({
   email: z.string().min(1, "Informe o seu email"),
@@ -41,13 +40,7 @@ const signUpSchema = z
       .string()
       .min(1, "Informe o seu email")
       .pipe(z.email("Email inválido")),
-    password: z
-      .string()
-      .min(8, "A senha deve ter no mínimo 8 caracteres")
-      .regex(/[A-Z]/, "Inclua ao menos uma letra maiúscula")
-      .regex(/[a-z]/, "Inclua ao menos uma letra minúscula")
-      .regex(/[0-9]/, "Inclua ao menos um dígito")
-      .regex(SPECIAL_CHARACTER, "Inclua ao menos um caractere especial"),
+    password: passwordSchema,
     passwordConfirmation: z.string().min(1, "Confirme a sua senha"),
   })
   .refine((data) => data.password === data.passwordConfirmation, {
@@ -177,7 +170,15 @@ function LoginForm() {
           <Field
             data-invalid={form.formState.errors.password ? true : undefined}
           >
-            <FieldLabel htmlFor="password">Senha</FieldLabel>
+            <div className="flex items-center justify-between">
+              <FieldLabel htmlFor="password">Senha</FieldLabel>
+              <Link
+                to="/forgot-password"
+                className="text-muted-foreground hover:text-foreground text-sm font-medium underline-offset-4 hover:underline"
+              >
+                Esqueceu a senha?
+              </Link>
+            </div>
             <PasswordInput
               id="password"
               autoComplete="current-password"
