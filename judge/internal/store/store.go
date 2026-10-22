@@ -11,7 +11,9 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/XSAM/otelsql"
 	"github.com/lib/pq"
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 
 	"github.com/runcodes-icmc/judge/internal/config"
 	"github.com/runcodes-icmc/judge/internal/model"
@@ -26,12 +28,33 @@ type Store struct {
 // database that is not up yet does not prevent the process from starting;
 // readiness (and each claim) reports the failure instead.
 func New(cfg *config.Config) (*Store, error) {
-	db, err := sql.Open("postgres", cfg.DB.DSN())
+	driverName := "postgres"
+	instrumented, err := otelsql.Register("postgres",
+		otelsql.WithAttributes(semconv.DBSystemNamePostgreSQL),
+	)
+	if err != nil {
+		slog.Warn("could not instrument the database driver; using lib/pq directly",
+			slog.String("error", err.Error()),
+		)
+	} else {
+		driverName = instrumented
+	}
+
+	db, err := sql.Open(driverName, cfg.DB.DSN())
 	if err != nil {
 		return nil, fmt.Errorf("open postgres: %w", err)
 	}
 	db.SetMaxOpenConns(cfg.DB.MaxOpenConns)
 	db.SetMaxIdleConns(cfg.DB.MaxIdleConns)
+
+	if _, err := otelsql.RegisterDBStatsMetrics(db,
+		otelsql.WithAttributes(semconv.DBSystemNamePostgreSQL),
+	); err != nil {
+		slog.Debug("could not register database pool metrics",
+			slog.String("error", err.Error()),
+		)
+	}
+
 	return NewWithDB(db), nil
 }
 
@@ -43,6 +66,25 @@ func (s *Store) Close() error { return s.db.Close() }
 
 // Ping reports whether Postgres is reachable (used by /readyz).
 func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
+
+// QueueStats reports how many commits are waiting and how long the oldest one
+// has been waiting. It is used by the async OTel queue metrics callback; the
+// query is intentionally independent of the claim transaction so it never
+// blocks a worker.
+func (s *Store) QueueStats(ctx context.Context) (model.QueueStats, error) {
+	var stats model.QueueStats
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT count(*),
+		       COALESCE(EXTRACT(EPOCH FROM (now() - min(created_at))), 0)::float8
+		FROM commits
+		WHERE status = 'queued'`).Scan(&stats.Depth, &stats.OldestSeconds)
+	if err != nil {
+		return model.QueueStats{}, fmt.Errorf("query queue stats: %w", err)
+	}
+
+	return stats, nil
+}
 
 // Claim atomically takes the oldest `queued` commit, marking it `compiling`.
 // It returns (nil, nil) when the queue is empty.

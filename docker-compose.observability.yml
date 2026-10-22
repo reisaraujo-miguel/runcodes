@@ -1,0 +1,391 @@
+# Observability overlay.
+#
+# It is intentionally a separate file: `docker compose up` keeps its existing
+# behaviour, and the observability stack is opt-in:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
+#
+# or, preferably, `make observability-up`.
+#
+# Every published port is bound to 127.0.0.1 by default. Override
+# OBSERVABILITY_BIND_ADDRESS only behind an authenticating reverse proxy; these
+# services have no built-in authentication (Grafana has a login, the rest do
+# not).
+
+services:
+  frontend:
+    build:
+      args:
+        # These are compiled into the SPA. The browser talks to the published
+        # collector endpoint, not to the Compose service name.
+        VITE_OTEL_ENABLED: "${FRONTEND_OTEL_ENABLED:-true}"
+        VITE_OTEL_EXPORTER_OTLP_ENDPOINT: "${PUBLIC_OTEL_HTTP_URL:-http://localhost:4318}"
+        VITE_OTEL_SERVICE_NAME: "runcodes-frontend"
+        VITE_OTEL_SERVICE_VERSION: "${OTEL_SERVICE_VERSION:-dev}"
+        VITE_DEPLOYMENT_ENVIRONMENT: "${DEPLOYMENT_ENVIRONMENT:-development}"
+        VITE_OTEL_TRACES_SAMPLER_ARG: "${VITE_OTEL_TRACES_SAMPLER_ARG:-1.0}"
+
+  backend:
+    environment:
+      DEPLOYMENT_ENVIRONMENT: "${DEPLOYMENT_ENVIRONMENT:-development}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
+      OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
+      OTEL_EXPORTER_OTLP_TIMEOUT: "10000"
+      OTEL_SERVICE_NAME: "runcodes-backend"
+      OTEL_SERVICE_VERSION: "${OTEL_SERVICE_VERSION:-dev}"
+      OTEL_TRACES_SAMPLER: "${OTEL_TRACES_SAMPLER:-parentbased_always_on}"
+      OTEL_TRACES_SAMPLER_ARG: "${OTEL_TRACES_SAMPLER_ARG:-1.0}"
+      OTEL_METRIC_EXPORT_INTERVAL: "10000"
+      OTEL_BSP_SCHEDULE_DELAY: "2000"
+      OTEL_BLRP_SCHEDULE_DELAY: "2000"
+      OTEL_SDK_DISABLED: "${OTEL_SDK_DISABLED:-false}"
+      PPROF_ADDR: ":6060"
+    depends_on:
+      otel-collector:
+        condition: service_started
+
+  judge:
+    environment:
+      DEPLOYMENT_ENVIRONMENT: "${DEPLOYMENT_ENVIRONMENT:-development}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
+      OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
+      OTEL_EXPORTER_OTLP_TIMEOUT: "10000"
+      OTEL_SERVICE_NAME: "runcodes-judge"
+      OTEL_SERVICE_VERSION: "${OTEL_SERVICE_VERSION:-dev}"
+      OTEL_TRACES_SAMPLER: "${OTEL_TRACES_SAMPLER:-parentbased_always_on}"
+      OTEL_TRACES_SAMPLER_ARG: "${OTEL_TRACES_SAMPLER_ARG:-1.0}"
+      OTEL_METRIC_EXPORT_INTERVAL: "10000"
+      OTEL_BSP_SCHEDULE_DELAY: "2000"
+      OTEL_BLRP_SCHEDULE_DELAY: "2000"
+      OTEL_SDK_DISABLED: "${OTEL_SDK_DISABLED:-false}"
+      PPROF_ADDR: ":6060"
+    depends_on:
+      otel-collector:
+        condition: service_started
+
+  # OTLP entry point. Applications send traces, metrics and logs here; it is the
+  # only process that talks to Tempo and Loki on the write path.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.163.2
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol/config.yaml"]
+    environment:
+      TZ: "America/Sao_Paulo"
+      DEPLOYMENT_ENVIRONMENT: "${DEPLOYMENT_ENVIRONMENT:-development}"
+      GOMEMLIMIT: "384MiB"
+    ports:
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${OTEL_GRPC_PORT:-4317}:4317" # OTLP/gRPC for local apps
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${OTEL_HTTP_PORT:-4318}:4318" # OTLP/HTTP for local apps
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${OTEL_HEALTH_PORT:-13133}:13133" # health_check
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${OTEL_METRICS_PORT:-8888}:8888" # collector self-metrics
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${OTEL_PROM_PORT:-8889}:8889" # OTLP -> Prometheus exporter
+    volumes:
+      - ./observability/otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
+    security_opt:
+      - label=disable
+    mem_limit: 512m
+    cpus: "1.0"
+    networks:
+      - runcodes-network
+    depends_on:
+      tempo:
+        condition: service_started
+      loki:
+        condition: service_started
+
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:-15d}"
+      - "--storage.tsdb.retention.size=${PROMETHEUS_RETENTION_SIZE:-8GB}"
+      - "--web.enable-lifecycle"
+      # Tempo's metrics-generator remote-writes span and service-graph metrics.
+      - "--web.enable-remote-write-receiver"
+      - "--enable-feature=exemplar-storage"
+    ports:
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    security_opt:
+      - label=disable
+    mem_limit: 1g
+    cpus: "1.0"
+    networks:
+      - runcodes-network
+    depends_on:
+      alertmanager:
+        condition: service_started
+
+  alertmanager:
+    image: prom/alertmanager:v0.34.1
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--web.listen-address=0.0.0.0:9093"
+      # Single instance: do not try to form an HA cluster.
+      - "--cluster.listen-address="
+    ports:
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${ALERTMANAGER_PORT:-9093}:9093"
+    volumes:
+      - ./observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./.observability/alertmanager_webhook_url:/etc/alertmanager/secrets/webhook_url:ro
+      - alertmanager-data:/alertmanager
+    security_opt:
+      - label=disable
+    mem_limit: 128m
+    cpus: "0.25"
+    networks:
+      - runcodes-network
+
+  # Receives Alertmanager webhooks. It is a test fixture, not a notification
+  # product; it keeps the last 100 payloads in memory for the smoke test.
+  alert-sink:
+    image: python:3.14-slim-trixie
+    restart: unless-stopped
+    command: ["python", "-u", "/app/main.py"]
+    user: "65534:65534"
+    read_only: true
+    tmpfs:
+      - /tmp
+    ports:
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${ALERT_SINK_PORT:-8085}:8080"
+    volumes:
+      - ./observability/alert-sink/main.py:/app/main.py:ro
+    security_opt:
+      - label=disable
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2)"
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    mem_limit: 64m
+    cpus: "0.1"
+    networks:
+      - runcodes-network
+
+  loki:
+    image: grafana/loki:3.7.9
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    ports:
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${LOKI_PORT:-3100}:3100"
+    volumes:
+      - ./observability/loki/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+    security_opt:
+      - label=disable
+    mem_limit: 512m
+    cpus: "1.0"
+    networks:
+      - runcodes-network
+
+  tempo:
+    image: grafana/tempo:3.1.1
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    ports:
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${TEMPO_PORT:-3200}:3200"
+    volumes:
+      - ./observability/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    security_opt:
+      - label=disable
+    mem_limit: 512m
+    cpus: "1.0"
+    networks:
+      - runcodes-network
+    depends_on:
+      prometheus:
+        condition: service_started
+
+  # Continuous profiling: Alloy scrapes the Go pprof endpoints and writes to
+  # Pyroscope. The pprof listeners are internal-only (:6060, not published).
+  pyroscope:
+    image: grafana/pyroscope:2.4.1
+    restart: unless-stopped
+    command:
+      - "-config.file=/etc/pyroscope/config.yaml"
+      # Single instance: skip the rolling-update readiness delays (15s
+      # metastore + 15s ingester + 30s segment writer) so the local stack and
+      # the smoke test come up promptly. Keep the defaults in a cluster.
+      - "-metastore.min-ready-duration=0"
+      - "-ingester.min-ready-duration=0"
+      - "-segment-writer.min-ready-duration=0"
+    ports:
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${PYROSCOPE_PORT:-4040}:4040"
+    volumes:
+      - ${PYROSCOPE_CONFIG_FILE:-./observability/pyroscope/config.yaml}:/etc/pyroscope/config.yaml:ro
+      - pyroscope-data:/data
+    security_opt:
+      - label=disable
+    mem_limit: 512m
+    cpus: "1.0"
+    networks:
+      - runcodes-network
+
+  alloy:
+    image: grafana/alloy:v1.21.1
+    restart: unless-stopped
+    command:
+      - "run"
+      - "--server.http.listen-addr=0.0.0.0:12345"
+      - "--storage.path=/var/lib/alloy/data"
+      - "/etc/alloy/config.alloy"
+    ports:
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${ALLOY_PORT:-12345}:12345"
+    volumes:
+      - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+    security_opt:
+      - label=disable
+    mem_limit: 256m
+    cpus: "0.5"
+    networks:
+      - runcodes-network
+    depends_on:
+      pyroscope:
+        condition: service_started
+      backend:
+        condition: service_started
+      judge:
+        condition: service_started
+
+  grafana:
+    image: grafana/grafana:12.4.13
+    restart: unless-stopped
+    environment:
+      TZ: "America/Sao_Paulo"
+      GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER:-admin}"
+      # The password is generated by scripts/observability/init-secrets.sh into
+      # .observability/ (gitignored) and mounted as a file, so it never appears
+      # in the Compose file, the image or the environment.
+      GF_SECURITY_ADMIN_PASSWORD__FILE: "/run/secrets/grafana_admin_password"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_VIEWERS_CAN_EDIT: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_SERVER_ROOT_URL: "${GRAFANA_ROOT_URL:-http://localhost:3000}"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: "/var/lib/grafana/dashboards/runcodes-overview.json"
+      GF_FEATURE_TOGGLES_ENABLE: "traceqlEditor"
+      # Do not download Grafana's preinstalled "app" plugins at boot; the stack
+      # must start on an offline host. The core datasources/dashboard remain.
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_LOG_LEVEL: "info"
+    ports:
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./.observability/grafana_admin_password:/run/secrets/grafana_admin_password:ro
+      - grafana-data:/var/lib/grafana
+    security_opt:
+      - label=disable
+    mem_limit: 512m
+    cpus: "0.5"
+    networks:
+      - runcodes-network
+    depends_on:
+      prometheus:
+        condition: service_started
+      loki:
+        condition: service_started
+      tempo:
+        condition: service_started
+      alertmanager:
+        condition: service_started
+      pyroscope:
+        condition: service_started
+
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    restart: unless-stopped
+    command:
+      - "--path.rootfs=/host"
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|var/lib/docker/.+)($|/)"
+    ports:
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${NODE_EXPORTER_PORT:-9100}:9100"
+    volumes:
+      - /:/host:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    security_opt:
+      - label=disable
+    mem_limit: 128m
+    cpus: "0.25"
+    networks:
+      - runcodes-network
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.20.1
+    restart: unless-stopped
+    environment:
+      TZ: "America/Sao_Paulo"
+      DATA_SOURCE_URI: "database:5432/runcodes?sslmode=disable"
+      DATA_SOURCE_USER: "runcodes_app"
+      DATA_SOURCE_PASS: "${RUNCODES_DB_APP_PASSWORD:?RUNCODES_DB_APP_PASSWORD must be set}"
+      PG_EXPORTER_AUTO_DISCOVER_DATABASES: "false"
+      PG_EXPORTER_DISABLE_SETTINGS_METRICS: "false"
+    ports:
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_EXPORTER_PORT:-9187}:9187"
+    mem_limit: 128m
+    cpus: "0.2"
+    networks:
+      - runcodes-network
+    depends_on:
+      database:
+        condition: service_started
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.95.0
+    restart: unless-stopped
+    environment:
+      TZ: "America/Sao_Paulo"
+      REDIS_ADDR: "redis://redis:6379"
+    ports:
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${REDIS_EXPORTER_PORT:-9121}:9121"
+    mem_limit: 128m
+    cpus: "0.2"
+    networks:
+      - runcodes-network
+    depends_on:
+      redis:
+        condition: service_started
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.29.1
+    restart: unless-stopped
+    command: ["--config.file=/etc/blackbox_exporter/config.yml"]
+    ports:
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${BLACKBOX_EXPORTER_PORT:-9115}:9115"
+    volumes:
+      - ./observability/blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    security_opt:
+      - label=disable
+    mem_limit: 128m
+    cpus: "0.2"
+    networks:
+      - runcodes-network
+
+volumes:
+  prometheus-data:
+  alertmanager-data:
+  loki-data:
+  tempo-data:
+  grafana-data:
+  pyroscope-data:
+  alloy-data:

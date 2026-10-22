@@ -242,3 +242,34 @@ export RUNCODES_LEGACY_PASSWORD_SALT="<old global salt>"
 ```
 
 Users created by the new system are unaffected by this variable.
+
+## Observability
+
+The API is instrumented with the OpenTelemetry Go SDK and stays a no-op unless
+`OTEL_EXPORTER_OTLP_ENDPOINT` is set. The Compose observability overlay sets it
+to the collector and supplies the sampling/batch knobs; the standard variables
+are listed in [`../docs/observability/README.md`](../docs/observability/README.md#application-standard-opentelemetry-variables).
+
+- `GET /healthz` is the liveness probe (no dependencies). `GET /readyz` checks
+  PostgreSQL and reports the judge as `ok`/`unavailable` without failing
+  readiness; the judge being down breaks submissions, not authentication or
+  course browsing.
+- HTTP server metrics (`http.server.request.duration`,
+  `http.server.active_requests`) use the chi route pattern, so `/api/v1/exercises/{id}`
+  is one series rather than one per exercise.
+- Database queries go through `otelsql` spans, and judge/S3 HTTP calls through
+  `otelhttp`; W3C trace context is propagated to the judge and SeaweedFS.
+- Logs keep the existing JSON/pretty stdout format and add `trace_id`/`span_id`
+  when a request has a span. The same records are forwarded over OTLP and stored
+  in Loki with the native trace context.
+- Responses include `TraceId` (32 hex chars) and `X-Trace-Sampled`; `TraceId` can
+  be pasted into Tempo or grepped in Loki.
+- `PPROF_ADDR` (optional, e.g. `:6060`) starts an internal pprof listener for
+  Alloy/Pyroscope. It is never exposed by the API listener. The OpenTelemetry
+  provider is wrapped with `otel-profiling-go`, so pprof samples carry trace and
+  span ids and backend spans expose `pyroscope.profile.id` to Tempo/Grafana.
+- A browser fetch that carries `traceparent` continues the same trace; browser
+  instrumentation lives in `frontend/src/lib/telemetry`.
+
+See [`docs/observability/runbook.md`](../docs/observability/runbook.md) for
+dashboard, trace/log correlation and alert usage.

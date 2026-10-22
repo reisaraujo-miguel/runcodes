@@ -15,12 +15,14 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/runcodes-icmc/runcodes/config"
+	"github.com/runcodes-icmc/runcodes/telemetry"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -58,6 +60,11 @@ func initStorage() error {
 
 	opts := []func(*awsconfig.LoadOptions) error{
 		awsconfig.WithRegion(s3Config.Region),
+		// Client spans for every S3 request; the SDK propagates the request
+		// context, so these become children of the submission's trace.
+		awsconfig.WithHTTPClient(&http.Client{
+			Transport: telemetry.Transport(http.DefaultTransport),
+		}),
 	}
 
 	if s3Config.AccessKey != "" || s3Config.SecretKey != "" {

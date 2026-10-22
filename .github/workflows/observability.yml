@@ -1,0 +1,61 @@
+name: Observability
+
+on:
+  pull_request:
+    paths:
+      - "observability/**"
+      - "docs/observability/**"
+      - "scripts/observability/**"
+      - "backend/telemetry/**"
+      - "judge/internal/telemetry/**"
+      - "frontend/src/lib/telemetry/**"
+      - "frontend/src/main.tsx"
+      - "frontend/e2e/**"
+      - "frontend/playwright.config.ts"
+      - "frontend/package.json"
+      - "frontend/bun.lock"
+      - "docker-compose.observability.yml"
+      - ".github/workflows/observability.yml"
+  push:
+    branches:
+      - main
+      - development
+    paths:
+      - "observability/**"
+      - "docs/observability/**"
+      - "scripts/observability/**"
+      - "backend/telemetry/**"
+      - "judge/internal/telemetry/**"
+      - "frontend/src/lib/telemetry/**"
+      - "frontend/src/main.tsx"
+      - "frontend/e2e/**"
+      - "frontend/playwright.config.ts"
+      - "frontend/package.json"
+      - "frontend/bun.lock"
+      - "docker-compose.observability.yml"
+      - ".github/workflows/observability.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: observability-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate observability configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Show Docker Compose version
+        run: docker compose version
+
+      - name: Validate compose, Prometheus, Alertmanager, collector and files
+        # The script sets throwaway values for the application secrets that
+        # Compose interpolates; no real secret is needed to validate config.
+        run: ./scripts/observability/validate.sh

@@ -1,0 +1,103 @@
+# Loki single-binary configuration for the local observability stack.
+#
+# Logs arrive from the OpenTelemetry Collector over Loki's native OTLP endpoint
+# (http://loki:3100/otlp/v1/logs), not from Docker log files. The collector's
+# otlphttp exporter appends /v1/logs to the configured /otlp endpoint.
+#
+# The filesystem backend and an in-memory ring make this a single-node setup.
+# For production use an object store (S3/GCS/Azure), a shared ring in a
+# distributed Loki deployment, and the same schema/retention settings.
+
+auth_enabled: false
+
+server:
+  http_listen_address: 0.0.0.0
+  http_listen_port: 3100
+  grpc_listen_address: 0.0.0.0
+  grpc_listen_port: 9096
+  log_level: info
+
+common:
+  path_prefix: /loki
+  replication_factor: 1
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/tsdb-index
+    cache_location: /loki/tsdb-cache
+  filesystem:
+    directory: /loki/chunks
+
+limits_config:
+  retention_period: 168h
+  allow_structured_metadata: true
+  volume_enabled: true
+  ingestion_rate_mb: 10
+  ingestion_burst_size_mb: 20
+  max_query_series: 5000
+  max_entries_limit_per_query: 5000
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+
+  # OTLP resource attributes become Loki index labels. Keep only the low
+  # cardinality identity attributes: service.instance.id changes on every
+  # container restart and would otherwise create a new log stream per restart.
+  # trace_id/span_id stay as structured metadata (used by Grafana's derived
+  # field), not labels.
+  otlp_config:
+    resource_attributes:
+      ignore_defaults: true
+      attributes_config:
+        - action: index_label
+          attributes:
+            - service.name
+            - service.namespace
+            - deployment.environment.name
+
+compactor:
+  working_directory: /loki/compactor
+  compaction_interval: 10m
+  retention_enabled: true
+  delete_request_store: filesystem
+
+ruler:
+  storage:
+    type: local
+    local:
+      directory: /loki/rules
+  rule_path: /loki/rules-temp
+  enable_api: true
+  alertmanager_url: http://alertmanager:9093
+  ring:
+    kvstore:
+      store: inmemory
+
+ingester:
+  wal:
+    enabled: true
+    dir: /loki/wal
+  lifecycler:
+    ring:
+      kvstore:
+        store: inmemory
+      replication_factor: 1
+
+analytics:
+  reporting_enabled: false

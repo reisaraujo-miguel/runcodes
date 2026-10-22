@@ -32,6 +32,7 @@ import (
 	"github.com/runcodes-icmc/judge/internal/podman"
 	"github.com/runcodes-icmc/judge/internal/storage"
 	"github.com/runcodes-icmc/judge/internal/store"
+	"github.com/runcodes-icmc/judge/internal/telemetry"
 	"github.com/runcodes-icmc/judge/internal/worker"
 )
 
@@ -43,12 +44,46 @@ func main() {
 }
 
 func run() error {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel()}))
-	slog.SetDefault(logger)
-
 	cfg, err := config.Load()
 	if err != nil {
 		return err
+	}
+
+	// Listen for SIGINT and SIGTERM to gracefully shut down the server. The
+	// context also cancels the telemetry setup and shutdown.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	telemetryShutdown, telemetryErr := telemetry.Setup(ctx)
+
+	logger := slog.New(telemetry.NewLogHandler(telemetry.ServiceName(),
+		slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel()}),
+	))
+	slog.SetDefault(logger)
+
+	if telemetryErr != nil {
+		logger.Warn("OpenTelemetry could not be initialized; continuing without it",
+			"error", telemetryErr,
+		)
+		telemetryShutdown = func(context.Context) error { return nil }
+	}
+	if telemetry.Enabled() {
+		logger.Info("OpenTelemetry enabled",
+			"service", telemetry.ServiceName(),
+			"endpoint", os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+		)
+	} else {
+		logger.Info("OpenTelemetry disabled (set OTEL_EXPORTER_OTLP_ENDPOINT to enable)")
+	}
+	defer shutdownTelemetry(telemetryShutdown)
+
+	// Continuous profiling (for Alloy/Pyroscope) is opt-in and lives on a
+	// separate internal listener, never the judge API.
+	pprofShutdown, pprofErr := telemetry.StartPprof(os.Getenv("PPROF_ADDR"))
+	if pprofErr != nil {
+		logger.Warn("pprof server disabled", "error", pprofErr)
+	} else if pprofShutdown != nil {
+		defer shutdownPprof(pprofShutdown)
 	}
 
 	cfg.LogInsecureTransportWarnings()
@@ -63,16 +98,24 @@ func run() error {
 		}
 	}
 
-	// Listen for SIGINT and SIGTERM to gracefully shut down the server.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
 	// open the database connection pool and defer its closure
 	st, err := store.New(cfg)
 	if err != nil {
 		return err
 	}
 	defer st.Close()
+
+	// Queue depth and oldest-job age are async OTel gauges. Registering the
+	// callback here keeps the data path independent of the worker loop and
+	// lets the same metric work when the queue is empty.
+	unregisterQueueMetrics, queueMetricsErr := telemetry.RegisterQueueMetrics(st)
+	if queueMetricsErr != nil {
+		logger.Warn("could not register judge queue metrics",
+			"error", queueMetricsErr,
+		)
+	} else {
+		defer unregisterQueueMetrics()
+	}
 
 	// open the S3 connection and defer its closure
 	s3, err := storage.NewS3(ctx, cfg.S3)
@@ -134,6 +177,20 @@ func run() error {
 		}
 	}()
 
+	// The collector starts at the same time as the judge. A startup log emitted
+	// before the collector's OTLP receiver is ready can be dropped, leaving the
+	// judge with no log stream until the first submission. Emit one readiness
+	// log after the startup race so operators always have a judge log to find.
+	go func() {
+		timer := time.NewTimer(5 * time.Second)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+		case <-timer.C:
+			logger.Info("judge ready for submissions")
+		}
+	}()
+
 	select {
 	case <-ctx.Done():
 		logger.Info("shutdown requested")
@@ -172,5 +229,23 @@ func logLevel() slog.Level {
 		return slog.LevelError
 	default:
 		return slog.LevelInfo
+	}
+}
+
+// shutdownTelemetry gives the batch exporters a bounded chance to flush when the
+// process receives SIGTERM. An unreachable collector must not delay shutdown.
+func shutdownTelemetry(shutdown func(context.Context) error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := shutdown(ctx); err != nil {
+		slog.Debug("telemetry shutdown error", "error", err)
+	}
+}
+
+func shutdownPprof(shutdown func(context.Context) error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := shutdown(ctx); err != nil {
+		slog.Debug("pprof shutdown error", "error", err)
 	}
 }

@@ -1,0 +1,201 @@
+# Alert rules evaluated by Prometheus and routed by Alertmanager.
+#
+# Metric names follow the OpenTelemetry -> Prometheus conversion:
+#   http.server.request.duration -> http_server_request_duration_seconds_*
+#   resource service.name         -> service_name label
+#   http.response.status_code     -> http_response_status_code label
+#
+# The span-metric rules depend on Tempo's metrics-generator, which remote-writes
+# to this Prometheus instance.
+
+groups:
+  - name: runcodes-recording-rules
+    interval: 30s
+    rules:
+      - record: runcodes:http_request_error_ratio:5m
+        expr: |
+          sum by (service_name) (
+            rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m])
+          )
+          /
+          clamp_min(
+            sum by (service_name) (
+              rate(http_server_request_duration_seconds_count[5m])
+            ),
+            0.001
+          )
+
+      - record: runcodes:http_request_duration_p95_seconds:5m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le, service_name) (
+              rate(http_server_request_duration_seconds_bucket[5m])
+            )
+          )
+
+      - record: runcodes:trace_span_error_ratio:5m
+        expr: |
+          sum by (service) (
+            rate(traces_spanmetrics_calls_total{status_code="STATUS_CODE_ERROR"}[5m])
+          )
+          /
+          clamp_min(
+            sum by (service) (rate(traces_spanmetrics_calls_total[5m])),
+            0.001
+          )
+
+  - name: runcodes-platform-alerts
+    interval: 30s
+    rules:
+      - alert: RunCodesObservabilityTargetDown
+        expr: |
+          up{
+            job=~"prometheus|alertmanager|loki|tempo|grafana|pyroscope|alloy|otel-collector|otel-collector-internal|node-exporter|postgres-exporter|redis-exporter|blackbox-http"
+          } == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: observability
+        annotations:
+          summary: "Prometheus target {{ $labels.instance }} ({{ $labels.job }}) is down"
+          description: "Prometheus has failed to scrape {{ $labels.job }} at {{ $labels.instance }} for more than 2 minutes. Check the container and its logs."
+
+      - alert: RunCodesProbeFailing
+        expr: probe_success{job="blackbox-http"} == 0
+        for: 2m
+        labels:
+          severity: warning
+          component: availability
+        annotations:
+          summary: "Synthetic probe of {{ $labels.instance }} is failing"
+          description: "blackbox_exporter has failed to get a 2xx response from {{ $labels.instance }} for 2 minutes. Check the service health and its readiness dependencies."
+
+      - alert: RunCodesHTTP5xxRateHigh
+        expr: runcodes:http_request_error_ratio:5m > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "{{ $labels.service_name }} is returning more than 5% 5xx responses"
+          description: "Current 5xx ratio over 5m is {{ $value | humanizePercentage }}. Check the backend logs in Loki and the failing routes in the service dashboard."
+
+      - alert: RunCodesHTTPLatencyHigh
+        expr: runcodes:http_request_duration_p95_seconds:5m > 1
+        for: 10m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "{{ $labels.service_name }} p95 latency is above 1s"
+          description: "The 5m p95 is {{ $value | humanizeDuration }}. Inspect the slow traces in Tempo and the database spans attached to them."
+
+      - alert: RunCodesTraceErrorRateHigh
+        expr: runcodes:trace_span_error_ratio:5m > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          component: tracing
+        annotations:
+          summary: "{{ $labels.service }} has more than 5% error spans"
+          description: "Tempo span metrics show a {{ $value | humanizePercentage }} error ratio. Open the service in Tempo to find the failing span."
+
+      - alert: RunCodesJudgeQueueDepthHigh
+        expr: runcodes_judge_queue_depth > 10
+        for: 10m
+        labels:
+          severity: warning
+          component: judge
+        annotations:
+          summary: "The judge queue has {{ $value }} waiting commits"
+          description: "More than 10 commits have been queued for 10 minutes. Check judge worker capacity, podman health, and the judge logs; this is the backlog students are waiting in."
+
+      - alert: RunCodesJudgeQueueStalled
+        expr: runcodes_judge_queue_depth > 0 and runcodes_judge_queue_oldest_age_seconds > 300
+        for: 5m
+        labels:
+          severity: critical
+          component: judge
+        annotations:
+          summary: "The oldest queued commit has waited more than 5 minutes"
+          description: "The judge is not draining the queue. Check that the judge is running, can reach podman, and is not stuck on an image pull or database lock."
+
+      - alert: RunCodesProfilesNotArriving
+        expr: sum(rate(pyroscope_distributor_profiles_received_total[10m])) == 0
+        for: 15m
+        labels:
+          severity: warning
+          component: profiling
+        annotations:
+          summary: "No profiles have reached Pyroscope in 15 minutes"
+          description: "Alloy is not scraping the backend/judge pprof endpoints, or the write to Pyroscope is failing. Check Alloy's component health and pyroscope_write_dropped_profiles_total."
+
+      - alert: RunCodesPostgresDown
+        expr: pg_up == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "PostgreSQL is not reachable by postgres_exporter"
+          description: "pg_up has been 0 for 2 minutes. Check the database container and the app role's connection settings."
+
+      - alert: RunCodesPostgresConnectionsHigh
+        expr: sum(pg_stat_database_numbackends{datname="runcodes"}) > 20
+        for: 10m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "PostgreSQL connection count is above 20"
+          description: "The backend and judge pools are sized at 25 connections each. Investigate leaked or long-running transactions."
+
+      - alert: RunCodesRedisDown
+        expr: redis_up == 0
+        for: 2m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Redis is not reachable by redis_exporter"
+          description: "The API degrades to a no-op cache, but sessions and rate limiting are affected. Check the Redis container."
+
+      - alert: RunCodesHostDiskSpaceLow
+        expr: |
+          node_filesystem_avail_bytes{
+            fstype!~"tmpfs|overlay|squashfs", mountpoint="/"
+          }
+          /
+          node_filesystem_size_bytes{
+            fstype!~"tmpfs|overlay|squashfs", mountpoint="/"
+          } < 0.15
+        for: 15m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "Host root filesystem has less than 15% free space"
+          description: "Prometheus, Loki and Tempo keep data in Docker volumes on this host. Free space before the retention windows start failing."
+
+      - alert: RunCodesCollectorExportFailures
+        expr: |
+          (
+            sum(rate(otelcol_exporter_send_failed_spans_total[5m])) or vector(0)
+          )
+          +
+          (
+            sum(rate(otelcol_exporter_send_failed_metric_points_total[5m])) or vector(0)
+          )
+          +
+          (
+            sum(rate(otelcol_exporter_send_failed_log_records_total[5m])) or vector(0)
+          )
+          > 0
+        for: 10m
+        labels:
+          severity: warning
+          component: observability
+        annotations:
+          summary: "The OpenTelemetry Collector is failing to export telemetry"
+          description: "Check the Tempo and Loki targets, collector logs, and queue metrics. Telemetry is being dropped while this alert fires."
