@@ -84,7 +84,8 @@ Exercises open **right now** in the caller's classes. Returns an array of:
 ```
 
 Returns `201` with the enrollment object. The code is case-insensitive and
-joining is idempotent.
+joining is idempotent. Six-character codes (current classes) and four-character
+codes (classes created before the change) are both accepted.
 
 | Status | Meaning |
 | --- | --- |
@@ -134,7 +135,7 @@ Classes the caller owns or teaches. Returns `OwnedOffering` objects:
 
 - `name` is required and at most 100 characters.
 - `end_date` is RFC 3339 and cannot be in the past.
-- The server generates the enrollment code.
+- The server generates a six-character enrollment code.
 - Returns `201` with the offering.
 
 ### `GET /offerings/{id}`

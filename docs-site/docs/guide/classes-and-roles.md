@@ -58,8 +58,10 @@ owner's authoring routes; the panel uses its own endpoints.
 
 ## Enrollment
 
-- Students join with an **enrollment code**, case-insensitively. Joining is
-  idempotent: entering the code twice leaves one enrollment.
+- Students join with an **enrollment code**, case-insensitively. New classes get
+  six-character codes; classes created before the change keep their
+  four-character codes, which are still accepted. Joining is idempotent: entering
+  the code twice leaves one enrollment.
 - Enrollment is refused when the class is not visible to enroll, has ended, or
   the caller is banned.
 - A class owner cannot join their own class with the code; they already have

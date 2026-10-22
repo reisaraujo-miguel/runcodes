@@ -79,8 +79,8 @@ administrator to change your role.
 ### 1. Create a class
 
 **Professor → Classes → New class**. Set a name, an end date and an optional
-description. The server generates an enrollment code. Share that code with
-students; add co-professors and monitors from the class page by email.
+description. The server generates a six-character enrollment code. Share that
+code with students; add co-professors and monitors from the class page by email.
 
 - **Co-professor** (`professor` enrollment) can author exercises, test cases and
   files, but cannot manage members.

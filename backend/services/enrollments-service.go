@@ -33,6 +33,10 @@ func ValidAssignableEnrollmentRole(role string) bool {
 Enroll adds the requesting user to the offering that the given enrollment code
 belongs to. The operation is idempotent: getting the code twice leaves the user
 with a single enrollment.
+
+Both the six-character codes generated for new offerings and the four-character
+codes of older offerings are accepted: the lookup compares the upper-cased input
+with the stored code, whatever its length.
 */
 func Enroll(
 	ctx context.Context, req *models.EnrollRequest, claims map[string]any,
