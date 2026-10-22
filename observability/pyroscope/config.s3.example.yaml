@@ -1,0 +1,29 @@
+# Production profile storage example. This file is NOT mounted by the default
+# Compose stack; set PYROSCOPE_CONFIG_FILE to this path (and provide credentials
+# through your secret manager/IAM role) to switch Pyroscope to object storage.
+#
+# Pyroscope supports S3, GCS, Azure, Swift and COS. The bucket must exist and
+# the process needs permission to list/read/write/delete objects. Prefer an
+# instance/workload role over static keys; if your deployment requires keys,
+# mount this config from a secret rather than committing them.
+server:
+  http_listen_port: 4040
+
+storage:
+  backend: s3
+  s3:
+    bucket: runcodes-pyroscope
+    endpoint: s3.example.invalid:443
+    region: us-east-1
+    # access_key_id: <from secret manager>
+    # secret_access_key: <from secret manager>
+    # insecure: false
+
+limits:
+  # Object lifecycle rules are the primary retention control for S3, but keep
+  # Pyroscope's own retention aligned with the bucket policy.
+  retention_period: 168h
+  max_query_lookback: 168h
+
+analytics:
+  reporting_enabled: false

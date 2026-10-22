@@ -34,6 +34,10 @@ GRAFANA_URL="${GRAFANA_URL:-http://127.0.0.1:3000}"
 ALERTMANAGER_URL="${ALERTMANAGER_URL:-http://127.0.0.1:9093}"
 ALERT_SINK_URL="${ALERT_SINK_URL:-http://127.0.0.1:8085}"
 COLLECTOR_HEALTH_URL="${COLLECTOR_HEALTH_URL:-http://127.0.0.1:13133/health/status}"
+COLLECTOR_HTTP_URL="${COLLECTOR_HTTP_URL:-http://127.0.0.1:4318}"
+PYROSCOPE_URL="${PYROSCOPE_URL:-http://127.0.0.1:4040}"
+ALLOY_URL="${ALLOY_URL:-http://127.0.0.1:12345}"
+BROWSER_ORIGIN="${BROWSER_ORIGIN:-http://localhost:8080}"
 
 GRAFANA_ADMIN_USER="${GRAFANA_ADMIN_USER:-admin}"
 GRAFANA_ADMIN_PASSWORD="${GRAFANA_ADMIN_PASSWORD:-}"
@@ -107,6 +111,21 @@ wait_prom_positive() {
     sleep 3
   done
   fail "Prometheus has no positive value for \"$name\" (query: $query) within ${timeout}s"
+}
+
+wait_prom_exists() {
+  local name="$1" query="$2" timeout="${3:-90}" deadline
+  deadline=$((SECONDS + timeout))
+  while (( SECONDS < deadline )); do
+    if curl -fsS -G "$PROMETHEUS_URL/api/v1/query" \
+      --data-urlencode "query=$query" 2>/dev/null \
+      | jq -e '.data.result | length > 0' >/dev/null 2>&1; then
+      pass "$name"
+      return 0
+    fi
+    sleep 3
+  done
+  fail "Prometheus has no series for \"$name\" (query: $query) within ${timeout}s"
 }
 
 wait_loki_logs() {
@@ -212,6 +231,8 @@ wait_http "Loki" "$LOKI_URL/ready"
 wait_http "Tempo" "$TEMPO_URL/ready"
 wait_http "Alertmanager" "$ALERTMANAGER_URL/-/ready"
 wait_http "Grafana" "$GRAFANA_URL/api/health"
+wait_http "Pyroscope" "$PYROSCOPE_URL/ready" 90
+wait_http "Alloy" "$ALLOY_URL/-/ready" 60
 wait_http "alert sink" "$ALERT_SINK_URL/healthz" 60
 
 backend_ready="$(http_code "$BACKEND_URL/readyz")"
@@ -261,6 +282,11 @@ wait_prom_positive "judge HTTP metrics in Prometheus" \
   'sum(http_server_request_duration_seconds_count{service_name="runcodes-judge"})'
 wait_prom_positive "OpenTelemetry Collector target is up" \
   'up{job="otel-collector"}'
+wait_prom_exists "judge queue depth metric" 'runcodes_judge_queue_depth'
+wait_prom_positive "profiles received by Pyroscope" \
+  'sum(pyroscope_distributor_profiles_received_total)'
+wait_prom_positive "Pyroscope and Alloy targets are up" \
+  'sum(up{job=~"pyroscope|alloy"})'
 
 # ---------------------------------------------------------------------------
 # 4. Loki
@@ -278,11 +304,58 @@ wait_loki_logs "trace-correlated log line in Loki" \
 wait_http "trace $TRACE_ID in Tempo" "$TEMPO_URL/api/traces/$TRACE_ID" "$SMOKE_TIMEOUT"
 
 # ---------------------------------------------------------------------------
+# 5b. Browser OTLP path: CORS preflight + a browser-origin trace into Tempo
+# ---------------------------------------------------------------------------
+cors_headers="$TMP_DIR/cors-headers.txt"
+cors_status="$(curl -sS -D "$cors_headers" -o /dev/null -w '%{http_code}' --max-time 5 \
+  -X OPTIONS "$COLLECTOR_HTTP_URL/v1/traces" \
+  -H "Origin: $BROWSER_ORIGIN" \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: content-type' 2>/dev/null || true)"
+if [[ "$cors_status" != "204" && "$cors_status" != "200" ]]; then
+  fail "collector OTLP HTTP CORS preflight returned ${cors_status:-none} for $BROWSER_ORIGIN"
+fi
+if ! grep -qi "^Access-Control-Allow-Origin: $BROWSER_ORIGIN" "$cors_headers"; then
+  fail "collector CORS did not allow origin $BROWSER_ORIGIN"
+fi
+pass "OpenTelemetry Collector allows browser OTLP origin $BROWSER_ORIGIN"
+
+browser_trace_id="$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+browser_span_id="$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+browser_start_ns="$(date +%s)000000000"
+browser_end_ns="$(( $(date +%s) + 1 ))000000000"
+browser_payload="$(jq -nc \
+  --arg trace "$browser_trace_id" --arg span "$browser_span_id" \
+  --arg start "$browser_start_ns" --arg end "$browser_end_ns" \
+  --arg id "$SMOKE_ID" \
+  '{resourceSpans:[{resource:{attributes:[
+      {key:"service.name",value:{stringValue:"runcodes-frontend"}},
+      {key:"deployment.environment.name",value:{stringValue:"development"}}]},
+    scopeSpans:[{scope:{name:"runcodes-smoke"},spans:[
+      {traceId:$trace,spanId:$span,name:"browser.fetch",kind:3,
+       startTimeUnixNano:$start,endTimeUnixNano:$end,
+       attributes:[
+         {key:"http.request.method",value:{stringValue:"GET"}},
+         {key:"url.full",value:{stringValue:"http://localhost:8080/api/v1/settings/public"}},
+         {key:"runcodes.smoke_id",value:{stringValue:$id}}]}]}]}]}')"
+
+browser_ingest_status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 \
+  -X POST "$COLLECTOR_HTTP_URL/v1/traces" \
+  -H "Origin: $BROWSER_ORIGIN" -H 'Content-Type: application/json' \
+  --data-binary "$browser_payload" 2>/dev/null || true)"
+if [[ "$browser_ingest_status" != "200" ]]; then
+  fail "collector rejected the browser-origin OTLP span (HTTP ${browser_ingest_status:-none})"
+fi
+pass "browser-origin OTLP span was accepted by the collector"
+wait_http "browser trace in Tempo" "$TEMPO_URL/api/traces/$browser_trace_id" "$SMOKE_TIMEOUT"
+
+# ---------------------------------------------------------------------------
 # 6. Grafana
 # ---------------------------------------------------------------------------
 wait_grafana_datasource prometheus "Prometheus"
 wait_grafana_datasource loki "Loki"
 wait_grafana_datasource tempo "Tempo"
+wait_grafana_datasource pyroscope "Pyroscope"
 
 # Grafana's generic datasource health endpoint has no health route for the
 # external Alertmanager datasource ("plugin unavailable"), so exercise its proxy
@@ -400,6 +473,8 @@ echo "  Prometheus:   $PROMETHEUS_URL"
 echo "  Alertmanager: $ALERTMANAGER_URL"
 echo "  Loki:         $LOKI_URL"
 echo "  Tempo:        $TEMPO_URL"
+echo "  Pyroscope:    $PYROSCOPE_URL"
+echo "  Alloy:        $ALLOY_URL"
 echo "  Trace:        $TRACE_ID"
 echo "  Elapsed:      $(( $(date +%s) - START_EPOCH ))s"
 echo

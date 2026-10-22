@@ -13,6 +13,11 @@ import (
 
 	"github.com/runcodes-icmc/judge/internal/cmp"
 	"github.com/runcodes-icmc/judge/internal/model"
+	"github.com/runcodes-icmc/judge/internal/telemetry"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // monitorInfo is the subset of the monitor output the judge cares about.
@@ -84,12 +89,32 @@ func readMonitor(path string) monitorInfo {
 func (e *Engine) gradeAll(ctx context.Context, commit *model.Commit, ws *workspace) ([]model.CaseResult, error) {
 	results := make([]model.CaseResult, 0, len(ws.TestCases))
 
-	// Grade each test case and collect the results.
+	// Grade each test case and collect the results. Each case gets its own span:
+	// the container ran all cases in one process, so this is where the judge can
+	// show per-case latency and the child S3 fetch for the expected output.
 	for _, tc := range ws.TestCases {
-		result, err := e.gradeCase(ctx, tc, ws)
+		caseCtx, span := telemetry.Tracer().Start(ctx, "judge.grade_test_case",
+			trace.WithAttributes(
+				attribute.Int64("runcodes.commit.id", commit.ID),
+				attribute.Int64("runcodes.exercise.id", commit.ExerciseID),
+				attribute.Int64("runcodes.test_case.id", tc.ID),
+			),
+		)
+
+		result, err := e.gradeCase(caseCtx, tc, ws)
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "grading failed")
+			span.End()
 			return nil, err
 		}
+
+		span.SetAttributes(
+			attribute.String("runcodes.test_case.status", string(result.Status)),
+			attribute.Float64("runcodes.test_case.cpu_seconds", result.CPUTime),
+			attribute.Int64("runcodes.test_case.memory_bytes", result.MemUsage),
+		)
+		span.End()
 
 		results = append(results, result)
 	}

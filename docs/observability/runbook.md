@@ -50,6 +50,8 @@ conventions changed.
 ```bash
 make observability-validate      # static: compose, promtool, amtool, collector validate
 make observability-smoke-test    # end to end; starts the stack if needed
+make observability-browser-smoke-test  # real Chromium trace (requires test:e2e:install)
+SMOKE_ADMIN_PASSWORD='...' make observability-submission-smoke-test  # authenticated submission
 ```
 
 `SMOKE_START=0 make observability-smoke-test` fails instead of starting a stack
@@ -60,6 +62,8 @@ overridden with `BACKEND_URL`, `PROMETHEUS_URL`, `LOKI_URL`, `TEMPO_URL`,
 
 Expected output ends with `All observability smoke checks passed.` and lists the
 Grafana/Prometheus/Alertmanager/Loki/Tempo URLs, the trace id and elapsed time.
+It also checks Pyroscope/Alloy, the judge queue metric, profile ingestion, the
+browser OTLP CORS/ingest path, and the Pyroscope Grafana datasource.
 On failure the script prints `docker compose ps`, the last 40 lines of each
 service log and the last API responses, then exits non-zero.
 
@@ -109,6 +113,44 @@ curl -s -u "admin:$PASSWORD" http://localhost:3000/api/dashboards/uid/runcodes-o
   | jq -r '.dashboard.title'
 ```
 
+**Profiles** (Pyroscope/Alloy):
+
+```bash
+curl -s http://localhost:4040/ready
+curl -s http://localhost:12345/-/healthy
+curl -s http://localhost:12345/metrics | grep pyroscope_write_sent_profiles_total
+curl -sG http://localhost:9090/api/v1/query \
+  --data-urlencode 'query=sum(pyroscope_distributor_profiles_received_total)' | jq -c .
+```
+
+**Judge queue and browser path**:
+
+```bash
+curl -sG http://localhost:9090/api/v1/query \
+  --data-urlencode 'query=runcodes_judge_queue_depth' | jq -c '.data.result'
+# CORS preflight for the SPA's OTLP endpoint
+curl -s -o /dev/null -w '%{http_code}\n' -X OPTIONS http://localhost:4318/v1/traces \
+  -H 'Origin: http://localhost:8080' -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: content-type'
+```
+
+**Trace to profiles** (after a submission or a backend request long enough to
+be sampled):
+
+```bash
+# Pick a judge trace and check that the per-case span carries the bridge key.
+TRACE_ID=<32-hex-trace-id>
+curl -s "http://localhost:3200/api/traces/$TRACE_ID" \
+  | jq -r '.batches[].scopeSpans[].spans[] | select(.name=="judge.grade_test_case") | .attributes[] | select(.key=="pyroscope.profile.id") | .value.stringValue'
+```
+
+In Grafana Explore, open the trace, expand the root/grade span, and use
+**Profiles for this span**. The Pyroscope data source must be healthy and the
+Tempo data source must have `tracesToProfiles` (provisioned).
+
+A browser trace appears in Tempo under `service.name=runcodes-frontend` after
+the SPA is loaded with `VITE_OTEL_ENABLED=true`.
+
 The external Alertmanager datasource intentionally returns
 `plugin.unavailable` from Grafana's generic health endpoint. Check its proxy
 instead:
@@ -139,6 +181,11 @@ These lines are normal and do not need action:
 - Tempo 3.1: `error calling scheduler ... no jobs found` while the backend
   worker polls an empty compaction queue. It is logged at error level by
   Tempo itself; the queue is simply idle.
+- Pyroscope 2.x: `Metastore not ready` / `Ingester not ready` / `Segment Writer
+  not ready` on the first start while its single-binary components do their
+  rolling-update safety delays. The Compose command sets the three
+  `min-ready-duration=0` flags for local use; a clustered deployment should keep
+  the defaults.
 - Grafana: `Plugin unavailable` if you call
   `/api/datasources/uid/alertmanager/health` directly; use the proxy endpoint
   shown in [Validating the stack](#validating-the-stack).
@@ -234,6 +281,63 @@ also fails, check `alertmanager:9093/-/ready` and the datasource URL.
 6. Recreate the collector after recreating Tempo. The gRPC client caches DNS and
    can keep dialling a stale container IP:
    `docker compose ... up -d --force-recreate otel-collector`.
+
+### No profiles in Pyroscope
+
+1. `curl -s http://localhost:4040/ready` must return 200 and
+   `curl -s http://localhost:12345/-/healthy` must report all components healthy.
+2. Check the pprof listener from the Compose network:
+   `docker run --rm --network runcodes-react_runcodes-network curlimages/curl -s -o /dev/null -w '%{http_code}\n' http://backend:6060/debug/pprof/`.
+   A 404/connection refused means `PPROF_ADDR` is empty or the binary predates
+   the pprof listener.
+3. `curl -s http://localhost:12345/api/v0/web/components` shows
+   `pyroscope.scrape.runcodes` and `pyroscope.write.default`; both must be
+   `healthy`. The Alloy UI at <http://localhost:12345> has the same information.
+4. Check `pyroscope_write_sent_profiles_total` in Alloy metrics and
+   `pyroscope_distributor_profiles_received_total` in Pyroscope metrics. If Alloy
+   sends but Pyroscope rejects, inspect `docker compose ... logs pyroscope`.
+5. A trace-to-profile flame graph needs the `otel-profiling-go` bridge. Check
+   that the span has `pyroscope.profile.id`; the bridge is enabled in both Go
+   services. CPU profiles are sampled every 15s, so a short span can have a
+   valid profile id but no samples.
+6. If profiles are rejected right after a Pyroscope restart with
+   `no segment writer instances available`, wait for the segment writer and
+   retry; Alloy retries the next scrape. The smoke test waits for profiles.
+
+### Browser traces or the frontend OTLP request fail
+
+1. The SPA traces only when built with `VITE_OTEL_ENABLED=true` and a
+   browser-reachable `VITE_OTEL_EXPORTER_OTLP_ENDPOINT`. Rebuild the frontend
+   after changing them (Vite bakes them into the bundle).
+2. Check the browser console for a CORS or mixed-content error. The collector
+   allows `http://localhost:8080` and `http://localhost:5173` by default; add
+   your real origin in `observability/otel-collector/config.yaml`.
+3. The endpoint must be reachable from the **browser**, not just from the
+   container. `localhost:4318` only works when the browser runs on the same host;
+   use `PUBLIC_OTEL_HTTP_URL` or a public collector gateway elsewhere.
+4. The CORS preflight and a synthetic browser-origin span are checked by
+   `make observability-smoke-test`; for a real browser use
+   `make observability-browser-smoke-test`. Install Chromium once with
+   `cd frontend && bun run test:e2e:install` (or set
+   `PLAYWRIGHT_BROWSERS_PATH` when using a shared cache).
+5. The Playwright test asserts that the browser request has a `traceparent` and
+   that the same trace contains both `runcodes-frontend` and
+   `runcodes-backend`. If it fails before that point, check the browser console
+   and the collector CORS response.
+6. The frontend returns a 32-hex `TraceId` only when tracing is enabled and the
+   collector accepts the export; inspect Tempo for `service.name=runcodes-frontend`.
+
+### The judge queue is growing
+
+- Query `runcodes_judge_queue_depth` and
+  `runcodes_judge_queue_oldest_age_seconds`. A depth above zero with a rising
+  oldest age means workers are not draining the queue.
+- Check judge readiness (`curl -s localhost:9000/readyz`), podman availability,
+  image pulls, and the judge logs. `RunCodesJudgeQueueStalled` fires after five
+  minutes with a queued commit older than five minutes.
+- The queue metric is exported by the judge itself through OTLP; if it is
+  missing, check the judge is running the current image, `OTEL_EXPORTER_OTLP_ENDPOINT`
+  is set, and the collector target is up.
 
 ### Trace/log correlation links do not appear
 
@@ -388,25 +492,32 @@ environment:
   OTEL_TRACES_SAMPLER_ARG: "0.1"
 ```
 
-## Adding Pyroscope (optional)
+## Adding a service to continuous profiling
 
-The original task marks continuous profiling as optional. The recommended
-extension is:
+The stack includes Pyroscope, Alloy and internal pprof listeners. To profile a
+new service:
 
-1. Add `grafana/pyroscope` to the overlay with its own volume and port.
-2. Expose Go's `net/http/pprof` on a separate internal port in the backend and
-   judge (not on the public API listener), or add the `pyroscope-go` SDK and push
-   to the server.
-3. If pulling profiles, add Grafana Alloy with `pyroscope.scrape` for
-   `backend:6060` and `judge:6060`, and `pyroscope.write` to
-   `http://pyroscope:4040`.
-4. Add a Pyroscope datasource in Grafana provisioning and link traces to
-   profiles from the Tempo datasource (`tracesToProfiles`).
-5. Add a `RunCodesProfileIngestionStalled` alert if profiles are expected.
+1. Expose `net/http/pprof` on a dedicated internal listener (never the public
+   API listener), as the backend and judge do through `PPROF_ADDR`/`StartPprof`.
+   For non-Go services, use the Pyroscope SDK push mode or an equivalent
+   Alloy-supported scrape endpoint.
+2. Add a `pyroscope.scrape` target in `observability/alloy/config.alloy` with a
+   stable `service_name` label, and keep the target on the Compose internal
+   network.
+3. Add the service to the Pyroscope dashboard/logs notes and to the
+   `RunCodesProfilesNotArriving` expectation. The metric is per-tenant; use the
+   Alloy `pyroscope_write_sent_profiles_total` series to see which target is
+   being scraped.
+4. For span-level flame graphs, add the language-specific
+   `pyroscope.profile.id` bridge. For Go, wrap the SDK tracer provider with
+   `otel-profiling-go` (as both Go services do). Profiles remain CPU-only; short
+   spans may have no samples even when the link appears.
+5. The Pyroscope datasource must be selected in the Tempo datasource's
+   **Traces to profiles** settings; the provisioning in this stack maps
+   `service.name` to `service_name`.
 
 Do not expose pprof publicly: it can leak memory contents and is not
 authenticated. Keep it on the internal network and restrict access.
-
 ## Upgrading and rollback
 
 1. Change the image tags in `docker-compose.observability.yml` and, for
@@ -418,6 +529,38 @@ authenticated. Keep it on the internal network and restrict access.
 5. If a component fails, revert the tag and recreate the affected service. Data
    volumes are not migrated automatically; check the component's release notes
    for storage migrations before downgrading.
+
+## Retention and storage
+
+Prometheus retention is controlled by `PROMETHEUS_RETENTION_TIME` and
+`PROMETHEUS_RETENTION_SIZE` (defaults `15d` and `8GB`). Increasing them without
+larger volumes eventually lets the TSDB fill the disk; `RunCodesHostDiskSpaceLow`
+is the backstop.
+
+Pyroscope keeps seven days (`limits.retention_period: 168h`) on the local
+filesystem volume. For production, set `PYROSCOPE_CONFIG_FILE` to a secret-mounted
+config based on `observability/pyroscope/config.s3.example.yaml`, point it at an
+S3/GCS/Azure bucket, and set the bucket lifecycle policy to match the profile
+retention. The example is not mounted by default because it needs real bucket
+credentials.
+
+## Rotating the Alertmanager webhook URL
+
+The receiver URL is read from `.observability/alertmanager_webhook_url` (mounted
+as `/etc/alertmanager/secrets/webhook_url`). Replace its contents with the new
+URL from your secret manager, then reload Alertmanager:
+
+```bash
+printf '%s\n' 'https://alerts.example.invalid/webhook' > .observability/alertmanager_webhook_url
+docker compose -f docker-compose.yml -f docker-compose.observability.yml \
+  up -d --force-recreate alertmanager
+```
+
+The URL is re-read for notifications; recreating also makes the change
+unambiguous if your runtime caches the bind mount. Never commit the real URL.
+The production template in
+`observability/alertmanager/alertmanager.production.example.yml` shows Slack and
+PagerDuty receivers with `*_file` settings.
 
 ## Rotating the Grafana admin password
 
@@ -443,7 +586,9 @@ Production should store the password in a secret manager and provide it via
 6. Tempo `/api/search` and Loki `query_range` with a known recent trace id — is
    the data path or only the UI broken?
 7. Alertmanager `/api/v2/alerts` — are alerts firing and inhibited?
-8. If disk or memory is the cause, stop the stack and use
+8. Pyroscope (`4040/ready`) and Alloy (`12345/-/healthy`) — are profiles
+   arriving? Check the judge queue metric for a backlog.
+9. If disk or memory is the cause, stop the stack and use
    `make observability-destroy` only after deciding what history you can lose.
 
 ## Useful queries
@@ -469,6 +614,13 @@ clamp_min(sum by (service_name) (rate(traces_spanmetrics_calls_total[5m])), 0.00
 
 # Collector backpressure
 otelcol_exporter_queue_size / otelcol_exporter_queue_capacity
+
+# Judge queue
+runcodes_judge_queue_depth
+runcodes_judge_queue_oldest_age_seconds
+
+# Profiles
+sum(rate(pyroscope_distributor_profiles_received_total[10m]))
 ```
 
 LogQL:

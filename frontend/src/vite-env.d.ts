@@ -16,4 +16,13 @@ interface ImportMetaEnv {
   readonly VITE_API_ENDPOINT?: string;
   readonly VITE_CONTACT_DISCLAIMER_HTML?: string;
   readonly VITE_CONTACT_EMAIL?: string;
+
+  // Browser telemetry (see src/lib/telemetry). All are optional; tracing is
+  // disabled unless VITE_OTEL_ENABLED is "true" and an endpoint is set.
+  readonly VITE_OTEL_ENABLED?: string;
+  readonly VITE_OTEL_EXPORTER_OTLP_ENDPOINT?: string;
+  readonly VITE_OTEL_SERVICE_NAME?: string;
+  readonly VITE_OTEL_SERVICE_VERSION?: string;
+  readonly VITE_DEPLOYMENT_ENVIRONMENT?: string;
+  readonly VITE_OTEL_TRACES_SAMPLER_ARG?: string;
 }

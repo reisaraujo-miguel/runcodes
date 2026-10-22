@@ -1,7 +1,7 @@
 # RunCodes observability stack
 
-This directory (and `observability/`) adds a complete, open-source
-metrics/logs/traces stack to the RunCodes platform:
+This directory (with `observability/`) adds a complete, open-source observability
+stack to the RunCodes platform:
 
 | Pillar          | Component                          | Role in this stack                                      |
 | --------------- | ---------------------------------- | ------------------------------------------------------- |
@@ -11,8 +11,8 @@ metrics/logs/traces stack to the RunCodes platform:
 | Traces          | Grafana Tempo                      | Distributed traces + span metrics / service graph       |
 | Visualisation   | Grafana                            | Dashboards, Explore, cross-signal correlation           |
 | Alerting        | Alertmanager + Prometheus rules    | Alert routing, grouping, inhibition, webhook delivery   |
-| Instrumentation | OpenTelemetry Go SDK               | Backend + judge traces, metrics, structured logs        |
-| Optional        | Grafana Pyroscope                  | Not deployed; see [Known limitations](#known-limitations) |
+| Instrumentation | OpenTelemetry Go + Web SDKs        | Go traces/metrics/logs; browser fetch traces |
+| Profiles        | Grafana Pyroscope + Alloy          | Continuous pprof profiles from backend and judge        |
 
 The stack is **opt-in** and runs as a Docker Compose overlay on top of the
 existing application stack. `docker compose up` keeps its current behaviour; use
@@ -33,7 +33,9 @@ existing application stack. `docker compose up` keeps its current behaviour; use
 
 ```mermaid
 flowchart LR
-    Browser["Browser / API clients"] --> Caddy["Caddy :8080"]
+    Collector["OpenTelemetry Collector"]
+    Browser["Browser / SPA\nruncodes-frontend"] -->|"HTTP + fetch spans\nOTLP/HTTP :4318"| Collector
+    Browser --> Caddy["Caddy :8080"]
     Caddy --> Backend["Backend API\nruncodes-backend"]
     Backend -->|SQL| Postgres[("PostgreSQL")]
     Backend -->|S3| Seaweed[("SeaweedFS")]
@@ -42,8 +44,11 @@ flowchart LR
     Judge -->|S3| Seaweed
     Judge -->|rootless podman| Runners["Language runner containers"]
 
-    Backend -->|"OTLP/HTTP :4318\nspans, metrics, logs"| Collector["OpenTelemetry Collector"]
+    Backend -->|"OTLP/HTTP :4318\nspans, metrics, logs"| Collector
     Judge -->|"OTLP/HTTP :4318\nspans, metrics, logs"| Collector
+    Backend -.->|"pprof :6060"| Alloy["Grafana Alloy"]
+    Judge -.->|"pprof :6060"| Alloy
+    Alloy -->|"profiles"| Pyroscope["Pyroscope"]
 
     Collector -->|"OTLP/gRPC :4317"| Tempo["Tempo"]
     Collector -->|"OTLP/HTTP /otlp/v1/logs"| Loki["Loki"]
@@ -57,6 +62,7 @@ flowchart LR
     Grafana --> Loki
     Grafana --> Tempo
     Grafana --> Alertmanager
+    Grafana --> Pyroscope
 
     NodeExporter["node-exporter"] --> Prometheus
     PostgresExporter["postgres-exporter"] --> Prometheus
@@ -70,7 +76,7 @@ flowchart LR
 | --- | --- | --- | --- |
 | `otel-collector` | `otel/opentelemetry-collector-contrib:0.163.2` | Receives OTLP, applies memory limiting/batching/resource attributes, exports traces to Tempo, logs to Loki, metrics to a Prometheus endpoint | none |
 | `prometheus` | `prom/prometheus:v3.15.1` | Scrapes the collector, infrastructure exporters and blackbox probes; evaluates recording/alert rules; accepts Tempo remote writes | `prometheus-data` (15d / 8GB retention) |
-| `alertmanager` | `prom/alertmanager:v0.34.1` | Groups, inhibits and delivers alerts; webhook receiver points at `alert-sink` | `alertmanager-data` |
+| `alertmanager` | `prom/alertmanager:v0.34.1` | Groups, inhibits and delivers alerts; the receiver URL is read from a mounted secret file | `alertmanager-data` |
 | `loki` | `grafana/loki:3.7.9` | Stores OTel logs with structured metadata (`trace_id`, severity); labels `service_name`, `service_namespace`, `deployment_environment_name` | `loki-data` (7d compactor retention) |
 | `tempo` | `grafana/tempo:3.1.1` | Stores traces locally; metrics-generator derives span metrics and service graphs and remote-writes them to Prometheus | `tempo-data` (7d block retention) |
 | `grafana` | `grafana/grafana:12.4.13` | Datasources, dashboard, Explore and Alerting UI | `grafana-data` |
@@ -78,9 +84,11 @@ flowchart LR
 | `postgres-exporter` | `prometheuscommunity/postgres-exporter:v0.20.1` | PostgreSQL metrics using the `runcodes_app` role | none |
 | `redis-exporter` | `oliver006/redis_exporter:v1.95.0` | Redis cache metrics | none |
 | `blackbox-exporter` | `prom/blackbox-exporter:v0.29.1` | HTTP probes of backend/judge/frontend/Grafana/Loki/Tempo/Alertmanager | none |
+| `pyroscope` | `grafana/pyroscope:2.4.1` | Stores continuous profiles; queried by the Grafana Pyroscope datasource | `pyroscope-data` (filesystem backend, 7d retention) |
+| `alloy` | `grafana/alloy:v1.21.1` | Scrapes pprof from backend/judge and writes profiles to Pyroscope | `alloy-data` |
 | `alert-sink` | `python:3.14-slim-trixie` | Local webhook receiver used by the smoke test to prove alert delivery | in-memory, last 100 payloads |
 
-Versions live in [`docker-compose.observability.yml`](../docker-compose.observability.yml).
+Versions live in [`docker-compose.observability.yml`](../../docker-compose.observability.yml).
 Pin new versions there and in `scripts/observability/validate.sh` together.
 
 ## Data flow
@@ -91,16 +99,33 @@ The backend and judge use the OpenTelemetry Go SDK. Instrumentation is **off by
 default** and switches on when `OTEL_EXPORTER_OTLP_ENDPOINT` is set; the
 Compose overlay sets it to `http://otel-collector:4318`.
 
+The SPA has an opt-in OpenTelemetry Web SDK build. When
+`VITE_OTEL_ENABLED=true`, `FetchInstrumentation` creates a span for every API
+call and injects `traceparent`. The collector's OTLP/HTTP receiver allows the
+frontend origin (`http://localhost:8080` and the Vite dev server by default), so
+the backend continues the same trace. The SDK is lazy-loaded and is a no-op in
+builds without the telemetry variables.
+
 - **Traces**: inbound HTTP spans from chi (`otelchi`), outbound HTTP spans
   (`otelhttp`) for judge and S3 calls, and database spans from `otelsql`.
   W3C `traceparent`/`tracestate` are propagated. A request from the backend to
   the judge shares one trace; the background worker starts a new root trace per
-  claimed commit with `runcodes.commit.id` attributes.
+  claimed commit with `runcodes.commit.id` attributes. The judge adds
+  `judge.prepare_workspace`, `judge.run_container` and per-case
+  `judge.grade_test_case` spans.
+- **Profiles**: Alloy scrapes the internal pprof listeners on `backend:6060` and
+  `judge:6060` every 15s and writes profiles to Pyroscope. The listener is not
+  published on the host. Both services use the `otel-profiling-go` bridge, which
+  adds `trace_id`/`span_id` labels to the pprof samples and
+  `pyroscope.profile.id` to the spans. The Tempo datasource's
+  `tracesToProfiles` setting turns that attribute into the "Profiles for this
+  span" link and embedded flame graph in Explore.
 - **Metrics**: `http.server.request.duration` and `http.server.active_requests`
   are recorded by the backend/judge HTTP middleware, with the chi route pattern
   as `http.route` (not the raw path, so a path id does not explode cardinality).
   Go runtime metrics and database pool metrics are added by the OTel runtime
-  and `otelsql` instrumentation.
+  and `otelsql` instrumentation. The judge also exports async queue gauges
+  (`runcodes.judge.queue.depth`, `runcodes.judge.queue.oldest_age`).
 - **Logs**: every `slog` record is written to stdout (trace ids included) and
   forwarded as an OTLP log record. OTel's log SDK attaches the active
   `trace_id`/`span_id` to the record; Loki stores them as structured metadata,
@@ -112,8 +137,8 @@ Compose overlay sets it to `http://otel-collector:4318`.
 
 ### Collector -> backends
 
-- Traces: `otlp/tempo` (gRPC) -> Tempo `:4317`.
-- Logs: `otlphttp/loki` -> `http://loki:3100/otlp/v1/logs`.
+- Traces: `otlp_grpc/tempo` (gRPC) -> Tempo `:4317`.
+- Logs: `otlp_http/loki` -> `http://loki:3100/otlp/v1/logs`.
 - Metrics: the collector's `prometheus` exporter on `:8889`; Prometheus scrapes
   it every 10s. `resource_constant_labels` promotes `service.name`,
   `service.namespace`, `service.version` and `deployment.environment.name` to
@@ -122,7 +147,7 @@ Compose overlay sets it to `http://otel-collector:4318`.
   copied to every series.
 - Batching (5s), retries (exponential, 300s max), sending queues and a memory
   limiter are configured in
-  [`observability/otel-collector/config.yaml`](../observability/otel-collector/config.yaml).
+  [`observability/otel-collector/config.yaml`](../../observability/otel-collector/config.yaml).
 
 ### Correlation paths
 
@@ -132,6 +157,8 @@ Compose overlay sets it to `http://otel-collector:4318`.
 | Traces | Logs | Tempo datasource `tracesToLogsV2`: selects Loki `{service_name="..."} | trace_id="..."`. |
 | Logs | Traces | Loki derived field `TraceID` with `matcherType: label` (structured metadata) -> Tempo. |
 | Traces | Metrics | Tempo `tracesToMetrics`: maps `service.name` to the Prometheus `service_name` label. Tempo's span metrics use the short `service` label; dashboards and the trace-error alert use it. |
+| Browser | Backend/judge | Browser fetch spans inject `traceparent`; the backend and judge continue the trace. |
+| Spans | Profiles | `otel-profiling-go` adds `pyroscope.profile.id` to spans and trace/span labels to pprof samples; Tempo's `tracesToProfiles` opens the matching Pyroscope flame graph. |
 | Dashboard | All | The `service` template variable filters panels by OTel `service.name`. |
 
 The backend also returns a `TraceId` response header (32 hex chars) and
@@ -160,6 +187,9 @@ reverse proxy.
 | Postgres exporter | http://localhost:9187/metrics | `postgres-exporter:9187` | DB metrics |
 | Redis exporter | http://localhost:9121/metrics | `redis-exporter:9121` | cache metrics |
 | Blackbox exporter | http://localhost:9115 | `blackbox-exporter:9115` | `/probe?target=...` |
+| Pyroscope | http://localhost:4040 | `pyroscope:4040` | profiles API/UI, readiness `/ready` |
+| Alloy | http://localhost:12345 | `alloy:12345` | UI/health; pprof scraping config |
+| pprof (backend/judge) | not published | `backend:6060`, `judge:6060` | internal only; Alloy scrapes it |
 | Alert sink | http://localhost:8085 | `alert-sink:8080` | test receiver, no auth |
 | Frontend | http://localhost:8080 | `frontend:80` | existing app |
 | Backend | http://localhost:8443/healthz | `backend:8443` | existing app, loopback only |
@@ -188,9 +218,20 @@ what the Docker `HEALTHCHECK` uses.
 | `OTEL_BSP_SCHEDULE_DELAY` | `2000` ms | span batch delay |
 | `OTEL_BLRP_SCHEDULE_DELAY` | `2000` ms | log batch delay |
 | `OTEL_RESOURCE_ATTRIBUTES` | unset | extra resource attributes, e.g. `service.team=platform` |
+| `PPROF_ADDR` | `:6060` in the overlay | internal pprof listener for Alloy; empty disables it |
 
-All are set on both `backend` and `judge` by the overlay. The standard
-`OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_TIMEOUT` and signal-specific
+All are set on both `backend` and `judge` by the overlay. The browser SDK uses
+the following build-time variables (set by the overlay for the frontend):
+
+| Variable | Default in this stack | Meaning |
+| --- | --- | --- |
+| `VITE_OTEL_ENABLED` | `true` in the observability overlay | opt-in browser tracing |
+| `VITE_OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` (`PUBLIC_OTEL_HTTP_URL`) | browser-reachable collector URL |
+| `VITE_OTEL_SERVICE_NAME` | `runcodes-frontend` | browser `service.name` |
+| `VITE_OTEL_TRACES_SAMPLER_ARG` | `1.0` for local | browser sampling ratio |
+| `VITE_DEPLOYMENT_ENVIRONMENT` | `development` | browser deployment environment |
+
+The standard `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_TIMEOUT` and signal-specific
 endpoints are honoured by the OTel Go exporters, which makes it possible to point
 a deployment at a managed collector over HTTPS without code changes.
 
@@ -202,9 +243,13 @@ a deployment at a managed collector over HTTPS without code changes.
 | `GRAFANA_ADMIN_USER` | `admin` | Grafana admin login |
 | `GRAFANA_ADMIN_PASSWORD` | generated file | read from `.observability/grafana_admin_password`; not passed in the environment |
 | `GRAFANA_ROOT_URL` | `http://localhost:3000` | links generated by Grafana |
-| `GRAFANA_PORT`, `PROMETHEUS_PORT`, `ALERTMANAGER_PORT`, `LOKI_PORT`, `TEMPO_PORT` | `3000`, `9090`, `9093`, `3100`, `3200` | port overrides |
+| `GRAFANA_PORT`, `PROMETHEUS_PORT`, `ALERTMANAGER_PORT`, `LOKI_PORT`, `TEMPO_PORT`, `PYROSCOPE_PORT`, `ALLOY_PORT` | `3000`, `9090`, `9093`, `3100`, `3200`, `4040`, `12345` | port overrides |
 | `OTEL_GRPC_PORT`, `OTEL_HTTP_PORT`, `OTEL_HEALTH_PORT`, `OTEL_METRICS_PORT`, `OTEL_PROM_PORT` | `4317`, `4318`, `13133`, `8888`, `8889` | collector port overrides |
 | `NODE_EXPORTER_PORT`, `POSTGRES_EXPORTER_PORT`, `REDIS_EXPORTER_PORT`, `BLACKBOX_EXPORTER_PORT`, `ALERT_SINK_PORT` | `9100`, `9187`, `9121`, `9115`, `8085` | exporter port overrides |
+| `FRONTEND_OTEL_ENABLED`, `PUBLIC_OTEL_HTTP_URL`, `VITE_OTEL_TRACES_SAMPLER_ARG` | `true`, `http://localhost:4318`, `1.0` | browser build inputs |
+| `PROMETHEUS_RETENTION_TIME`, `PROMETHEUS_RETENTION_SIZE` | `15d`, `8GB` | Prometheus TSDB guardrails |
+| `PYROSCOPE_CONFIG_FILE` | `./observability/pyroscope/config.yaml` | mount a different Pyroscope config (for example the S3 example) |
+| `GRAFANA_ADMIN_PASSWORD` / webhook file | generated files | `.observability/grafana_admin_password`, `.observability/alertmanager_webhook_url` |
 
 The Grafana password is generated by `scripts/observability/init-secrets.sh`
 into `.observability/` (gitignored) and mounted as a read-only file. It is not
@@ -221,6 +266,10 @@ service still reads the file, so keep them in sync or regenerate the file.
 - `make`, `curl`, `jq`.
 - The existing application secrets in `.env` (see the root `.env.example`) and
   the judge's rootless podman socket if you want submissions to run.
+- For the browser test, Chromium installed once:
+  `cd frontend && bun run test:e2e:install`.
+- For the authenticated submission test, an admin password bootstrapped with
+  `database/bootstrap-admin.sh` and exported as `SMOKE_ADMIN_PASSWORD`.
 
 ### Start, validate, stop
 
@@ -233,6 +282,13 @@ make observability-up
 
 # Generate traffic and check Prometheus, Loki, Tempo, Grafana and Alertmanager
 make observability-smoke-test
+
+# Real Chromium session: assert a browser fetch continues into the backend
+make observability-browser-smoke-test
+
+# Authenticated submission: create a disposable exercise, submit, and check the
+# per-test-case span and pyroscope.profile.id (needs SMOKE_ADMIN_PASSWORD)
+SMOKE_ADMIN_PASSWORD='...' make observability-submission-smoke-test
 
 # Status / logs
 make observability-status
@@ -286,8 +342,11 @@ turn instrumentation off again.
 | `observability/prometheus/rules/runcodes-alerts.yml` | recording rules and alerts |
 | `observability/loki/loki.yaml` | single-binary Loki, retention, OTLP label mapping |
 | `observability/tempo/tempo.yaml` | single-binary Tempo, retention, metrics-generator |
-| `observability/alertmanager/alertmanager.yml` | routes, receivers, inhibition |
-| `observability/grafana/provisioning/` | datasources, dashboard provider, alerting |
+| `observability/alertmanager/alertmanager.yml` | routes, receivers, inhibition; webhook URL comes from a mounted secret file |
+| `observability/pyroscope/config.yaml` | single-binary Pyroscope storage/listener, 7d retention |
+| `observability/pyroscope/config.s3.example.yaml` | object-storage template for a production Pyroscope |
+| `observability/alloy/config.alloy` | pprof scrape -> Pyroscope pipeline |
+| `observability/grafana/provisioning/` | datasources (including Pyroscope), dashboard provider, alerting |
 | `observability/grafana/dashboards/runcodes-overview.json` | the dashboard |
 | `scripts/observability/validate.sh` | static validation |
 | `scripts/observability/smoke-test.sh` | end-to-end validation |
@@ -303,12 +362,12 @@ unchanged. The following adapts the same architecture to a real environment.
 
 ### Deployment model
 
-- **Kubernetes**: deploy Prometheus, Alertmanager, Loki, Tempo and Grafana with
-  their community Helm charts (or the Grafana LGTM distributed charts). Run the
-  collector as a **DaemonSet** (or a gateway Deployment behind a Service), not
-  as a single container. Add ServiceMonitors/PodMonitors or `prometheus.yml`
-  scrape configs for the exporters. Use PodDisruptionBudgets, anti-affinity and
-  resource requests/limits.
+- **Hosting**: run the Compose overlay on a dedicated VM (or a small set of
+  VMs) with a persistent disk for the telemetry volumes. Pin the image tags,
+  set resource limits, and expose only Grafana through an authenticating
+  reverse proxy. For higher volume, move Loki, Tempo and Pyroscope to their
+  managed/distributed deployments and keep the collector as the single OTLP
+  gateway.
 - **VMs/bare metal**: keep the collector as a gateway (or one per node), use
   systemd units, and run Prometheus in agent/remote-write mode if the metrics
   volume outgrows one instance.
@@ -322,7 +381,7 @@ unchanged. The following adapts the same architecture to a real environment.
 | Metrics | Prometheus local TSDB, 15d / 8GB | Managed Prometheus/Mimir or Thanos; remote write; 15–90d retention; downsampling for long-term |
 | Logs | Loki filesystem, 7d | Loki with S3/GCS/Azure object storage, 30–90d (longer for audit); configure `limits_config` ingestion limits and per-tenant retention |
 | Traces | Tempo local blocks, 7d | Tempo with S3/GCS/Azure object storage, 7–30d; tail sampling or 10% head sampling |
-| Profiles | not deployed | Pyroscope with object storage; add `pyroscope.scrape` in Alloy or `pyroscope-go` push in the services |
+| Profiles | Pyroscope filesystem, 7d retention | Pyroscope with S3/GCS/Azure storage and matching lifecycle rules; `observability/pyroscope/config.s3.example.yaml`; Alloy pull or pyroscope-go push |
 
 Always set retention **and** a storage quota. A single misbehaving service can
 otherwise fill the disk; the `RunCodesHostDiskSpaceLow` alert is a last resort,
@@ -356,12 +415,12 @@ ingestion limits and avoid logging request bodies outside debug mode.
 
 ### TLS, auth and secrets
 
-- Terminate TLS at an ingress/reverse proxy (or use the charts' TLS support).
-  The overlay speaks plaintext inside the Compose network.
+- Terminate TLS at an ingress/reverse proxy. The overlay speaks plaintext
+  inside the Compose network.
 - Protect Grafana with SSO and a strong generated password. The local
   `.observability/grafana_admin_password` file is for development only; use a
-  secret manager or `GF_SECURITY_ADMIN_PASSWORD__FILE` from a mounted Kubernetes
-  secret in production.
+  secret manager or `GF_SECURITY_ADMIN_PASSWORD__FILE` from a mounted secret in
+  production.
 - OTLP has no authentication in this stack. Either keep the collector on a
   private network or enable mTLS/bearer auth (`basicauth`/`oauth2client`
   extensions) and TLS on the receivers. The same applies to Tempo, Loki and
@@ -380,6 +439,8 @@ The Compose overlay applies these dev guardrails:
 | Prometheus | 1 GiB | 1.0 | 15 days / 8 GiB |
 | Loki | 512 MiB | 1.0 | 7 days (compactor) |
 | Tempo | 512 MiB | 1.0 | 7 days (compactor) |
+| Pyroscope | 512 MiB | 1.0 | 7 days / `pyroscope-data` volume |
+| Alloy | 256 MiB | 0.5 | `alloy-data` volume |
 | Grafana | 512 MiB | 0.5 | SQLite volume |
 | Collector | 512 MiB | 1.0 | in-memory queues |
 | Alertmanager | 128 MiB | 0.25 | notification state volume |
@@ -406,8 +467,12 @@ storage.
   avoid adding passwords/tokens to log attributes. Trace span attributes from
   `otelsql` include SQL statements; parameters are not exported by default.
 - **Webhook sink**: `alert-sink` has no authentication and stores alerts in
-  memory. It is internal-only in this stack; remove it and configure a real
-  receiver for any shared environment.
+  memory. It is internal-only in this stack; replace the URL in
+  `.observability/alertmanager_webhook_url` with a real receiver and keep that
+  file in a secret manager for any shared environment.
+- **pprof**: the internal `:6060` listeners expose heap, goroutine, CPU and
+  command-line data. They are not published on the host and must stay on the
+  cluster/Compose network; do not route them through an ingress.
 - **SELinux**: the services that bind-mount repo files use `security_opt:
   label=disable` to match the existing judge/service configuration. Files must
   be world-readable (git checkout mode 0644); generated secret files in
@@ -418,24 +483,31 @@ storage.
 
 ## Known limitations
 
-- **No browser/frontend instrumentation**. The SPA is not traced, so a trace
-  starts at Caddy/backend. Adding `@opentelemetry/sdk-trace-web` (or Grafana
-  Faro) to `frontend/` and allowing OTLP CORS in the collector is the next step.
-  The backend already returns `TraceId`, and CORS allows `traceparent`.
-- **Pyroscope is not deployed**. Continuous profiling is optional in the task
-  and needs a profiling agent (Alloy `pyroscope.scrape` or `pyroscope-go`) plus
-  pprof endpoints on the Go services. The architecture leaves room for it next
-  to Tempo; see [the runbook](runbook.md#adding-pyroscope-optional).
-- **Judge internals are coarse-grained**: the API, DB, S3 and per-commit worker
-  spans are instrumented, but individual compilation/test-case steps are not.
+- **Browser tracing is build-time**. The SPA emits fetch spans only when built
+  with `VITE_OTEL_ENABLED=true`; `make observability-browser-smoke-test` runs a
+  real Chromium session and asserts the trace reaches Tempo. The regular smoke
+  test also checks the collector's CORS/OTLP path with a synthetic span.
+- **Span profiles are CPU-only and sampling-dependent**. The
+  `otel-profiling-go` bridge adds `pyroscope.profile.id` and trace/span labels,
+  but a very short span may have no CPU samples; the "Profiles for this span"
+  panel can be empty for sub-20ms work. The judge uses `ScopeAllSpans` so
+  per-test-case spans carry their own id; the backend keeps root-span scope to
+  limit label cardinality.
+- **The authenticated submission smoke test is opt-in**. It needs
+  `SMOKE_ADMIN_PASSWORD`; it creates a disposable offering/exercise and deletes
+  it on success (or leaves it with `SMOKE_KEEP=1`).
+- **Judge internals are coarse-grained**: the API, DB, S3, per-commit worker and
+  per-test-case grading spans are instrumented, but the container's internal
+  compile/test execution loop is one span (`judge.run_container`).
 - **Only application logs go to Loki**. Container logs from Postgres, Redis,
   Loki itself, etc. remain available through `docker compose logs`; adding
   Alloy's Docker log discovery (or a filelog receiver) is a future extension.
-- **Single-node storage, no HA, no TLS**. The overlay is for development. The
-  production section above describes the managed/distributed replacement.
+- **Single-node storage, no HA, no TLS**. The overlay is for development. Run
+  it on a dedicated host with persistent volumes for shared/production use.
 - **Alerting**: the Prometheus rules are the source of truth; the Grafana-managed
   rule is an example of the unified alerting path. The local `alert-sink` only
-  proves delivery; it is not Slack/PagerDuty.
+  proves delivery; the Alertmanager webhook URL is file-backed and can be
+  replaced with a real incident tool without changing YAML.
 - **Exemplars**: Tempo span metrics generate exemplars and the Prometheus
   datasource maps them to traces. OTel application histograms routed through the
   collector's Prometheus exporter do not currently carry exemplars.
@@ -456,6 +528,12 @@ make observability-validate
 
 # End to end: starts/validates the stack and generates real traffic
 make observability-smoke-test
+
+# Real browser trace (requires the stack and Playwright Chromium)
+make observability-browser-smoke-test
+
+# Authenticated submission + per-test-case span + span-profile bridge
+SMOKE_ADMIN_PASSWORD='...' make observability-submission-smoke-test
 ```
 
 The smoke test verifies:
@@ -466,11 +544,25 @@ The smoke test verifies:
 4. Loki returns backend logs containing the smoke id, judge logs, and the exact
    trace's log line (`trace_id` structured metadata);
 5. Tempo stores the exact trace id from the response header;
-6. Grafana's Prometheus/Loki/Tempo datasources are healthy, the Alertmanager
-   proxy works, and the `runcodes-overview` dashboard is provisioned;
-7. Alertmanager accepts an injected alert and delivers the webhook to
-   `alert-sink`.
+6. the judge queue metric exists, Pyroscope has received profiles, and Alloy /
+   Pyroscope targets are up;
+7. the collector accepts a browser-origin OTLP span and Tempo stores its
+   `runcodes-frontend` trace (CORS + browser telemetry data path);
+8. Grafana's Prometheus/Loki/Tempo/Pyroscope datasources are healthy, the
+   Alertmanager proxy works, and the `runcodes-overview` dashboard is
+   provisioned;
+9. Alertmanager accepts an injected alert and delivers the webhook to
+   `alert-sink` through the secret-backed `url_file`.
+
+The browser test additionally verifies that a real fetch carries `traceparent`
+and that the same trace contains `runcodes-frontend` and `runcodes-backend`
+spans. The optional submission test verifies the judge's
+`judge.grade_test_case` span, its `correct` verdict, and the
+`pyroscope.profile.id` attribute; the trace-to-profile datasource config is
+provisioned at the same time.
 
 See the [runbook](runbook.md#validating-the-stack) for manual queries and
-diagnostics, and [PR-SUMMARY.md](PR-SUMMARY.md) for the change set and test
-results.
+diagnostics, and [PR-SUMMARY.md](PR-SUMMARY.md) for the base change set,
+plus [PR-SUMMARY-NEXT.md](PR-SUMMARY-NEXT.md) for the browser tracing, profiling,
+queue metrics, secret-backed alerting, browser smoke test and authenticated
+submission checks.

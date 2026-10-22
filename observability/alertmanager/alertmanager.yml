@@ -28,7 +28,11 @@ route:
 receivers:
   - name: alert-sink
     webhook_configs:
-      - url: http://alert-sink:8080/alerts
+      # The URL lives in a mounted secret file, not in this repository. The
+      # local default points at alert-sink; replace .observability/
+      # alertmanager_webhook_url (or mount a secret-managed file) for a real
+      # receiver. Alertmanager supports url_file for webhooks.
+      - url_file: /etc/alertmanager/secrets/webhook_url
         send_resolved: true
         max_alerts: 0
 

@@ -79,6 +79,27 @@ datasources:
         enabled: true
       lokiSearch:
         datasourceUid: loki
+      # Span -> profiles: rendered when the span has pyroscope.profile.id (set
+      # by the otel-profiling-go bridge in the backend/judge). The service_name
+      # tag maps the OTel resource attribute to the Pyroscope label.
+      tracesToProfiles:
+        datasourceUid: pyroscope
+        profileTypeId: process_cpu:cpu:nanoseconds:cpu:nanoseconds
+        tags:
+          - key: service.name
+            value: service_name
+
+  - name: Pyroscope
+    uid: pyroscope
+    type: grafana-pyroscope-datasource
+    access: proxy
+    url: http://pyroscope:4040
+    editable: false
+    jsonData:
+      # Profiles are collected by Alloy from the Go pprof endpoints. The
+      # otel-profiling-go bridge adds trace_id/span_id labels to the profiles
+      # and pyroscope.profile.id to the spans, enabling the Tempo link above.
+      minStep: 15s
 
   - name: Alertmanager
     uid: alertmanager

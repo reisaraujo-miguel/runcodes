@@ -233,9 +233,17 @@ Compose observability overlay points it at the collector with
 - Inbound requests use `otelchi` spans; S3 downloads use `otelhttp`; database
   claims/queries use `otelsql`.
 - Each claimed commit starts a root `judge.process_commit` span with
-  `runcodes.commit.id`, because the HTTP request that queued it has already
-  returned. Individual compilation and test-case steps are not separately
-  instrumented yet.
+  `runcodes.commit.id`. The worker adds `judge.prepare_workspace` and
+  `judge.run_container`, and grading adds one `judge.grade_test_case` span per
+  test case with the case id, verdict, CPU time and memory usage. The container's
+  internal loop remains a single `judge.run_container` span.
+- Async gauges `runcodes.judge.queue.depth` and
+  `runcodes.judge.queue.oldest_age` expose the durable PostgreSQL queue.
+- `PPROF_ADDR` (optional, e.g. `:6060`) starts an internal pprof listener that
+  Alloy scrapes into Pyroscope; it is never exposed by the judge API. The
+  `otel-profiling-go` bridge labels the profiles with trace/span ids and adds
+  `pyroscope.profile.id` to every span (including per-case grading), so Grafana
+  can open the matching flame graph.
 - Logs include `trace_id`/`span_id` when a context is available and are also
   forwarded over OTLP to Loki.
 - `/healthz` and `/readyz` remain the liveness/readiness endpoints; only

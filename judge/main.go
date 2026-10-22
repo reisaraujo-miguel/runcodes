@@ -77,6 +77,15 @@ func run() error {
 	}
 	defer shutdownTelemetry(telemetryShutdown)
 
+	// Continuous profiling (for Alloy/Pyroscope) is opt-in and lives on a
+	// separate internal listener, never the judge API.
+	pprofShutdown, pprofErr := telemetry.StartPprof(os.Getenv("PPROF_ADDR"))
+	if pprofErr != nil {
+		logger.Warn("pprof server disabled", "error", pprofErr)
+	} else if pprofShutdown != nil {
+		defer shutdownPprof(pprofShutdown)
+	}
+
 	cfg.LogInsecureTransportWarnings()
 
 	if cfg.AuthToken == "" {
@@ -95,6 +104,18 @@ func run() error {
 		return err
 	}
 	defer st.Close()
+
+	// Queue depth and oldest-job age are async OTel gauges. Registering the
+	// callback here keeps the data path independent of the worker loop and
+	// lets the same metric work when the queue is empty.
+	unregisterQueueMetrics, queueMetricsErr := telemetry.RegisterQueueMetrics(st)
+	if queueMetricsErr != nil {
+		logger.Warn("could not register judge queue metrics",
+			"error", queueMetricsErr,
+		)
+	} else {
+		defer unregisterQueueMetrics()
+	}
 
 	// open the S3 connection and defer its closure
 	s3, err := storage.NewS3(ctx, cfg.S3)
@@ -156,6 +177,20 @@ func run() error {
 		}
 	}()
 
+	// The collector starts at the same time as the judge. A startup log emitted
+	// before the collector's OTLP receiver is ready can be dropped, leaving the
+	// judge with no log stream until the first submission. Emit one readiness
+	// log after the startup race so operators always have a judge log to find.
+	go func() {
+		timer := time.NewTimer(5 * time.Second)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+		case <-timer.C:
+			logger.Info("judge ready for submissions")
+		}
+	}()
+
 	select {
 	case <-ctx.Done():
 		logger.Info("shutdown requested")
@@ -204,5 +239,13 @@ func shutdownTelemetry(shutdown func(context.Context) error) {
 	defer cancel()
 	if err := shutdown(ctx); err != nil {
 		slog.Debug("telemetry shutdown error", "error", err)
+	}
+}
+
+func shutdownPprof(shutdown func(context.Context) error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := shutdown(ctx); err != nil {
+		slog.Debug("pprof shutdown error", "error", err)
 	}
 }

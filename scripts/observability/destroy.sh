@@ -20,6 +20,8 @@ VOLUME_SUFFIXES=(
   loki-data
   tempo-data
   grafana-data
+  pyroscope-data
+  alloy-data
 )
 
 if [[ "${FORCE:-0}" != "1" ]]; then

@@ -157,3 +157,43 @@ func TestClaimDatabaseError(t *testing.T) {
 		t.Fatal("expected the database error to propagate")
 	}
 }
+
+func TestQueueStats(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	mock.ExpectQuery(`SELECT count\(\*\),`).
+		WillReturnRows(sqlmock.NewRows([]string{"count", "oldest"}).
+			AddRow(int64(3), 12.5))
+
+	stats, err := NewWithDB(db).QueueStats(context.Background())
+	if err != nil {
+		t.Fatalf("QueueStats: %v", err)
+	}
+	if stats.Depth != 3 || stats.OldestSeconds != 12.5 {
+		t.Fatalf("QueueStats = %+v, want {3 12.5}", stats)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestQueueStatsError(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	mock.ExpectQuery(`SELECT count\(\*\),`).WillReturnError(sql.ErrConnDone)
+
+	if _, err := NewWithDB(db).QueueStats(context.Background()); err == nil {
+		t.Fatal("QueueStats returned nil error for a failed query")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

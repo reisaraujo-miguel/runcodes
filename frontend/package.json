@@ -12,7 +12,9 @@
     "format": "prettier . --write",
     "optimize-svg": "bun run scripts/optimize-svg.ts",
     "check-svg": "bun run scripts/optimize-svg.ts --check",
-    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true"
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install chromium"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -32,6 +34,14 @@
     "@hookform/resolvers": "^6.0.0",
     "@ibm/plex": "^6.4.1",
     "@lezer/highlight": "^1.2.5",
+    "@opentelemetry/api": "1.9.0",
+    "@opentelemetry/core": "2.12.0",
+    "@opentelemetry/exporter-trace-otlp-http": "0.223.0",
+    "@opentelemetry/instrumentation": "0.223.0",
+    "@opentelemetry/instrumentation-fetch": "0.223.0",
+    "@opentelemetry/resources": "2.12.0",
+    "@opentelemetry/sdk-trace-web": "2.12.0",
+    "@opentelemetry/semantic-conventions": "1.43.0",
     "@tailwindcss/vite": "^4.3.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -51,6 +61,7 @@
   "devDependencies": {
     "@babel/core": "^8.0.7",
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.1",
     "@rolldown/plugin-babel": "^0.2.4",
     "@svgr/plugin-svgo": "^8.1.0",
     "@types/babel__core": "^7.20.5",

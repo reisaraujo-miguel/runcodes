@@ -13,6 +13,18 @@
 # not).
 
 services:
+  frontend:
+    build:
+      args:
+        # These are compiled into the SPA. The browser talks to the published
+        # collector endpoint, not to the Compose service name.
+        VITE_OTEL_ENABLED: "${FRONTEND_OTEL_ENABLED:-true}"
+        VITE_OTEL_EXPORTER_OTLP_ENDPOINT: "${PUBLIC_OTEL_HTTP_URL:-http://localhost:4318}"
+        VITE_OTEL_SERVICE_NAME: "runcodes-frontend"
+        VITE_OTEL_SERVICE_VERSION: "${OTEL_SERVICE_VERSION:-dev}"
+        VITE_DEPLOYMENT_ENVIRONMENT: "${DEPLOYMENT_ENVIRONMENT:-development}"
+        VITE_OTEL_TRACES_SAMPLER_ARG: "${VITE_OTEL_TRACES_SAMPLER_ARG:-1.0}"
+
   backend:
     environment:
       DEPLOYMENT_ENVIRONMENT: "${DEPLOYMENT_ENVIRONMENT:-development}"
@@ -27,6 +39,7 @@ services:
       OTEL_BSP_SCHEDULE_DELAY: "2000"
       OTEL_BLRP_SCHEDULE_DELAY: "2000"
       OTEL_SDK_DISABLED: "${OTEL_SDK_DISABLED:-false}"
+      PPROF_ADDR: ":6060"
     depends_on:
       otel-collector:
         condition: service_started
@@ -45,6 +58,7 @@ services:
       OTEL_BSP_SCHEDULE_DELAY: "2000"
       OTEL_BLRP_SCHEDULE_DELAY: "2000"
       OTEL_SDK_DISABLED: "${OTEL_SDK_DISABLED:-false}"
+      PPROF_ADDR: ":6060"
     depends_on:
       otel-collector:
         condition: service_started
@@ -85,8 +99,8 @@ services:
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
-      - "--storage.tsdb.retention.time=15d"
-      - "--storage.tsdb.retention.size=8GB"
+      - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:-15d}"
+      - "--storage.tsdb.retention.size=${PROMETHEUS_RETENTION_SIZE:-8GB}"
       - "--web.enable-lifecycle"
       # Tempo's metrics-generator remote-writes span and service-graph metrics.
       - "--web.enable-remote-write-receiver"
@@ -120,6 +134,7 @@ services:
       - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${ALERTMANAGER_PORT:-9093}:9093"
     volumes:
       - ./observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./.observability/alertmanager_webhook_url:/etc/alertmanager/secrets/webhook_url:ro
       - alertmanager-data:/alertmanager
     security_opt:
       - label=disable
@@ -194,6 +209,58 @@ services:
       prometheus:
         condition: service_started
 
+  # Continuous profiling: Alloy scrapes the Go pprof endpoints and writes to
+  # Pyroscope. The pprof listeners are internal-only (:6060, not published).
+  pyroscope:
+    image: grafana/pyroscope:2.4.1
+    restart: unless-stopped
+    command:
+      - "-config.file=/etc/pyroscope/config.yaml"
+      # Single instance: skip the rolling-update readiness delays (15s
+      # metastore + 15s ingester + 30s segment writer) so the local stack and
+      # the smoke test come up promptly. Keep the defaults in a cluster.
+      - "-metastore.min-ready-duration=0"
+      - "-ingester.min-ready-duration=0"
+      - "-segment-writer.min-ready-duration=0"
+    ports:
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${PYROSCOPE_PORT:-4040}:4040"
+    volumes:
+      - ${PYROSCOPE_CONFIG_FILE:-./observability/pyroscope/config.yaml}:/etc/pyroscope/config.yaml:ro
+      - pyroscope-data:/data
+    security_opt:
+      - label=disable
+    mem_limit: 512m
+    cpus: "1.0"
+    networks:
+      - runcodes-network
+
+  alloy:
+    image: grafana/alloy:v1.21.1
+    restart: unless-stopped
+    command:
+      - "run"
+      - "--server.http.listen-addr=0.0.0.0:12345"
+      - "--storage.path=/var/lib/alloy/data"
+      - "/etc/alloy/config.alloy"
+    ports:
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${ALLOY_PORT:-12345}:12345"
+    volumes:
+      - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+    security_opt:
+      - label=disable
+    mem_limit: 256m
+    cpus: "0.5"
+    networks:
+      - runcodes-network
+    depends_on:
+      pyroscope:
+        condition: service_started
+      backend:
+        condition: service_started
+      judge:
+        condition: service_started
+
   grafana:
     image: grafana/grafana:12.4.13
     restart: unless-stopped
@@ -238,6 +305,8 @@ services:
       tempo:
         condition: service_started
       alertmanager:
+        condition: service_started
+      pyroscope:
         condition: service_started
 
   node-exporter:
@@ -318,3 +387,5 @@ volumes:
   loki-data:
   tempo-data:
   grafana-data:
+  pyroscope-data:
+  alloy-data:

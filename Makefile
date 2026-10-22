@@ -10,7 +10,7 @@ SHELL := /bin/bash
 COMPOSE ?= docker compose
 OBS_COMPOSE = $(COMPOSE) -f docker-compose.yml -f docker-compose.observability.yml
 
-.PHONY: help observability-init observability-up observability-down observability-status observability-logs observability-smoke-test observability-validate observability-destroy
+.PHONY: help observability-init observability-up observability-down observability-status observability-logs observability-smoke-test observability-browser-smoke-test observability-submission-smoke-test observability-validate observability-destroy
 
 help:
 	@echo "RunCodes developer targets:"
@@ -19,6 +19,8 @@ help:
 	@echo "  make observability-status      show container status"
 	@echo "  make observability-logs        follow all stack logs"
 	@echo "  make observability-smoke-test  generate traffic and verify metrics, logs, traces, alerts"
+	@echo "  make observability-browser-smoke-test     verify a real browser trace in Tempo"
+	@echo "  make observability-submission-smoke-test  authenticated submission + per-case span (needs SMOKE_ADMIN_PASSWORD)"
 	@echo "  make observability-validate    validate configs (compose, promtool, amtool, collector)"
 	@echo "  make observability-destroy     DESTRUCTIVE: remove observability volumes (prompts; FORCE=1 skips)"
 
@@ -40,6 +42,12 @@ observability-logs:
 
 observability-smoke-test: observability-init
 	./scripts/observability/smoke-test.sh
+
+observability-browser-smoke-test:
+	./scripts/observability/browser-smoke-test.sh
+
+observability-submission-smoke-test:
+	./scripts/observability/submission-smoke-test.sh
 
 observability-validate: observability-init
 	./scripts/observability/validate.sh

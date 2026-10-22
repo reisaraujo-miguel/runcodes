@@ -68,6 +68,14 @@ type CaseResult struct {
 	ErrorMessage string
 }
 
+// QueueStats is a snapshot of the durable queue, used by the judge metrics
+// callback. Depth counts rows in the `queued` state; OldestSeconds is the age of
+// the oldest one (0 when the queue is empty).
+type QueueStats struct {
+	Depth         int64
+	OldestSeconds float64
+}
+
 // RunStatus is the terminal status of a submission (maps to the DB enum).
 type RunStatus string
 

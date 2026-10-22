@@ -70,6 +70,7 @@ require (
 	github.com/aws/smithy-go v1.28.5
 	github.com/go-chi/chi/v5 v5.4.0
 	github.com/google/uuid v1.6.0
+	github.com/grafana/otel-profiling-go v0.7.0
 	github.com/lestrrat-go/jwx/v3 v3.3.0
 	github.com/redis/go-redis/v9 v9.23.0
 	github.com/riandyrn/otelchi v0.12.3

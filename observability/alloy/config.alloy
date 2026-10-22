@@ -1,0 +1,34 @@
+// Grafana Alloy collects pprof profiles from the Go services and writes them to
+// Pyroscope. It is deliberately limited to profiling; application traces,
+// metrics and logs still go through the OpenTelemetry Collector.
+//
+// Both targets expose pprof on :6060, an internal-only listener that is not
+// published on the host.
+
+pyroscope.scrape "runcodes" {
+  targets = [
+    {
+      "__address__" = "backend:6060",
+      "service_name" = "runcodes-backend",
+    },
+    {
+      "__address__" = "judge:6060",
+      "service_name" = "runcodes-judge",
+    },
+  ]
+
+  scrape_interval = "15s"
+  scrape_timeout  = "10s"
+  forward_to       = [pyroscope.write.default.receiver]
+}
+
+pyroscope.write "default" {
+  endpoint {
+    url = "http://pyroscope:4040"
+  }
+
+  external_labels = {
+    "cluster"                = "runcodes-local",
+    "deployment_environment" = "development",
+  }
+}

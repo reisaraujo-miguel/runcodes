@@ -1,0 +1,24 @@
+# Single-binary Pyroscope for the local stack.
+#
+# The new (v2) storage architecture is the default in Pyroscope 2.x and uses the
+# filesystem backend here; the named volume keeps profiles across restarts.
+# Pyroscope's own /ready endpoint is checked by the smoke test.
+server:
+  http_listen_port: 4040
+
+storage:
+  backend: filesystem
+  filesystem:
+    dir: /data
+
+# Keep a week of profiles on the local volume. Pyroscope's default is 31d,
+# which is too long for the development volume. Set this to 0 to disable
+# deletion. For production, use the S3 example and object lifecycle rules.
+limits:
+  retention_period: 168h
+  max_query_lookback: 168h
+
+# Pyroscope reports anonymous usage statistics by default. Keep the local stack
+# offline and deterministic.
+analytics:
+  reporting_enabled: false

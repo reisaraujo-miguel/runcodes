@@ -1,0 +1,58 @@
+# Production Alertmanager template. This file is NOT mounted by the default
+# Compose stack; it documents the supported real receivers and the secret-file
+# pattern. Copy it to a deployment-owned location (or a secret store) and
+# point ALERTMANAGER_CONFIG_FILE at it.
+#
+# Every credential is read from a file, which Alertmanager re-reads for each
+# notification. Mount these files from your secret manager:
+#   /etc/alertmanager/secrets/slack_webhook_url
+#   /etc/alertmanager/secrets/pagerduty_routing_key
+#   /etc/alertmanager/secrets/webhook_url
+#
+# Do not commit real URLs or keys. The local stack uses alertmanager.yml with a
+# webhook URL file pointing at the test sink.
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: on-call
+  group_by: [alertname, service_name, severity, cluster]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers:
+        - severity="critical"
+      receiver: on-call
+      group_wait: 0s
+      repeat_interval: 1h
+
+receivers:
+  # Choose one or more of these receivers. Slack and PagerDuty are examples;
+  # remove the ones you do not use and keep the credentials in secret files.
+  - name: on-call
+    slack_configs:
+      - api_url_file: /etc/alertmanager/secrets/slack_webhook_url
+        channel: "#runcodes-alerts"
+        send_resolved: true
+        title: '{{ .CommonAnnotations.summary }}'
+        text: '{{ .CommonAnnotations.description }}'
+    pagerduty_configs:
+      - routing_key_file: /etc/alertmanager/secrets/pagerduty_routing_key
+        severity: '{{ if eq .CommonLabels.severity "critical" }}critical{{ else }}warning{{ end }}'
+        send_resolved: true
+        description: '{{ .CommonAnnotations.summary }}'
+
+  # Generic webhook fallback (for an incident tool that accepts Alertmanager's
+  # webhook payload).
+  - name: webhook
+    webhook_configs:
+      - url_file: /etc/alertmanager/secrets/webhook_url
+        send_resolved: true
+
+inhibit_rules:
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
+    equal: [alertname, service_name, cluster]

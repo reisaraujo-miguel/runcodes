@@ -38,6 +38,8 @@
     "vite.config.ts",
     "svgo.config.ts",
     "svgo.config.test.ts",
+    "playwright.config.ts",
+    "e2e/**/*.ts",
     "scripts/**/*.ts"
   ]
 }

@@ -5,7 +5,7 @@ It is deliberately self-contained: the exporter endpoint, sampling policy and
 batch tuning are read from the standard OpenTelemetry environment variables
 (OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_TRACES_SAMPLER, ...), so the same binary can
 run with or without a collector and every knob is configurable from Compose or
-a Kubernetes manifest.
+environment variables.
 
 OpenTelemetry is opt-in. When OTEL_EXPORTER_OTLP_ENDPOINT (or a signal-specific
 endpoint) is unset, or OTEL_SDK_DISABLED=true, Setup installs no providers and
@@ -27,6 +27,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	otelpyroscope "github.com/grafana/otel-profiling-go"
 	"go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -134,7 +135,10 @@ func Setup(ctx context.Context) (func(context.Context) error, error) {
 		)),
 	)
 
-	otel.SetTracerProvider(tracerProvider)
+	// Wrap the SDK provider so pprof samples carry the active trace/span ids.
+	// Alloy pulls the profiles from the internal pprof listener, so the
+	// pyroscope service_name label must continue to match service.name.
+	otel.SetTracerProvider(otelpyroscope.NewTracerProvider(tracerProvider))
 	otel.SetMeterProvider(meterProvider)
 	otel.SetLoggerProvider(loggerProvider)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(

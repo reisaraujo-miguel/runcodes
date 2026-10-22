@@ -1,3 +1,8 @@
+> **Historical note:** this describes the base observability PR. The follow-up
+> (browser tracing, Pyroscope/Alloy, judge queue metrics and per-case spans,
+> secret-backed Alertmanager receivers, and the browser smoke test) is documented
+> in [PR-SUMMARY-NEXT.md](PR-SUMMARY-NEXT.md).
+
 # PR: end-to-end observability for RunCodes
 
 ## Summary
@@ -72,7 +77,7 @@ records stored in Loki.
   labels.
 - Prometheus scrape configs for the collector, its own telemetry, Loki, Tempo,
   Grafana, Alertmanager and the infrastructure exporters, plus blackbox probes
-  and 13 recording/alerting rules.
+  and recording/alerting rules (13 at the base PR, 16 after the follow-up).
 - Loki OTLP ingestion with 7-day retention, structured metadata and three index
   labels.
 - Tempo monolithic mode with local storage, 7-day block retention and a
@@ -202,23 +207,17 @@ All observability smoke checks passed.
 
 ## Follow-ups
 
-- Browser/frontend tracing (`@opentelemetry/sdk-trace-web` or Grafana Faro) and
-  collector OTLP HTTP CORS.
-- Optional Pyroscope with Alloy `pyroscope.scrape` or `pyroscope-go`, plus pprof
-  endpoints on the Go services.
-- Instrument individual judge compilation/test-case phases and add queue-depth
-  metrics from the durable PostgreSQL queue.
 - Collect container logs (not only OTel application logs) with Alloy or a
   filelog receiver.
-- Kubernetes/Helm manifests or kube-prometheus-stack values for production;
-  this repo currently uses Compose.
-- Tail sampling and production retention/object storage for Loki and Tempo.
+- Tail sampling and production retention/object storage for Loki, Tempo and
+  Pyroscope.
+- Browser and authenticated-submission smoke tests (implemented in the follow-up
+  PR).
 
 ## Assumptions and open questions
 
-- The repository has no Kubernetes or Helm deployment; Compose is the simplest
-  reproducible runtime and is the one implemented. Production guidance is
-  documented rather than shipped as manifests.
+- Compose is the simplest reproducible runtime and is the one implemented.
+  Production guidance is documented rather than shipped as manifests.
 - Prometheus scrapes the collector's OTLP-to-Prometheus exporter instead of the
   applications directly, matching the requested `app -> collector -> backend`
   flow.

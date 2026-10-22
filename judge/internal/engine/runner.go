@@ -22,6 +22,11 @@ import (
 	"github.com/runcodes-icmc/judge/internal/podman"
 	"github.com/runcodes-icmc/judge/internal/storage"
 	"github.com/runcodes-icmc/judge/internal/store"
+	"github.com/runcodes-icmc/judge/internal/telemetry"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // ContainerRuntime is the slice of podman the engine drives. It exists so the run
@@ -127,7 +132,18 @@ func (e *Engine) Process(ctx context.Context, commit *model.Commit) {
 	var err error
 
 	// Prepare the workspace for the commit, which includes setting up the necessary files and directories.
-	ws, err = e.prepareWorkspace(ctx, commit)
+	prepareCtx, prepareSpan := telemetry.Tracer().Start(ctx, "judge.prepare_workspace",
+		trace.WithAttributes(
+			attribute.Int64("runcodes.commit.id", commit.ID),
+			attribute.Int64("runcodes.exercise.id", commit.ExerciseID),
+		),
+	)
+	ws, err = e.prepareWorkspace(prepareCtx, commit)
+	if err != nil {
+		prepareSpan.RecordError(err)
+		prepareSpan.SetStatus(codes.Error, "workspace preparation failed")
+	}
+	prepareSpan.End()
 	if err != nil {
 		logger.Error("workspace preparation failed", "error", err)
 		e.hub.Error(commit.ID, err.Error())
@@ -146,7 +162,27 @@ func (e *Engine) Process(ctx context.Context, commit *model.Commit) {
 
 	// Run the container for the commit, which includes compilation and test execution.
 	// Capture the outcome and any errors that occur during this process.
-	outcome, runErr := e.runContainer(ctx, commit, ws, logger)
+	runCtx, runSpan := telemetry.Tracer().Start(ctx, "judge.run_container",
+		trace.WithAttributes(
+			attribute.Int64("runcodes.commit.id", commit.ID),
+			attribute.Int64("runcodes.exercise.id", commit.ExerciseID),
+			attribute.String("runcodes.language", ws.Language.Name),
+			attribute.Int("runcodes.test_case.count", len(ws.TestCases)),
+		),
+	)
+	outcome, runErr := e.runContainer(runCtx, commit, ws, logger)
+	if runErr != nil {
+		runSpan.RecordError(runErr)
+		runSpan.SetStatus(codes.Error, "container run failed")
+	} else {
+		runSpan.SetAttributes(
+			attribute.String("runcodes.status", string(outcome.status)),
+			attribute.Bool("runcodes.compilation_error", outcome.status == model.RunCompilationError),
+			attribute.Int("runcodes.graded_cases", len(outcome.caseResults)),
+		)
+	}
+	runSpan.End()
+
 	if runErr != nil {
 		// Classify the error to determine the appropriate run status (e.g., timeout, server error).
 		status := classify(runErr)
