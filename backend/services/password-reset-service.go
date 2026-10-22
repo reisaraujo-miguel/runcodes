@@ -154,7 +154,9 @@ func ResetPassword(ctx context.Context, token, newPassword string) error {
 	}
 
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`,
+		UPDATE users
+		SET password_hash = $1, token_version = token_version + 1, updated_at = NOW()
+		WHERE id = $2`,
 		hashed, userID,
 	); err != nil {
 		slog.ErrorContext(ctx, "error updating password after reset",

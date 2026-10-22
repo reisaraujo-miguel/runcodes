@@ -8,6 +8,9 @@ var (
 	ErrServer             = errors.New("internal server error, try again later")
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrEmailNotVerified   = errors.New("email is not verified, check your inbox for the verification link")
+	// ErrCurrentPasswordRequired is returned when a profile update changes the
+	// email address without proving knowledge of the current password.
+	ErrCurrentPasswordRequired = errors.New("current password is required to change the email")
 	// ErrInvalidVerificationToken covers a token that is unknown, already
 	// consumed, or past its expiry; a caller sees one message, so the link's
 	// state is not disclosed.

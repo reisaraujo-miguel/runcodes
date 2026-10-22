@@ -45,6 +45,10 @@ type User struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
 	Role  string `json:"role"`
+
+	// TokenVersion is the account's session generation. It is never part of an
+	// API response; it is carried in the JWT and compared by the request guard.
+	TokenVersion int `json:"-"`
 }
 
 // AuthInfo is returned by the session endpoints: the user plus when the
@@ -64,15 +68,20 @@ type Profile struct {
 	Confirmed         bool      `json:"confirmed"`
 	CodeEditorEnabled bool      `json:"code_editor_enabled"`
 	CreatedAt         time.Time `json:"created_at"`
+	// PendingEmail is a requested email change awaiting verification. Empty when
+	// no change is in flight.
+	PendingEmail string `json:"pending_email"`
 }
 
 // UpdateProfileRequest is the JSON body of PUT /api/v1/user/profile. Every
 // field is optional: absent fields are left untouched (partial update).
+// CurrentPassword is required only when Email changes.
 type UpdateProfileRequest struct {
 	Name              *string `json:"name"`
 	Email             *string `json:"email"`
 	OrgID             *string `json:"org_id"`
 	CodeEditorEnabled *bool   `json:"code_editor_enabled"`
+	CurrentPassword   string  `json:"current_password"`
 }
 
 // ChangePasswordRequest is the JSON body of PUT /api/v1/user/password.

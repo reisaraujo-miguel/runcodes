@@ -29,8 +29,15 @@ func createRoutes(router *chi.Mux) {
 
 	// public routes
 	router.Group(func(r chi.Router) {
-		r.Post("/api/v1/user/signup", handlers.SignUp)
-		r.Post("/api/v1/user/login", handlers.LogIn)
+		// Credential endpoints get a tighter per-IP budget than the API as a
+		// whole: the general limit is sized for a classroom behind one NAT, while
+		// these routes accept passwords.
+		r.Group(func(r chi.Router) {
+			r.Use(httprate.LimitBy(20, time.Minute, clientIPKey))
+
+			r.Post("/api/v1/user/signup", handlers.SignUp)
+			r.Post("/api/v1/user/login", handlers.LogIn)
+		})
 
 		// Account email flows are public: the links arrive by email and may be
 		// opened in a browser that has no session. These routes are limited
@@ -64,7 +71,7 @@ func createRoutes(router *chi.Mux) {
 		// rule for new sessions; this covers a session whose account was
 		// unconfirmed after it was issued.
 		r.Group(func(r chi.Router) {
-			r.Use(handlers.RequireVerifiedEmail)
+			r.Use(handlers.RequireCurrentSession)
 
 			r.Get("/api/v1/auth", handlers.GetAuth)
 			r.Post("/api/v1/auth/refresh", handlers.RefreshAuth)
@@ -220,7 +227,10 @@ func configureMiddleware(router *chi.Mux, cfg *config.Config) {
 	// address must use GetClientIP, not the raw header.
 	router.Use(middleware.ClientIPFromXFFTrustedProxies(1))
 
-	router.Use(httprate.LimitBy(100, time.Minute, clientIPKey))
+	// A classroom is commonly behind one NAT address, so the API-wide ceiling has
+	// to accommodate a whole lab's page loads. Credential and mail endpoints have
+	// their own, tighter limits above.
+	router.Use(httprate.LimitBy(600, time.Minute, clientIPKey))
 }
 
 // maxRequestBodyBytes bounds a non-multipart request body. It is deliberately
