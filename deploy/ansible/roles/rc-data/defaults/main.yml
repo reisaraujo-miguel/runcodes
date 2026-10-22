@@ -1,0 +1,10 @@
+---
+rc_data_db_mem_limit: "1g"
+rc_data_redis_mem_limit: "256m"
+rc_data_seaweed_mem_limit: "512m"
+rc_data_exporter_mem_limit: "128m"
+rc_data_node_exporter_mem_limit: "128m"
+
+# The data host holds every stateful service, so its volumes are the backup
+# boundary. Named volumes keep image-owned permissions (PostgreSQL, Redis and
+# SeaweedFS all initialize their own data directories).

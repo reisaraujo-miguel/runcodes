@@ -1,0 +1,266 @@
+---
+# Fail before touching a host when the inventory or secrets are incomplete.
+- name: Preflight the deployment
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Require the untracked deployment configuration
+      ansible.builtin.assert:
+        that:
+          - config_runcodes_cluster_name is defined
+          - config_runcodes_public_url is defined
+          - config_runcodes_runner_languages is defined
+        fail_msg: >-
+          inventories/group_vars/all/config.yml is missing. Copy
+          config.yml.example to config.yml and edit it; the tracked main.yml
+          only maps those values.
+
+    - name: Require exactly four machines, one per role
+      ansible.builtin.assert:
+        that:
+          - groups['runcodes'] is defined
+          - groups['runcodes'] | length == 4
+          - groups['edge'] | length == 1
+          - groups['data'] | length == 1
+          - groups['compute'] | length == 1
+          - groups['observability'] | length == 1
+        fail_msg: >-
+          This deployment is designed for exactly four hosts: one edge, one
+          data, one compute and one observability. Check inventories/hosts.yml.
+
+    - name: Collect the private addresses
+      ansible.builtin.set_fact:
+        rc_preflight_private_ips: "{{ rc_preflight_private_ips | default([]) + [hostvars[item].private_ip | default('')] }}"
+      loop: "{{ groups['runcodes'] }}"
+
+    - name: Require a distinct private address for every host
+      ansible.builtin.assert:
+        that:
+          - rc_preflight_private_ips | select('equalto', '') | list | length == 0
+          - rc_preflight_private_ips | unique | list | length == 4
+        fail_msg: >-
+          Every host needs a non-empty, distinct private_ip in
+          inventories/hosts.yml. Got: {{ rc_preflight_private_ips | join(', ') }}
+
+    - name: Require the SSH user to be the deployment user
+      ansible.builtin.assert:
+        that:
+          - (hostvars[item].ansible_user | default('runcodes')) == runcodes_deploy_user
+        fail_msg: >-
+          {{ item }} uses SSH user
+          {{ hostvars[item].ansible_user | default('runcodes') }}, but
+          runcodes_deploy_user is {{ runcodes_deploy_user }}. The rootless
+          stack must run as the same user that owns /opt/runcodes; set both to
+          the same value.
+      loop: "{{ groups['runcodes'] }}"
+
+    - name: Require the edge public address
+      ansible.builtin.assert:
+        that:
+          - hostvars[groups['edge'][0]].public_ip is defined
+          - hostvars[groups['edge'][0]].public_ip | length > 0
+        fail_msg: "The edge host needs public_ip in inventories/hosts.yml."
+
+    - name: Require a valid public URL
+      ansible.builtin.assert:
+        that:
+          - runcodes_public_url is match('^https?://[^/]+$')
+        fail_msg: >-
+          runcodes_public_url must be an absolute http(s) origin without a
+          trailing path (got '{{ runcodes_public_url }}').
+
+    - name: Require the public URL to match the TLS domain
+      ansible.builtin.assert:
+        that:
+          - runcodes_public_url == 'https://' ~ runcodes_domain
+        fail_msg: >-
+          runcodes_public_url ({{ runcodes_public_url }}) must be
+          https://{{ runcodes_domain }} when runcodes_domain is a hostname.
+          Use runcodes_domain: ":80" with an http:// public URL for an
+          HTTP-only deployment.
+      when: runcodes_domain is not match('^:')
+
+    - name: Require the fixed database names
+      ansible.builtin.assert:
+        that:
+          - runcodes_db_name == 'runcodes'
+          - runcodes_db_owner == 'runcodes'
+        fail_msg: >-
+          The database schema and 05-app-role.sh use the literal names
+          runcodes/runcodes_app. Keep runcodes_db_name and runcodes_db_owner
+          as runcodes unless you also change the SQL and the application.
+
+    - name: Require a safe seeded admin email
+      ansible.builtin.assert:
+        that:
+          - runcodes_admin_email is match('^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$')
+        fail_msg: >-
+          runcodes_admin_email must be a plain address (it is interpolated into
+          the first-deployment password query).
+
+    - name: Require core release settings
+      ansible.builtin.assert:
+        that:
+          - runcodes_version | length > 0
+          - runcodes_image_tag is match('^[A-Za-z0-9_.-]+$')
+          - runcodes_s3_bucket_prefix | length > 0
+          - runcodes_image_registry is match('^[A-Za-z0-9.-]+(:[0-9]+)?$')
+          - runcodes_image_namespace | length > 0
+          - runcodes_runner_image_prefix | length > 0
+          - runcodes_runner_languages | length > 0
+        fail_msg: >-
+          Set the release/image settings and runner languages in
+          inventories/group_vars/all/config.yml.
+
+    - name: Check the controller asset checkout
+      ansible.builtin.stat:
+        path: "{{ runcodes_repo_root }}/{{ item }}"
+      loop:
+        - database/bootstrap-admin.sh
+        - database/atlas.sh
+        - database/atlas.hcl
+        - database/schema/02-schema.sql
+        - database/migrations
+        - database/legacy-migration/migrate.sh
+        - database/old_schema/schema.old.sql
+        - scripts/observability/smoke-test.sh
+        - scripts/observability/submission-smoke-test.sh
+        - observability/loki/loki.yaml
+        - observability/pyroscope/config.yaml
+        - observability/blackbox/blackbox.yml
+        - observability/alert-sink/main.py
+        - observability/prometheus/rules
+        - observability/grafana/provisioning
+        - observability/grafana/dashboards
+      register: rc_preflight_assets
+
+    - name: Require every controller asset
+      ansible.builtin.assert:
+        that:
+          - rc_preflight_assets.results | rejectattr('stat.exists') | list | length == 0
+        fail_msg: >-
+          Missing controller assets:
+          {{ rc_preflight_assets.results | rejectattr('stat.exists') | map(attribute='item') | join(', ') }}.
+          Set runcodes_repo_root or run the playbook from deploy/ansible.
+
+    - name: Require non-empty secrets
+      ansible.builtin.assert:
+        that:
+          - vault_runcodes_jwt_secret | default('') | length >= 32
+          - vault_runcodes_judge_token | default('') | length >= 32
+          - vault_runcodes_db_owner_password | default('') | length >= 16
+          - vault_runcodes_db_app_password | default('') | length >= 16
+          - vault_runcodes_s3_access_key | default('') | length >= 8
+          - vault_runcodes_s3_secret_key | default('') | length >= 16
+          - vault_runcodes_redis_password | default('') | length >= 16
+          - vault_runcodes_admin_password | default('') | length >= 12
+          - vault_grafana_admin_password | default('') | length >= 12
+          - vault_runcodes_jwt_secret is not match('^REPLACE_WITH')
+          - vault_runcodes_judge_token is not match('^REPLACE_WITH')
+          - vault_runcodes_db_owner_password is not match('^REPLACE_WITH')
+          - vault_runcodes_db_app_password is not match('^REPLACE_WITH')
+          - vault_runcodes_s3_access_key is not match('^REPLACE_WITH')
+          - vault_runcodes_s3_secret_key is not match('^REPLACE_WITH')
+          - vault_runcodes_redis_password is not match('^REPLACE_WITH')
+          - vault_runcodes_admin_password is not match('^REPLACE_WITH')
+          - vault_grafana_admin_password is not match('^REPLACE_WITH')
+        fail_msg: >-
+          Secrets are missing or too short. Copy inventories/group_vars/all/vault.yml.example
+          to inventories/group_vars/all/vault.yml, fill it in and encrypt it with
+          ansible-vault. See docs/DEPLOYMENT.md.
+
+    - name: Require .env-safe secret characters
+      ansible.builtin.assert:
+        that:
+          - vault_runcodes_jwt_secret is match('^[A-Za-z0-9._~+/=-]+$')
+          - vault_runcodes_judge_token is match('^[A-Za-z0-9._~+/=-]+$')
+          - vault_runcodes_db_owner_password is match('^[A-Za-z0-9._~+/=-]+$')
+          - vault_runcodes_db_app_password is match('^[A-Za-z0-9._~+/=-]+$')
+          - vault_runcodes_s3_access_key is match('^[A-Za-z0-9._~+/=-]+$')
+          - vault_runcodes_s3_secret_key is match('^[A-Za-z0-9._~+/=-]+$')
+          - vault_runcodes_redis_password is match('^[A-Za-z0-9._~+/=-]+$')
+        fail_msg: >-
+          One of the secrets contains characters that are not safe in a Compose
+          .env value or the SeaweedFS JSON identity. Use hex or base64url output.
+
+    - name: Require optional .env values to avoid interpolation characters
+      ansible.builtin.assert:
+        that:
+          - vault_runcodes_legacy_password_salt | default('') is not search('\$')
+          - vault_runcodes_legacy_password_salt | default('') is not search('"')
+          - vault_runcodes_smtp_username | default('') is not search('\$')
+          - vault_runcodes_smtp_username | default('') is not search('"')
+          - vault_runcodes_smtp_password | default('') is not search('\$')
+          - vault_runcodes_smtp_password | default('') is not search('"')
+        fail_msg: >-
+          The legacy salt or SMTP credentials contain a literal '$' or a double
+          quote, which is not safe in the generated .env. Remove/escape it or
+          switch the backend to a *_FILE-based secret.
+
+    - name: Refuse secrets podman-compose would silently interpolate
+      ansible.builtin.assert:
+        that:
+          - vault_runcodes_jwt_secret is not search('\$')
+          - vault_runcodes_judge_token is not search('\$')
+          - vault_runcodes_db_owner_password is not search('\$')
+          - vault_runcodes_db_app_password is not search('\$')
+          - vault_runcodes_s3_access_key is not search('\$')
+          - vault_runcodes_s3_secret_key is not search('\$')
+          - vault_runcodes_redis_password is not search('\$')
+          - vault_runcodes_admin_password is not search('\$')
+          - vault_grafana_admin_password is not search('\$')
+        fail_msg: >-
+          A secret contains a literal '$'. podman-compose performs variable
+          substitution on .env values and can corrupt it. Regenerate the secret
+          with hex/base64url (see docs/DEPLOYMENT.md).
+
+    - name: Require SSH and peer ranges when UFW is enabled
+      ansible.builtin.assert:
+        that:
+          - runcodes_firewall_ssh_cidrs | length > 0
+          - runcodes_firewall_private_sources | length > 0
+          - runcodes_firewall_container_sources | length > 0
+        fail_msg: >-
+          runcodes_firewall_enabled=true requires runcodes_firewall_ssh_cidrs
+          and runcodes_firewall_private_sources; otherwise the default-deny
+          policy blocks SSH or the private service network.
+      when: runcodes_firewall_enabled | bool
+
+    - name: Require the firewall peer list to match the inventory
+      ansible.builtin.assert:
+        that:
+          - (rc_preflight_private_ips | sort) == (runcodes_firewall_private_sources | sort)
+        fail_msg: >-
+          runcodes_firewall_private_sources must list exactly the four
+          inventory private_ip values; otherwise UFW would block a peer.
+      when: runcodes_firewall_enabled | bool
+
+    - name: Warn when a public address plan runs without host firewalling
+      ansible.builtin.debug:
+        msg: >-
+          UFW is disabled. Keep the provider firewall restricted to the four
+          node addresses for every port except 80/443 on the edge, or enable
+          runcodes_firewall_enabled with the correct SSH sources.
+      when: not (runcodes_firewall_enabled | bool)
+
+    - name: Note the runner image pre-pull
+      ansible.builtin.debug:
+        msg: >-
+          Judge runner images use tag '{{ runcodes_runner_tag }}' and will be
+          pre-pulled into rootless podman storage on the compute host. Set
+          config_runcodes_runner_tag to a version if you need a coordinated,
+          reproducible release.
+      when: runcodes_prepull_runner_images | bool
+
+    - name: Print the deployment summary
+      ansible.builtin.debug:
+        msg:
+          - "Cluster: {{ runcodes_cluster_name }} ({{ runcodes_environment }})"
+          - "Public URL: {{ runcodes_public_url }}"
+          - "Edge: {{ groups['edge'][0] }} / {{ hostvars[groups['edge'][0]].private_ip }}"
+          - "Data: {{ groups['data'][0] }} / {{ hostvars[groups['data'][0]].private_ip }}"
+          - "Compute: {{ groups['compute'][0] }} / {{ hostvars[groups['compute'][0]].private_ip }}"
+          - "Observability: {{ groups['observability'][0] }} / {{ hostvars[groups['observability'][0]].private_ip }}"
+          - "Assets: {{ runcodes_repo_root }}"

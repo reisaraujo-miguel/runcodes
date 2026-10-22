@@ -1,0 +1,10 @@
+---
+# Podman and podman-compose are installed system-wide. Every stack runs as the
+# deployment user, so the images, storage, auth file and systemd units all live
+# under that user.
+rc_podman_engine_packages:
+  - podman
+  - podman-compose
+  - uidmap
+  - fuse-overlayfs
+  - slirp4netns

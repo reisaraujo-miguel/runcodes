@@ -1,0 +1,12 @@
+---
+rc_podman_packages:
+  - fuse-overlayfs
+  - podman
+  - slirp4netns
+  - uidmap
+
+# Rootless podman maps container root to a range owned by the deployment user.
+# 100000:65536 is the conventional first range; change it if it collides with
+# another subordinate-id allocation on the host.
+rc_podman_subuid_start: 100000
+rc_podman_subid_count: 65536

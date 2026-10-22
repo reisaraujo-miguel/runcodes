@@ -1,0 +1,31 @@
+# Managed by Ansible (deploy/ansible/roles/rc-podman-stack).
+[Unit]
+Description=RunCodes {{ stack_name }} stack
+{% if stack_after %}
+After={{ stack_after }}
+{% endif %}
+{% if stack_requires %}
+Requires={{ stack_requires }}
+{% endif %}
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory={{ stack_dir }}
+Environment=HOME={{ stack_user_home }}
+Environment=XDG_RUNTIME_DIR=/run/user/{{ stack_user_uid }}
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ stack_user_uid }}/bus
+{% if stack_wait_socket %}
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 120); do [ -S /run/user/{{ stack_user_uid }}/podman/podman.sock ] && exit 0; sleep 1; done; echo "rootless podman socket did not appear" >&2; exit 1'
+{% endif %}
+{% if stack_exec_start_pre %}
+ExecStartPre={{ stack_exec_start_pre }}
+{% endif %}
+ExecStart={{ podman_compose_bin }} -p runcodes-{{ stack_name }} -f compose.yml up -d --force-recreate
+ExecReload={{ podman_compose_bin }} -p runcodes-{{ stack_name }} -f compose.yml up -d
+ExecStop=-{{ podman_compose_bin }} -p runcodes-{{ stack_name }} -f compose.yml stop
+TimeoutStartSec=0
+TimeoutStopSec=120
+
+[Install]
+WantedBy=default.target

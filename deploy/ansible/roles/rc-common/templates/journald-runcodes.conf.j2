@@ -1,0 +1,5 @@
+[Journal]
+# Application logs are shipped to Loki over OTLP. Container logs are kept by
+# the container runtime/journal and must not be allowed to fill the disk on
+# their own.
+SystemMaxUse={{ rc_common_journald_max_use }}

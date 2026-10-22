@@ -1,0 +1,56 @@
+---
+# Four-machine RunCodes deployment.
+#
+# Copy this file to inventories/hosts.yml and replace the RFC 5737 example
+# addresses with your four hosts:
+#
+#   edge          = 203.0.113.10
+#   data          = 203.0.113.11
+#   compute       = 203.0.113.12
+#   observability = 203.0.113.13
+#
+# The deployment treats the node addresses as the private/management network
+# and binds every non-public service to them; the provider firewall (or UFW)
+# must restrict those ports to the four peers. If the hosts already run
+# services on the same ports, stop them (or reimage the hosts) before the first
+# deployment.
+#
+# SSH: the login user is `runcodes` and must have sudo. Prefer an SSH key and a
+# NOPASSWD sudoers rule; passwords are not stored in this inventory.
+all:
+  children:
+    runcodes:
+      vars:
+        ansible_user: runcodes
+        ansible_become: true
+        ansible_python_interpreter: /usr/bin/python3
+      children:
+        # Public entry point: Caddy + SPA + backend API.
+        edge:
+          hosts:
+            runcodes-edge:
+              ansible_host: 203.0.113.10
+              private_ip: 203.0.113.10
+              public_ip: 203.0.113.10
+
+        # Stateful services: PostgreSQL, Redis and SeaweedFS.
+        data:
+          hosts:
+            runcodes-data:
+              ansible_host: 203.0.113.11
+              private_ip: 203.0.113.11
+
+        # Untrusted-code execution: judge + rootless podman.
+        compute:
+          hosts:
+            runcodes-compute:
+              ansible_host: 203.0.113.12
+              private_ip: 203.0.113.12
+
+        # Telemetry storage and query: OTel Collector, Prometheus, Loki,
+        # Tempo, Pyroscope, Grafana and Alertmanager.
+        observability:
+          hosts:
+            runcodes-observability:
+              ansible_host: 203.0.113.13
+              private_ip: 203.0.113.13

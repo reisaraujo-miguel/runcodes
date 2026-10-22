@@ -1,0 +1,152 @@
+---
+- name: Render the data host environment file
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ runcodes_root }}/compose/data/.env"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0600"
+  no_log: true
+
+- name: Render the SeaweedFS S3 identity
+  ansible.builtin.template:
+    src: s3.json.j2
+    dest: "{{ runcodes_root }}/config/data/s3.json"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0600"
+  no_log: true
+
+- name: Install the data host compose file
+  ansible.builtin.copy:
+    src: compose.yml
+    dest: "{{ runcodes_root }}/compose/data/compose.yml"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+
+- name: Deploy PostgreSQL, Redis, SeaweedFS and their exporters
+  ansible.builtin.include_role:
+    name: rc-podman-stack
+  vars:
+    stack_name: data
+    stack_dir: "{{ runcodes_root }}/compose/data"
+    stack_after: ""
+    stack_requires: ""
+    stack_wait_socket: false
+    stack_pull: "{{ runcodes_pull_images | bool }}"
+
+- name: Wait for PostgreSQL to accept connections
+  ansible.builtin.command:
+    argv:
+      - podman
+      - exec
+      - runcodes-data-database
+      - pg_isready
+      - --username
+      - "{{ runcodes_db_owner }}"
+      - --dbname
+      - "{{ runcodes_db_name }}"
+  register: rc_data_pg_ready
+  changed_when: false
+  until: rc_data_pg_ready.rc == 0
+  retries: 40
+  delay: 3
+
+- name: Wait for Redis to answer with authentication
+  ansible.builtin.command:
+    argv:
+      - podman
+      - exec
+      - -e
+      - "REDIS_PASSWORD={{ runcodes_redis_password }}"
+      - runcodes-data-redis
+      - sh
+      - -c
+      - 'redis-cli --no-auth-warning -a "$REDIS_PASSWORD" ping | grep -qx PONG'
+  register: rc_data_redis_ready
+  changed_when: false
+  no_log: true
+  until: rc_data_redis_ready.rc == 0
+  retries: 30
+  delay: 3
+
+- name: Wait for the SeaweedFS S3 endpoint
+  ansible.builtin.wait_for:
+    host: "{{ private_ip }}"
+    port: 8333
+    timeout: 120
+
+- name: Ensure the row-only application role matches the vault password
+  ansible.builtin.command:
+    argv:
+      - podman
+      - exec
+      - -e
+      - "PGPASSWORD={{ runcodes_db_owner_password }}"
+      - -e
+      - "RUNCODES_DB_APP_PASSWORD={{ runcodes_db_app_password }}"
+      - runcodes-data-database
+      - /docker-entrypoint-initdb.d/05-app-role.sh
+  changed_when: false
+  no_log: true
+
+- name: Read the seeded admin password state
+  ansible.builtin.command:
+    argv:
+      - podman
+      - exec
+      - -e
+      - "PGPASSWORD={{ runcodes_db_owner_password }}"
+      - runcodes-data-database
+      - psql
+      - --no-psqlrc
+      - --tuples-only
+      - --no-align
+      - --username
+      - "{{ runcodes_db_owner }}"
+      - --dbname
+      - "{{ runcodes_db_name }}"
+      - --command
+      - "SELECT password_hash FROM users WHERE email = '{{ runcodes_admin_email }}'"
+  register: rc_data_admin_hash
+  changed_when: false
+  no_log: true
+
+- name: Bootstrap the seeded admin password on first deployment
+  ansible.builtin.command:
+    argv:
+      - podman
+      - exec
+      - -e
+      - "PGPASSWORD={{ runcodes_db_owner_password }}"
+      - -e
+      - "RUNCODES_ADMIN_PASSWORD={{ runcodes_admin_password }}"
+      - -e
+      - "RUNCODES_ADMIN_EMAIL={{ runcodes_admin_email }}"
+      - runcodes-data-database
+      - /bootstrap/bootstrap-admin.sh
+  when:
+    - runcodes_bootstrap_admin | bool
+    - rc_data_admin_hash.stdout | trim == '!'
+  changed_when: true
+  no_log: true
+
+- name: Warn when the seeded admin account is missing
+  ansible.builtin.debug:
+    msg: >-
+      No user {{ runcodes_admin_email }} exists, so the admin password was not
+      bootstrapped. Restore the account or set runcodes_admin_email.
+  when: rc_data_admin_hash.stdout | trim | length == 0
+
+- name: Show the data stack status
+  ansible.builtin.command:
+    argv: [podman-compose, -p, runcodes-data, -f, compose.yml, ps]
+    chdir: "{{ runcodes_root }}/compose/data"
+  register: rc_data_ps
+  changed_when: false
+
+- name: Print the data stack status
+  ansible.builtin.debug:
+    var: rc_data_ps.stdout_lines
+    verbosity: 1

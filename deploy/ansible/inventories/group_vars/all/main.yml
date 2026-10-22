@@ -1,0 +1,122 @@
+---
+# Mapping layer.
+#
+# Deployment-specific values live in config.yml (gitignored, copied from
+# config.yml.example). Secrets live in vault.yml (ansible-vault encrypted,
+# copied from vault.yml.example). This file only maps those names to the
+# runcodes_* names used by the roles and templates.
+
+# ---------------------------------------------------------------------------
+# Identity and release
+# ---------------------------------------------------------------------------
+runcodes_cluster_name: "{{ config_runcodes_cluster_name }}"
+runcodes_environment: "{{ config_runcodes_environment }}"
+runcodes_version: "{{ config_runcodes_version }}"
+runcodes_image_registry: "{{ config_runcodes_image_registry }}"
+runcodes_image_namespace: "{{ config_runcodes_image_namespace }}"
+runcodes_image_tag: "{{ config_runcodes_image_tag }}"
+runcodes_pull_images: "{{ config_runcodes_pull_images }}"
+runcodes_runner_tag: "{{ config_runcodes_runner_tag }}"
+runcodes_runner_image_prefix: "{{ config_runcodes_runner_image_prefix }}"
+runcodes_prepull_runner_images: "{{ config_runcodes_prepull_runner_images }}"
+runcodes_runner_languages: "{{ config_runcodes_runner_languages }}"
+
+# ---------------------------------------------------------------------------
+# Edge address and TLS
+# ---------------------------------------------------------------------------
+runcodes_domain: "{{ config_runcodes_domain }}"
+runcodes_public_url: "{{ config_runcodes_public_url }}"
+runcodes_backend_debug_mode: "{{ config_runcodes_backend_debug_mode }}"
+
+# ---------------------------------------------------------------------------
+# Filesystem layout
+# ---------------------------------------------------------------------------
+runcodes_deploy_user: "{{ config_runcodes_deploy_user }}"
+runcodes_root: "{{ config_runcodes_root }}"
+runcodes_repo_root: "{{ playbook_dir | dirname | dirname | dirname }}"
+
+# ---------------------------------------------------------------------------
+# Application configuration
+# ---------------------------------------------------------------------------
+runcodes_db_name: "{{ config_runcodes_db_name }}"
+runcodes_db_owner: "{{ config_runcodes_db_owner }}"
+runcodes_redis_db: "{{ config_runcodes_redis_db }}"
+runcodes_s3_region: "{{ config_runcodes_s3_region }}"
+runcodes_s3_bucket_prefix: "{{ config_runcodes_s3_bucket_prefix }}"
+
+runcodes_smtp_host: "{{ config_runcodes_smtp_host }}"
+runcodes_smtp_port: "{{ config_runcodes_smtp_port }}"
+runcodes_smtp_from: "{{ config_runcodes_smtp_from }}"
+runcodes_smtp_username: "{{ vault_runcodes_smtp_username | default('') }}"
+runcodes_smtp_password: "{{ vault_runcodes_smtp_password | default('') }}"
+
+runcodes_bootstrap_admin: "{{ config_runcodes_bootstrap_admin }}"
+runcodes_admin_email: "{{ config_runcodes_admin_email }}"
+runcodes_legacy_password_salt: "{{ vault_runcodes_legacy_password_salt | default('') }}"
+
+# ---------------------------------------------------------------------------
+# Judge / execution
+# ---------------------------------------------------------------------------
+runcodes_judge_concurrency: "{{ config_runcodes_judge_concurrency }}"
+runcodes_judge_exec_dir: "{{ config_runcodes_judge_exec_dir }}"
+runcodes_judge_stale_timeout: "{{ config_runcodes_judge_stale_timeout }}"
+runcodes_judge_max_run_duration: "{{ config_runcodes_judge_max_run_duration }}"
+runcodes_judge_compilation_wait: "{{ config_runcodes_judge_compilation_wait }}"
+runcodes_judge_poll_interval: "{{ config_runcodes_judge_poll_interval }}"
+runcodes_judge_container_memory_bytes: "{{ config_runcodes_judge_container_memory_bytes }}"
+runcodes_judge_container_pids_limit: "{{ config_runcodes_judge_container_pids_limit }}"
+runcodes_judge_container_cpu_quota: "{{ config_runcodes_judge_container_cpu_quota }}"
+
+# ---------------------------------------------------------------------------
+# OpenTelemetry instrumentation (application side)
+# ---------------------------------------------------------------------------
+runcodes_otel_traces_sampler: "{{ config_runcodes_otel_traces_sampler }}"
+runcodes_otel_traces_sampler_arg: "{{ config_runcodes_otel_traces_sampler_arg }}"
+runcodes_otel_metric_export_interval: "{{ config_runcodes_otel_metric_export_interval }}"
+
+# ---------------------------------------------------------------------------
+# Observability storage and UI
+# ---------------------------------------------------------------------------
+runcodes_prometheus_retention_time: "{{ config_runcodes_prometheus_retention_time }}"
+runcodes_prometheus_retention_size: "{{ config_runcodes_prometheus_retention_size }}"
+runcodes_tempo_retention_hours: "{{ config_runcodes_tempo_retention_hours }}"
+runcodes_grafana_admin_user: "{{ config_runcodes_grafana_admin_user }}"
+runcodes_grafana_root_url: "{{ config_runcodes_grafana_root_url }}"
+runcodes_alertmanager_webhook_url: "{{ vault_alertmanager_webhook_url | default('') }}"
+
+# ---------------------------------------------------------------------------
+# Host management and firewall
+# ---------------------------------------------------------------------------
+runcodes_timezone: "{{ config_runcodes_timezone }}"
+runcodes_firewall_enabled: "{{ config_runcodes_firewall_enabled }}"
+runcodes_firewall_private_sources: "{{ config_runcodes_firewall_private_sources }}"
+runcodes_firewall_ssh_cidrs: "{{ config_runcodes_firewall_ssh_cidrs }}"
+runcodes_firewall_container_sources: "{{ config_runcodes_firewall_container_sources }}"
+
+# ---------------------------------------------------------------------------
+# Verification
+# ---------------------------------------------------------------------------
+runcodes_verify_public_url: "{{ config_runcodes_verify_public_url }}"
+runcodes_verify_tls: "{{ config_runcodes_verify_tls }}"
+runcodes_run_smoke_test: "{{ config_runcodes_run_smoke_test }}"
+runcodes_run_submission_smoke_test: "{{ config_runcodes_run_submission_smoke_test }}"
+
+# ---------------------------------------------------------------------------
+# Secrets (defined in vault.yml)
+# ---------------------------------------------------------------------------
+runcodes_jwt_secret: "{{ vault_runcodes_jwt_secret }}"
+runcodes_db_owner_password: "{{ vault_runcodes_db_owner_password }}"
+runcodes_db_app_password: "{{ vault_runcodes_db_app_password }}"
+runcodes_judge_token: "{{ vault_runcodes_judge_token }}"
+runcodes_s3_access_key: "{{ vault_runcodes_s3_access_key }}"
+runcodes_s3_secret_key: "{{ vault_runcodes_s3_secret_key }}"
+runcodes_redis_password: "{{ vault_runcodes_redis_password }}"
+runcodes_admin_password: "{{ vault_runcodes_admin_password }}"
+runcodes_grafana_admin_password: "{{ vault_grafana_admin_password }}"
+
+# ---------------------------------------------------------------------------
+# Registry credentials (optional; defined in vault.yml)
+# ---------------------------------------------------------------------------
+runcodes_registry: "{{ config_runcodes_image_registry }}"
+runcodes_registry_username: "{{ vault_registry_username | default('') }}"
+runcodes_registry_password: "{{ vault_registry_password | default('') }}"

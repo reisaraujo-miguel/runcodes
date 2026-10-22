@@ -1,0 +1,72 @@
+---
+rc_common_packages:
+  - acl
+  - apt-transport-https
+  - ca-certificates
+  - chrony
+  - curl
+  - gnupg
+  - jq
+  - lsb-release
+  - python3
+  - python3-apt
+  - tar
+  - tzdata
+  - unzip
+
+# Safe defaults for a container host. The observability node raises inotify
+# limits for its many mounted configuration files; setting them everywhere is
+# harmless and keeps the hosts identical.
+rc_common_sysctl:
+  fs.inotify.max_user_instances: 8192
+  fs.inotify.max_user_watches: 524288
+  net.core.somaxconn: 4096
+  # Rootless Podman publishes Caddy's 80/443 through rootlessport. The
+  # deployment user must be allowed to bind those ports; 22 and the other
+  # privileged ports stay restricted.
+  net.ipv4.ip_unprivileged_port_start: 80
+  vm.overcommit_memory: 1
+
+rc_common_journald_max_use: "1G"
+
+rc_common_directories:
+  - path: "{{ runcodes_root }}"
+    owner: root
+    group: root
+    mode: "0755"
+  - path: "{{ runcodes_root }}/compose"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0755"
+  - path: "{{ runcodes_root }}/config"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0755"
+  - path: "{{ runcodes_root }}/secrets"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0700"
+  - path: "{{ runcodes_root }}/bootstrap"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0755"
+  - path: "{{ runcodes_root }}/database"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0755"
+  - path: "{{ runcodes_root }}/scripts"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0755"
+  - path: "{{ runcodes_root }}/scripts/observability"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0755"
+  - path: "{{ runcodes_root }}/exec"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0775"
+  - path: "{{ runcodes_root }}/backups"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0755"

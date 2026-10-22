@@ -1,0 +1,8 @@
+---
+rc_firewall_ssh_port: 22
+rc_firewall_http_ports: [80, 443]
+# The container engine writes its own iptables/netavark rules. UFW cannot
+# police published container ports, which is why every private service binds to
+# private_ip and the only public container ports are Caddy's 80/443. This role
+# is a second layer for SSH and host-level services.
+rc_firewall_manage_forward_policy: true

@@ -1,0 +1,131 @@
+# OpenTelemetry Collector gateway for the four-machine RunCodes deployment.
+#
+#   backend/judge (edge/compute) --OTLP/HTTP :4318--> collector
+#     traces  -> otlp/tempo (gRPC) -> Tempo
+#     metrics -> prometheus exporter (:8889) -> scraped by Prometheus
+#     logs    -> otlphttp/loki (/otlp/v1/logs) -> Loki
+#
+# The browser also posts traces to the edge Caddy route /otel/v1/traces, which
+# proxies the private collector HTTP receiver. Unlike the local Compose stack,
+# the browser and the services are not on the same container network, so this
+# receiver is bound on the observability host's private address (see compose).
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+        # The browser posts same-origin through Caddy, so CORS is not needed for
+        # the normal path. It is kept for operators running the upstream smoke
+        # test directly against the collector and for split-origin SPAs.
+        cors:
+          allowed_origins:
+            - "{{ runcodes_public_url }}"
+            - "http://{{ hostvars[groups['edge'][0]].private_ip }}"
+            - "http://localhost:8080"
+            - "http://127.0.0.1:8080"
+            - "http://localhost:5173"
+            - "http://127.0.0.1:5173"
+          allowed_headers:
+            - "*"
+          max_age: 3600
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+
+  resource:
+    attributes:
+      - key: service.namespace
+        value: runcodes
+        action: insert
+      - key: deployment.environment.name
+        value: ${env:DEPLOYMENT_ENVIRONMENT}
+        action: upsert
+
+  batch:
+    timeout: 5s
+    send_batch_size: 512
+    send_batch_max_size: 1024
+
+exporters:
+  otlp_grpc/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+    timeout: 10s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 4
+      queue_size: 5000
+
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    add_metric_suffixes: true
+    send_timestamps: true
+    metric_expiration: 5m
+    resource_constant_labels:
+      included:
+        - "service.name"
+        - "service.namespace"
+        - "service.version"
+        - "deployment.environment.name"
+
+  otlp_http/loki:
+    endpoint: http://loki:3100/otlp
+    compression: gzip
+    timeout: 10s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 4
+      queue_size: 5000
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+    path: /health/status
+
+service:
+  extensions: [health_check]
+
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      level: basic
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp_grpc/tempo]
+
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [prometheus]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp_http/loki]

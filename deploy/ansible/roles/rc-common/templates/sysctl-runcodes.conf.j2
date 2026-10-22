@@ -1,0 +1,4 @@
+# Managed by Ansible (deploy/ansible/roles/rc-common).
+{% for key, value in rc_common_sysctl.items() | sort %}
+{{ key }} = {{ value }}
+{% endfor %}

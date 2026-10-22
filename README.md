@@ -192,6 +192,18 @@ settings and the mail variables described above. All but the legacy salt are
 required and compose fails fast when one is missing. Every service documents its
 own variables in its `.env.example`.
 
+## Deployment
+
+A four-machine Ansible deployment, including the full observability stack, lives
+in [`deploy/ansible/`](deploy/ansible/README.md). It uses four example node
+addresses and rootless Podman for every service stack and graded runner. It
+separates the public edge/backend, the stateful PostgreSQL/Redis/SeaweedFS host,
+the judge host and a dedicated telemetry host.
+The deployment pulls published application images from GHCR rather than building
+on the hosts; deployment values live in an untracked `config.yml`. The topology
+and rationale are documented in
+[`deploy/ansible/docs/ARCHITECTURE.md`](deploy/ansible/docs/ARCHITECTURE.md).
+
 ## Development
 
 Run each service locally against the Compose-provided database, SeaweedFS and
@@ -270,17 +282,19 @@ an admin password, respectively.
 
 ## Releases
 
-Two image families are consumed by name and are published to GHCR on a
+Three image families are consumed by name and are published to GHCR on a
 `v*.*.*` tag:
 
-| Workflow                        | Publishes                                                                     |
-| ------------------------------- | ----------------------------------------------------------------------------- |
-| `.github/workflows/monitor.yml` | `ghcr.io/runcodes-icmc/runcodes-monitor`                                      |
-| `.github/workflows/runners.yml` | `ghcr.io/runcodes-icmc/runcodes-runner-base` and `runcodes-runner-<language>` |
+| Workflow                          | Publishes                                                                     |
+| --------------------------------- | ----------------------------------------------------------------------------- |
+| `.github/workflows/app-images.yml` | `ghcr.io/runcodes-icmc/runcodes-frontend`, `-backend`, `-database`, `-judge` |
+| `.github/workflows/monitor.yml`   | `ghcr.io/runcodes-icmc/runcodes-monitor`                                      |
+| `.github/workflows/runners.yml`   | `ghcr.io/runcodes-icmc/runcodes-runner-base` and `runcodes-runner-<language>` |
 
-Both workflows also move `:latest` on every tag, because that is the tag the
+All three workflows also move `:latest` on every tag; the four-machine
+deployment defaults to it, while the version tags exist for pinning. The
 per-language Dockerfiles, the judge's default `JUDGE_IMAGE_FORMAT` and the
-integration test read; the version tags exist for pinning a deployment.
+integration test read the runner `:latest` tag.
 `runners.yml` builds `base` before the languages, since 12 of them inherit from
 it and 11 copy the harness and the monitor out of it.
 
@@ -291,8 +305,12 @@ rebuilding the images in `runners/` together, or the runs of the new judge
 fail against images that are still on the old base script.
 
 The application images (backend, frontend, database, judge) are built and
-scanned from source by `.github/workflows/images.yml`; they are not published —
-`docker compose` builds them locally.
+scanned from source by `.github/workflows/images.yml` and published by
+`.github/workflows/app-images.yml` for the four-machine deployment. The local
+development `docker-compose.yml` still builds them from source; the Ansible
+deployment pulls the published images instead. The frontend image is built with
+the same-origin `/otel` browser-telemetry endpoint, so no deployment hostname is
+baked into the SPA.
 
 ## Security
 

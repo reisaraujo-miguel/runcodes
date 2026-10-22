@@ -1,0 +1,54 @@
+# Alertmanager routing for the four-machine deployment.
+#
+# Production alerts go to the receiver URL stored in the secret file. The
+# bundled alert-sink is kept as a real, local receiver for the end-to-end smoke
+# test: the upstream smoke test injects an alert named ObservabilitySmokeTest
+# and asserts that it arrives there. This route also proves delivery when no
+# external receiver is configured yet.
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: default
+  group_by: [alertname, service_name, severity]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+  routes:
+    - matchers:
+        - alertname="ObservabilitySmokeTest"
+      receiver: alert-sink
+      group_wait: 0s
+      repeat_interval: 1h
+
+    - matchers:
+        - severity="critical"
+      receiver: default
+      group_wait: 0s
+      repeat_interval: 1h
+
+receivers:
+  - name: default
+    webhook_configs:
+      # Written by Ansible from vault_alertmanager_webhook_url. When that is
+      # empty the file points at alert-sink, so a fallback still delivers.
+      - url_file: /etc/alertmanager/secrets/webhook_url
+        send_resolved: true
+        max_alerts: 0
+
+  - name: alert-sink
+    webhook_configs:
+      - url: http://alert-sink:8080/alerts
+        send_resolved: true
+        max_alerts: 0
+
+  - name: "null"
+
+inhibit_rules:
+  # A critical alert for a service silences its warnings with the same name.
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
+    equal: [alertname, service_name]

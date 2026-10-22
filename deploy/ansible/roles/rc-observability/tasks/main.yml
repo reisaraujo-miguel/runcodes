@@ -1,0 +1,221 @@
+---
+- name: Render the observability host environment file
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ runcodes_root }}/compose/observability/.env"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0600"
+  no_log: true
+
+- name: Render the Prometheus scrape and alerting configuration
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: "{{ rc_observability_prometheus_config }}"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+
+- name: Render the OpenTelemetry Collector configuration
+  ansible.builtin.template:
+    src: otel-collector.yaml.j2
+    dest: "{{ rc_observability_collector_config }}"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+
+- name: Render the Tempo configuration
+  ansible.builtin.template:
+    src: tempo.yaml.j2
+    dest: "{{ rc_observability_tempo_config }}"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+
+- name: Render the Alertmanager routing configuration
+  ansible.builtin.template:
+    src: alertmanager.yml.j2
+    dest: "{{ rc_observability_alertmanager_config }}"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+
+- name: Store the Alertmanager webhook receiver URL
+  ansible.builtin.copy:
+    content: "{{ runcodes_alertmanager_webhook_url if runcodes_alertmanager_webhook_url | length > 0 else 'http://alert-sink:8080/alerts' }}\n"
+    dest: "{{ runcodes_root }}/secrets/alertmanager_webhook_url"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+  no_log: true
+
+- name: Store the Grafana admin password
+  ansible.builtin.copy:
+    content: "{{ runcodes_grafana_admin_password }}\n"
+    dest: "{{ runcodes_root }}/secrets/grafana_admin_password"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+  no_log: true
+
+- name: Install the Loki configuration
+  ansible.builtin.copy:
+    src: "{{ runcodes_repo_root }}/observability/loki/loki.yaml"
+    dest: "{{ runcodes_root }}/config/observability/loki.yaml"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+
+- name: Install the Pyroscope configuration
+  ansible.builtin.copy:
+    src: "{{ runcodes_repo_root }}/observability/pyroscope/config.yaml"
+    dest: "{{ runcodes_root }}/config/observability/pyroscope.yaml"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+
+- name: Install the blackbox exporter configuration
+  ansible.builtin.copy:
+    src: "{{ runcodes_repo_root }}/observability/blackbox/blackbox.yml"
+    dest: "{{ runcodes_root }}/config/observability/blackbox.yml"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+
+- name: Install the alert-sink receiver
+  ansible.builtin.copy:
+    src: "{{ runcodes_repo_root }}/observability/alert-sink/main.py"
+    dest: "{{ runcodes_root }}/config/observability/alert-sink.py"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+
+- name: Install the Prometheus rule files
+  ansible.builtin.copy:
+    src: "{{ runcodes_repo_root }}/observability/prometheus/rules/"
+    dest: "{{ runcodes_root }}/config/observability/rules/"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+    directory_mode: "0755"
+
+- name: Install the Grafana provisioning tree
+  ansible.builtin.copy:
+    src: "{{ runcodes_repo_root }}/observability/grafana/provisioning/"
+    dest: "{{ runcodes_root }}/config/observability/grafana/provisioning/"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+    directory_mode: "0755"
+
+- name: Install the Grafana dashboards
+  ansible.builtin.copy:
+    src: "{{ runcodes_repo_root }}/observability/grafana/dashboards/"
+    dest: "{{ runcodes_root }}/config/observability/grafana/dashboards/"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+    directory_mode: "0755"
+
+- name: Install the observability host compose file
+  ansible.builtin.copy:
+    src: compose.yml
+    dest: "{{ runcodes_root }}/compose/observability/compose.yml"
+    owner: "{{ runcodes_deploy_user }}"
+    group: "{{ runcodes_deploy_user }}"
+    mode: "0644"
+
+- name: Deploy the telemetry storage and query stack
+  ansible.builtin.include_role:
+    name: rc-podman-stack
+  vars:
+    stack_name: observability
+    stack_dir: "{{ runcodes_root }}/compose/observability"
+    stack_after: ""
+    stack_requires: ""
+    stack_wait_socket: false
+    stack_pull: "{{ runcodes_pull_images | bool }}"
+
+- name: Wait for the OpenTelemetry Collector health endpoint
+  ansible.builtin.uri:
+    url: "http://{{ private_ip }}:13133/health/status"
+    status_code: 200
+  register: rc_observability_collector_health
+  until: rc_observability_collector_health.status == 200
+  retries: 40
+  delay: 3
+
+- name: Wait for Prometheus
+  ansible.builtin.uri:
+    url: "http://{{ private_ip }}:9090/-/ready"
+    status_code: 200
+  register: rc_observability_prometheus_ready
+  until: rc_observability_prometheus_ready.status == 200
+  retries: 40
+  delay: 3
+
+- name: Wait for Alertmanager
+  ansible.builtin.uri:
+    url: "http://{{ private_ip }}:9093/-/ready"
+    status_code: 200
+  register: rc_observability_alertmanager_ready
+  until: rc_observability_alertmanager_ready.status == 200
+  retries: 40
+  delay: 3
+
+- name: Wait for Loki
+  ansible.builtin.uri:
+    url: "http://{{ private_ip }}:3100/ready"
+    status_code: 200
+  register: rc_observability_loki_ready
+  until: rc_observability_loki_ready.status == 200
+  retries: 60
+  delay: 3
+
+- name: Wait for Tempo
+  ansible.builtin.uri:
+    url: "http://{{ private_ip }}:3200/ready"
+    status_code: 200
+  register: rc_observability_tempo_ready
+  until: rc_observability_tempo_ready.status == 200
+  retries: 60
+  delay: 3
+
+- name: Wait for Pyroscope
+  ansible.builtin.uri:
+    url: "http://{{ private_ip }}:4040/ready"
+    status_code: 200
+  register: rc_observability_pyroscope_ready
+  until: rc_observability_pyroscope_ready.status == 200
+  retries: 60
+  delay: 3
+
+- name: Wait for Grafana
+  ansible.builtin.uri:
+    url: "http://{{ private_ip }}:3000/api/health"
+    status_code: 200
+  register: rc_observability_grafana_ready
+  until: rc_observability_grafana_ready.status == 200
+  retries: 40
+  delay: 3
+
+- name: Wait for the alert sink
+  ansible.builtin.uri:
+    url: "http://{{ private_ip }}:8085/healthz"
+    status_code: 200
+  register: rc_observability_alert_sink_ready
+  until: rc_observability_alert_sink_ready.status == 200
+  retries: 20
+  delay: 3
+
+- name: Show the observability stack status
+  ansible.builtin.command:
+    argv: [podman-compose, -p, runcodes-observability, -f, compose.yml, ps]
+    chdir: "{{ runcodes_root }}/compose/observability"
+  register: rc_observability_ps
+  changed_when: false
+
+- name: Print the observability stack status
+  ansible.builtin.debug:
+    var: rc_observability_ps.stdout_lines
+    verbosity: 1

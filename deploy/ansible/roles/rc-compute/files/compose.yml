@@ -1,0 +1,122 @@
+# RunCodes compute host: the judge and its observability agents.
+#
+# Every stack runs as the deployment user. The judge executes untrusted code
+# through that user's rootless podman API socket; the socket directory and the
+# shared exec directory are the only host resources it receives.
+
+services:
+  judge:
+    image: ${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/runcodes-judge:${IMAGE_TAG}
+    container_name: runcodes-compute-judge
+    restart: always
+    # keep-id maps the container user to the host deployment user, so /exec
+    # and the rootless socket have the expected ownership.
+    user: "${JUDGE_UID}:${JUDGE_GID}"
+    userns_mode: keep-id
+    # SELinux labels the rootless socket user_tmp_t, which container_t cannot
+    # connect to. The untrusted runner containers keep their confinement;
+    # only the judge container drops SELinux separation.
+    security_opt:
+      - label=disable
+    ports:
+      # The backend reaches the judge over the private network. The browser
+      # never talks to it directly.
+      - "${PRIVATE_IP}:9000:9000"
+    environment:
+      TZ: ${TZ}
+      JUDGE_ADDR: ":9000"
+      JUDGE_AUTH_TOKEN: ${JUDGE_TOKEN}
+      JUDGE_CONCURRENCY: ${JUDGE_CONCURRENCY}
+      JUDGE_POLL_INTERVAL: ${JUDGE_POLL_INTERVAL}
+      JUDGE_PODMAN_URI: "unix:///run/podman/podman.sock"
+      JUDGE_EXEC_DIR: "/exec"
+      JUDGE_EXEC_DIR_REMOTE: ${JUDGE_EXEC_DIR_REMOTE}
+      JUDGE_IMAGE_FORMAT: "${RUNNER_IMAGE_PREFIX}%s:${RUNNER_TAG}"
+      JUDGE_MAX_RUN_DURATION: ${JUDGE_MAX_RUN_DURATION}
+      JUDGE_COMPILATION_WAIT: ${JUDGE_COMPILATION_WAIT}
+      JUDGE_CONTAINER_MEMORY_BYTES: ${JUDGE_CONTAINER_MEMORY_BYTES}
+      JUDGE_CONTAINER_PIDS_LIMIT: ${JUDGE_CONTAINER_PIDS_LIMIT}
+      JUDGE_CONTAINER_CPU_QUOTA: ${JUDGE_CONTAINER_CPU_QUOTA}
+      RUNCODES_DB_HOST: ${DATA_IP}
+      RUNCODES_DB_PORT: "5432"
+      RUNCODES_DB_USER: runcodes_app
+      RUNCODES_DB_PASSWORD: ${DB_APP_PASSWORD}
+      RUNCODES_DB_NAME: runcodes
+      RUNCODES_DB_SSLMODE: disable
+      RUNCODES_S3_ENDPOINT: "http://${DATA_IP}:8333"
+      RUNCODES_S3_REGION: ${S3_REGION}
+      RUNCODES_S3_CREDENTIALS_KEY: ${S3_ACCESS_KEY}
+      RUNCODES_S3_CREDENTIALS_SECRET: ${S3_SECRET_KEY}
+      RUNCODES_S3_BUCKET_PREFIX: ${S3_BUCKET_PREFIX}
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://${OBS_IP}:4318"
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_EXPORTER_OTLP_TIMEOUT: "10000"
+      OTEL_SERVICE_NAME: runcodes-judge
+      OTEL_SERVICE_VERSION: ${RUNCODES_VERSION}
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG}
+      OTEL_METRIC_EXPORT_INTERVAL: ${OTEL_METRIC_EXPORT_INTERVAL}
+      OTEL_BSP_SCHEDULE_DELAY: "2000"
+      OTEL_BLRP_SCHEDULE_DELAY: "2000"
+      OTEL_SDK_DISABLED: "false"
+      PPROF_ADDR: ":6060"
+    volumes:
+      - ${JUDGE_EXEC_DIR}:/exec
+      # Mount the whole per-user podman runtime directory, not the socket
+      # inode, so a podman.socket restart is visible without recreating the
+      # judge. The compute unit orders after podman.socket and waits for it.
+      - /run/user/${JUDGE_UID}/podman:/run/podman
+    mem_limit: ${JUDGE_MEM_LIMIT}
+    networks:
+      - compute
+
+  alloy:
+    image: grafana/alloy:v1.21.1
+    container_name: runcodes-compute-alloy
+    restart: always
+    command:
+      - "run"
+      - "--server.http.listen-addr=0.0.0.0:12345"
+      - "--storage.path=/var/lib/alloy/data"
+      - "/etc/alloy/config.alloy"
+    ports:
+      - "${PRIVATE_IP}:12345:12345"
+    volumes:
+      - ../../config/compute/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+    security_opt:
+      - label=disable
+    depends_on:
+      - judge
+    mem_limit: ${ALLOY_MEM_LIMIT}
+    networks:
+      - compute
+
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    container_name: runcodes-compute-node-exporter
+    restart: always
+    command:
+      - "--path.rootfs=/host"
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|var/lib/(docker|containers/storage)/.+)($|/)"
+    ports:
+      - "${PRIVATE_IP}:9100:9100"
+    volumes:
+      - /:/host:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    security_opt:
+      - label=disable
+    mem_limit: ${NODE_EXPORTER_MEM_LIMIT}
+    networks:
+      - compute
+
+networks:
+  compute:
+    name: runcodes-compute
+
+volumes:
+  alloy-data:

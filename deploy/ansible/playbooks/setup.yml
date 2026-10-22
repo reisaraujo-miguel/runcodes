@@ -1,0 +1,11 @@
+---
+- name: Prepare the four hosts
+  hosts: runcodes
+  become: true
+  roles:
+    - role: rc-common
+    - role: rc-podman-engine
+    - role: rc-assets
+    - role: rc-firewall
+      when: runcodes_firewall_enabled | bool
+    - role: rc-podman

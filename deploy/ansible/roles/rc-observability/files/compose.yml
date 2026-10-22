@@ -1,0 +1,260 @@
+# RunCodes observability host: OTLP gateway, metrics, logs, traces, profiles,
+# dashboards and alerting. Every port is bound to the host's private_ip; the
+# only public telemetry path is the edge Caddy /otel/v1/traces proxy.
+
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.163.2
+    container_name: runcodes-obs-otel-collector
+    restart: always
+    command: ["--config=/etc/otelcol/config.yaml"]
+    environment:
+      TZ: ${TZ}
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT}
+      GOMEMLIMIT: "384MiB"
+    ports:
+      - "${PRIVATE_IP}:4317:4317"
+      - "${PRIVATE_IP}:4318:4318"
+      - "${PRIVATE_IP}:13133:13133"
+      - "${PRIVATE_IP}:8888:8888"
+      - "${PRIVATE_IP}:8889:8889"
+    volumes:
+      - ../../config/observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    security_opt:
+      - label=disable
+    mem_limit: ${COLLECTOR_MEM_LIMIT}
+    cpus: "1.0"
+    networks:
+      - observability
+    depends_on:
+      - tempo
+      - loki
+
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    container_name: runcodes-obs-prometheus
+    restart: always
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME}"
+      - "--storage.tsdb.retention.size=${PROMETHEUS_RETENTION_SIZE}"
+      - "--web.enable-lifecycle"
+      # Tempo's metrics-generator remote-writes span metrics here.
+      - "--web.enable-remote-write-receiver"
+      - "--enable-feature=exemplar-storage"
+    ports:
+      - "${PRIVATE_IP}:9090:9090"
+    volumes:
+      - ../../config/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../../config/observability/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    security_opt:
+      - label=disable
+    mem_limit: ${PROMETHEUS_MEM_LIMIT}
+    cpus: "1.0"
+    networks:
+      - observability
+    depends_on:
+      - alertmanager
+
+  alertmanager:
+    image: prom/alertmanager:v0.34.1
+    container_name: runcodes-obs-alertmanager
+    restart: always
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--web.listen-address=0.0.0.0:9093"
+      - "--cluster.listen-address="
+    ports:
+      - "${PRIVATE_IP}:9093:9093"
+    volumes:
+      - ../../config/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ../../secrets/alertmanager_webhook_url:/etc/alertmanager/secrets/webhook_url:ro
+      - alertmanager-data:/alertmanager
+    security_opt:
+      - label=disable
+    mem_limit: ${ALERTMANAGER_MEM_LIMIT}
+    cpus: "0.25"
+    networks:
+      - observability
+
+  # Test receiver used by the end-to-end smoke test. It keeps the last 100
+  # payloads in memory and has no authentication; it is private-only.
+  alert-sink:
+    image: python:3.14-slim-trixie
+    container_name: runcodes-obs-alert-sink
+    restart: always
+    command: ["python", "-u", "/app/main.py"]
+    user: "65534:65534"
+    read_only: true
+    tmpfs:
+      - /tmp
+    ports:
+      - "${PRIVATE_IP}:8085:8080"
+    volumes:
+      - ../../config/observability/alert-sink.py:/app/main.py:ro
+    security_opt:
+      - label=disable
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2)"
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    mem_limit: ${ALERT_SINK_MEM_LIMIT}
+    cpus: "0.1"
+    networks:
+      - observability
+
+  loki:
+    image: grafana/loki:3.7.9
+    container_name: runcodes-obs-loki
+    restart: always
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    ports:
+      - "${PRIVATE_IP}:3100:3100"
+    volumes:
+      - ../../config/observability/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+    security_opt:
+      - label=disable
+    mem_limit: ${LOKI_MEM_LIMIT}
+    cpus: "1.0"
+    networks:
+      - observability
+
+  tempo:
+    image: grafana/tempo:3.1.1
+    container_name: runcodes-obs-tempo
+    restart: always
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    ports:
+      - "${PRIVATE_IP}:3200:3200"
+    volumes:
+      - ../../config/observability/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    security_opt:
+      - label=disable
+    mem_limit: ${TEMPO_MEM_LIMIT}
+    cpus: "1.0"
+    networks:
+      - observability
+    depends_on:
+      - prometheus
+
+  pyroscope:
+    image: grafana/pyroscope:2.4.1
+    container_name: runcodes-obs-pyroscope
+    restart: always
+    command:
+      - "-config.file=/etc/pyroscope/config.yaml"
+      - "-metastore.min-ready-duration=0"
+      - "-ingester.min-ready-duration=0"
+      - "-segment-writer.min-ready-duration=0"
+    ports:
+      - "${PRIVATE_IP}:4040:4040"
+    volumes:
+      - ../../config/observability/pyroscope.yaml:/etc/pyroscope/config.yaml:ro
+      - pyroscope-data:/data
+    security_opt:
+      - label=disable
+    mem_limit: ${PYROSCOPE_MEM_LIMIT}
+    cpus: "1.0"
+    networks:
+      - observability
+
+  grafana:
+    image: grafana/grafana:12.4.13
+    container_name: runcodes-obs-grafana
+    restart: always
+    environment:
+      TZ: ${TZ}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD__FILE: "/run/secrets/grafana_admin_password"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_VIEWERS_CAN_EDIT: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: "/var/lib/grafana/dashboards/runcodes-overview.json"
+      GF_FEATURE_TOGGLES_ENABLE: "traceqlEditor"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_LOG_LEVEL: "info"
+    ports:
+      - "${PRIVATE_IP}:3000:3000"
+    volumes:
+      - ../../config/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../../config/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ../../secrets/grafana_admin_password:/run/secrets/grafana_admin_password:ro
+      - grafana-data:/var/lib/grafana
+    security_opt:
+      - label=disable
+    mem_limit: ${GRAFANA_MEM_LIMIT}
+    cpus: "0.5"
+    networks:
+      - observability
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+      - alertmanager
+      - pyroscope
+
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    container_name: runcodes-obs-node-exporter
+    restart: always
+    command:
+      - "--path.rootfs=/host"
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|var/lib/(docker|containers/storage)/.+)($|/)"
+    ports:
+      - "${PRIVATE_IP}:9100:9100"
+    volumes:
+      - /:/host:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    security_opt:
+      - label=disable
+    mem_limit: ${NODE_EXPORTER_MEM_LIMIT}
+    cpus: "0.25"
+    networks:
+      - observability
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.29.1
+    container_name: runcodes-obs-blackbox-exporter
+    restart: always
+    command: ["--config.file=/etc/blackbox_exporter/config.yml"]
+    ports:
+      - "${PRIVATE_IP}:9115:9115"
+    volumes:
+      - ../../config/observability/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    security_opt:
+      - label=disable
+    mem_limit: ${BLACKBOX_MEM_LIMIT}
+    cpus: "0.2"
+    networks:
+      - observability
+
+networks:
+  observability:
+    name: runcodes-observability
+
+volumes:
+  prometheus-data:
+  alertmanager-data:
+  loki-data:
+  tempo-data:
+  pyroscope-data:
+  grafana-data:

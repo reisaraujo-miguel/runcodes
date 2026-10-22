@@ -1,0 +1,16 @@
+---
+rc_observability_collector_mem_limit: "512m"
+rc_observability_prometheus_mem_limit: "1g"
+rc_observability_alertmanager_mem_limit: "128m"
+rc_observability_alert_sink_mem_limit: "64m"
+rc_observability_loki_mem_limit: "512m"
+rc_observability_tempo_mem_limit: "512m"
+rc_observability_pyroscope_mem_limit: "512m"
+rc_observability_grafana_mem_limit: "512m"
+rc_observability_node_exporter_mem_limit: "128m"
+rc_observability_blackbox_mem_limit: "128m"
+
+rc_observability_collector_config: "{{ runcodes_root }}/config/observability/otel-collector.yaml"
+rc_observability_prometheus_config: "{{ runcodes_root }}/config/observability/prometheus.yml"
+rc_observability_tempo_config: "{{ runcodes_root }}/config/observability/tempo.yaml"
+rc_observability_alertmanager_config: "{{ runcodes_root }}/config/observability/alertmanager.yml"

@@ -1,0 +1,21 @@
+---
+# Full four-machine deployment.
+#
+#   ansible-galaxy collection install -r requirements.yml -p .ansible-home/collections
+#   ansible-playbook playbooks/site.yml --ask-vault-pass
+#
+# Order matters:
+#   1. preflight validates the inventory and vault before any host is touched;
+#   2. setup installs Podman, podman-compose, copies deploy assets, and prepares rootless podman;
+#   3. data comes first because every application depends on PostgreSQL/S3;
+#   4. observability comes before the app so instrumentation has a receiver;
+#   5. compute before edge so the backend's readiness check sees the judge;
+#   6. edge is the public surface;
+#   7. verify runs the end-to-end observability smoke test.
+- import_playbook: preflight.yml  # noqa: name[play]
+- import_playbook: setup.yml  # noqa: name[play]
+- import_playbook: deploy-data.yml  # noqa: name[play]
+- import_playbook: deploy-observability.yml  # noqa: name[play]
+- import_playbook: deploy-compute.yml  # noqa: name[play]
+- import_playbook: deploy-edge.yml  # noqa: name[play]
+- import_playbook: verify.yml  # noqa: name[play]
