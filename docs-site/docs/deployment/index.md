@@ -16,7 +16,7 @@ containers are managed.
 | Container runtime | Docker Compose v2 or Podman | rootless Podman + `podman-compose` |
 | Images | built from source (`docker compose up --build`) | pulled from GHCR |
 | Process supervision | Compose restart policy | user systemd units, linger, boot start |
-| Secrets | environment / root `.env` | Ansible Vault, rendered root-owned files |
+| Secrets | environment / root `.env` | Ansible Vault, deployment-user-owned files |
 | Telemetry | opt-in overlay (`make observability-up`) | full stack on the observability host |
 | TLS | Caddy, optional hostname | Caddy + ACME on the public edge |
 | Backups | manual `pg_dump` / volume archive | documented backup boundary on `data` |
