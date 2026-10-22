@@ -162,6 +162,7 @@ Without a token the judge refuses `/v1` with `503` unless
 | `JUDGE_CONTAINER_MEMORY_BYTES` | `1536 MiB` | cgroup memory/swap cap |
 | `JUDGE_CONTAINER_PIDS_LIMIT` | `256` | cgroup pid cap |
 | `JUDGE_CONTAINER_CPU_QUOTA` | `100000` | CPU quota per 100 ms period |
+| `JUDGE_CONTAINER_TMPFS_BYTES` | `256 MiB` | writable `/tmp` cap when the rootfs is read-only |
 | `JUDGE_MAX_COMPARE_FILE_BYTES` | `16 MiB` | max file a case is graded from |
 | `JUDGE_MAX_ARTIFACT_BYTES` | `64 MiB` | max output archive |
 | `JUDGE_ARTIFACT_TTL` | `168h` | retention for output archives; `0` keeps them |

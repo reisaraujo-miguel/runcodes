@@ -74,8 +74,10 @@ limits.
 - `no-new-privileges` and `cap_drop=ALL`, so setuid, file capabilities or the
   runtime's default capability set cannot elevate.
 - Core dumps are disabled (`RLIMIT_CORE=0`), so a crash cannot fill the workspace.
-- One mount (the workspace), a non-root user, a zero umask, and a harness that
-  deletes `container.config` before running submitted code.
+- The image filesystem is read-only; only the workspace and size-capped
+  `/tmp`/`/run` tmpfs are writable.
+- One persistent mount (the workspace), a non-root user, a zero umask, and a
+  harness that deletes `container.config` before running submitted code.
 - The judge stops the container before grading and reads only regular files from
   the workspace, with expected outputs in a private directory.
 - Leftover containers are pruned at startup; abandoned workspaces and output

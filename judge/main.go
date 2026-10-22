@@ -136,6 +136,7 @@ func run() error {
 		MemoryBytes: cfg.ContainerMemoryBytes,
 		PidsLimit:   cfg.ContainerPidsLimit,
 		CPUQuota:    cfg.ContainerCPUQuota,
+		TmpfsBytes:  cfg.ContainerTmpfsBytes,
 	})
 
 	// Probe podman once at startup. The judge still starts without it (the service
