@@ -164,6 +164,7 @@ Without a token the judge refuses `/v1` with `503` unless
 | `JUDGE_CONTAINER_CPU_QUOTA` | `100000` | CPU quota per 100 ms period |
 | `JUDGE_MAX_COMPARE_FILE_BYTES` | `16 MiB` | max file a case is graded from |
 | `JUDGE_MAX_ARTIFACT_BYTES` | `64 MiB` | max output archive |
+| `JUDGE_ARTIFACT_TTL` | `168h` | retention for output archives; `0` keeps them |
 | `JUDGE_MAX_EXTRACT_FILE_BYTES` | `64 MiB` | max single zip entry |
 | `JUDGE_MAX_EXTRACT_BYTES` | `256 MiB` | max total expanded zip |
 
@@ -238,9 +239,10 @@ Source: `docker-compose.yml`, `.env.example`.
 | `RUNCODES_JWT_SECRET` | ✓ | backend | session signing |
 | `RUNCODES_DB_PASSWORD` | ✓ | database | owner password |
 | `RUNCODES_DB_APP_PASSWORD` | ✓ | backend, judge, database init | app role password |
+| `RUNCODES_REDIS_PASSWORD` | ✓ | Redis, backend | cache password |
 | `RUNCODES_JUDGE_TOKEN` | ✓ | backend, judge | shared token |
-| `RUNCODES_S3_CREDENTIALS_KEY` | ✓ | backend, judge | S3 key |
-| `RUNCODES_S3_CREDENTIALS_SECRET` | ✓ | backend, judge | S3 secret |
+| `RUNCODES_S3_CREDENTIALS_KEY` | ✓ | backend, judge, SeaweedFS | S3 key |
+| `RUNCODES_S3_CREDENTIALS_SECRET` | ✓ | backend, judge, SeaweedFS | S3 secret |
 | `RUNCODES_PUBLIC_URL` | | backend | verification and recovery link origin |
 | `RUNCODES_SMTP_FROM` | | backend | sender |
 | `RUNCODES_SMTP_USERNAME` / `_PASSWORD` | | backend | relay credentials |

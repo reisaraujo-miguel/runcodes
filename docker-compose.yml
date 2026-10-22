@@ -60,6 +60,7 @@ services:
       RUNCODES_S3_CREDENTIALS_SECRET: "${RUNCODES_S3_CREDENTIALS_SECRET:?RUNCODES_S3_CREDENTIALS_SECRET must be set}"
       RUNCODES_S3_BUCKET_PREFIX: "runcodes"
       RUNCODES_REDIS_ADDR: "redis:6379"
+      RUNCODES_REDIS_PASSWORD: "${RUNCODES_REDIS_PASSWORD:?RUNCODES_REDIS_PASSWORD must be set}"
       # Browser-facing origin used in the links inside outgoing email. This is
       # the Caddy frontend by default; a public deployment sets its hostname.
       RUNCODES_PUBLIC_URL: "${RUNCODES_PUBLIC_URL:-http://localhost:8080}"
@@ -207,6 +208,12 @@ services:
   redis:
     image: redis:8-alpine
     restart: unless-stopped
+    # The cache holds no auth data, but an unauthenticated Redis on the shared
+    # bridge lets any container poison or clear the platform cache.
+    command:
+      - redis-server
+      - --requirepass
+      - "${RUNCODES_REDIS_PASSWORD:?RUNCODES_REDIS_PASSWORD must be set}"
     environment:
       TZ: "America/Sao_Paulo"
     volumes:
@@ -218,6 +225,22 @@ services:
   # Seaweed #
   ###########
 
+  # SeaweedFS only authenticates S3 requests when a config file is supplied.
+  # Generate it from the same credentials the backend and judge use, so the
+  # gateway is not left open to every container on the bridge.
+  seaweed-s3-init:
+    image: alpine:3.24
+    restart: "no"
+    environment:
+      RUNCODES_S3_CREDENTIALS_KEY: "${RUNCODES_S3_CREDENTIALS_KEY:?RUNCODES_S3_CREDENTIALS_KEY must be set}"
+      RUNCODES_S3_CREDENTIALS_SECRET: "${RUNCODES_S3_CREDENTIALS_SECRET:?RUNCODES_S3_CREDENTIALS_SECRET must be set}"
+    volumes:
+      - seaweed-s3-config:/config
+      - ./deploy/compose/seaweedfs-s3-init.sh:/init.sh:ro
+    command:
+      - /bin/sh
+      - /init.sh
+
   seaweed:
     image: chrislusf/seaweedfs:4.48
     ports:
@@ -226,9 +249,21 @@ services:
       - "127.0.0.1:8333:8333"
     environment:
       TZ: "America/Sao_Paulo"
-    command: server -s3 -volume.max=50 -dir="/data" -master.volumeSizeLimitMB=256 -ip=seaweed -ip.bind=0.0.0.0
+    command:
+      - server
+      - -s3
+      - -s3.config=/etc/seaweedfs/s3.json
+      - -volume.max=50
+      - -dir=/data
+      - -master.volumeSizeLimitMB=256
+      - -ip=seaweed
+      - -ip.bind=0.0.0.0
     volumes:
       - runcodes-seaweed-vol:/data
+      - seaweed-s3-config:/etc/seaweedfs
+    depends_on:
+      seaweed-s3-init:
+        condition: service_completed_successfully
     networks:
       - runcodes-network
 
@@ -242,4 +277,5 @@ volumes:
   runcodes-db-vol:
   runcodes-redis-vol:
   runcodes-seaweed-vol:
+  seaweed-s3-config:
   smtp4dev-data:

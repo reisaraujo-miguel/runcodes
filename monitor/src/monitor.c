@@ -81,6 +81,16 @@ static char **parse_args(char *command) {
 }
 
 static int set_limits(const MonitorParams *params) {
+  /* Core dumps are never useful for grading and can fill the workspace at disk
+     speed. Disable them for every run, regardless of the exercise limits. */
+  {
+    struct rlimit core_limit;
+
+    core_limit.rlim_cur = core_limit.rlim_max = 0;
+    if (setrlimit(RLIMIT_CORE, &core_limit) < 0)
+      return 0;
+  }
+
   /* File size limit */
   if (params->fs_limit > 0) {
     struct rlimit fs_limit;

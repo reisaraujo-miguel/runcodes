@@ -312,3 +312,38 @@ func TestNewRunNonceIsRandomAndHex(t *testing.T) {
 		t.Fatal("two runs got the same nonce")
 	}
 }
+
+// A cancelled run makes Wait fail. Cleanup must still kill and remove the
+// container: the podman methods honour the live context passed by stopContainer
+// rather than the cancelled run context that created the container.
+func TestStopContainerCleansUpAfterWaitFailure(t *testing.T) {
+	logs := make(chan string)
+	close(logs)
+	errs := make(chan error, 1)
+	errs <- errors.New("run context canceled")
+
+	container := &fakeContainer{
+		logs:    logs,
+		errs:    errs,
+		waitErr: errors.New("run context canceled"),
+	}
+	engine := &Engine{
+		cfg:    &config.Config{BaseExecTimeout: time.Millisecond},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	_, exited := engine.stopContainer(container, &podman.LogStream{
+		Lines: logs,
+		Err:   errs,
+	})
+
+	if exited {
+		t.Fatal("container reported as exited after Wait failed")
+	}
+	if !container.killed {
+		t.Fatal("container was not killed after Wait failed")
+	}
+	if !container.removed {
+		t.Fatal("container was not removed after Wait failed")
+	}
+}

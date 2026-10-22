@@ -55,6 +55,13 @@ func TestSpecForCutsTheRunOffFromEverything(t *testing.T) {
 		t.Errorf("no-new-privileges = %v, want true", s.NoNewPrivileges)
 	}
 
+	// Drop the runtime's default capability set. The image runs as a non-root
+	// user, but a rootful runtime or a compromised image must not start with
+	// CAP_CHOWN/NET_RAW/... available to submitted code.
+	if len(s.CapDrop) != 1 || s.CapDrop[0] != "ALL" {
+		t.Errorf("cap drop = %v, want [ALL]", s.CapDrop)
+	}
+
 	// Exactly one mount, and it is the workspace: anything else would expose
 	// host paths to graded code.
 	want := spec.Mount{

@@ -128,6 +128,10 @@ func run() error {
 		return err
 	}
 
+	// Reclaim archives and abandoned workspaces left by previous runs. The
+	// sweeper also runs hourly while the judge is up.
+	engine.StartSweeper(ctx, cfg, logger)
+
 	pc := podman.New(cfg.PodmanURI, podman.Limits{
 		MemoryBytes: cfg.ContainerMemoryBytes,
 		PidsLimit:   cfg.ContainerPidsLimit,
@@ -143,6 +147,17 @@ func run() error {
 		logger.Warn("podman is not reachable: submissions are refused until it is",
 			"error", err,
 		)
+	} else {
+		pruneCtx, cancelPrune := context.WithTimeout(ctx, 30*time.Second)
+		removed, err := pc.PruneLeftovers(pruneCtx, cfg.MaxRunDuration+5*time.Minute)
+		cancelPrune()
+		if err != nil {
+			logger.Warn("could not prune leftover containers", "error", err)
+		} else if removed > 0 {
+			logger.Info("removed leftover containers from a previous run",
+				"containers", removed,
+			)
+		}
 	}
 	cancelProbe()
 	hub := events.New(cfg.EventRetention)

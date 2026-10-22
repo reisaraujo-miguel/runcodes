@@ -20,6 +20,10 @@ import (
 	"go.podman.io/podman/v6/pkg/specgen"
 )
 
+// CommitLabel marks every container the judge creates, so leftover runs can be
+// found and pruned after a judge restart.
+const CommitLabel = "io.runcodes.commit"
+
 // Client talks to a rootless podman service over its socket.
 type Client struct {
 	uri     string
@@ -102,6 +106,49 @@ func (c *Client) Ready(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+/*
+PruneLeftovers removes containers created by previous judge runs. A judge that
+restarts while a run is in flight leaves an exited (or still running) container
+behind; without this sweep it keeps the cgroup, the writable layer and a name
+that a retry has to remove by hand.
+
+A running container younger than olderThan is left alone: in a rolling restart
+the previous judge may still be using it. Exited containers are always removed.
+*/
+func (c *Client) PruneLeftovers(ctx context.Context, olderThan time.Duration) (int, error) {
+	conn, err := c.Connect(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("connect to podman: %w", err)
+	}
+
+	all := true
+	list, err := containers.List(conn, &containers.ListOptions{
+		All:     &all,
+		Filters: map[string][]string{"label": {CommitLabel}},
+	})
+	if err != nil {
+		return 0, fmt.Errorf("list leftover containers: %w", err)
+	}
+
+	removed := 0
+	var errs []error
+	for _, leftover := range list {
+		if !leftover.Exited && !leftover.Created.IsZero() &&
+			time.Since(leftover.Created) <= olderThan {
+			continue
+		}
+		if _, err := containers.Remove(conn, leftover.ID,
+			new(containers.RemoveOptions).WithForce(true).WithVolumes(true),
+		); err != nil {
+			errs = append(errs, fmt.Errorf("remove %s: %w", leftover.ID, err))
+			continue
+		}
+		removed++
+	}
+
+	return removed, errors.Join(errs...)
 }
 
 // EnsureImage makes sure the image is present locally, pulling it if needed.
@@ -239,6 +286,10 @@ func specFor(rc RunConfig, limits Limits) *specgen.SpecGenerator {
 	// premise the whole in-container limit story rests on being false.
 	noNewPrivileges := true
 	s.NoNewPrivileges = &noNewPrivileges
+	// Drop the runtime's default capability set. The runner images run as a
+	// non-root user, but a compromised image or a rootful runtime must not leave
+	// CAP_CHOWN/NET_RAW/... available to submitted code.
+	s.CapDrop = []string{"ALL"}
 	// Bound memory, PIDs and CPU from outside the container; the in-container
 	// monitor is advisory because the submission shares its privileges.
 	s.ResourceLimits = limits.Resources()
@@ -406,7 +457,9 @@ func (ct *Container) Wait(timeout time.Duration) (int32, error) {
 
 // Kill force-stops the container.
 func (ct *Container) Kill(ctx context.Context) error {
-	reqCtx, cancel := context.WithTimeout(ct.conn, 15*time.Second)
+	// Honour the caller's context: cleanup passes a live context even when the
+	// run context that owns ct.conn has already been cancelled.
+	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
 	// send SIGKILL to the container; this is a last resort if it does not exit cleanly
@@ -419,7 +472,7 @@ func (ct *Container) Kill(ctx context.Context) error {
 
 // Remove deletes the container (and its anonymous volumes).
 func (ct *Container) Remove(ctx context.Context) error {
-	reqCtx, cancel := context.WithTimeout(ct.conn, 30*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	// force-remove the container and its anonymous volumes; ignore errors if it was already removed
