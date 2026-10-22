@@ -189,6 +189,13 @@ new secret. Run compute and edge promptly so their pools reconnect.
 not change an existing cluster's `runcodes` role. Rotate it deliberately with
 `ALTER ROLE` and update the vault in the same window, or restore from backup.
 
+### Rotating the Gmail app password
+
+Change `vault_alertmanager_gmail_app_password` and run
+`deploy-observability.yml`. The role rewrites
+`/opt/runcodes/secrets/alertmanager_gmail_app_password` and the observability
+unit force-recreates Alertmanager. The YAML keeps only the file path.
+
 ## Migrating existing data
 
 The new stack starts **fresh** database and object-store volumes. It does not
@@ -393,9 +400,15 @@ after rotation.
 
 ### Alerts do not arrive at the receiver
 
-- Empty `vault_alertmanager_webhook_url` sends everything to the bundled
-  alert-sink (by design).
-- Check `/opt/runcodes/secrets/alertmanager_webhook_url` and Alertmanager logs.
+- If `config_runcodes_alertmanager_gmail_enabled` is true, alerts are also
+  emailed through the `default` receiver; webhook delivery continues. Check the
+  Alertmanager log and
+  `/opt/runcodes/secrets/alertmanager_gmail_app_password`.
+  `535 5.7.8 Username and Password not accepted` means a wrong app password,
+  spaces left in it, or 2-Step Verification disabled.
+- Otherwise an empty `vault_alertmanager_webhook_url` sends everything to the
+  bundled alert-sink (by design). Check
+  `/opt/runcodes/secrets/alertmanager_webhook_url` and Alertmanager logs.
 - The `ObservabilitySmokeTest` alert always goes to the sink.
 - Test manually:
 
@@ -405,6 +418,8 @@ after rotation.
     -d '[{"labels":{"alertname":"ManualTest","severity":"warning"}}]'
   curl http://203.0.113.13:8085/alerts
   ```
+
+  In Gmail mode the manual warning alert is also emailed.
 
 ### Grafana login fails after a password change
 

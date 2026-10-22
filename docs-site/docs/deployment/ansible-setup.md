@@ -134,6 +134,7 @@ The most important settings:
 | `config_runcodes_judge_*` | concurrency, execution directory, timeouts, cgroup limits |
 | `config_runcodes_otel_*` | sampler and metric export interval |
 | `config_runcodes_prometheus_retention_*`, `_tempo_retention_hours` | retention |
+| `config_runcodes_alertmanager_gmail_*` | optional Gmail alert email; see [Gmail alert email](#gmail-alert-email) |
 | `config_runcodes_firewall_*` | optional UFW; review SSH sources first |
 | `config_runcodes_run_smoke_test` / `_run_submission_smoke_test` | verification toggles |
 
@@ -163,6 +164,7 @@ ansible-vault encrypt inventories/group_vars/all/vault.yml
 | `vault_runcodes_legacy_password_salt` | legacy users (optional) | old platform salt |
 | `vault_runcodes_smtp_username/password` | SMTP relay (optional) | relay credentials |
 | `vault_alertmanager_webhook_url` | alert receiver (optional) | incident tool URL |
+| `vault_alertmanager_gmail_app_password` | Gmail alert email (optional) | Google app password |
 | `vault_registry_username/password` | private GHCR (optional) | token with `read:packages` |
 
 ::: danger No literal `$` in secrets
@@ -296,6 +298,35 @@ be the browser-facing origin because it builds the verification and recovery
 links. The
 smtp4dev container remains but is unused; remove it from
 `roles/rc-edge/files/compose.yml` and the backend `depends_on` to drop it.
+
+### Gmail alert email
+
+Alertmanager on the observability host can email alerts through Gmail. This is
+separate from the account-verification SMTP settings above. Enable it in
+`config.yml`:
+
+```yaml
+config_runcodes_alertmanager_gmail_enabled: true
+config_runcodes_alertmanager_gmail_from: "runcodes-alerts@gmail.com"
+config_runcodes_alertmanager_gmail_to:
+  - "oncall@example.com"
+```
+
+and put a Google app password in `vault.yml`:
+
+```yaml
+vault_alertmanager_gmail_app_password: "abcdefghijklmnop"
+```
+
+The sending account needs 2-Step Verification; use an app password, not the
+account password, and remove the spaces Google displays. The `from` address is
+also the SMTP username, so use a plain address. Ansible writes the password to
+`/opt/runcodes/secrets/alertmanager_gmail_app_password`; Gmail is added to the
+`default` receiver as an additional integration, so webhook delivery continues.
+The smoke-test alert still goes to `alert-sink`. For a Google Workspace SMTP
+relay, set `config_runcodes_alertmanager_gmail_smarthost`. See
+[Ansible operations](./ansible-operations.md#alerts-do-not-arrive-at-the-receiver)
+for SMTP failure modes.
 
 ## 7. Admin bootstrap
 

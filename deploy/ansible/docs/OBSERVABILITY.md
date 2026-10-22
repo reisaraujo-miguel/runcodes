@@ -291,6 +291,14 @@ default route delivers to the URL in
 - if it is empty, Ansible writes the alert-sink URL, so alerts are still
   delivered locally for validation.
 
+When `config_runcodes_alertmanager_gmail_enabled` is true, the `default`
+receiver also emails alerts through the configured Gmail/Workspace SMTP host
+(`smtp.gmail.com:587` by default), and webhook delivery continues. The Google
+app password comes from
+`/opt/runcodes/secrets/alertmanager_gmail_app_password`; see
+[`DEPLOYMENT.md`](DEPLOYMENT.md#gmail-alert-notifications) for setup and
+rotation. The smoke-test route is unchanged.
+
 The `ObservabilitySmokeTest` alert is always routed to the `alert-sink`
 receiver. This lets `verify.yml` prove the complete rule → Alertmanager →
 webhook path without touching the production receiver. Critical alerts get a
@@ -483,11 +491,16 @@ port and the container. For blackbox, check the probe target itself with
 
 ### Alertmanager does not deliver
 
-- Check `alertmanager.yml` route and the receiver file.
+- If Gmail is enabled, the `default` receiver also emails alerts; webhook
+  delivery continues. Check
+  `/opt/runcodes/secrets/alertmanager_gmail_app_password` and the Alertmanager
+  log for SMTP errors. `535 5.7.8 Username and Password not accepted` means a
+  wrong app password, spaces left in it, or 2-Step Verification disabled.
+- Otherwise check `alertmanager.yml` route and the receiver file.
 - If the URL is empty, everything goes to the sink (by design).
 - The test alert always goes to the sink; check `:8085/alerts`.
-- Check Alertmanager logs for TLS/HTTP errors; the receiver must accept
-  Alertmanager's JSON webhook payload.
+- Check Alertmanager logs for TLS/HTTP errors; a webhook receiver must accept
+  Alertmanager's JSON payload.
 - Test with the manual `curl` in
   [`DEPLOYMENT.md`](DEPLOYMENT.md#alerts-do-not-arrive-at-the-receiver).
 
@@ -582,7 +595,8 @@ write (Mimir/Thanos), as described in the upstream production guidance.
   SSO/OAuth and an external database for a team deployment. The admin password
   is a mounted file, not an image layer or a committed value.
 - Alertmanager receiver credentials live in files (`*_file`), not in YAML. Keep
-  the webhook URL in the vault/secret manager and rotate it.
+  the webhook URL and the Gmail app password in the vault/secret manager and
+  rotate them.
 - Secrets in `.env` are root-owned 0600. The container sees only the variables
   it needs; podman inspect can read them. For a stricter model, use Podman
   secrets or a secret manager and change the compose `environment` entries to

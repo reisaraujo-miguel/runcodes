@@ -72,6 +72,7 @@ services:
     volumes:
       - ../../config/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - ../../secrets/alertmanager_webhook_url:/etc/alertmanager/secrets/webhook_url:ro
+      - ../../secrets/alertmanager_gmail_app_password:/etc/alertmanager/secrets/gmail_app_password:ro
       - alertmanager-data:/alertmanager
     security_opt:
       - label=disable

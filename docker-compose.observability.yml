@@ -133,8 +133,13 @@ services:
     ports:
       - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${ALERTMANAGER_PORT:-9093}:9093"
     volumes:
-      - ./observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      # The default config routes to the webhook sink. Point
+      # ALERTMANAGER_CONFIG_FILE at a copy of
+      # observability/alertmanager/alertmanager.gmail.example.yml to email
+      # alerts through Gmail instead (see docs/observability/runbook.md).
+      - "${ALERTMANAGER_CONFIG_FILE:-./observability/alertmanager/alertmanager.yml}:/etc/alertmanager/alertmanager.yml:ro"
       - ./.observability/alertmanager_webhook_url:/etc/alertmanager/secrets/webhook_url:ro
+      - ./.observability/alertmanager_gmail_app_password:/etc/alertmanager/secrets/gmail_app_password:ro
       - alertmanager-data:/alertmanager
     security_opt:
       - label=disable

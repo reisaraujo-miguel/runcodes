@@ -267,7 +267,8 @@ Grafana provides dashboards, Explore, trace/log correlation and span-to-profile
 links; Alloy scrapes the Go pprof endpoints into Pyroscope, and the
 `otel-profiling-go` bridge adds trace/span labels so a span opens its matching
 flame graph. Alertmanager routes alerts from Prometheus rules (plus a
-Grafana-managed example rule) using a secret-backed receiver URL.
+Grafana-managed example rule) using a secret-backed receiver URL, or emails
+them through Gmail when the optional Gmail receiver is enabled.
 
 The overlay is separate from the normal stack and publishes every UI on
 loopback only:

@@ -225,6 +225,15 @@ default route delivers to the URL in
 - if it is empty, Ansible writes the alert-sink URL, so alerts are still
   delivered locally for validation.
 
+When `config_runcodes_alertmanager_gmail_enabled` is true, the `default`
+receiver also emails alerts through the configured Gmail/Workspace SMTP host
+(`smtp.gmail.com:587` by default), and webhook delivery continues. The Google
+app password is mounted from
+`/opt/runcodes/secrets/alertmanager_gmail_app_password`; see
+[Ansible setup](../deployment/ansible-setup.md#gmail-alert-email) for the
+variables and [Ansible operations](../deployment/ansible-operations.md#alerts-do-not-arrive-at-the-receiver)
+for SMTP failure modes.
+
 The `ObservabilitySmokeTest` alert is always routed to the `alert-sink` receiver,
 so `verify.yml` can prove the full rule → Alertmanager → webhook path without
 touching the production receiver. Critical alerts get a shorter group wait, and

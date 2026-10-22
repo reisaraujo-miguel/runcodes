@@ -359,10 +359,14 @@ also fails, check `alertmanager:9093/-/ready` and the datasource URL.
    `status.inhibitedBy`.
 3. Check the route/receiver in `alertmanager.yml` and the logs:
    `docker compose ... logs alertmanager`.
-4. The local receiver is `alert-sink`; test it directly:
+4. If `ALERTMANAGER_CONFIG_FILE` points at the Gmail copy, check the `smtp_*`
+   settings and `/etc/alertmanager/secrets/gmail_app_password`. A
+   `535 5.7.8 Username and Password not accepted` means a wrong app password,
+   spaces left in it, or 2-Step Verification disabled on the account.
+5. Otherwise the local receiver is `alert-sink`; test it directly:
    `curl -s localhost:8085/healthz`.
-5. Webhook delivery errors are logged by Alertmanager; a 4xx from a real
-   receiver usually means a bad URL, token or payload.
+6. Delivery errors are logged by Alertmanager; a 4xx from a webhook receiver
+   usually means a bad URL, token or payload.
 
 ### Host disk or memory pressure
 
@@ -544,6 +548,68 @@ S3/GCS/Azure bucket, and set the bucket lifecycle policy to match the profile
 retention. The example is not mounted by default because it needs real bucket
 credentials.
 
+## Configuring Gmail notifications
+
+The default local receiver is the in-stack `alert-sink` webhook. To email
+alerts through Gmail instead, use the Gmail example config. Gmail SMTP requires
+a Google app password, which requires 2-Step Verification on the sending
+account; the ordinary account password is rejected.
+
+1. Create an app password at **Google Account -> Security -> 2-Step
+   Verification -> App passwords**.
+2. Copy the example and set the sending account and recipients. The example
+   routes the smoke-test alert to `alert-sink` and everything else to Gmail:
+
+   ```bash
+   cp observability/alertmanager/alertmanager.gmail.example.yml \
+      .observability/alertmanager.yml
+   $EDITOR .observability/alertmanager.yml   # smtp_from, smtp_auth_username, to
+   # Rootless Alertmanager reads it as a mapped subuid; keep it world-readable.
+   chmod 0644 .observability/alertmanager.yml
+   ```
+
+   Set `smtp_from` and `smtp_auth_username` to the same plain address
+   (`alerts@gmail.com`, not `RunCodes <alerts@gmail.com>`); that account is the
+   SMTP user. The `to` field is a comma-separated string. For a Google Workspace
+   SMTP relay, change `smtp_smarthost` in the copy.
+3. Write the 16-character app password, without the spaces Google displays:
+
+   ```bash
+   printf '%s\n' 'abcdefghijklmnop' > .observability/alertmanager_gmail_app_password
+   ```
+
+4. Point the stack at the copy. Add this to `.env` (or export it for one run):
+
+   ```bash
+   ALERTMANAGER_CONFIG_FILE=./.observability/alertmanager.yml
+   ```
+
+5. Recreate Alertmanager so it reads the new config and secret:
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.observability.yml \
+     up -d --force-recreate alertmanager
+   ```
+
+6. Send a test alert and check delivery:
+
+   ```bash
+   curl -s -X POST http://localhost:9093/api/v2/alerts \
+     -H 'Content-Type: application/json' \
+     -d '[{"labels":{"alertname":"GmailTest","severity":"warning","service_name":"runcodes-backend"},"annotations":{"summary":"Gmail test"}}]'
+   docker compose -f docker-compose.yml -f docker-compose.observability.yml \
+     logs alertmanager
+   ```
+
+   The smoke test (`make observability-smoke-test`) still passes because
+   `ObservabilitySmokeTest` is routed to `alert-sink`.
+
+A Google Workspace domain can disable app passwords. If yours does, use a
+Google Workspace SMTP relay in the copied config instead. The app password is
+read from the mounted file for each notification, so rotating it means replacing
+`.observability/alertmanager_gmail_app_password` and recreating Alertmanager;
+the YAML never contains the password.
+
 ## Rotating the Alertmanager webhook URL
 
 The receiver URL is read from `.observability/alertmanager_webhook_url` (mounted
@@ -559,8 +625,8 @@ docker compose -f docker-compose.yml -f docker-compose.observability.yml \
 The URL is re-read for notifications; recreating also makes the change
 unambiguous if your runtime caches the bind mount. Never commit the real URL.
 The production template in
-`observability/alertmanager/alertmanager.production.example.yml` shows Slack and
-PagerDuty receivers with `*_file` settings.
+`observability/alertmanager/alertmanager.production.example.yml` shows Gmail,
+Slack and PagerDuty receivers with `*_file` settings.
 
 ## Rotating the Grafana admin password
 

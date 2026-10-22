@@ -18,6 +18,7 @@ on the hosts.
 - [Runtime model and boot](#runtime-model-and-boot)
 - [DNS and TLS](#dns-and-tls)
 - [Mail and account verification](#mail-and-account-verification)
+- [Gmail alert notifications](#gmail-alert-notifications)
 - [Admin bootstrap](#admin-bootstrap)
 - [Migrating existing data](#migrating-existing-data)
 - [Database lifecycle and migrations](#database-lifecycle-and-migrations)
@@ -146,6 +147,7 @@ The most important settings:
 | `config_runcodes_judge_*` | Concurrency, execution directory, timeouts, container limits. |
 | `config_runcodes_otel_*` | Sampler and metric export interval. |
 | `config_runcodes_prometheus_retention_*`, `_tempo_retention_hours` | Telemetry retention. |
+| `config_runcodes_alertmanager_gmail_*` | Optional Gmail alert email; see [Gmail alert notifications](#gmail-alert-notifications). |
 | `config_runcodes_firewall_enabled` | Optional UFW; review SSH sources first. |
 | `config_runcodes_firewall_private_sources` | Exact peer addresses allowed to reach private ports. |
 | `config_runcodes_run_smoke_test` / `_run_submission_smoke_test` | End-to-end verification toggles. |
@@ -173,6 +175,7 @@ ansible-vault encrypt inventories/group_vars/all/vault.yml
 | `vault_runcodes_legacy_password_salt` | optional legacy user login | old platform salt |
 | `vault_runcodes_smtp_username/password` | optional SMTP relay | relay credentials |
 | `vault_alertmanager_webhook_url` | optional real alert receiver | incident tool URL |
+| `vault_alertmanager_gmail_app_password` | optional Gmail alert email | Google app password (16 characters) |
 | `vault_registry_username/password` | optional GHCR token | `read:packages` if private |
 
 **Do not use a literal `$` in a secret.** `podman-compose` interpolates `.env`
@@ -337,6 +340,68 @@ rerun the edge stage.
 
 `config_runcodes_public_url` must be the browser-facing origin because it builds
 the verification link.
+
+## Gmail alert notifications
+
+Alertmanager sends alerts as email when Gmail is enabled. This is separate from
+the backend's account-verification SMTP settings above: it runs on the
+observability host and is configured in `config.yml` and `vault.yml`.
+
+1. Enable 2-Step Verification on the sending Google account and create an app
+   password at **Google Account -> Security -> 2-Step Verification -> App
+   passwords**. An ordinary account password does not work. Remove the spaces
+   Google displays in the 16-character password.
+2. In `config.yml`:
+
+   ```yaml
+   config_runcodes_alertmanager_gmail_enabled: true
+   config_runcodes_alertmanager_gmail_smarthost: "smtp.gmail.com:587"
+   config_runcodes_alertmanager_gmail_from: "runcodes-alerts@gmail.com"
+   config_runcodes_alertmanager_gmail_to:
+     - "oncall@example.com"
+     - "lead@example.com"
+   ```
+
+   `config_runcodes_alertmanager_gmail_from` is also the SMTP username, so use
+   a plain address without a display name. Add one list item per recipient.
+3. In `vault.yml`:
+
+   ```yaml
+   vault_alertmanager_gmail_app_password: "abcdefghijklmnop"
+   ```
+
+4. Run the observability stage (or `site.yml`):
+
+   ```bash
+   ansible-playbook playbooks/deploy-observability.yml --ask-vault-pass
+   ```
+
+Ansible renders `smtp_require_tls: true` and `smtp_auth_password_file`, and
+writes `/opt/runcodes/secrets/alertmanager_gmail_app_password` for the container
+(mode 0644 because the rootless container maps to a subuid). Gmail is added to
+the `default` receiver, so alerts are still delivered to the webhook and are
+also emailed. The `ObservabilitySmokeTest` alert still goes to `alert-sink`, so
+`verify.yml` is unaffected.
+
+To revert, set `config_runcodes_alertmanager_gmail_enabled: false` and rerun the
+observability stage: the app password file is emptied and the email integration
+is removed, leaving webhook delivery in place.
+
+Rotate the app password by changing `vault_alertmanager_gmail_app_password` and
+rerunning the observability stage; the unit force-recreates Alertmanager.
+
+Gmail failures appear in the Alertmanager log:
+
+```bash
+ssh runcodes@203.0.113.13
+podman logs runcodes-obs-alertmanager | grep -i 'email\|smtp'
+```
+
+`535 5.7.8 Username and Password not accepted` means a wrong app password,
+spaces left in it, or 2-Step Verification disabled. A Google Workspace domain
+can disable app passwords; if yours does, point
+`config_runcodes_alertmanager_gmail_smarthost` at the Workspace SMTP relay
+instead. Gmail is not configured through OAuth here.
 
 ## Admin bootstrap
 
@@ -708,9 +773,15 @@ rotation. `lastError` names the cause.
 
 ### Alerts do not arrive at the receiver
 
-- Empty `vault_alertmanager_webhook_url` sends everything to the bundled
-  alert-sink (by design).
-- Check `/opt/runcodes/secrets/alertmanager_webhook_url` and Alertmanager logs.
+- If `config_runcodes_alertmanager_gmail_enabled` is true, alerts are also
+  emailed through the `default` receiver; webhook delivery continues. Check the
+  Alertmanager log for SMTP errors and verify
+  `/opt/runcodes/secrets/alertmanager_gmail_app_password` is not empty.
+  `535 5.7.8 Username and Password not accepted` means a wrong app password,
+  spaces left in it, or 2-Step Verification disabled.
+- Otherwise an empty `vault_alertmanager_webhook_url` sends everything to the
+  bundled alert-sink (by design). Check
+  `/opt/runcodes/secrets/alertmanager_webhook_url` and Alertmanager logs.
 - The `ObservabilitySmokeTest` alert always goes to the sink.
 - Test manually:
 
@@ -720,6 +791,9 @@ rotation. `lastError` names the cause.
     -d '[{"labels":{"alertname":"ManualTest","severity":"warning"}}]'
   curl http://203.0.113.13:8085/alerts
   ```
+
+  In Gmail mode the manual warning alert is also emailed. `curl` on
+  `:8085/alerts` only sees it when the webhook receiver still points at the sink.
 
 ### Grafana login fails after a password change
 
@@ -759,7 +833,9 @@ directly on the host, run the matching playbook or
 - **TLS**: only Caddy's 443 is public; it renews certificates. The private
   network is plaintext. Add WireGuard/IPsec or mTLS if you do not trust it.
 - **Secrets**: encrypted vault, restricted files owned by `runcodes`, never
-  committed. Rotate on a schedule and after suspected exposure.
+  committed. Rotate on a schedule and after suspected exposure. The Gmail app
+  password is a mounted file like the webhook URL; rotate it in the vault and
+  rerun the observability stage.
 - **Grafana** is private and has anonymous access, sign-up and plugin downloads
   disabled. Use SSO if exposed through a proxy. Never expose Prometheus,
   Alertmanager, Loki or Tempo directly.

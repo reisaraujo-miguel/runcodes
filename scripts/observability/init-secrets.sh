@@ -17,6 +17,7 @@ root="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 state_dir="$root/.observability"
 password_file="$state_dir/grafana_admin_password"
 webhook_file="$state_dir/alertmanager_webhook_url"
+gmail_password_file="$state_dir/alertmanager_gmail_app_password"
 
 mkdir -p "$state_dir"
 chmod 0755 "$state_dir"
@@ -52,6 +53,20 @@ else
 fi
 chmod 0644 "$webhook_file"
 
+# Optional Gmail receiver. Alertmanager reads a Google app password from this
+# file when ALERTMANAGER_CONFIG_FILE points at the Gmail example. Leave it empty
+# until Gmail is enabled; the default config does not reference it. Run
+# `printf '%s\n' '<app-password>' > .observability/alertmanager_gmail_app_password`
+# to fill it (remove the spaces Google shows in the 16-character password).
+if [[ ! -e "$gmail_password_file" ]]; then
+  : > "$gmail_password_file"
+  echo "observability: created empty Alertmanager Gmail app password file at $gmail_password_file"
+else
+  echo "observability: keeping existing Alertmanager Gmail app password file"
+fi
+chmod 0644 "$gmail_password_file"
+
 echo "observability: admin user is '${GRAFANA_ADMIN_USER:-admin}'"
 echo "observability: password file $password_file (do not commit it)"
 echo "observability: Alertmanager webhook file $webhook_file (do not commit a real URL)"
+echo "observability: Alertmanager Gmail app password file $gmail_password_file (do not commit a real app password)"

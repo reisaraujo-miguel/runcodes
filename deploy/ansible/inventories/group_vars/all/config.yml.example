@@ -129,6 +129,18 @@ config_runcodes_grafana_admin_user: "admin"
 # private address you reach through the tunnel.
 config_runcodes_grafana_root_url: "http://localhost:3000"
 
+# Gmail notifications for Alertmanager (optional). Enable this only after
+# setting the sending account and recipients here and the Google app password
+# (vault_alertmanager_gmail_app_password) in vault.yml. The sending account
+# needs 2-Step Verification and an app password; it is also the SMTP username,
+# so use a plain address without a display name. Set the smarthost only for a
+# Google Workspace SMTP relay.
+config_runcodes_alertmanager_gmail_enabled: false
+config_runcodes_alertmanager_gmail_smarthost: "smtp.gmail.com:587"
+config_runcodes_alertmanager_gmail_from: "runcodes-alerts@gmail.com"
+config_runcodes_alertmanager_gmail_to:
+  - "oncall@example.com"
+
 # ---------------------------------------------------------------------------
 # Host management and firewall
 # ---------------------------------------------------------------------------

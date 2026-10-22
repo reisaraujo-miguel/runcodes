@@ -285,12 +285,14 @@ Source: `docker-compose.observability.yml`, `.env.example`.
 | `PROMETHEUS_RETENTION_TIME` | `15d` | Prometheus TSDB |
 | `PROMETHEUS_RETENTION_SIZE` | `8GB` | Prometheus TSDB |
 | `PYROSCOPE_CONFIG_FILE` | `./observability/pyroscope/config.yaml` | alternate config |
+| `ALERTMANAGER_CONFIG_FILE` | `./observability/alertmanager/alertmanager.yml` | alternate Alertmanager config (Gmail example) |
 | `FRONTEND_OTEL_ENABLED` | `true` | browser build input |
 | `PUBLIC_OTEL_HTTP_URL` | `http://localhost:4318` | browser collector URL |
 | `VITE_OTEL_TRACES_SAMPLER_ARG` | `1.0` | browser sampling |
 
-The Grafana admin password and Alertmanager webhook URL are files in
-`.observability/`, created by `scripts/observability/init-secrets.sh`.
+The Grafana admin password, Alertmanager webhook URL and optional Gmail app
+password are files in `.observability/`, created by
+`scripts/observability/init-secrets.sh`.
 
 ## Ansible deployment
 
@@ -368,6 +370,10 @@ Keep the stale timeout above the max run duration.
 | `config_runcodes_tempo_retention_hours` | `168` | Tempo |
 | `config_runcodes_grafana_admin_user` | `admin` | Grafana |
 | `config_runcodes_grafana_root_url` | `http://localhost:3000` | Grafana links |
+| `config_runcodes_alertmanager_gmail_enabled` | `false` | email alerts through Gmail |
+| `config_runcodes_alertmanager_gmail_smarthost` | `smtp.gmail.com:587` | Gmail/Workspace SMTP host |
+| `config_runcodes_alertmanager_gmail_from` | example address | sender and SMTP username |
+| `config_runcodes_alertmanager_gmail_to` | `["oncall@example.com"]` | recipient list |
 
 ### Firewall and verification
 
@@ -397,6 +403,7 @@ Keep the stale timeout above the max run duration.
 | `vault_runcodes_legacy_password_salt` | legacy users |
 | `vault_runcodes_smtp_username` / `_password` | SMTP relay |
 | `vault_alertmanager_webhook_url` | alert receiver |
+| `vault_alertmanager_gmail_app_password` | Gmail alert email |
 | `vault_registry_username` / `_password` | private GHCR |
 
 Never use a literal `$` in a secret: `podman-compose` interpolates `.env`

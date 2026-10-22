@@ -243,7 +243,7 @@ published non-public port:
 | Metrics | Tempo metrics-generator | remote write to Prometheus | Prometheus |
 | Logs | backend, judge | OTLP/HTTP → collector → Loki OTLP endpoint | Loki |
 | Profiles | backend/judge pprof | Alloy scrape locally → write to `<obs>:4040` | Pyroscope |
-| Alerts | Prometheus rules | Alertmanager `:9093` → webhook or alert-sink | Alertmanager / receiver |
+| Alerts | Prometheus rules | Alertmanager `:9093` → webhook and/or Gmail, or alert-sink | Alertmanager / receiver |
 
 The collector is the only OTLP ingress. Tempo, Loki and Prometheus have no
 public ports, and OTLP is plaintext on the private network (see the security
