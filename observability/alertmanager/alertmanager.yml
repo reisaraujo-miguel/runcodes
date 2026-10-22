@@ -11,7 +11,7 @@
 #
 # For Gmail email notifications, copy alertmanager.gmail.example.yml to
 # .observability/alertmanager.yml and point ALERTMANAGER_CONFIG_FILE at the copy;
-# see docs/observability/runbook.md#configuring-gmail-notifications.
+# see https://reisaraujo-miguel.github.io/runcodes/observability/runbook.html#configuring-gmail-notifications.
 global:
   resolve_timeout: 5m
 

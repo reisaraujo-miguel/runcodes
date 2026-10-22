@@ -85,7 +85,7 @@ extension and image matrix.
 ├── monitor/          In-container process monitor (limits, timing, report)
 ├── database/         PostgreSQL schema, seeds, migrations and legacy import
 ├── observability/    Collector, Prometheus, Loki, Tempo, Grafana, Pyroscope config
-├── docs/             Observability architecture and runbooks
+├── docs/             Pointer to this site (old guides consolidated)
 ├── docs-site/        This documentation website (VitePress)
 ├── scripts/          Developer and observability validation scripts
 ├── deploy/ansible/   Four-machine rootless Podman deployment
@@ -121,8 +121,8 @@ The platform is built around a few boundaries that explain most of its design:
 - [Using RunCodes](./using-runcodes.md) — student, professor and admin workflows.
 - [Deployment](../deployment/index.md) — put it on real hosts.
 - [API reference](../api/index.md) — integrate with or test the platform.
-- [Documentation coverage](../reference/source-map.md) — where every repository
-  document is represented on this site.
+- [Documentation map](../reference/source-map.md) — the canonical pages and the
+  repository entry points that point to them.
 
 ## License and community
 

@@ -36,7 +36,7 @@ boot.
 - The four node addresses assigned to the right hosts, reachable from the
   controller and from each other.
 - Outbound HTTPS for apt and GHCR.
-- At least the resources in [Capacity](https://github.com/reisaraujo-miguel/runcodes/blob/main/deploy/ansible/docs/ARCHITECTURE.md#capacity-and-scheduling):
+- At least the resources in [Capacity](./security.md#capacity-starting-points):
   roughly 2 vCPU/4 GB for edge, 4 vCPU/8 GB for data, 4 vCPU/8–16 GB for
   compute, 4 vCPU/8–16 GB and 200–400 GB SSD for observability.
 

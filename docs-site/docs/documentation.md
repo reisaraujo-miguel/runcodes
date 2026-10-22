@@ -11,6 +11,24 @@ from Markdown in `docs-site/`. It is deployed to GitHub Pages by
 
 **<https://reisaraujo-miguel.github.io/runcodes/>**
 
+## Canonical documentation
+
+This site is the single source of truth for RunCodes documentation. Repository
+Markdown files are deliberately short entry points:
+
+- service READMEs keep only the commands needed to run and test that directory,
+  plus links here;
+- the root README keeps the project overview, quick start and deployment/API
+  links;
+- `docs/` contains only a pointer to this site; the old observability guides
+  were consolidated into the observability pages;
+- `deploy/ansible/docs/` was retired in favour of the deployment pages;
+- `judge/DESIGN.md` was folded into the judge and judge-API pages.
+
+Do not add long-form guides back to the repository. Extend `docs-site/docs/` and
+keep the entry points short. The [documentation map](./reference/source-map.md)
+lists every page and every retired file.
+
 ## Why VitePress
 
 - Markdown-first and fast, with no runtime server;
@@ -142,8 +160,8 @@ domain in the Pages settings.
   `[Judge](../services/judge.md)`. VitePress rewrites them to `.html`.
 - Link to source files with full GitHub URLs; repository-relative paths do not
   exist on the published site.
-- Avoid linking to files that were removed (the source map page documents a few
-  historical cases).
+- Link to the site page, not to a service README, for explanatory content. The
+  [documentation map](./reference/source-map.md) lists the retired files.
 
 ### Diagrams
 
@@ -202,12 +220,12 @@ assets.
 - Keep one idea per section; link to the deeper page instead of repeating it.
 - State defaults explicitly, especially for timeouts and limits.
 - When documenting a failure, include the symptom, the cause and the fix.
-- Do not claim a feature the code does not have; the
-  [coverage map](./reference/source-map.md) records where each statement comes
-  from.
+- Do not claim a feature the code does not have; verify it in the code or the
+  service contract.
+- Keep the service READMEs short; long-form content belongs here.
 
 ## Related pages
 
 - [Contributing](./contributing.md)
-- [Documentation coverage](./reference/source-map.md)
+- [Documentation map](./reference/source-map.md)
 - [CI/CD & releases](./ci-cd.md)

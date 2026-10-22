@@ -640,4 +640,3 @@ TraceQL:
 - [Local observability stack](./local.md)
 - [Four-machine observability](./production.md)
 - [Ansible operations](../deployment/ansible-operations.md)
-- [Original runbook](https://github.com/reisaraujo-miguel/runcodes/blob/main/docs/observability/runbook.md)

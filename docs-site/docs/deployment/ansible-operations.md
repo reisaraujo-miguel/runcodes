@@ -444,4 +444,3 @@ the host, run the matching playbook or restart the unit.
 - [Security & scaling](./security.md)
 - [Observability runbook](../observability/runbook.md)
 - [Database](../services/database.md)
-- [Original deployment guide](https://github.com/reisaraujo-miguel/runcodes/blob/main/deploy/ansible/docs/DEPLOYMENT.md)

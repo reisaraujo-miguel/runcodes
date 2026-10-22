@@ -5,7 +5,8 @@
 # and recipients, write the Google app password to
 # .observability/alertmanager_gmail_app_password, and set
 # ALERTMANAGER_CONFIG_FILE=./.observability/alertmanager.yml before starting the
-# stack. See docs/observability/runbook.md#configuring-gmail-notifications.
+# stack. See
+# https://reisaraujo-miguel.github.io/runcodes/observability/runbook.html#configuring-gmail-notifications.
 #
 # Gmail SMTP requires a Google app password (2-Step Verification must be on),
 # not the account password. Remove the spaces Google displays in the

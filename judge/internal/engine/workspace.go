@@ -55,7 +55,7 @@ func newRunNonce() (string, error) {
 
 // mkdirWorld creates dir (and parents) and forces mode 0777 regardless of the
 // process umask. The graded container runs as an unprivileged system user (see
-// runners/README.md), which rootless podman maps to a subuid — an
+// docs-site/docs/services/judge.md#isolation), which rootless podman maps to a subuid — an
 // identity of its own, never the judge's — so the workspace must be
 // world-writable for it to compile and write outputs.
 //

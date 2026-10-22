@@ -22,7 +22,7 @@ page describes the deployed variant; the local stack is in
 | Availability | frontend, backend, judge, observability services | blackbox-exporter | Prometheus | Grafana / PromQL |
 | Application logs | backend, judge | OTel logs → collector → Loki | Loki | Grafana / LogQL |
 | CPU profiles | backend, judge pprof | Alloy → Pyroscope | Pyroscope | Grafana / span profiles |
-| Alerts | Prometheus rules + Grafana-managed rule | Alertmanager | Alertmanager / receiver / alert-sink | Alertmanager UI, webhook |
+| Alerts | Prometheus rules + Grafana-managed rule | Alertmanager | Alertmanager / receiver / alert-sink | Alertmanager UI, webhook/email |
 | Dashboards | provisioned JSON | Grafana provisioning | Grafana SQLite | Grafana |
 
 The in-container monitor is not a separate telemetry service. Its per-case
@@ -370,6 +370,37 @@ compactions; 200–400 GB SSD is a reasonable starting point. Monitor
 `node_filesystem_avail_bytes` and the disk alert. For longer retention, move
 Loki/Tempo/Pyroscope to object storage and Prometheus to remote write.
 
+## Production guidance
+
+This deployment is the production-shaped reference for four hosts. For a larger
+or managed environment, keep the same signal split but change the storage:
+
+- **Hosting** — keep the collector as the single OTLP gateway, pin image tags,
+  publish only Grafana behind an authenticating proxy, and run Prometheus/Loki/
+  Tempo/Pyroscope on persistent disks. Scale the stateless collector
+  horizontally; use a persistent sending queue if restarts cannot drop data.
+- **Metrics** — move Prometheus to remote write (Mimir or Thanos) or a managed
+  service. Keep 15–90 days, add downsampling for long-term data, and cap labels
+  from Tempo span metrics (`service_name`, `span_name`, `status_code`).
+- **Logs** — run Loki with S3/GCS/Azure object storage and a shared ring; keep
+  30–90 days, set per-tenant ingestion limits and avoid indexing
+  `service.instance.id`.
+- **Traces** — run Tempo with object storage and a compactor; keep 7–30 days.
+  Add tail sampling in the collector or a 10% head sample in production, and keep
+  error traces.
+- **Profiles** — use Pyroscope with object storage and lifecycle rules matching
+  retention; `observability/pyroscope/config.s3.example.yaml` is the template.
+- **Grafana** — external PostgreSQL, SSO/OAuth, HA replicas behind a load
+  balancer; do not use the SQLite default for a team deployment.
+- **Sampling and cost** — set `OTEL_TRACES_SAMPLER=parentbased_traceidratio` and
+  a ratio such as `0.1`; metrics are comparatively cheap, logs are the largest
+  cost. Do not enable request-body logging in production.
+- **TLS, auth and secrets** — terminate TLS at an ingress; OTLP, Tempo, Loki and
+  Prometheus have no authentication here. Keep them private or add mTLS/bearer
+  auth and TLS, and read Grafana/Alertmanager credentials from a secret manager.
+- **Retention** — always set retention **and** a storage quota or object-store
+  lifecycle; the disk alert is a backstop, not a capacity plan.
+
 ## Security
 
 - The collector, Prometheus, Alertmanager, Loki, Tempo, Pyroscope and Grafana
@@ -395,7 +426,8 @@ Loki/Tempo/Pyroscope to object storage and Prometheus to remote write.
 - **Coarse judge internals.** The container's compile/test loop is one span.
 - **Browser tracing is build-time.**
 - **Span profiles are sampling-dependent.**
-- **Alerting is a webhook** to a receiver; the bundled sink is a test fixture.
+- **Alerting is webhook- or email-based**; the bundled sink is a test fixture,
+  and Gmail email is optional.
 - **No metamonitoring.** A down observability host is detected by users.
 - **No configuration drift detection.** Use git and Ansible diffs.
 
@@ -404,4 +436,3 @@ Loki/Tempo/Pyroscope to object storage and Prometheus to remote write.
 - [Runbook](./runbook.md)
 - [Ansible setup](../deployment/ansible-setup.md)
 - [Security & scaling](../deployment/security.md)
-- [Original four-machine observability guide](https://github.com/reisaraujo-miguel/runcodes/blob/main/deploy/ansible/docs/OBSERVABILITY.md)
