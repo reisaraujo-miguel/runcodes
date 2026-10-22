@@ -1,4 +1,4 @@
-@import "@ibm/plex/css/ibm-plex.min.css";
+@import "./fonts.css";
 
 @import "tailwindcss";
 @import "tw-animate-css";
