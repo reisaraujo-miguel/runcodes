@@ -9,6 +9,14 @@ export const API_BASE_URL = import.meta.env.VITE_API_ENDPOINT ?? "";
  */
 export const REQUEST_TIMEOUT_MS = 15_000;
 
+/**
+ * Dispatched on the global object whenever the API answers 401. The session
+ * cookie may have expired or been revoked by a password/email change; the auth
+ * provider listens and clears its user so the route guard redirects instead of
+ * leaving the UI looking signed in until the next reload.
+ */
+export const UNAUTHORIZED_EVENT = "runcodes:unauthorized";
+
 /** A file upload is slower than a JSON round trip, so it gets its own budget. */
 export const UPLOAD_TIMEOUT_MS = 120_000;
 
@@ -105,6 +113,10 @@ export async function apiRequest<T>(
       });
     }
     throw error;
+  }
+
+  if (response.status === 401) {
+    globalThis.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
   }
 
   if (!response.ok) {

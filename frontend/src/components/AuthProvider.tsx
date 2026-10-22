@@ -9,6 +9,7 @@ import {
   refreshSession,
   type AuthUser,
 } from "@/lib/api/auth";
+import { UNAUTHORIZED_EVENT } from "@/lib/api/client";
 
 /** Refresh the session this long before it expires. */
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
@@ -55,6 +56,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Best effort: a reload may still find the old cookie.
     }
     setUser(null);
+  }, []);
+
+  // A 401 can arrive from any request, including one issued by a page the user
+  // is already on. Clearing the session here lets the route guard redirect
+  // instead of leaving a signed-in shell full of failing requests.
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setUser(null);
+    };
+
+    globalThis.addEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
+    return () => {
+      globalThis.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
+    };
   }, []);
 
   useEffect(() => {
