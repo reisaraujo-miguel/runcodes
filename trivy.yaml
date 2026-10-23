@@ -17,9 +17,9 @@ severity:
 # Overall scan timeout.
 timeout: 10m
 
-# Known false positives and accepted risks are listed in `.trivyignore` at
+# Known false positives and accepted risks are listed in `.trivyignore.yaml` at
 # the repository root.
-ignorefile: .trivyignore
+ignorefile: .trivyignore.yaml
 
 scan:
   # Scanners enabled by default. The container image scan in CI narrows this

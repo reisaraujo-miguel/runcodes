@@ -14,7 +14,7 @@ func TestIsTerminalStatus(t *testing.T) {
 		{"queued", false},
 		{"compiling", false},
 		{"running", false},
-		{"plagiarism", false},
+		{"plagiarism", true},
 		{"completed", true},
 		{"uncompleted", true},
 		{"compilation_error", true},

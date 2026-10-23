@@ -6,6 +6,17 @@
 # the SSE stream.
 {$RUNCODES_DOMAIN::80} {
 	route {
+		# Browser hardening. The SPA needs inline styles and the theme bootstrap
+		# script; everything else is served from this origin. connect-src includes
+		# the local browser-telemetry collector used by the observability overlay.
+		header {
+			X-Content-Type-Options "nosniff"
+			X-Frame-Options "SAMEORIGIN"
+			Referrer-Policy "no-referrer"
+			Permissions-Policy "camera=(), microphone=(), geolocation=()"
+			Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' http://localhost:4318; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'"
+		}
+
 		@api path /api/*
 		reverse_proxy @api {$BACKEND_UPSTREAM:http://backend:8443} {
 			flush_interval -1

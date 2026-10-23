@@ -105,8 +105,8 @@ Application, monitor and runner images are published to GHCR by the workflows in
 
 Only Caddy is public. The backend, judge, database, SeaweedFS and mail catcher
 are loopback or private; graded code runs without a network namespace and cannot
-gain privileges. The backend and judge use the row-only `runcodes_app` database
-role. See [Security & scaling](https://reisaraujo-miguel.github.io/runcodes/deployment/security.html).
+gain privileges. The backend uses the row-only `runcodes_app` database role;
+the judge uses the narrower `runcodes_judge` role. See [Security & scaling](https://reisaraujo-miguel.github.io/runcodes/deployment/security.html).
 
 Container images and the repository are scanned with [Trivy](https://trivy.dev/)
 (configuration in [`trivy.yaml`](trivy.yaml)).

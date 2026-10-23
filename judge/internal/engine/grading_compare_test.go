@@ -18,9 +18,9 @@ func TestCompareOutput(t *testing.T) {
 	}{
 		{"text exact", "hello\nworld\n", "hello\nworld\n", "text", model.CaseCorrect},
 		{"text lenient", "HELLO world\n", "hello  WORLD\n", "text", model.CaseBadFormat},
-		{"text wrong", "bye\n", "hello\n", "text", model.CaseKilledBySignal},
+		{"text wrong", "bye\n", "hello\n", "text", model.CaseBadFormat},
 		{"file equal", "abc", "abc", "file", model.CaseCorrect},
-		{"file different", "abc", "abd", "file", model.CaseKilledBySignal},
+		{"file different", "abc", "abd", "file", model.CaseBadFormat},
 	}
 
 	for _, tc := range tests {

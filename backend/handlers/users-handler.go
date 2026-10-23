@@ -42,27 +42,6 @@ func SignUp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var err error
-	if err = services.CheckEmailExistence(ctx, req.Email); err != nil {
-		if errors.Is(err, services.ErrEmailExists) {
-			slog.InfoContext(ctx,
-				"someone tried to register an email that is already in use",
-			)
-			WriteResponse(w, http.StatusConflict,
-				models.Error{Message: services.ErrEmailExists.Error()},
-			)
-		} else {
-			slog.ErrorContext(ctx,
-				"error while checking email",
-				slog.String("error", err.Error()),
-			)
-			WriteResponse(w, http.StatusInternalServerError,
-				models.Error{Message: services.ErrServer.Error()},
-			)
-		}
-		return
-	}
-
 	if req.Password != req.PasswordConfirmation {
 		slog.InfoContext(ctx, "someone tried to register with different passwords")
 		WriteResponse(w, http.StatusBadRequest,
@@ -79,6 +58,16 @@ func SignUp(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := services.SignUp(ctx, &req)
 	if err != nil {
+		if errors.Is(err, services.ErrEmailExists) {
+			// Do not disclose whether the address already belongs to an account.
+			// The caller gets the same answer as a new signup; an unconfirmed
+			// account can recover with the resend-verification endpoint.
+			slog.InfoContext(ctx,
+				"signup attempted for an email that is already in use",
+			)
+			WriteResponse(w, http.StatusCreated, nil)
+			return
+		}
 		slog.ErrorContext(ctx,
 			"error registering new user",
 			slog.String("error", err.Error()),

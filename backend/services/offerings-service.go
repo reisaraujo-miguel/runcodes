@@ -622,10 +622,10 @@ authoring content and submissions behind in the object store.
 */
 func offeringStorageKeys(ctx context.Context, offeringID int64) ([]storageObject, error) {
 	keys := make([]storageObject, 0, 16)
+	seenCase := make(map[int64]bool)
 
 	rows, err := database.DB.QueryContext(ctx, `
-		SELECT tc.id, tc.input_type::text, tc.expected_output_type::text,
-		       COALESCE(files.path, '')
+		SELECT tc.id, COALESCE(files.path, '')
 		FROM exercises_test_cases tc
 		JOIN exercises e ON e.id = tc.exercise_id
 		LEFT JOIN exercises_test_cases_files files
@@ -644,21 +644,23 @@ func offeringStorageKeys(ctx context.Context, offeringID int64) ([]storageObject
 	for rows.Next() {
 		var (
 			caseID       int64
-			inputType    string
-			outputType   string
 			attachedPath string
 		)
-		if err := rows.Scan(&caseID, &inputType, &outputType, &attachedPath); err != nil {
+		if err := rows.Scan(&caseID, &attachedPath); err != nil {
 			slog.ErrorContext(ctx, "error scanning test case object",
 				slog.String("error", err.Error()),
 			)
 			return nil, ErrServer
 		}
-		if inputType == IOTypeFile {
+		// Every case has an input and an expected-output object, including text
+		// cases: the backend still uploads text objects for compatibility. Legacy
+		// text cases may not have one, but deleting a missing key is harmless. The
+		// file join can return one row per attached file, so only add the case
+		// objects once.
+		if !seenCase[caseID] {
 			keys = append(keys, storageObject{bucketCases, storage.CaseInputKey(caseID)})
-		}
-		if outputType == IOTypeFile {
 			keys = append(keys, storageObject{bucketCases, storage.CaseOutputKey(caseID)})
+			seenCase[caseID] = true
 		}
 		if attachedPath != "" {
 			keys = append(keys, storageObject{

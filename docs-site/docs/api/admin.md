@@ -53,8 +53,7 @@ Partial update. All fields optional:
 | --- | --- |
 | `200` | updated user |
 | `400` | invalid id/body or invalid role |
-| `409` | email or organization id already in use |
-| `422` | an admin cannot change their own role or unconfirm themselves |
+| `409` | email or organization id already in use; or the target is the caller and the request changes their own role/email or unconfirms them |
 
 Valid roles are `student`, `professor`, `admin` and `dev`. Promoting a user to
 `admin` grants the entire admin panel; demoting an admin is subject to the

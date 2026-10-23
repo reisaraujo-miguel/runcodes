@@ -140,3 +140,13 @@ func TestLogInNormalizesEmail(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestDummyPasswordHashIsUsable(t *testing.T) {
+	// A malformed placeholder would make the unknown-account path return
+	// immediately and silently reintroduce the timing disclosure.
+	if err := bcrypt.CompareHashAndPassword(
+		[]byte(dummyPasswordHash), []byte("runcodes-dummy-password"),
+	); err != nil {
+		t.Fatalf("dummy bcrypt hash is invalid: %v", err)
+	}
+}

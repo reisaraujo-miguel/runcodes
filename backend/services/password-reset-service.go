@@ -66,6 +66,9 @@ func RequestPasswordReset(ctx context.Context, email string) error {
 		return ErrServer
 	}
 
+	if !allowTransactionalEmail(email) {
+		return nil
+	}
 	return SendPasswordResetEmail(ctx, id, name, email)
 }
 

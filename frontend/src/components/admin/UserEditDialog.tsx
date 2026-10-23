@@ -110,12 +110,18 @@ export function UserEditDialog({
               id="admin-user-email"
               type="email"
               value={email}
-              disabled={submit.pending}
+              disabled={isSelf || submit.pending}
               onChange={(event) => {
                 setEmail(event.target.value);
               }}
               required
             />
+            {isSelf ? (
+              <p className="text-muted-foreground text-xs">
+                Altere o seu próprio email na página de perfil; o painel não pode
+                trocar o endereço da conta que está a administrar.
+              </p>
+            ) : null}
           </div>
 
           <div className="space-y-2">

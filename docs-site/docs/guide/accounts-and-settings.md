@@ -24,11 +24,14 @@ an `HttpOnly` cookie. The frontend never holds the token in JavaScript.
 Rules enforced by the API:
 
 - name is required and at most 100 characters;
-- email must be valid and unique (a duplicate is `409`);
+- email must be valid; signup returns the same answer for a new or existing
+  address, so it cannot be used to enumerate accounts;
 - password and confirmation must match;
 - password must be at least 8 characters and contain an uppercase letter, a
   lowercase letter, a digit and a special character;
-- a successful signup returns `201` and creates an **unconfirmed** account.
+- a signup for a new address returns `201` and creates an **unconfirmed**
+  account; an existing address gets the same response without creating a second
+  account.
 
 If the verification email cannot be delivered, signup still succeeds: the
 account exists and the resend endpoint is the recovery path. The failure is
