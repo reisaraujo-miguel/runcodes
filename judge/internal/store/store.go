@@ -191,7 +191,8 @@ func (s *Store) FetchTestCases(ctx context.Context, exerciseID int64) ([]model.T
 	// Fetch the test cases first, then fetch the files in a second query to avoid
 	// the N+1 problem. We use a map to associate test case IDs with their files.
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, exercise_id, input_type::text, expected_output_type::text,
+		SELECT id, exercise_id, input_type::text, COALESCE(input, ''),
+		       expected_output_type::text, COALESCE(expected_output, ''),
 		       show_input, show_expected_output, show_user_output,
 		       cpu_time_limit_seconds, mem_usage_limit_bytes,
 		       stack_limit_bytes, file_size_limit_bytes
@@ -212,7 +213,8 @@ func (s *Store) FetchTestCases(ctx context.Context, exerciseID int64) ([]model.T
 		var tc model.TestCase
 
 		if err := rows.Scan(
-			&tc.ID, &tc.ExerciseID, &tc.InputType, &tc.ExpectedOutputType,
+			&tc.ID, &tc.ExerciseID, &tc.InputType, &tc.Input,
+			&tc.ExpectedOutputType, &tc.ExpectedOutput,
 			&tc.ShowInput, &tc.ShowExpectedOutput, &tc.ShowUserOutput,
 			&tc.CPUTimeLimit, &tc.MemUsageLimit, &tc.StackLimit, &tc.FileSizeLimit,
 		); err != nil {

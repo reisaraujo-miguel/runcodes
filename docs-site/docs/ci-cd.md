@@ -83,7 +83,7 @@ and scanned by Trivy (`vuln`, `secret`, `misconfig`).
 - `exit-code: 1` for the image gate;
 - severities `CRITICAL` and `HIGH`;
 - scanners `vuln`, `secret`, `misconfig`;
-- `ignore-unfixed: false` and the accepted-risk file `.trivyignore`.
+- `ignore-unfixed: false` and the accepted-risk file `.trivyignore.yaml`.
 
 Findings are uploaded as SARIF to the Security tab. The repository scan
 (`trivy-repo.yml`) overrides the exit code to 0: findings are reported, not

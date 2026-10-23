@@ -25,14 +25,15 @@ Creates an unconfirmed account and sends a verification email.
 
 | Status | Meaning |
 | --- | --- |
-| `201` | account created, verification mail attempted |
+| `201` | request accepted; if the address was new, the account was created and verification mail attempted |
 | `400` | invalid name/email/password, or passwords do not match |
-| `409` | email already in use |
 | `500` | database error |
 
-The account exists even if mail delivery fails; this is intentional so a retry
-does not report the email as taken. The client should offer "resend
-verification".
+The response is deliberately the same for a new and an existing address, so
+signup cannot be used to enumerate accounts. The account exists even if mail
+delivery fails; the client should offer "resend verification". The resend and
+forgot-password flows apply a per-address cooldown in addition to the per-IP
+limit.
 
 ### `POST /user/login`
 
@@ -69,7 +70,8 @@ limited to 10 requests/minute per IP.
 ```
 
 Always returns `202 Accepted`, whether or not the address belongs to an account.
-A resend invalidates the previous link. Rate limited to 10 requests/minute per IP.
+A resend invalidates the previous link. Rate limited to 10 requests/minute per IP
+and to one message per address every five minutes.
 
 ### `POST /user/forgot-password`
 
@@ -77,7 +79,8 @@ A resend invalidates the previous link. Rate limited to 10 requests/minute per I
 { "email": "ada@example.com" }
 ```
 
-Sends a recovery link to the address if it belongs to an account. Requesting a
+Sends a recovery link to the address if it belongs to an account. The response
+is independent of account existence. Requesting a
 new link invalidates the previous one.
 
 | Status | Meaning |

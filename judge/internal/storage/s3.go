@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -38,6 +39,7 @@ func NewS3(ctx context.Context, cfg config.S3Config) (*S3, error) {
 		)),
 		// Propagate the claimed commit's trace context to every S3 request.
 		awsconfig.WithHTTPClient(&http.Client{
+			Timeout:   60 * time.Second,
 			Transport: telemetry.Transport(http.DefaultTransport),
 		}),
 	)

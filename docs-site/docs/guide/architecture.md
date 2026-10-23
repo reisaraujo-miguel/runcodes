@@ -49,7 +49,7 @@ binds to a private node address.
 | Judge | compute host | claiming commits, container lifecycle, grading, event stream | persistence, artifacts |
 | PostgreSQL | data host | users, classes, exercises, commits, results, queue | files, source code |
 | SeaweedFS | data host | submitted source, test-case I/O, exercise files, output archives | relational data |
-| Redis | data host | cached responses and rate-limit state | durable data |
+| Redis | data host | cached responses | durable data |
 | Runners | compute host | compiling and running one submission | orchestration |
 | Monitor | inside a runner | per-process limits, CPU time, exit status | grading decisions |
 
@@ -137,13 +137,14 @@ crash-safe and multi-instance safe.
 | --- | --- | --- |
 | Users, classes, exercises, commits, results | PostgreSQL | must be backed up |
 | Submitted source, test cases, exercise files, output archives | SeaweedFS (`<prefix>-commits`, `-cases`, `-files`, `-outputfiles`) | must be backed up |
-| Cached API responses and rate-limit counters | Redis | disposable |
+| Cached API responses | Redis | disposable |
 | Judge workspaces | `JUDGE_EXEC_DIR` (`/exec` in Compose) | disposable |
 | Telemetry | observability volumes | optional; retention-capped |
 
-The backend and the judge log in as `runcodes_app`, a role that can read and
-write rows but cannot change the schema, create roles or read `pg_authid`. Only
-the database container and the migration tooling use the owner role.
+The backend logs in as `runcodes_app` and the judge as `runcodes_judge`; both
+can read and write the rows they need but cannot change the schema, create roles
+or read `pg_authid`. Only the database container and the migration tooling use
+the owner role.
 
 ## Security boundaries
 

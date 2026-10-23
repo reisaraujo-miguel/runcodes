@@ -126,6 +126,10 @@ The harness expects the milestones `compilation.start`, `compilation.done`,
 `run.start` and `run.done`, each printed as `<name> <run_nonce>`. Languages that
 do not compile skip the compilation milestones.
 
+Text test-case inputs and expected outputs are materialised from the database
+columns; file-based cases use their S3 objects. This keeps legacy text cases,
+which never had separate objects, gradeable.
+
 These globals override the image's own defaults. The language script is appended
 to the base script and assigns `monitor_max_fs`, `monitor_max_ms` and
 `compilation_timeout` itself (for example Python asks for 1 GiB). The harness
@@ -329,7 +333,7 @@ make integration              # starts containers, runs the test, tears down
 ```
 
 The harness creates, migrates and drops its own scratch database, so it connects
-as the owner (`runcodes`); a deployment points the judge at `runcodes_app`
+as the owner (`runcodes`); a deployment points the judge at `runcodes_judge`
 instead. Useful overrides:
 
 | Variable | Default | Purpose |

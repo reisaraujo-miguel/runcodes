@@ -128,8 +128,9 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 	}
 
 	putObject(ctx, t, s3client, s3cfg.CommitsBucket(), sourceKey, []byte(cSource))
-	putObject(ctx, t, s3client, s3cfg.CasesBucket(), fmt.Sprintf("%d/in", caseID), []byte(""))
-	putObject(ctx, t, s3client, s3cfg.CasesBucket(), fmt.Sprintf("%d/out", caseID), []byte("hello\n"))
+	// The test case is text-based: its input and expected output live in the
+	// database. Deliberately do not create S3 objects for them, so this test
+	// covers the legacy/migrated text-case fallback.
 
 	t.Cleanup(func() {
 		bg := context.Background()
@@ -138,8 +139,6 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 		_, _ = db.ExecContext(bg, `DELETE FROM exercises WHERE id = $1`, exerciseID)
 		for _, obj := range []struct{ bucket, key string }{
 			{s3cfg.CommitsBucket(), sourceKey},
-			{s3cfg.CasesBucket(), fmt.Sprintf("%d/in", caseID)},
-			{s3cfg.CasesBucket(), fmt.Sprintf("%d/out", caseID)},
 		} {
 			_, _ = s3client.DeleteObject(bg, &s3.DeleteObjectInput{
 				Bucket: aws.String(obj.bucket), Key: aws.String(obj.key),

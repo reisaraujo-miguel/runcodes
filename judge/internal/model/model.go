@@ -35,7 +35,9 @@ type TestCase struct {
 	ID                 int64
 	ExerciseID         int64
 	InputType          string // "text" | "file"
+	Input              string // inline input for InputType == "text"
 	ExpectedOutputType string // "text" | "file"
+	ExpectedOutput     string // inline expected output for ExpectedOutputType == "text"
 	ShowInput          bool
 	ShowExpectedOutput bool
 	ShowUserOutput     bool

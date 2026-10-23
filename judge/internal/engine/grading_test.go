@@ -4,15 +4,12 @@ import (
 	"context"
 	"io"
 	"log/slog"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/runcodes-icmc/judge/internal/config"
 	"github.com/runcodes-icmc/judge/internal/model"
-	"github.com/runcodes-icmc/judge/internal/storage"
 )
 
 func TestReadMonitor(t *testing.T) {
@@ -143,33 +140,14 @@ func TestScoreRun(t *testing.T) {
 	}
 }
 
-// TestGradeCaseIgnoresStderrWhenAnswerIsCorrect covers the silent failure where
-// a program writes a diagnostic to stderr but exits cleanly and prints the
-// expected answer. Stderr is not a verdict.
+// TestGradeCaseIgnoresStderrWhenAnswerIsCorrect covers two contracts: a
+// diagnostic on stderr does not fail a case, and a text expected output is read
+// from the database rather than requiring an S3 object. The nil S3 client is
+// deliberate: touching S3 here would panic.
 func TestGradeCaseIgnoresStderrWhenAnswerIsCorrect(t *testing.T) {
-	expectedBody := "42\n"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(expectedBody))
-	}))
-	t.Cleanup(server.Close)
-
-	s3, err := storage.NewS3(context.Background(), config.S3Config{
-		Endpoint:   server.URL,
-		Region:     "us-east-1",
-		AccessKey:  "test-key",
-		SecretKey:  "test-secret",
-		BucketBase: "test",
-	})
-	if err != nil {
-		t.Fatalf("NewS3: %v", err)
-	}
-
 	dir := t.TempDir()
-	ws := &workspace{
-		BaseDir:     dir,
-		ExpectedDir: t.TempDir(),
-	}
-	if err := os.WriteFile(filepath.Join(dir, "7.output"), []byte(expectedBody), 0o644); err != nil {
+	ws := &workspace{BaseDir: dir}
+	if err := os.WriteFile(filepath.Join(dir, "7.output"), []byte("42\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "7.error"), []byte("warning: harmless\n"), 0o644); err != nil {
@@ -184,11 +162,14 @@ func TestGradeCaseIgnoresStderrWhenAnswerIsCorrect(t *testing.T) {
 			MaxOutputFileSize:   1024,
 			MaxCompareFileBytes: 1024,
 		},
-		s3:     s3,
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
-	result, err := e.gradeCase(context.Background(), model.TestCase{ID: 7}, ws)
+	result, err := e.gradeCase(context.Background(), model.TestCase{
+		ID:                 7,
+		ExpectedOutputType: "text",
+		ExpectedOutput:     "42\n",
+	}, ws)
 	if err != nil {
 		t.Fatalf("gradeCase: %v", err)
 	}

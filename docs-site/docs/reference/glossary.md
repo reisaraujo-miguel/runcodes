@@ -116,8 +116,12 @@ The S3-compatible object store holding submissions, test cases, exercise files
 and output metadata.
 
 **`runcodes_app`**
-The limited PostgreSQL role the backend and judge use. It can read and write
-rows but cannot change the schema or read `pg_authid`.
+The limited PostgreSQL role the backend uses. It can read and write its rows but
+cannot change the schema or read `pg_authid`.
+
+**`runcodes_judge`**
+The narrower PostgreSQL role the judge uses for the claim loop and grading
+tables; it has the same schema and `pg_authid` restrictions as `runcodes_app`.
 
 **Atlas**
 The migration tool pinned by `database/atlas.sh`. It diffs the desired schema and

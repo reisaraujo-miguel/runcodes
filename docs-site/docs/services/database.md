@@ -300,7 +300,9 @@ a `legacy` schema. The migration runner skips `99` because the archive is
 optional, not an import step. It is one-shot and refuses to run if `legacy`
 already exists; drop the schema explicitly before retrying. The importer is not
 incremental either: re-running on an already-migrated database duplicates rows.
-It covers the relational database, **not** SeaweedFS objects.
+It covers the relational database, **not** SeaweedFS objects. Text test-case
+inputs and expected outputs are read from their relational columns by the judge;
+file-based cases still require their objects to be copied separately.
 
 ## Backups
 

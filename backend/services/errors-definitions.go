@@ -55,7 +55,7 @@ var (
 	ErrUserNotFound          = errors.New("user not found")
 	ErrInvalidMemberRole     = errors.New("invalid member role")
 	ErrInvalidRole           = errors.New("invalid role")
-	ErrSelfManagement        = errors.New("an admin cannot change their own role or delete their own account")
+	ErrSelfManagement        = errors.New("an admin cannot change their own role, change their own email, or delete their own account")
 	ErrSelfUnconfirm         = errors.New("an admin cannot unconfirm their own account")
 	ErrNotAProfessor         = errors.New("only a professor or admin account can be assigned to teach a class")
 	ErrCannotBanOwner        = errors.New("the owner of an offering cannot be banned or removed")

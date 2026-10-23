@@ -144,12 +144,18 @@ func ResendVerification(ctx context.Context, email string) error {
 	}
 
 	if pendingMail != "" {
+		if !allowTransactionalEmail(pendingMail) {
+			return nil
+		}
 		return SendEmailChangeEmail(ctx, id, name, pendingMail)
 	}
 	if confirmed {
 		return nil
 	}
 
+	if !allowTransactionalEmail(email) {
+		return nil
+	}
 	return SendVerificationEmail(ctx, id, name, email)
 }
 

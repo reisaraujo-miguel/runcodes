@@ -197,3 +197,47 @@ func TestQueueStatsError(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestFetchTestCasesReadsInlineText(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	mock.ExpectQuery(`SELECT id, exercise_id, input_type::text, COALESCE\(input, ''\)`).
+		WithArgs(int64(3)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "exercise_id", "input_type", "input",
+			"expected_output_type", "expected_output",
+			"show_input", "show_expected_output", "show_user_output",
+			"cpu_time_limit_seconds", "mem_usage_limit_bytes",
+			"stack_limit_bytes", "file_size_limit_bytes",
+		}).AddRow(
+			int64(11), int64(3), "text", "1 2",
+			"text", "3",
+			true, true, false,
+			2, int64(67108864), int64(1048576), int64(2097152),
+		))
+	mock.ExpectQuery(`SELECT exercise_test_case_id, path`).
+		WithArgs(sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"exercise_test_case_id", "path"}))
+
+	cases, err := NewWithDB(db).FetchTestCases(context.Background(), 3)
+	if err != nil {
+		t.Fatalf("FetchTestCases: %v", err)
+	}
+	if len(cases) != 1 {
+		t.Fatalf("got %d cases, want 1", len(cases))
+	}
+	tc := cases[0]
+	if tc.Input != "1 2" || tc.InputType != "text" {
+		t.Fatalf("input = %q/%q", tc.Input, tc.InputType)
+	}
+	if tc.ExpectedOutput != "3" || tc.ExpectedOutputType != "text" {
+		t.Fatalf("expected = %q/%q", tc.ExpectedOutput, tc.ExpectedOutputType)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -76,6 +76,16 @@ func mkdirWorld(dir string) error {
 	return os.Chmod(dir, 0o777)
 }
 
+// writeWorldReadable writes data for the graded container. os.WriteFile honours
+// the process umask, which could leave the file readable only by the judge even
+// though the container runs as a different uid; chmod makes the intent explicit.
+func writeWorldReadable(path string, data []byte) error {
+	if err := os.WriteFile(path, data, 0o666); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o644)
+}
+
 // workspaceName is the run directory name for a commit, shared by the workspace
 // and its expected-output directory so both can be found and cleaned up together.
 func workspaceName(commitID int64) string {
@@ -330,13 +340,19 @@ func (e *Engine) fetchCompilationFiles(ctx context.Context, commit *model.Commit
 	return nil
 }
 
-// fetchTestCases downloads the input and any additional files for each test case from S3.
+// fetchTestCases materialises each test case's input and additional files. Text
+// inputs live in the database and are written directly; file inputs and attached
+// files come from S3. Legacy text cases have no S3 input object, so the fallback
+// is also what keeps migrated exercises gradeable.
 func (e *Engine) fetchTestCases(ctx context.Context, ws *workspace) error {
-	// Iterate through each test case and download its input and any additional files.
 	for _, tc := range ws.TestCases {
 		inputDest := filepath.Join(ws.BaseDir, fmt.Sprintf("%d.in", tc.ID))
-		if err := e.s3.FetchCaseInput(ctx, tc.ID, inputDest); err != nil {
-			return fmt.Errorf("download input of case %d: %w", tc.ID, err)
+		if tc.InputType == "file" {
+			if err := e.s3.FetchCaseInput(ctx, tc.ID, inputDest); err != nil {
+				return fmt.Errorf("download input of case %d: %w", tc.ID, err)
+			}
+		} else if err := writeWorldReadable(inputDest, []byte(tc.Input)); err != nil {
+			return fmt.Errorf("write text input of case %d: %w", tc.ID, err)
 		}
 
 		testDir := filepath.Join(ws.BaseDir, fmt.Sprintf("test_%d", tc.ID))

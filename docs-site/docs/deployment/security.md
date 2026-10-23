@@ -49,6 +49,17 @@ truth. In a Compose install, only the frontend publishes on a network interface.
 - The API-wide limit is 600 requests/minute per client IP (sized for a classroom
   behind one NAT); login/signup get 20 and the email routes 10 per minute.
 
+### Browser headers
+
+Caddy adds a Content Security Policy, `X-Content-Type-Options: nosniff`,
+`X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: no-referrer` and a restrictive
+Permissions Policy to every response. Same-origin framing is retained so the
+statement PDF can render in its iframe; cross-origin framing is refused. The
+policy allows inline styles and the small inline theme script the SPA needs. Its
+`connect-src` includes the default local browser collector; if you build the
+frontend with a different external OTLP origin, add that origin to the Caddy
+policy as well.
+
 ### Authorization
 
 Every route has a server-side check; hiding UI links is not a control. The class
@@ -59,11 +70,11 @@ missing one (`404`).
 
 ### Database roles
 
-The services log in as `runcodes_app`, which owns nothing and cannot change the
-schema, create roles or read `pg_authid`. Only the database container and
-migration tooling use the owner. A SQL injection in the backend or judge cannot
-drop the schema or read other databases' credentials. CI asserts the role's
-limits.
+The backend logs in as `runcodes_app` and the judge as `runcodes_judge`. Neither
+role owns anything or can change the schema, create roles or read `pg_authid`.
+Only the database container and migration tooling use the owner. A SQL injection
+in the backend or judge cannot drop the schema or read other databases'
+credentials. CI asserts the roles' limits.
 
 ### Untrusted code
 

@@ -105,10 +105,10 @@ func AdminListUsers(
 
 /*
 AdminUpdateUser applies a partial update to any user of the platform. An admin
-cannot change their own role: demoting the account that performs the change
-would take the admin panel away from them mid-request. For the same reason they
-cannot unconfirm their own account: the route guard would then lock them out of
-the panel that could confirm it again.
+cannot change their own role or email, and cannot unconfirm their own account:
+each of those would take the admin panel away from them (or sign out the session
+that is performing the change). The profile flow is the safe path for an email
+change because it verifies the new address before switching to it.
 */
 func AdminUpdateUser(
 	ctx context.Context, userID int, req *models.UpdateUserRequest, adminID int,
@@ -140,6 +140,11 @@ func AdminUpdateUser(
 	}
 
 	oldEmail, oldRole, oldConfirmed := user.Email, user.Role, user.Confirmed
+
+	if userID == adminID && req.Email != nil &&
+		validation.NormalizeEmail(*req.Email) != validation.NormalizeEmail(oldEmail) {
+		return nil, ErrSelfManagement
+	}
 
 	if req.Name != nil {
 		user.Name = strings.TrimSpace(*req.Name)

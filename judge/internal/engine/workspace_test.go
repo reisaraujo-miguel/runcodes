@@ -2,6 +2,7 @@ package engine
 
 import (
 	"archive/zip"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -277,5 +278,41 @@ func TestZipSubmissionUsesExtractedEntryPoint(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), "src_file='nested/main.c'") {
 		t.Fatalf("container.config did not name the extracted entry point:\n%s", raw)
+	}
+}
+
+// TestFetchTestCasesWritesTextInputFromTheDatabase pins the legacy text-case
+// fallback. The engine's S3 client is nil on purpose: a text case must not
+// attempt an S3 download.
+func TestFetchTestCasesWritesTextInputFromTheDatabase(t *testing.T) {
+	dir := t.TempDir()
+	ws := &workspace{
+		BaseDir: dir,
+		TestCases: []model.TestCase{{
+			ID:        7,
+			InputType: "text",
+			Input:     "1 2\n",
+		}},
+	}
+
+	e := &Engine{}
+	if err := e.fetchTestCases(context.Background(), ws); err != nil {
+		t.Fatalf("fetchTestCases: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(dir, "7.in"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "1 2\n" {
+		t.Fatalf("input = %q, want the database text", got)
+	}
+	if fi, err := os.Stat(filepath.Join(dir, "7.in")); err != nil {
+		t.Fatal(err)
+	} else if fi.Mode().Perm() != 0o644 {
+		t.Fatalf("input mode = %o, want 644", fi.Mode().Perm())
+	}
+	if fi, err := os.Stat(filepath.Join(dir, "test_7")); err != nil || !fi.IsDir() {
+		t.Fatalf("test_7 directory missing: %v", err)
 	}
 }

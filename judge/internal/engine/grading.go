@@ -115,7 +115,8 @@ func exitFailureMessage(info monitorInfo) (string, bool) {
 	return fmt.Sprintf("exit status %d", info.ExitStatus), true
 }
 
-// gradeAll grades every test case, downloading expected outputs from S3.
+// gradeAll grades every test case, using inline text outputs or downloading file
+// outputs from S3.
 func (e *Engine) gradeAll(ctx context.Context, commit *model.Commit, ws *workspace) ([]model.CaseResult, error) {
 	results := make([]model.CaseResult, 0, len(ws.TestCases))
 
@@ -212,16 +213,31 @@ func (e *Engine) gradeCase(ctx context.Context, tc model.TestCase, ws *workspace
 		result.ErrorMessage = errContent
 
 	default:
-		// Download the expected output from S3 for comparison, into the directory
-		// the container cannot write to, then read it under the comparison bound.
-		expectedPath := ws.expectedOutputPath(tc.ID)
-		if err := e.s3.FetchCaseOutput(ctx, tc.ID, expectedPath); err != nil {
-			return result, fmt.Errorf("download expected output of case %d: %w", tc.ID, err)
-		}
+		var expected []byte
+		if tc.ExpectedOutputType == "file" {
+			// Download the expected output from S3 into the directory the
+			// container cannot write to, then read it under the comparison bound.
+			expectedPath := ws.expectedOutputPath(tc.ID)
+			if err := e.s3.FetchCaseOutput(ctx, tc.ID, expectedPath); err != nil {
+				return result, fmt.Errorf("download expected output of case %d: %w", tc.ID, err)
+			}
 
-		expected, err := readRegularBounded(expectedPath, e.cfg.MaxCompareFileBytes)
-		if err != nil {
-			return result, fmt.Errorf("read expected output of case %d: %w", tc.ID, err)
+			var err error
+			expected, err = readRegularBounded(expectedPath, e.cfg.MaxCompareFileBytes)
+			if err != nil {
+				return result, fmt.Errorf("read expected output of case %d: %w", tc.ID, err)
+			}
+		} else {
+			// Text expected outputs live in the database. Legacy text cases have
+			// no S3 object at all; new ones keep an object for compatibility but
+			// the judge does not need it.
+			expected = []byte(tc.ExpectedOutput)
+			if e.cfg.MaxCompareFileBytes > 0 &&
+				int64(len(expected)) > e.cfg.MaxCompareFileBytes {
+				return result, fmt.Errorf(
+					"expected output of case %d exceeds the comparison limit", tc.ID,
+				)
+			}
 		}
 
 		// Compare the user's output with the expected output based on the expected output type.
@@ -251,7 +267,7 @@ func compareOutput(userOutput, expected []byte, expectedType string) model.CaseS
 			return model.CaseCorrect
 		}
 
-		return model.CaseKilledBySignal
+		return model.CaseBadFormat
 	}
 
 	// For "text" expected outputs, we use the text comparison functions to determine
@@ -263,7 +279,10 @@ func compareOutput(userOutput, expected []byte, expectedType string) model.CaseS
 	case cmp.TextLenientBytes(userOutput, expected):
 		return model.CaseBadFormat
 	default:
-		return model.CaseKilledBySignal
+		// A mismatch is a wrong answer, not a killed process. Genuine process
+		// failures (signals, non-zero exit, unreadable output) are classified
+		// before this comparison runs.
+		return model.CaseBadFormat
 	}
 }
 

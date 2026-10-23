@@ -59,10 +59,11 @@ var terminalStatuses = map[string]bool{
 	"compilation_error": true,
 	"server_error":      true,
 	"timeout":           true,
+	"plagiarism":        true,
 }
 
 // nonTerminalGuard is the SQL predicate used to protect terminal commits.
-const nonTerminalGuard = `status NOT IN ('completed','uncompleted','compilation_error','server_error','timeout')`
+const nonTerminalGuard = `status NOT IN ('completed','uncompleted','compilation_error','server_error','timeout','plagiarism')`
 
 /*
 IsTerminalStatus reports whether a commit status is final.

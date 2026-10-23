@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"testing"
 	"time"
@@ -135,6 +136,25 @@ func TestAdminOfferingByIDBindsTheLookup(t *testing.T) {
 		t.Fatalf("owner_id = %v, want nil", offering.OwnerID)
 	}
 
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAdminUpdateUserRejectsSelfEmailChange(t *testing.T) {
+	mock := newMockDB(t)
+	mock.ExpectQuery(`SELECT id, name, email, COALESCE\(org_id, ''\), role, confirmed, created_at`).
+		WithArgs(7).
+		WillReturnRows(sqlmock.NewRows(
+			[]string{"id", "name", "email", "org_id", "role", "confirmed", "created_at"},
+		).AddRow(7, "Ada", "ada@example.com", "", "admin", true, time.Now()))
+
+	_, err := AdminUpdateUser(context.Background(), 7, &models.UpdateUserRequest{
+		Email: ptrString("new@example.com"),
+	}, 7)
+	if !errors.Is(err, ErrSelfManagement) {
+		t.Fatalf("AdminUpdateUser = %v, want ErrSelfManagement", err)
+	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
 	}

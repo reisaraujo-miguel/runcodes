@@ -32,6 +32,12 @@ const (
 	MaxOrgIDLength    = 64
 )
 
+// dummyPasswordHash is a valid bcrypt hash (cost 12) checked when a login names
+// an unknown account. Without it the missing-user path returns before bcrypt and
+// is hundreds of milliseconds faster than a wrong password, which reveals
+// whether an address is registered.
+const dummyPasswordHash = "$2a$12$OBQ6gUTivqqVNZ9Kp0ig3eajxQGbpRMB5wXWMnTE1Jnjd40frbetq"
+
 /*
 SignUp creates a new user on the database and returns its id. The account is
 created unconfirmed: the caller sends the verification email, and LogIn refuses
@@ -102,6 +108,11 @@ func LogIn(ctx context.Context, req *models.LogInRequest) (map[string]any, error
 		"SELECT id, name, password_hash, role, confirmed, token_version FROM users WHERE email = $1",
 		email).Scan(&id, &name, &passwordHash, &role, &confirmed, &tokenVersion); err != nil {
 		if err == sql.ErrNoRows {
+			// Spend the same bcrypt time as a wrong password on a real account;
+			// the result is intentionally ignored.
+			_ = bcrypt.CompareHashAndPassword(
+				[]byte(dummyPasswordHash), []byte(req.Password),
+			)
 			slog.InfoContext(ctx,
 				"someone tried to login as an user that does not exist",
 			)
