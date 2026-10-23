@@ -65,10 +65,21 @@ func s3ConfigFromEnv() config.S3Config {
 	}
 }
 
+// requireOrSkip turns an unavailable integration dependency into a failure in
+// CI. The harness sets JUDGE_TEST_REQUIRE=1 so a silent skip cannot make the
+// end-to-end job green when Podman, PostgreSQL or S3 failed to start.
+func requireOrSkip(t *testing.T, format string, args ...any) {
+	t.Helper()
+	if os.Getenv("JUDGE_TEST_REQUIRE") == "1" {
+		t.Fatalf(format, args...)
+	}
+	t.Skipf(format, args...)
+}
+
 func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 	dsn := os.Getenv("JUDGE_TEST_DB_DSN")
 	if dsn == "" {
-		t.Skip("JUDGE_TEST_DB_DSN is not set; start the harness with integration/run.sh")
+		requireOrSkip(t, "JUDGE_TEST_DB_DSN is not set; start the harness with integration/run.sh")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -81,7 +92,7 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 	defer db.Close()
 	st := store.NewWithDB(db)
 	if err := st.Ping(ctx); err != nil {
-		t.Skipf("database unreachable: %v", err)
+		requireOrSkip(t, "database unreachable: %v", err)
 	}
 
 	podmanURI := envOr("JUDGE_PODMAN_URI", fmt.Sprintf("unix:///run/user/%d/podman/podman.sock", os.Getuid()))
@@ -93,7 +104,7 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 		CPUQuota:    100000,
 	})
 	if err := pc.Ready(ctx); err != nil {
-		t.Skipf("podman unreachable at %s: %v", podmanURI, err)
+		requireOrSkip(t, "podman unreachable at %s: %v", podmanURI, err)
 	}
 
 	s3cfg := s3ConfigFromEnv()

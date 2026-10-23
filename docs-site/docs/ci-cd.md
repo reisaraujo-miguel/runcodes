@@ -13,6 +13,7 @@ it runs, and what a release publishes.
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
 | `tests.yml` | push to `main`/`development`, all PRs, manual | formatting, vet, unit/integration tests, schema and migration checks |
+| `judge-integration.yml` | judge/runner/monitor/schema paths, manual | real PostgreSQL + SeaweedFS + rootless Podman end-to-end grading test |
 | `images.yml` | push to `main`/`development`, PRs, weekly, manual | build the four application images and scan them with Trivy |
 | `app-images.yml` | `v*.*.*` tag, manual | publish frontend, backend, database and judge to GHCR |
 | `monitor.yml` | `v*.*.*` tag, manual | publish the monitor image |
@@ -38,8 +39,17 @@ The jobs:
 ### Judge (Go)
 
 - `gofmt` and `go vet` with the Podman remote/storage tags;
-- `go test -race` (the end-to-end integration test skips itself unless
-  `JUDGE_TEST_DB_DSN` is set).
+- `go test -race`; the database-backed end-to-end test lives in the separate
+  `judge-integration.yml` workflow rather than being silently skipped here.
+
+### Judge end-to-end
+
+`judge-integration.yml` runs when the judge, monitor, runner or schema changes.
+It starts rootless Podman, builds the monitor, base and C runner images from the
+checkout, starts PostgreSQL and SeaweedFS through `judge/integration/run.sh`,
+and runs the real `TestJudgeRunsLanguageImageEndToEnd` path. The harness sets
+`JUDGE_TEST_REQUIRE=1`, so an unavailable database, object store or Podman API
+fails the job instead of producing a skipped test.
 
 ### Frontend (Bun)
 
