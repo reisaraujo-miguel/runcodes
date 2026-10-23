@@ -42,7 +42,7 @@ Response `201`:
 | `403` | not enrolled in the class |
 | `404` | exercise not found or not visible |
 | `413` | file exceeds 10 MiB |
-| `422` | deadline passed for the caller |
+| `422` | deadline passed, or the exercise has no test cases |
 | `500` | server error |
 | `503` | judge or object storage unavailable |
 
@@ -132,6 +132,9 @@ data: {"type":"snapshot","commit":{...},"results":[...],"artifacts":[...]}
 | `artifact` | `type`, `commit_id`, `seq`, `kind`, `url` |
 | `finished` | `type`, `commit_id`, `seq`, `status`, `num_correct_cases`, `score`, `compilation_message`, `compilation_error`, `started_at`, `finished_at` |
 | `error` | `type`, `commit_id`, `seq`, `message`; the stream ends |
+
+`cpu_time` is measured CPU time (container cgroup, with a direct-child rusage
+fallback); the exercise's `cpu_time_limit_seconds` is a wall-clock timeout.
 
 Example:
 

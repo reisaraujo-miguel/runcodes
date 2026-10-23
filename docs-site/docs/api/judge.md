@@ -150,7 +150,9 @@ must use its persisted state.
 ```
 
 `case_result.status` is one of `correct`, `bad_formatted_output`,
-`killed_with_signal`. `mem_usage` is `-1` because the monitor cannot measure it
+`killed_with_signal`. `cpu_time` is measured CPU time (container cgroup, with a
+direct-child rusage fallback); the exercise's `cpu_time_limit_seconds` remains a
+wall-clock timeout. `mem_usage` is `-1` because the monitor cannot measure it
 reliably.
 
 `artifact` (optional):

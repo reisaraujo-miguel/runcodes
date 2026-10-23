@@ -15,7 +15,7 @@ import (
 func TestReadMonitor(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "1.monitor_out")
-	content := "[info]\nexit_status=0\nsignal=\ntime=0.042\nmem=123456\n"
+	content := "[info]\nexit_status=0\nsignal=\ntime=0.042\ncpu_time=0.031\nmem=123456\n"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -29,6 +29,9 @@ func TestReadMonitor(t *testing.T) {
 	if info.Time != 0.042 {
 		t.Errorf("time = %v, want 0.042", info.Time)
 	}
+	if !info.HasCPU || info.CPU != 0.031 {
+		t.Errorf("cpu_time = %v (has=%v), want 0.031", info.CPU, info.HasCPU)
+	}
 	if !info.HasMem || info.Mem != 123456 {
 		t.Errorf("mem = %d (has=%v), want 123456", info.Mem, info.HasMem)
 	}
@@ -36,7 +39,7 @@ func TestReadMonitor(t *testing.T) {
 
 func TestReadMonitorMissing(t *testing.T) {
 	info := readMonitor(filepath.Join(t.TempDir(), "nope"))
-	if info.Signal != "" || info.Time != 0 || info.HasMem || info.HasExit {
+	if info.Signal != "" || info.Time != 0 || info.HasCPU || info.HasMem || info.HasExit {
 		t.Fatalf("expected zero value, got %+v", info)
 	}
 }
@@ -133,9 +136,9 @@ func TestScoreRun(t *testing.T) {
 		t.Fatalf("got correct=%d score=%v status=%s", correct, score, status)
 	}
 
-	// No test cases: the legacy engine treated this as a full score.
+	// No test cases: nothing was graded, so this is not a full score.
 	_, score, status = scoreRun(nil, nil)
-	if score != 100 || status != model.RunCompleted {
+	if score != 0 || status != model.RunUncompleted {
 		t.Fatalf("empty run got score=%v status=%s", score, status)
 	}
 }

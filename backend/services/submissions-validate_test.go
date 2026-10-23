@@ -106,3 +106,33 @@ func TestValidateExerciseNotFound(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestValidateTestCases(t *testing.T) {
+	t.Run("exercise has cases", func(t *testing.T) {
+		mock := newMockDB(t)
+		mock.ExpectQuery(`JOIN exercises_test_cases tc`).
+			WithArgs(int64(1)).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(3))
+
+		if err := validateTestCases(context.Background(), 1); err != nil {
+			t.Fatalf("validateTestCases = %v, want nil", err)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("empty exercise is refused", func(t *testing.T) {
+		mock := newMockDB(t)
+		mock.ExpectQuery(`JOIN exercises_test_cases tc`).
+			WithArgs(int64(1)).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+
+		if err := validateTestCases(context.Background(), 1); !errors.Is(err, ErrNoTestCases) {
+			t.Fatalf("validateTestCases = %v, want ErrNoTestCases", err)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
+	})
+}

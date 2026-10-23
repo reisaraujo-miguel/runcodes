@@ -23,13 +23,18 @@ monitor [options] 'command arg1 arg2'
 | `-r` | report file (default: stdout) |
 | `-c` | command to execute |
 
-The report is three lines:
+The report is four lines:
 
 ```text
 exit_status=0
 signal=
 time=0.042
+cpu_time=0.031
 ```
+
+`time` is wall-clock elapsed time. `cpu_time` is aggregate CPU time charged to
+the container cgroup when cgroup accounting is available; otherwise it falls
+back to the direct child's rusage.
 
 The report is written after the command's process group is killed and, with
 `-r`, renamed into place so the program cannot forge it. The harness kills any

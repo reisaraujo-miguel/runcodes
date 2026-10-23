@@ -5,12 +5,12 @@ compilation_command="java -jar /bin/portugol/portugol-compiler-2.6.9.jar ${src_f
 custom_run_command() {
     test_id=$1
 
-    # FIXME: Overriding timeout
+    # The console wrapper starts a second JVM; give it a small extra margin.
     timeout=$(($timeout + 3))
     run_command="java -jar /bin/portugol/portugol-console-2.6.9.jar ${src_file} -no-wait -in=../${test_id}.in -out=../${test_id}.output -err=../${test_id}.error"
 }
 
-# FIXME: Overriding settings
+# Image-specific limits for the Portugol runtime.
 monitor_max_fs=209715200 # 200MB
 monitor_max_ms=0         # 0 means no memory limit
 

@@ -24,6 +24,7 @@ var (
 	ErrExerciseNotFound = errors.New("exercise not found")
 	ErrNotEnrolled      = errors.New("you are not enrolled in this exercise's offering")
 	ErrDeadlinePassed   = errors.New("the deadline for this exercise has passed")
+	ErrNoTestCases      = errors.New("this exercise has no test cases; add at least one before submitting")
 	ErrInvalidFileType  = errors.New("file type is not allowed for this exercise")
 	ErrJudgeUnavailable = errors.New("the judge is unavailable, try again later")
 	// ErrSubmissionLimit is per-user admission control: the caller already has

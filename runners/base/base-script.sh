@@ -26,7 +26,6 @@ monitor_max_ms=''
 compilation_timeout=''
 src_file=''
 run_nonce=''
-make_file=false
 [[ -e "${container_config_file}" ]] && source "${container_config_file}"
 judge_max_fs="${monitor_max_fs}"
 judge_max_ms="${monitor_max_ms}"
@@ -280,7 +279,6 @@ mkdir -p "${outputfiles_dir}"
 # Standard commands for a Makefile-based submission. This can change depending
 # on the particular needs of each language.
 if compgen -G "src/?akefile" >/dev/null; then
-    make_file=true
     compilation_command='make all'
     run_command='make -s run'
 fi

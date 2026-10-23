@@ -159,6 +159,10 @@ func CreateSubmission(w http.ResponseWriter, r *http.Request) {
 			WriteResponse(w, http.StatusUnprocessableEntity,
 				models.Error{Message: services.ErrDeadlinePassed.Error()},
 			)
+		case errors.Is(err, services.ErrNoTestCases):
+			WriteResponse(w, http.StatusUnprocessableEntity,
+				models.Error{Message: services.ErrNoTestCases.Error()},
+			)
 		case errors.Is(err, services.ErrInvalidFileType):
 			WriteResponse(w, http.StatusBadRequest,
 				models.Error{Message: services.ErrInvalidFileType.Error()},
