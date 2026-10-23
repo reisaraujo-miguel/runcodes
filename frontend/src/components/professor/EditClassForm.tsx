@@ -85,7 +85,8 @@ export function EditClassForm({
         <DialogHeader>
           <DialogTitle>Editar turma</DialogTitle>
           <DialogDescription>
-            Atualize os dados da turma. O código de matrícula não muda.
+            Atualize os dados da turma. O código de matrícula pode ser gerado
+            novamente na página da turma.
           </DialogDescription>
         </DialogHeader>
 

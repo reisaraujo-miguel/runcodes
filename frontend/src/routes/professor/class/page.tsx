@@ -5,6 +5,7 @@ import {
   CopyIcon,
   PencilIcon,
   PlusIcon,
+  RefreshCwIcon,
   Trash2Icon,
 } from "lucide-react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
@@ -34,6 +35,7 @@ import {
   getOffering,
   getOfferingExercises,
   listOfferings,
+  rotateEnrollmentCode,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
 import { formatDateTime } from "@/lib/format";
@@ -61,6 +63,14 @@ function parseTab(value: string | null): ClassTab {
 /** The enrollment code with a copy affordance, so the professor can share it. */
 function EnrollmentCode({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
+
+  if (!code) {
+    return (
+      <span className="text-muted-foreground text-sm">
+        Nenhum código gerado ainda.
+      </span>
+    );
+  }
 
   async function handleCopy() {
     try {
@@ -139,6 +149,7 @@ export function ClassPage() {
   const [editing, setEditing] = useState(false);
   const [creatingExercise, setCreatingExercise] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [rotateError, setRotateError] = useState<string | null>(null);
 
   const info = data.data;
 
@@ -151,6 +162,18 @@ export function ClassPage() {
       },
       { replace: true },
     );
+  }
+
+  async function handleRotateCode() {
+    setRotateError(null);
+    try {
+      await rotateEnrollmentCode(id);
+      data.reload();
+    } catch (error) {
+      setRotateError(
+        errorMessage(error, "Não foi possível gerar um novo código."),
+      );
+    }
   }
 
   async function handleDeleteClass() {
@@ -253,8 +276,26 @@ export function ClassPage() {
                 <dt className="text-muted-foreground text-sm">
                   Código de matrícula
                 </dt>
-                <dd className="mt-1">
+                <dd className="mt-1 space-y-2">
                   <EnrollmentCode code={offering.enrollment_code} />
+                  {isOwner ? (
+                    <ConfirmButton
+                      size="sm"
+                      variant="outline"
+                      title="Gerar novo código de matrícula"
+                      description="O código atual deixa de funcionar imediatamente. Todos os alunos que ainda não se matricularam precisarão do novo código."
+                      confirmLabel="Gerar novo código"
+                      onConfirm={handleRotateCode}
+                    >
+                      <RefreshCwIcon />
+                      Gerar novo código
+                    </ConfirmButton>
+                  ) : null}
+                  {rotateError ? (
+                    <Alert variant="destructive">
+                      <AlertDescription>{rotateError}</AlertDescription>
+                    </Alert>
+                  ) : null}
                 </dd>
               </div>
               <div>

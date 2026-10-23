@@ -183,6 +183,40 @@ func UpdateOffering(w http.ResponseWriter, r *http.Request) {
 }
 
 /*
+RotateEnrollmentCode replaces a class's enrollment code and returns the offering
+with the new code. Only the owner may rotate it.
+*/
+func RotateEnrollmentCode(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	claims, ok := tokenClaims(w, r)
+	if !ok {
+		return
+	}
+
+	offeringID, err := pathID(r, "id")
+	if err != nil || offeringID <= 0 {
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "invalid offering id"},
+		)
+		return
+	}
+
+	offering, err := services.RotateOfferingEnrollmentCode(ctx, offeringID, claims)
+	if err != nil {
+		slog.ErrorContext(ctx, "error rotating enrollment code",
+			slog.String("error", err.Error()),
+			slog.Int64("offering_id", offeringID),
+			slog.Any("user_id", claims["id"]),
+		)
+		writeServiceError(ctx, w, err)
+		return
+	}
+
+	WriteResponse(w, http.StatusOK, offering)
+}
+
+/*
 DeleteOffering removes a class owned by the requesting professor.
 */
 func DeleteOffering(w http.ResponseWriter, r *http.Request) {

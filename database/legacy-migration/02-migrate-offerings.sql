@@ -12,7 +12,9 @@
 -- updated_at are set to the migration time.
 --
 -- enrollment_code is UNIQUE in the new schema but was not in the old one;
--- duplicates are dropped (set to NULL) instead of failing the migration.
+-- duplicates are dropped (set to NULL) instead of failing the migration. Unique
+-- legacy codes are replaced with a fresh six-character value: old four-character
+-- codes are too weak, and the new schema's check constraint rejects them.
 
 WITH duplicated_codes AS (
   SELECT enrollment_code
@@ -31,7 +33,10 @@ SELECT
   NULL, -- 04-migrate-offering-owners.sql
   _migration.to_tstz(o.end_date::timestamp),
   COALESCE(o.visible_to_enroll, TRUE),
-  CASE WHEN d.enrollment_code IS NULL THEN o.enrollment_code END,
+  CASE
+    WHEN d.enrollment_code IS NULL AND o.enrollment_code IS NOT NULL
+      THEN upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6))
+  END,
   NULL, -- no equivalent in the old schema
   NOW(),
   NOW()

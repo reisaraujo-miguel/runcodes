@@ -58,11 +58,11 @@ owner's authoring routes; the panel uses its own endpoints.
 
 ## Enrollment
 
-- Students join with an **enrollment code**, case-insensitively; an account is
-  limited to five attempts per minute because legacy classes may still have
-  four-character codes. New classes get
-  six-character codes; classes created before the change keep their
-  four-character codes, which are still accepted. Joining is idempotent: entering
+- Students join with a six-character **enrollment code**, case-insensitively.
+  An account is limited to five attempts per minute as defense in depth. The
+  migration rotates legacy four-character codes; a short code is rejected even
+  if it was not rotated. The owner can generate a new code from the class page,
+  which invalidates the previous one immediately. Joining is idempotent: entering
   the code twice leaves one enrollment.
 - Enrollment is refused when the class is not visible to enroll, has ended, or
   the caller is banned.

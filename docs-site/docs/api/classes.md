@@ -84,8 +84,10 @@ Exercises open **right now** in the caller's classes. Returns an array of:
 ```
 
 Returns `201` with the enrollment object. The code is case-insensitive and
-joining is idempotent. Six-character codes (current classes) and four-character
-codes (classes created before the change) are both accepted.
+joining is idempotent. Enrollment codes are six characters. The migration
+rotates surviving legacy four-character codes; a short code is rejected even if
+it was not migrated. A class owner can generate a new code from the class page
+or with the rotation endpoint below.
 
 | Status | Meaning |
 | --- | --- |
@@ -142,6 +144,18 @@ Classes the caller owns or teaches. Returns `OwnedOffering` objects:
 
 Returns the class including its enrollment code. Owner, co-professor and admin
 panel only.
+
+### `POST /offerings/{id}/enrollment-code/rotate`
+
+Owner only. Generates a new six-character enrollment code and returns the
+offering. The previous code stops working immediately, so students who have not
+enrolled yet need the new one. Rotating a class with no code creates one.
+
+| Status | Meaning |
+| --- | --- |
+| `200` | code rotated; body is the updated offering |
+| `403` | caller is not the class owner |
+| `404` | class not found |
 
 ### `PUT /offerings/{id}`
 
