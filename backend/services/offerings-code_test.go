@@ -7,9 +7,9 @@ import (
 )
 
 /*
-TestNewEnrollmentCode pins the shape of a generated enrollment code. New
-offerings get six characters; the four-character format is reserved for codes of
-older offerings, which enrollment still accepts.
+TestNewEnrollmentCode pins the shape of a generated enrollment code. Every
+current and rotated code is six uppercase alphanumerics; enrollment rejects
+shorter legacy codes after the rotation migration.
 */
 func TestNewEnrollmentCode(t *testing.T) {
 	codePattern := regexp.MustCompile(`^[A-Z0-9]{6}$`)

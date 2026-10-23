@@ -286,7 +286,7 @@ Mapping decisions:
 | `commits.score` | clamped to 0..100 by the new CHECK constraint |
 | `offerings.name` | composed as `<course code> - <course title> (<year>/<term>)` |
 | `offerings.owner_id` | first professor enrollment; NULL if none |
-| `offerings.enrollment_code` | kept only when unique; duplicates become NULL |
+| `offerings.enrollment_code` | replaced with a fresh six-character value when unique; duplicates become NULL |
 | `exercises.open_date` | falls back to `deadline` when NULL (the new column is NOT NULL) |
 | `created_at` / `updated_at` | migration time, or `last_update` for test cases |
 | IPs | cast to `inet`; invalid values become NULL (`0.0.0.0` for NOT NULL columns) |
@@ -302,7 +302,13 @@ already exists; drop the schema explicitly before retrying. The importer is not
 incremental either: re-running on an already-migrated database duplicates rows.
 It covers the relational database, **not** SeaweedFS objects. Text test-case
 inputs and expected outputs are read from their relational columns by the judge;
-file-based cases still require their objects to be copied separately.
+file-based cases still require their objects to be copied separately. The
+enrollment-code migration rotates every surviving code shorter than six
+characters, so codes distributed to students before the upgrade stop working;
+the class owner can read the new code on the class page. Apply this migration
+before deploying the backend version that rejects short codes. Cached class
+pages can retain the previous code for up to the 30-second offering TTL; flush
+Redis after the migration if that window matters.
 
 ## Backups
 

@@ -102,9 +102,7 @@ func insertOffering(
 		RETURNING id
 		`, req.Name, userID, req.EndDate, req.Description, enrollmentCode,
 	).Scan(&id); err != nil {
-		if pgErr, ok := err.(*pq.Error); ok &&
-			pgErr.Code == pqerror.UniqueViolation &&
-			pgErr.Constraint == "offerings_enrollment_code_key" {
+		if isEnrollmentCodeCollision(err) {
 			return nil, errEnrollmentCodeCollision
 		}
 		slog.ErrorContext(ctx,
@@ -422,6 +420,67 @@ func updateOfferingRow(
 	)
 
 	return offering, nil
+}
+
+/*
+RotateOfferingEnrollmentCode generates a new six-character code for a class. The
+old code stops working immediately; this is the recovery path for classes whose
+legacy code could not be rotated by the migration (or whose code is null). Only
+the owner may rotate it; a co-professor can see the code but cannot invalidate
+what the owner distributed.
+*/
+func RotateOfferingEnrollmentCode(
+	ctx context.Context, offeringID int64, claims map[string]any,
+) (*models.Offering, error) {
+	rel, err := requireOfferingOwner(ctx, offeringID, claims)
+	if err != nil {
+		return nil, err
+	}
+
+	for attempt := 1; attempt <= enrollmentCodeAttempts; attempt++ {
+		code, err := newEnrollmentCode()
+		if err != nil {
+			slog.ErrorContext(ctx, "error generating enrollment code",
+				slog.String("error", err.Error()),
+			)
+			return nil, ErrServer
+		}
+
+		_, err = database.DB.ExecContext(ctx, `
+			UPDATE offerings
+			SET enrollment_code = $1, updated_at = now()
+			WHERE id = $2`, code, offeringID,
+		)
+		if err == nil {
+			rel.Offering.EnrollmentCode = code
+			cache.Delete(ctx, cache.OfferingKey(offeringID))
+			slog.InfoContext(ctx, "offering enrollment code rotated",
+				slog.Int64("offering_id", offeringID),
+			)
+			return &rel.Offering, nil
+		}
+		if !isEnrollmentCodeCollision(err) {
+			slog.ErrorContext(ctx, "error rotating enrollment code",
+				slog.Int64("offering_id", offeringID),
+				slog.String("error", err.Error()),
+			)
+			return nil, ErrServer
+		}
+	}
+
+	slog.ErrorContext(ctx, "could not generate a unique enrollment code",
+		slog.Int("attempts", enrollmentCodeAttempts),
+		slog.Int64("offering_id", offeringID),
+	)
+	return nil, ErrServer
+}
+
+// isEnrollmentCodeCollision reports whether err is the unique violation on the
+// enrollment-code column.
+func isEnrollmentCodeCollision(err error) bool {
+	pgErr, ok := err.(*pq.Error)
+	return ok && pgErr.Code == pqerror.UniqueViolation &&
+		pgErr.Constraint == "offerings_enrollment_code_key"
 }
 
 // offeringExecer is the subset of *sql.DB and *sql.Tx the field update needs, so

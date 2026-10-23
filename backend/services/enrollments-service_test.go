@@ -41,7 +41,7 @@ func TestEnrollRules(t *testing.T) {
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
 		enrollment, err := Enroll(context.Background(),
-			&models.EnrollRequest{EnrollmentCode: "abcd"}, claims)
+			&models.EnrollRequest{EnrollmentCode: "ab12cd"}, claims)
 		if err != nil {
 			t.Fatalf("Enroll = %v, want nil", err)
 		}
@@ -59,7 +59,7 @@ func TestEnrollRules(t *testing.T) {
 		expectEnrollmentLookup(mock, int64(7), true, true, false, EnrollmentRoleStudent)
 
 		if _, err := Enroll(context.Background(),
-			&models.EnrollRequest{EnrollmentCode: "ABCD"}, claims); err != nil {
+			&models.EnrollRequest{EnrollmentCode: "ABCDEF"}, claims); err != nil {
 			t.Fatalf("Enroll = %v, want nil", err)
 		}
 		if err := mock.ExpectationsWereMet(); err != nil {
@@ -72,7 +72,7 @@ func TestEnrollRules(t *testing.T) {
 		expectEnrollmentLookup(mock, int64(7), false, false, false, "")
 
 		_, err := Enroll(context.Background(),
-			&models.EnrollRequest{EnrollmentCode: "ABCD"}, claims)
+			&models.EnrollRequest{EnrollmentCode: "ABCDEF"}, claims)
 		if !errors.Is(err, ErrEnrollmentClosed) {
 			t.Fatalf("Enroll = %v, want ErrEnrollmentClosed", err)
 		}
@@ -83,7 +83,7 @@ func TestEnrollRules(t *testing.T) {
 		expectEnrollmentLookup(mock, int64(7), true, true, true, EnrollmentRoleStudent)
 
 		_, err := Enroll(context.Background(),
-			&models.EnrollRequest{EnrollmentCode: "ABCD"}, claims)
+			&models.EnrollRequest{EnrollmentCode: "ABCDEF"}, claims)
 		if !errors.Is(err, ErrEnrollmentBanned) {
 			t.Fatalf("Enroll = %v, want ErrEnrollmentBanned", err)
 		}
@@ -94,7 +94,7 @@ func TestEnrollRules(t *testing.T) {
 		expectEnrollmentLookup(mock, int64(2), true, false, false, "")
 
 		_, err := Enroll(context.Background(),
-			&models.EnrollRequest{EnrollmentCode: "ABCD"}, claims)
+			&models.EnrollRequest{EnrollmentCode: "ABCDEF"}, claims)
 		if !errors.Is(err, ErrOfferingOwned) {
 			t.Fatalf("Enroll = %v, want ErrOfferingOwned", err)
 		}
@@ -106,7 +106,7 @@ func TestEnrollRules(t *testing.T) {
 			WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
 		_, err := Enroll(context.Background(),
-			&models.EnrollRequest{EnrollmentCode: "ZZZZ"}, claims)
+			&models.EnrollRequest{EnrollmentCode: "ZZZZZZ"}, claims)
 		if !errors.Is(err, ErrInvalidEnrollmentCode) {
 			t.Fatalf("Enroll = %v, want ErrInvalidEnrollmentCode", err)
 		}
@@ -114,47 +114,45 @@ func TestEnrollRules(t *testing.T) {
 }
 
 /*
-TestEnrollAcceptsCurrentAndLegacyCodeLengths keeps old offerings joinable after
-the switch to six-character codes. The lookup compares the stored code with the
-normalised input, so it must not assume the new width: four-character codes
-issued before the switch are still credentials.
+TestEnrollRequiresASixCharacterCode pins the cutover from legacy four-character
+codes. The migration rotates existing short codes and the database constraint
+enforces the same floor; Enroll must reject a short code before even querying.
 */
-func TestEnrollAcceptsCurrentAndLegacyCodeLengths(t *testing.T) {
+func TestEnrollRequiresASixCharacterCode(t *testing.T) {
 	claims := map[string]any{"id": float64(2), "role": "student"}
 
-	tests := []struct {
-		name string
-		code string
-		want string
-	}{
-		{name: "current six-character code", code: "ab12cd", want: "AB12CD"},
-		{name: "legacy four-character code", code: " ab12 ", want: "AB12"},
-	}
+	t.Run("current six-character code", func(t *testing.T) {
+		mock := newMockDB(t)
+		mock.ExpectQuery(`FROM offerings o`).
+			WithArgs("AB12CD", int64(2)).
+			WillReturnRows(sqlmock.NewRows([]string{
+				"id", "name", "description", "end_date", "owner_id",
+				"visible_to_enroll", "role", "banned", "enrolled", "owner_name",
+			}).AddRow(
+				int64(3), "Turma", "", time.Now().Add(time.Hour), int64(7),
+				true, "", false, false, "Professor",
+			))
+		mock.ExpectExec(`INSERT INTO enrollments`).
+			WillReturnResult(sqlmock.NewResult(0, 1))
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			mock := newMockDB(t)
-			mock.ExpectQuery(`FROM offerings o`).
-				WithArgs(tc.want, int64(2)).
-				WillReturnRows(sqlmock.NewRows([]string{
-					"id", "name", "description", "end_date", "owner_id",
-					"visible_to_enroll", "role", "banned", "enrolled", "owner_name",
-				}).AddRow(
-					int64(3), "Turma", "", time.Now().Add(time.Hour), int64(7),
-					true, "", false, false, "Professor",
-				))
-			mock.ExpectExec(`INSERT INTO enrollments`).
-				WillReturnResult(sqlmock.NewResult(0, 1))
+		if _, err := Enroll(context.Background(),
+			&models.EnrollRequest{EnrollmentCode: "ab12cd"}, claims); err != nil {
+			t.Fatalf("Enroll(ab12cd) = %v, want nil", err)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
+	})
 
-			if _, err := Enroll(context.Background(),
-				&models.EnrollRequest{EnrollmentCode: tc.code}, claims); err != nil {
-				t.Fatalf("Enroll(%q) = %v, want nil", tc.code, err)
-			}
-			if err := mock.ExpectationsWereMet(); err != nil {
-				t.Fatal(err)
-			}
-		})
-	}
+	t.Run("legacy four-character code is rejected", func(t *testing.T) {
+		// No query is queued: the rejection happens before the lookup.
+		if _, err := Enroll(context.Background(),
+			&models.EnrollRequest{EnrollmentCode: " ab12 "}, claims); !errors.Is(
+			err, ErrInvalidEnrollmentCode,
+		) {
+			t.Fatalf("Enroll(ab12) = %v, want ErrInvalidEnrollmentCode", err)
+		}
+	})
 }
 
 /*

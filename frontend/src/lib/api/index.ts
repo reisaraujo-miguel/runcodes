@@ -43,6 +43,7 @@ export {
   listOfferingMembers,
   listOfferings,
   removeOfferingMember,
+  rotateEnrollmentCode,
   updateOffering,
   updateOfferingMember,
 } from "./offerings";

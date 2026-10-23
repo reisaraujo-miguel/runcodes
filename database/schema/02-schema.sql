@@ -35,7 +35,9 @@ CREATE TABLE offerings (
   enrollment_code text UNIQUE,
   description text,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  CONSTRAINT offerings_enrollment_code_length
+    CHECK (enrollment_code IS NULL OR length(enrollment_code) >= 6)
 );
 
 CREATE TYPE alert_type_t AS ENUM ('info', 'warning', 'danger', 'success');

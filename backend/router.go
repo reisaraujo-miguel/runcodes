@@ -87,11 +87,11 @@ func createRoutes(router *chi.Mux) {
 			r.Get("/api/v1/user/offerings/{id}", handlers.GetMyOffering)
 			r.Get("/api/v1/user/exercises", handlers.ListMyOpenExercises)
 
-			// Enrollment codes are the class-join secret. A six-character code is
-			// strong, but legacy four-character codes are still accepted, so this
-			// route gets a per-account budget independent of the API-wide IP limit.
-			// Five attempts a minute keeps the legacy space out of reach while still
-			// tolerating a mistyped code or two.
+			// Enrollment codes are the class-join secret. Current codes are six
+			// characters and the migration rotates legacy short codes; the route
+			// still gets a per-account budget independent of the API-wide IP limit.
+			// Five attempts a minute keeps a mistyped-code retry cheap without
+			// leaving a useful guessing budget.
 			r.With(httprate.LimitBy(5, time.Minute, authenticatedUserKey)).
 				Post("/api/v1/offerings/enroll", handlers.Enroll)
 			r.Delete("/api/v1/offerings/{id}/enrollment", handlers.Unenroll)
@@ -135,6 +135,8 @@ func createRoutes(router *chi.Mux) {
 				r.Post("/api/v1/offerings/create", handlers.CreateOffering)
 				r.Get("/api/v1/offerings/{id}", handlers.GetOffering)
 				r.Put("/api/v1/offerings/{id}", handlers.UpdateOffering)
+				r.Post("/api/v1/offerings/{id}/enrollment-code/rotate",
+					handlers.RotateEnrollmentCode)
 				r.Delete("/api/v1/offerings/{id}", handlers.DeleteOffering)
 
 				r.Get("/api/v1/offerings/{id}/members", handlers.ListOfferingMembers)

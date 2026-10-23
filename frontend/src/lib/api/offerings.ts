@@ -77,6 +77,14 @@ export function updateOffering(
   return apiPut<Offering>(`/api/v1/offerings/${String(id)}`, payload);
 }
 
+/** Replace the enrollment code of a class owned by the caller. */
+export function rotateEnrollmentCode(id: number): Promise<Offering> {
+  return apiPost<Offering>(
+    `/api/v1/offerings/${String(id)}/enrollment-code/rotate`,
+    {},
+  );
+}
+
 /** Delete a class owned by the caller, with its exercises and enrollments. */
 export function deleteOffering(id: number): Promise<void> {
   return apiDelete(`/api/v1/offerings/${String(id)}`);
