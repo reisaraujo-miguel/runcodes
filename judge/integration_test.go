@@ -120,12 +120,27 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 		ensureBucket(ctx, t, s3client, bucket)
 	}
 
-	// --- Seed an exercise, a test case and a queued commit --------------------
-	var exerciseID, caseID, commitID int64
+	// --- Seed a user, offering, exercise, test case and queued commit --------
+	suffix := time.Now().UnixNano()
+	var userID, offeringID, exerciseID, caseID, commitID int64
 	if err := db.QueryRowContext(ctx, `
-		INSERT INTO exercises (title, deadline, open_date)
-		VALUES ($1, now() + interval '1 day', now() - interval '1 day')
-		RETURNING id`, "judge integration test").Scan(&exerciseID); err != nil {
+		INSERT INTO users (name, email, password_hash, confirmed)
+		VALUES ($1, $2, '!', true)
+		RETURNING id`,
+		"judge integration test", fmt.Sprintf("itest-%d@example.invalid", suffix),
+	).Scan(&userID); err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+	if err := db.QueryRowContext(ctx, `
+		INSERT INTO offerings (name, owner_id, end_date)
+		VALUES ($1, $2, now() + interval '1 day')
+		RETURNING id`, "judge integration test", userID).Scan(&offeringID); err != nil {
+		t.Fatalf("insert offering: %v", err)
+	}
+	if err := db.QueryRowContext(ctx, `
+		INSERT INTO exercises (offering_id, creator_id, title, deadline, open_date)
+		VALUES ($1, $2, $3, now() + interval '1 day', now() - interval '1 day')
+		RETURNING id`, offeringID, userID, "judge integration test").Scan(&exerciseID); err != nil {
 		t.Fatalf("insert exercise: %v", err)
 	}
 	if err := db.QueryRowContext(ctx, `
@@ -139,9 +154,9 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 
 	sourceKey := fmt.Sprintf("itest-%d/main.c", time.Now().UnixNano())
 	if err := db.QueryRowContext(ctx, `
-		INSERT INTO commits (exercise_id, status, s3_key)
-		VALUES ($1, 'queued', $2)
-		RETURNING id`, exerciseID, sourceKey).Scan(&commitID); err != nil {
+		INSERT INTO commits (user_id, exercise_id, status, s3_key)
+		VALUES ($1, $2, 'queued', $3)
+		RETURNING id`, userID, exerciseID, sourceKey).Scan(&commitID); err != nil {
 		t.Fatalf("insert commit: %v", err)
 	}
 
@@ -155,6 +170,8 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 		_, _ = db.ExecContext(bg, `DELETE FROM commits WHERE id = $1`, commitID)
 		_, _ = db.ExecContext(bg, `DELETE FROM exercises_test_cases WHERE id = $1`, caseID)
 		_, _ = db.ExecContext(bg, `DELETE FROM exercises WHERE id = $1`, exerciseID)
+		_, _ = db.ExecContext(bg, `DELETE FROM offerings WHERE id = $1`, offeringID)
+		_, _ = db.ExecContext(bg, `DELETE FROM users WHERE id = $1`, userID)
 		for _, obj := range []struct{ bucket, key string }{
 			{s3cfg.CommitsBucket(), sourceKey},
 		} {
