@@ -504,9 +504,10 @@ func (ct *Container) Wait(timeout time.Duration) (int32, error) {
 
 // Kill force-stops the container.
 func (ct *Container) Kill(ctx context.Context) error {
-	// Honour the caller's context: cleanup passes a live context even when the
-	// run context that owns ct.conn has already been cancelled.
-	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	// The podman client is carried in ct.conn, not in the caller's context.
+	// Derive from the connection and detach its cancellation: cleanup must still
+	// work after the run context that created the container is cancelled.
+	reqCtx, cancel := context.WithTimeout(context.WithoutCancel(ct.conn), 15*time.Second)
 	defer cancel()
 
 	// send SIGKILL to the container; this is a last resort if it does not exit cleanly
@@ -519,7 +520,7 @@ func (ct *Container) Kill(ctx context.Context) error {
 
 // Remove deletes the container (and its anonymous volumes).
 func (ct *Container) Remove(ctx context.Context) error {
-	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	reqCtx, cancel := context.WithTimeout(context.WithoutCancel(ct.conn), 30*time.Second)
 	defer cancel()
 
 	// force-remove the container and its anonymous volumes; ignore errors if it was already removed

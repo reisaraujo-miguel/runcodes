@@ -190,14 +190,16 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 		ImageFormat:   envOr("JUDGE_TEST_IMAGE_FORMAT", "ghcr.io/runcodes-icmc/runcodes-runner-%s:latest"),
 		// The C image's own compilation timeout is the base script's 10s; the judge
 		// only has to outwait it.
-		CompilationWait:    2 * time.Minute,
-		BaseExecTimeout:    15 * time.Second,
-		DefaultCaseTimeout: 10 * time.Second,
-		MonitorMaxFileSize: 5 * 1024 * 1024,
-		MonitorMaxMemSize:  256 * 1024 * 1024,
-		MaxOutputFileSize:  1024 * 1024,
-		KeepWorkspaces:     os.Getenv("JUDGE_TEST_KEEP") == "true",
-		S3:                 s3cfg,
+		CompilationWait:     2 * time.Minute,
+		BaseExecTimeout:     15 * time.Second,
+		DefaultCaseTimeout:  10 * time.Second,
+		MonitorMaxFileSize:  5 * 1024 * 1024,
+		MonitorMaxMemSize:   256 * 1024 * 1024,
+		MaxOutputFileSize:   1024 * 1024,
+		MaxCompareFileBytes: 16 * 1024 * 1024,
+		MaxArtifactBytes:    64 * 1024 * 1024,
+		KeepWorkspaces:      os.Getenv("JUDGE_TEST_KEEP") == "true",
+		S3:                  s3cfg,
 	}
 
 	s3store, err := storage.NewS3(ctx, cfg.S3)
