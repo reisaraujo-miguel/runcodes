@@ -258,12 +258,24 @@ func (e *Engine) runContainer(ctx context.Context, commit *model.Commit, ws *wor
 	// plain log lines, it can claim the execution phase is over and keep running).
 	// stopped tracks whether stopContainer already ran, so the deferred call only
 	// covers the error paths that return before it.
+	var monitor *workspaceMonitor
 	stopped := false
 	defer func() {
+		// Stop the container before the monitor: a background process can keep
+		// writing until the container is killed, and the deferred stop is the
+		// path every error takes.
 		if !stopped {
 			_, _ = e.stopContainer(ct, stream)
 		}
+		if monitor != nil {
+			monitor.stop()
+		}
 	}()
+
+	// Bound the aggregate workspace while untrusted code is running. The monitor
+	// kills the container on a size or inode overage; the checks below turn the
+	// resulting stream failure into the specific quota error.
+	monitor = e.startWorkspaceMonitor(ctx, ws.BaseDir, ct)
 
 	// Await milestones from the container's log stream to determine the progress of compilation and execution.
 	if ws.Compilable {
@@ -272,12 +284,12 @@ func (e *Engine) runContainer(ctx context.Context, commit *model.Commit, ws *wor
 		// outwait the container's own limit, or it abandons runs the image was still
 		// compiling (and reports a timeout instead of the compiler's error).
 		if err := e.awaitLine(stream, "compilation.start", ws.RunNonce, e.cfg.CompilationWait); err != nil {
-			return outcome, err
+			return outcome, workspaceAwareError(monitor, err)
 		}
 
 		// Await the compilation done milestone, which indicates that the compilation phase has completed.
 		if err := e.awaitLine(stream, "compilation.done", ws.RunNonce, e.cfg.CompilationWait); err != nil {
-			return outcome, err
+			return outcome, workspaceAwareError(monitor, err)
 		}
 
 		outcome.compilationMessage = readLimited(filepath.Join(ws.BaseDir, "compilation.out"), e.cfg.MaxOutputFileSize)
@@ -296,6 +308,15 @@ func (e *Engine) runContainer(ctx context.Context, commit *model.Commit, ws *wor
 		}
 
 		if compileFailed {
+			// Let a quota kill that raced with compilation take precedence over
+			// the compiler diagnostics. The deferred cleanup stops the container
+			// before it stops the monitor.
+			if monitor != nil {
+				if limitErr := monitor.Err(); limitErr != nil {
+					return outcome, limitErr
+				}
+			}
+
 			outcome.compilationError = compileDiagnostics
 			if outcome.compilationError == "" {
 				reason := "the compiler did not exit successfully"
@@ -330,14 +351,14 @@ func (e *Engine) runContainer(ctx context.Context, commit *model.Commit, ws *wor
 	// Await the run start milestone, which indicates that the execution phase has begun.
 	timeout := e.executionTimeout(ws.TestCases)
 	if err := e.awaitLine(stream, "run.start", ws.RunNonce, timeout); err != nil {
-		return outcome, err
+		return outcome, workspaceAwareError(monitor, err)
 	}
 
 	// Report to the event hub that the run phase is now running.
 	e.hub.Status(commit.ID, "running", time.Now())
 
 	if err := e.awaitLine(stream, "run.done", ws.RunNonce, timeout); err != nil {
-		return outcome, err
+		return outcome, workspaceAwareError(monitor, err)
 	}
 
 	// Execution is over: kill and remove the container before reading anything it
@@ -345,6 +366,15 @@ func (e *Engine) runContainer(ctx context.Context, commit *model.Commit, ws *wor
 	// judge grades it. The exit status is the harness's own verdict on itself.
 	exitCode, exited := e.stopContainer(ct, stream)
 	stopped = true
+
+	// The container is gone, so no process can grow the workspace any further.
+	// Preserve an overage detected while it was alive before grading.
+	if monitor != nil {
+		monitor.stop()
+		if limitErr := monitor.Err(); limitErr != nil {
+			return outcome, limitErr
+		}
+	}
 
 	// A harness that failed after reporting the run as done — a broken image, a
 	// container killed from outside, a full disk — has not finished collecting its

@@ -70,6 +70,13 @@ type Config struct {
 	// submission cannot force the judge to allocate without limit.
 	MaxCompareFileBytes int64
 
+	// MaxWorkspaceBytes and MaxWorkspaceEntries bound the aggregate workspace
+	// (including files the submission creates) and are enforced while the
+	// container runs. 0 disables a limit; the defaults are deliberately above
+	// normal build output but below the point where one run can fill the host.
+	MaxWorkspaceBytes   int64
+	MaxWorkspaceEntries int64
+
 	// MaxArtifactBytes bounds the output archive published for a commit, so a
 	// submission cannot fill the shared execution directory with output files.
 	MaxArtifactBytes int64
@@ -194,6 +201,8 @@ func Load() (*Config, error) {
 		ContainerTmpfsBytes:  envInt64("JUDGE_CONTAINER_TMPFS_BYTES", 256*1024*1024),
 
 		MaxCompareFileBytes: envInt64("JUDGE_MAX_COMPARE_FILE_BYTES", 16*1024*1024),
+		MaxWorkspaceBytes:   envInt64("JUDGE_MAX_WORKSPACE_BYTES", 1024*1024*1024),
+		MaxWorkspaceEntries: envInt64("JUDGE_MAX_WORKSPACE_ENTRIES", 50_000),
 		MaxArtifactBytes:    envInt64("JUDGE_MAX_ARTIFACT_BYTES", 64*1024*1024),
 		ArtifactTTL:         envDuration("JUDGE_ARTIFACT_TTL", 7*24*time.Hour),
 
@@ -281,6 +290,11 @@ func (c *Config) validate() error {
 
 	if c.MaxCompareFileBytes <= 0 {
 		return fmt.Errorf("JUDGE_MAX_COMPARE_FILE_BYTES must be positive")
+	}
+
+	// 0 disables a workspace limit; a negative value is a configuration mistake.
+	if c.MaxWorkspaceBytes < 0 || c.MaxWorkspaceEntries < 0 {
+		return fmt.Errorf("workspace limits must not be negative")
 	}
 
 	if c.MaxArtifactBytes <= 0 {

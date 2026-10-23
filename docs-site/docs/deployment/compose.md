@@ -94,6 +94,8 @@ Optional and commonly set:
 | `JUDGE_UID` / `JUDGE_GID` | `0` / `0` | container identity for the judge |
 | `RUNCODES_JUDGE_STALE_TIMEOUT` | `35m` | backend age before a claimed run is marked stale |
 | `JUDGE_MAX_RUN_DURATION` | `30m` | judge end-to-end budget per claim |
+| `JUDGE_MAX_WORKSPACE_BYTES` | `1 GiB` | sampled aggregate workspace size per run |
+| `JUDGE_MAX_WORKSPACE_ENTRIES` | `50000` | sampled aggregate workspace entries per run |
 | `CONTACT_EMAIL` / `CONTACT_DISCLAIMER` | example values | build-time fallbacks only |
 
 The full list is in [Configuration](../reference/configuration.md).

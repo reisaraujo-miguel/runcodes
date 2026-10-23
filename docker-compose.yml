@@ -146,6 +146,8 @@ services:
       # Keep this below RUNCODES_JUDGE_STALE_TIMEOUT (35m by default).
       JUDGE_MAX_RUN_DURATION: "${JUDGE_MAX_RUN_DURATION:-30m}"
       JUDGE_MAX_EXTRACT_ENTRIES: "${JUDGE_MAX_EXTRACT_ENTRIES:-1000}"
+      JUDGE_MAX_WORKSPACE_BYTES: "${JUDGE_MAX_WORKSPACE_BYTES:-1073741824}"
+      JUDGE_MAX_WORKSPACE_ENTRIES: "${JUDGE_MAX_WORKSPACE_ENTRIES:-50000}"
       RUNCODES_DB_HOST: "database"
       RUNCODES_DB_PORT: "5432"
       # The judge role, not the backend role: it can only read exercises/test

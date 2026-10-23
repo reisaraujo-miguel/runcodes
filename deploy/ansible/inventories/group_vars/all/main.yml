@@ -67,6 +67,8 @@ runcodes_judge_container_memory_bytes: "{{ config_runcodes_judge_container_memor
 runcodes_judge_container_pids_limit: "{{ config_runcodes_judge_container_pids_limit }}"
 runcodes_judge_container_cpu_quota: "{{ config_runcodes_judge_container_cpu_quota }}"
 runcodes_judge_container_tmpfs_bytes: "{{ config_runcodes_judge_container_tmpfs_bytes }}"
+runcodes_judge_max_workspace_bytes: "{{ config_runcodes_judge_max_workspace_bytes | default(1073741824) }}"
+runcodes_judge_max_workspace_entries: "{{ config_runcodes_judge_max_workspace_entries | default(50000) }}"
 
 # ---------------------------------------------------------------------------
 # OpenTelemetry instrumentation (application side)
