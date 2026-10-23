@@ -98,11 +98,18 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 	podmanURI := envOr("JUDGE_PODMAN_URI", fmt.Sprintf("unix:///run/user/%d/podman/podman.sock", os.Getuid()))
 	// Limits mirror the production defaults so the container this test runs is
 	// sandboxed the same way a graded one is.
-	pc := podman.New(podmanURI, podman.Limits{
+	limits := podman.Limits{
 		MemoryBytes: 512 << 20,
 		PidsLimit:   256,
 		CPUQuota:    100000,
-	})
+	}
+	if os.Getenv("JUDGE_TEST_DISABLE_CGROUPS") == "1" {
+		// Hosted CI runners may have no systemd user session/cgroup delegation.
+		// The cgroup spec is covered by unit tests; this keeps the real engine
+		// and runner path executable there.
+		limits = podman.Limits{DisableCgroups: true}
+	}
+	pc := podman.New(podmanURI, limits)
 	if err := pc.Ready(ctx); err != nil {
 		requireOrSkip(t, "podman unreachable at %s: %v", podmanURI, err)
 	}

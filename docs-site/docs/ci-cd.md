@@ -49,7 +49,10 @@ It starts rootless Podman, builds the monitor, base and C runner images from the
 checkout, starts PostgreSQL and SeaweedFS through `judge/integration/run.sh`,
 and runs the real `TestJudgeRunsLanguageImageEndToEnd` path. The harness sets
 `JUDGE_TEST_REQUIRE=1`, so an unavailable database, object store or Podman API
-fails the job instead of producing a skipped test.
+fails the job instead of producing a skipped test. Hosted runners have no
+systemd user session/cgroup delegation, so the workflow sets
+`JUDGE_TEST_DISABLE_CGROUPS=1` for the run; the cgroup-resource spec remains
+covered by the podman unit tests.
 
 ### Frontend (Bun)
 

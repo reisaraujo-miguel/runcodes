@@ -91,6 +91,10 @@ jobs:
             echo "JUDGE_PODMAN_URI=unix://$socket"
             echo "JUDGE_TEST_IMAGE_FORMAT=runcodes-runner-%s:itest"
             echo "JUDGE_TEST_REQUIRE=1"
+            # The hosted runner has no systemd user session/cgroup delegation.
+            # Cgroup-spec correctness is covered by unit tests; this lets the
+            # real engine and runner path run without cgroups.
+            echo "JUDGE_TEST_DISABLE_CGROUPS=1"
           } >>"$GITHUB_ENV"
 
       - name: Build the monitor and C runner images
@@ -98,17 +102,19 @@ jobs:
           set -euo pipefail
           # Build from this checkout rather than pulling a published runner, so
           # the job covers the current monitor, base harness and C script.
-          podman build --pull \
+          # chroot isolation keeps build RUN steps out of cgroups; the hosted
+          # runner has no systemd user session to delegate them.
+          podman build --isolation=chroot --pull \
             -t ghcr.io/runcodes-icmc/runcodes-monitor:latest \
             -f monitor/Dockerfile monitor
           podman pull debian:trixie-slim
           # The base must use the monitor built above, not a published image.
-          podman build --pull=never \
+          podman build --isolation=chroot --pull=never \
             -t ghcr.io/runcodes-icmc/runcodes-runner-base:latest \
             -f runners/base/Dockerfile runners/base
           # The C image must use the base built above, not a published
           # `:latest` from GHCR.
-          podman build --pull=never \
+          podman build --isolation=chroot --pull=never \
             -t runcodes-runner-c:itest \
             -f runners/c/Dockerfile runners/c
 

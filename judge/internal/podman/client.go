@@ -301,7 +301,13 @@ func specFor(rc RunConfig, limits Limits) *specgen.SpecGenerator {
 	s.CapDrop = []string{"ALL"}
 	// Bound memory, PIDs and CPU from outside the container; the in-container
 	// monitor is advisory because the submission shares its privileges.
-	s.ResourceLimits = limits.Resources()
+	// DisableCgroups is a CI-only escape hatch for hosts without cgroup
+	// delegation; it must never be set in production.
+	if limits.DisableCgroups {
+		s.CgroupsMode = "disabled"
+	} else {
+		s.ResourceLimits = limits.Resources()
+	}
 	// See containerUmask: without it the judge cannot clean up what the run
 	// wrote, because the container's uid is not the judge's.
 	s.Umask = containerUmask
