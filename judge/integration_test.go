@@ -65,10 +65,21 @@ func s3ConfigFromEnv() config.S3Config {
 	}
 }
 
+// requireOrSkip turns an unavailable integration dependency into a failure in
+// CI. The harness sets JUDGE_TEST_REQUIRE=1 so a silent skip cannot make the
+// end-to-end job green when Podman, PostgreSQL or S3 failed to start.
+func requireOrSkip(t *testing.T, format string, args ...any) {
+	t.Helper()
+	if os.Getenv("JUDGE_TEST_REQUIRE") == "1" {
+		t.Fatalf(format, args...)
+	}
+	t.Skipf(format, args...)
+}
+
 func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 	dsn := os.Getenv("JUDGE_TEST_DB_DSN")
 	if dsn == "" {
-		t.Skip("JUDGE_TEST_DB_DSN is not set; start the harness with integration/run.sh")
+		requireOrSkip(t, "JUDGE_TEST_DB_DSN is not set; start the harness with integration/run.sh")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -81,19 +92,26 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 	defer db.Close()
 	st := store.NewWithDB(db)
 	if err := st.Ping(ctx); err != nil {
-		t.Skipf("database unreachable: %v", err)
+		requireOrSkip(t, "database unreachable: %v", err)
 	}
 
 	podmanURI := envOr("JUDGE_PODMAN_URI", fmt.Sprintf("unix:///run/user/%d/podman/podman.sock", os.Getuid()))
 	// Limits mirror the production defaults so the container this test runs is
 	// sandboxed the same way a graded one is.
-	pc := podman.New(podmanURI, podman.Limits{
+	limits := podman.Limits{
 		MemoryBytes: 512 << 20,
 		PidsLimit:   256,
 		CPUQuota:    100000,
-	})
+	}
+	if os.Getenv("JUDGE_TEST_DISABLE_CGROUPS") == "1" {
+		// Hosted CI runners may have no systemd user session/cgroup delegation.
+		// The cgroup spec is covered by unit tests; this keeps the real engine
+		// and runner path executable there.
+		limits = podman.Limits{DisableCgroups: true}
+	}
+	pc := podman.New(podmanURI, limits)
 	if err := pc.Ready(ctx); err != nil {
-		t.Skipf("podman unreachable at %s: %v", podmanURI, err)
+		requireOrSkip(t, "podman unreachable at %s: %v", podmanURI, err)
 	}
 
 	s3cfg := s3ConfigFromEnv()
@@ -102,12 +120,27 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 		ensureBucket(ctx, t, s3client, bucket)
 	}
 
-	// --- Seed an exercise, a test case and a queued commit --------------------
-	var exerciseID, caseID, commitID int64
+	// --- Seed a user, offering, exercise, test case and queued commit --------
+	suffix := time.Now().UnixNano()
+	var userID, offeringID, exerciseID, caseID, commitID int64
 	if err := db.QueryRowContext(ctx, `
-		INSERT INTO exercises (title, deadline, open_date)
-		VALUES ($1, now() + interval '1 day', now() - interval '1 day')
-		RETURNING id`, "judge integration test").Scan(&exerciseID); err != nil {
+		INSERT INTO users (name, email, password_hash, confirmed)
+		VALUES ($1, $2, '!', true)
+		RETURNING id`,
+		"judge integration test", fmt.Sprintf("itest-%d@example.invalid", suffix),
+	).Scan(&userID); err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+	if err := db.QueryRowContext(ctx, `
+		INSERT INTO offerings (name, owner_id, end_date)
+		VALUES ($1, $2, now() + interval '1 day')
+		RETURNING id`, "judge integration test", userID).Scan(&offeringID); err != nil {
+		t.Fatalf("insert offering: %v", err)
+	}
+	if err := db.QueryRowContext(ctx, `
+		INSERT INTO exercises (offering_id, creator_id, title, deadline, open_date)
+		VALUES ($1, $2, $3, now() + interval '1 day', now() - interval '1 day')
+		RETURNING id`, offeringID, userID, "judge integration test").Scan(&exerciseID); err != nil {
 		t.Fatalf("insert exercise: %v", err)
 	}
 	if err := db.QueryRowContext(ctx, `
@@ -121,9 +154,9 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 
 	sourceKey := fmt.Sprintf("itest-%d/main.c", time.Now().UnixNano())
 	if err := db.QueryRowContext(ctx, `
-		INSERT INTO commits (exercise_id, status, s3_key)
-		VALUES ($1, 'queued', $2)
-		RETURNING id`, exerciseID, sourceKey).Scan(&commitID); err != nil {
+		INSERT INTO commits (user_id, exercise_id, status, s3_key)
+		VALUES ($1, $2, 'queued', $3)
+		RETURNING id`, userID, exerciseID, sourceKey).Scan(&commitID); err != nil {
 		t.Fatalf("insert commit: %v", err)
 	}
 
@@ -137,6 +170,8 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 		_, _ = db.ExecContext(bg, `DELETE FROM commits WHERE id = $1`, commitID)
 		_, _ = db.ExecContext(bg, `DELETE FROM exercises_test_cases WHERE id = $1`, caseID)
 		_, _ = db.ExecContext(bg, `DELETE FROM exercises WHERE id = $1`, exerciseID)
+		_, _ = db.ExecContext(bg, `DELETE FROM offerings WHERE id = $1`, offeringID)
+		_, _ = db.ExecContext(bg, `DELETE FROM users WHERE id = $1`, userID)
 		for _, obj := range []struct{ bucket, key string }{
 			{s3cfg.CommitsBucket(), sourceKey},
 		} {
@@ -155,14 +190,16 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 		ImageFormat:   envOr("JUDGE_TEST_IMAGE_FORMAT", "ghcr.io/runcodes-icmc/runcodes-runner-%s:latest"),
 		// The C image's own compilation timeout is the base script's 10s; the judge
 		// only has to outwait it.
-		CompilationWait:    2 * time.Minute,
-		BaseExecTimeout:    15 * time.Second,
-		DefaultCaseTimeout: 10 * time.Second,
-		MonitorMaxFileSize: 5 * 1024 * 1024,
-		MonitorMaxMemSize:  256 * 1024 * 1024,
-		MaxOutputFileSize:  1024 * 1024,
-		KeepWorkspaces:     os.Getenv("JUDGE_TEST_KEEP") == "true",
-		S3:                 s3cfg,
+		CompilationWait:     2 * time.Minute,
+		BaseExecTimeout:     15 * time.Second,
+		DefaultCaseTimeout:  10 * time.Second,
+		MonitorMaxFileSize:  5 * 1024 * 1024,
+		MonitorMaxMemSize:   256 * 1024 * 1024,
+		MaxOutputFileSize:   1024 * 1024,
+		MaxCompareFileBytes: 16 * 1024 * 1024,
+		MaxArtifactBytes:    64 * 1024 * 1024,
+		KeepWorkspaces:      os.Getenv("JUDGE_TEST_KEEP") == "true",
+		S3:                  s3cfg,
 	}
 
 	s3store, err := storage.NewS3(ctx, cfg.S3)

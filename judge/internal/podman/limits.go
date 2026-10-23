@@ -28,6 +28,11 @@ type Limits struct {
 	// TmpfsBytes caps the writable /tmp when the root filesystem is read-only.
 	// It is not a cgroup limit; specFor applies it as a tmpfs mount option.
 	TmpfsBytes int64
+	// DisableCgroups runs the container without creating a cgroup. It exists for
+	// CI hosts that have no cgroup delegation (for example a hosted runner
+	// without a systemd user session); production must leave it false so the
+	// resource limits below remain enforced.
+	DisableCgroups bool
 }
 
 // Configured reports whether any limit is set.

@@ -149,6 +149,20 @@ func TestSpecForLetsTheJudgeCleanUpAfterARun(t *testing.T) {
 	}
 }
 
+func TestSpecForCanDisableCgroupsForUnprivilegedCI(t *testing.T) {
+	s := specFor(RunConfig{Image: "img", MountSource: "/work"}, Limits{
+		DisableCgroups: true,
+		MemoryBytes:    32 << 20,
+	})
+
+	if s.CgroupsMode != "disabled" {
+		t.Errorf("cgroups mode = %q, want disabled", s.CgroupsMode)
+	}
+	if s.ResourceLimits != nil {
+		t.Errorf("resource limits = %+v, want nil when cgroups are disabled", s.ResourceLimits)
+	}
+}
+
 func TestSpecForAppliesCgroupLimits(t *testing.T) {
 	limits := Limits{MemoryBytes: 32 << 20, PidsLimit: 16, CPUQuota: 25_000}
 	s := specFor(RunConfig{Image: "img", MountSource: "/work"}, limits)

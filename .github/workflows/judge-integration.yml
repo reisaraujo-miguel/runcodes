@@ -1,0 +1,136 @@
+name: Judge integration
+
+# T1: exercise the real judge path instead of skipping it. The Go integration
+# test drives the engine against a real language image through rootless Podman,
+# with PostgreSQL and SeaweedFS started by judge/integration/run.sh.
+on:
+  push:
+    branches:
+      - main
+      - development
+    paths:
+      - "judge/**"
+      - "runners/**"
+      - "monitor/**"
+      - "database/schema/**"
+      - "database/migrations/**"
+      - ".github/workflows/judge-integration.yml"
+  pull_request:
+    paths:
+      - "judge/**"
+      - "runners/**"
+      - "monitor/**"
+      - "database/schema/**"
+      - "database/migrations/**"
+      - ".github/workflows/judge-integration.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: judge-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  end-to-end:
+    name: End-to-end (PostgreSQL, SeaweedFS, rootless Podman)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      TAGS: >-
+        remote containers_image_openpgp exclude_graphdriver_btrfs
+        exclude_graphdriver_overlay exclude_graphdriver_devicemapper
+        exclude_graphdriver_zfs btrfs_noversion
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: judge/go.mod
+          cache-dependency-path: judge/go.sum
+
+      - name: Start rootless Podman
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y podman uidmap slirp4netns fuse-overlayfs
+
+          user="$(id -un)"
+          if ! grep -q "^${user}:" /etc/subuid || ! grep -q "^${user}:" /etc/subgid; then
+            sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 "$user"
+          fi
+
+          runtime="$RUNNER_TEMP/podman-runtime"
+          install -d -m 700 "$runtime"
+          socket="$RUNNER_TEMP/podman.sock"
+          rm -f "$socket"
+
+          XDG_RUNTIME_DIR="$runtime" podman system migrate >/dev/null 2>&1 || true
+          nohup env XDG_RUNTIME_DIR="$runtime" podman system service --time=0 "unix://$socket" \
+            >"$RUNNER_TEMP/podman-service.log" 2>&1 &
+          echo "$!" >"$RUNNER_TEMP/podman-service.pid"
+
+          for _ in $(seq 1 30); do
+            if [ -S "$socket" ]; then
+              break
+            fi
+            sleep 1
+          done
+          if [ ! -S "$socket" ]; then
+            cat "$RUNNER_TEMP/podman-service.log"
+            exit 1
+          fi
+
+          XDG_RUNTIME_DIR="$runtime" podman --remote --url "unix://$socket" info >/dev/null
+
+          {
+            echo "XDG_RUNTIME_DIR=$runtime"
+            echo "JUDGE_PODMAN_URI=unix://$socket"
+            echo "JUDGE_TEST_IMAGE_FORMAT=runcodes-runner-%s:itest"
+            echo "JUDGE_TEST_REQUIRE=1"
+            # The hosted runner has no systemd user session/cgroup delegation.
+            # Cgroup-spec correctness is covered by unit tests; this lets the
+            # real engine and runner path run without cgroups.
+            echo "JUDGE_TEST_DISABLE_CGROUPS=1"
+          } >>"$GITHUB_ENV"
+
+      - name: Build the monitor and C runner images
+        run: |
+          set -euo pipefail
+          # Build from this checkout rather than pulling a published runner, so
+          # the job covers the current monitor, base harness and C script.
+          # chroot isolation keeps build RUN steps out of cgroups; the hosted
+          # runner has no systemd user session to delegate them.
+          podman build --isolation=chroot --pull \
+            -t ghcr.io/runcodes-icmc/runcodes-monitor:latest \
+            -f monitor/Dockerfile monitor
+          podman pull debian:trixie-slim
+          # The base must use the monitor built above, not a published image.
+          podman build --isolation=chroot --pull=never \
+            -t ghcr.io/runcodes-icmc/runcodes-runner-base:latest \
+            -f runners/base/Dockerfile runners/base
+          # The C image must use the base built above, not a published
+          # `:latest` from GHCR.
+          podman build --isolation=chroot --pull=never \
+            -t runcodes-runner-c:itest \
+            -f runners/c/Dockerfile runners/c
+
+      - name: Run the judge end-to-end test
+        run: bash judge/integration/run.sh
+
+      - name: Show Podman service log
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/podman-service.log" ]; then
+            tail -100 "$RUNNER_TEMP/podman-service.log"
+          fi
+
+      - name: Stop Podman service
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/podman-service.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/podman-service.pid")" 2>/dev/null || true
+          fi
