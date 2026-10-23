@@ -194,7 +194,14 @@ and `stack_` keys. `JUDGE_MONITOR_MAX_FILE_SIZE` and
 | `JUDGE_MAX_EXTRACT_FILE_BYTES` | 64 MiB | max single entry when unpacking a zip |
 | `JUDGE_MAX_EXTRACT_BYTES` | 256 MiB | max total expanded zip size |
 | `JUDGE_MAX_EXTRACT_ENTRIES` | 1000 | max entries in a zip submission |
+| `JUDGE_MAX_WORKSPACE_BYTES` | 1 GiB | aggregate workspace size; sampled every 250 ms while the run is alive |
+| `JUDGE_MAX_WORKSPACE_ENTRIES` | 50000 | aggregate workspace entries/inodes; sampled every 250 ms while the run is alive |
 | `JUDGE_MAX_OUTPUT_FILE_SIZE` | 1 MiB | max size of one output file collected |
+
+Exceeding either workspace cap kills the container and finishes the run as
+`server_error`; the caps are sampled safety valves, not kernel-enforced
+filesystem quotas. Unlinked open files and writers fast enough to outrun the
+250 ms sample can still exceed them, so size the execution volume as well.
 
 `JUDGE_COMPILATION_WAIT` must outlast the image's compilation timeout plus
 container startup. When both are configured, the judge validates the pairing at

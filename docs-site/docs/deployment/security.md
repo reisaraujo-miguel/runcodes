@@ -86,11 +86,12 @@ credentials. CI asserts the roles' limits.
   runtime's default capability set cannot elevate.
 - Core dumps are disabled (`RLIMIT_CORE=0`), so a crash cannot fill the workspace.
 - The image filesystem is read-only; only the workspace and size-capped
-  `/tmp`/`/run` tmpfs are writable. The workspace is a host bind mount with no
-  aggregate per-run quota: the per-file and zip-entry limits bound the most
-  obvious cases, but the exec filesystem must live on a volume sized and
-  monitored for untrusted output. Full workspace quotas are a deployment
-  responsibility.
+  `/tmp`/`/run` tmpfs are writable. The judge samples the workspace every 250 ms
+  and kills a run that exceeds `JUDGE_MAX_WORKSPACE_BYTES` or
+  `JUDGE_MAX_WORKSPACE_ENTRIES`. This is a safety valve, not a kernel-enforced
+  filesystem quota: a very fast writer, or an unlinked file held open by the
+  submission, can exceed it between samples. The exec filesystem must still live
+  on a bounded volume that is sized and monitored for untrusted output.
 - One persistent mount (the workspace), a non-root user, a zero umask, and a
   harness that deletes `container.config` before running submitted code.
 - The judge stops the container before grading and reads only regular files from

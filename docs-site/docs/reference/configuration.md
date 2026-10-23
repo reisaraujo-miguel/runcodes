@@ -170,11 +170,14 @@ Without a token the judge refuses `/v1` with `503` unless
 | `JUDGE_MAX_EXTRACT_FILE_BYTES` | `64 MiB` | max single zip entry |
 | `JUDGE_MAX_EXTRACT_BYTES` | `256 MiB` | max total expanded zip |
 | `JUDGE_MAX_EXTRACT_ENTRIES` | `1000` | max entries in a zip submission |
+| `JUDGE_MAX_WORKSPACE_BYTES` | `1 GiB` | aggregate workspace size sampled while a run is alive; `0` disables |
+| `JUDGE_MAX_WORKSPACE_ENTRIES` | `50000` | aggregate workspace entry/inode count sampled while a run is alive; `0` disables |
 
 Validation rules:
 
 - `JUDGE_COMPILATION_WAIT` must be positive and, when
   `JUDGE_DEFAULT_COMPILATION_TIMEOUT > 0`, strictly greater than it.
+- workspace limits must not be negative; `0` disables either cap.
 - extraction limits must be positive and the per-entry limit must not exceed the
   total.
 - container and monitor limits must not be negative.
@@ -362,6 +365,8 @@ Source: `deploy/ansible/inventories/group_vars/all/config.yml.example` and
 | `config_runcodes_judge_container_pids_limit` | `256` | pid cap |
 | `config_runcodes_judge_container_cpu_quota` | `100000` | CPU quota |
 | `config_runcodes_judge_container_tmpfs_bytes` | `268435456` | read-only rootfs `/tmp` cap |
+| `config_runcodes_judge_max_workspace_bytes` | `1073741824` | sampled aggregate workspace bytes |
+| `config_runcodes_judge_max_workspace_entries` | `50000` | sampled aggregate workspace entries |
 
 Keep the stale timeout above the max run duration.
 

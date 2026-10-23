@@ -18,6 +18,7 @@ func clearEnv(t *testing.T) {
 		"JUDGE_MONITOR_MAX_FILE_SIZE", "JUDGE_MONITOR_MAX_MEM_SIZE",
 		"JUDGE_CONTAINER_MEMORY_BYTES", "JUDGE_CONTAINER_PIDS_LIMIT",
 		"JUDGE_CONTAINER_CPU_QUOTA", "JUDGE_CONTAINER_TMPFS_BYTES", "JUDGE_MAX_RUN_DURATION", "JUDGE_ARTIFACT_TTL",
+		"JUDGE_MAX_WORKSPACE_BYTES", "JUDGE_MAX_WORKSPACE_ENTRIES",
 		"RUNCODES_DB_HOST", "RUNCODES_DB_PORT", "RUNCODES_DB_NAME",
 		"RUNCODES_DB_USER", "RUNCODES_DB_USERNAME", "RUNCODES_DB_PASSWORD",
 		"RUNCODES_DB_SSLMODE",
@@ -68,6 +69,12 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.ContainerTmpfsBytes != 256*1024*1024 {
 		t.Errorf("ContainerTmpfsBytes = %d, want 256 MiB", cfg.ContainerTmpfsBytes)
 	}
+	if cfg.MaxWorkspaceBytes != 1024*1024*1024 {
+		t.Errorf("MaxWorkspaceBytes = %d, want 1 GiB", cfg.MaxWorkspaceBytes)
+	}
+	if cfg.MaxWorkspaceEntries != 50_000 {
+		t.Errorf("MaxWorkspaceEntries = %d, want 50000", cfg.MaxWorkspaceEntries)
+	}
 	if cfg.DB.User != "runcodes" {
 		t.Errorf("DB.User = %q, want runcodes", cfg.DB.User)
 	}
@@ -87,6 +94,8 @@ func TestLoadOverrides(t *testing.T) {
 	t.Setenv("JUDGE_AUTH_TOKEN", "s3cret")
 	t.Setenv("JUDGE_ARTIFACT_TTL", "24h")
 	t.Setenv("JUDGE_CONTAINER_TMPFS_BYTES", "67108864")
+	t.Setenv("JUDGE_MAX_WORKSPACE_BYTES", "268435456")
+	t.Setenv("JUDGE_MAX_WORKSPACE_ENTRIES", "1234")
 	t.Setenv("RUNCODES_DB_USERNAME", "legacy")
 	t.Setenv("RUNCODES_S3_BUCKET_PREFIX", "mycode")
 
@@ -118,6 +127,12 @@ func TestLoadOverrides(t *testing.T) {
 	}
 	if cfg.ContainerTmpfsBytes != 64*1024*1024 {
 		t.Errorf("ContainerTmpfsBytes = %d, want 64 MiB", cfg.ContainerTmpfsBytes)
+	}
+	if cfg.MaxWorkspaceBytes != 256*1024*1024 {
+		t.Errorf("MaxWorkspaceBytes = %d, want 256 MiB", cfg.MaxWorkspaceBytes)
+	}
+	if cfg.MaxWorkspaceEntries != 1234 {
+		t.Errorf("MaxWorkspaceEntries = %d, want 1234", cfg.MaxWorkspaceEntries)
 	}
 }
 
@@ -198,5 +213,14 @@ func TestBucketNames(t *testing.T) {
 		if got != want {
 			t.Errorf("bucket = %q, want %q", got, want)
 		}
+	}
+}
+
+func TestLoadRejectsNegativeWorkspaceLimits(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JUDGE_MAX_WORKSPACE_BYTES", "-1")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("Load accepted a negative JUDGE_MAX_WORKSPACE_BYTES")
 	}
 }
