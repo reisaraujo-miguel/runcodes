@@ -21,6 +21,12 @@ export const UNAUTHORIZED_EVENT = "runcodes:unauthorized";
 export const UPLOAD_TIMEOUT_MS = 120_000;
 
 /**
+ * A download may be a whole class archive, so it gets a much larger budget than
+ * an ordinary request. The browser can still cancel it by navigating away.
+ */
+export const DOWNLOAD_TIMEOUT_MS = 10 * 60_000;
+
+/**
  * Bounds a request with a timeout while still honouring a caller's own signal,
  * so a component can cancel on unmount as well.
  */
@@ -49,11 +55,14 @@ export interface ApiError {
  */
 export class ApiRequestError extends Error {
   readonly status: number;
+  /** The parsed error body, for endpoints that attach structured details. */
+  readonly body: unknown;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, body?: unknown) {
     super(message);
     this.name = "ApiRequestError";
     this.status = status;
+    this.body = body;
   }
 }
 
@@ -62,18 +71,30 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-/** Reads the API's `error_msg` from a failed response. */
-export async function readApiError(response: Response): Promise<string> {
+/**
+ * Reads the API's `error_msg` and the raw body of a failed response. Some
+ * endpoints attach more than a message (a batch test-case import lists the
+ * invalid folders), so the body is kept for callers that need it.
+ */
+export async function readApiFailure(
+  response: Response,
+): Promise<{ message: string; body: unknown }> {
   let message = "Erro desconhecido";
+  let body: unknown;
   try {
-    const body: unknown = await response.json();
+    body = await response.json();
     if (isRecord(body) && typeof body.error_msg === "string") {
       message = body.error_msg;
     }
   } catch {
     // Non-JSON response — keep default message
   }
-  return message;
+  return { message, body };
+}
+
+/** Reads the API's `error_msg` from a failed response. */
+export async function readApiError(response: Response): Promise<string> {
+  return (await readApiFailure(response)).message;
 }
 
 /**
@@ -120,7 +141,8 @@ export async function apiRequest<T>(
   }
 
   if (!response.ok) {
-    throw new ApiRequestError(await readApiError(response), response.status);
+    const failure = await readApiFailure(response);
+    throw new ApiRequestError(failure.message, response.status, failure.body);
   }
 
   return readApiBody<T>(response);
@@ -150,4 +172,84 @@ export function apiPut<T>(path: string, body?: unknown): Promise<T> {
 /** DELETE helper. */
 export function apiDelete<T = void>(path: string): Promise<T> {
   return apiRequest<T>(path, { method: "DELETE" });
+}
+
+/**
+ * Uploads a multipart body with the upload timeout. `apiRequest` keeps the
+ * ordinary request budget, which is too short for a large archive.
+ */
+export async function apiUpload<T>(path: string, body: FormData): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method: "POST",
+      body,
+      credentials: "include",
+      signal: requestSignal(undefined, UPLOAD_TIMEOUT_MS),
+    });
+  } catch (error) {
+    if (isTimeoutAbort(error)) {
+      throw new Error("Tempo esgotado ao enviar o arquivo.", { cause: error });
+    }
+    throw error;
+  }
+
+  if (response.status === 401) {
+    globalThis.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  }
+
+  if (!response.ok) {
+    const failure = await readApiFailure(response);
+    throw new ApiRequestError(failure.message, response.status, failure.body);
+  }
+
+  return readApiBody<T>(response);
+}
+
+/** A downloaded file and the server-suggested name. */
+export interface DownloadedFile {
+  blob: Blob;
+  filename: string;
+} /**
+ * Downloads a file endpoint as a blob. The caller gets the server's suggested
+ * file name from Content-Disposition and can hand both to `downloadBlob`.
+ */
+export async function apiDownload(path: string): Promise<DownloadedFile> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      credentials: "include",
+      signal: requestSignal(undefined, DOWNLOAD_TIMEOUT_MS),
+    });
+  } catch (error) {
+    if (isTimeoutAbort(error)) {
+      throw new Error("Tempo esgotado ao baixar o arquivo.", { cause: error });
+    }
+    throw error;
+  }
+
+  if (response.status === 401) {
+    globalThis.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  }
+
+  if (!response.ok) {
+    const failure = await readApiFailure(response);
+    throw new ApiRequestError(failure.message, response.status, failure.body);
+  }
+
+  return {
+    blob: await response.blob(),
+    filename: filenameFromDisposition(
+      response.headers.get("Content-Disposition"),
+    ),
+  };
+}
+
+/** Reads the quoted filename of a Content-Disposition header. */
+export function filenameFromDisposition(header: string | null): string {
+  if (!header) return "download";
+  const match =
+    /filename="([^"]+)"/i.exec(header) ?? /filename=([^;]+)/i.exec(header);
+  const value = match?.[1]?.trim();
+  return value ?? "download";
 }

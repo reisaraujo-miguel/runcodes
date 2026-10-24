@@ -4,6 +4,7 @@ import { NavLink, Outlet, useMatches } from "react-router";
 import { MenuIcon, PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react";
 
 import { Brand } from "@/components/app/Brand";
+import { PreviewBanner } from "@/components/app/PreviewBanner";
 import { UserMenu } from "@/components/app/UserMenu";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
@@ -272,11 +273,14 @@ export function AppShell() {
           className={cn(
             "w-full",
             workspaceLayout
-              ? "px-4 py-4 xl:h-svh xl:overflow-hidden xl:px-6"
+              ? "px-4 py-4 xl:flex xl:h-svh xl:flex-col xl:overflow-hidden xl:px-6"
               : "mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8",
           )}
         >
-          <Outlet />
+          <PreviewBanner />
+          <div className={cn(workspaceLayout && "xl:min-h-0 xl:flex-1")}>
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

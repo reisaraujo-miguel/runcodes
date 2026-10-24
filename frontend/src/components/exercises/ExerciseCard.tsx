@@ -1,5 +1,5 @@
 import { ArrowRightIcon, CalendarClockIcon } from "lucide-react";
-import { NavLink } from "react-router";
+import { NavLink, useLocation } from "react-router";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,8 @@ import { formatDateTime } from "@/lib/format";
 
 /** A single open exercise, ready to submit to. */
 export function ExerciseCard({ exercise }: { exercise: OpenExercise }) {
+  const location = useLocation();
+  const origin = `${location.pathname}${location.search}`;
   const deadline = deadlineInfo(exercise.deadline);
 
   return (
@@ -18,7 +20,15 @@ export function ExerciseCard({ exercise }: { exercise: OpenExercise }) {
         <div className="min-w-0 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
             <p className="truncate font-medium">{exercise.title}</p>
-            <Badge variant={deadline.tone === "neutral" ? "outline" : deadline.tone === "warning" ? "warning" : "destructive"}>
+            <Badge
+              variant={
+                deadline.tone === "neutral"
+                  ? "outline"
+                  : deadline.tone === "warning"
+                    ? "warning"
+                    : "destructive"
+              }
+            >
               <CalendarClockIcon />
               {deadline.label}
             </Badge>
@@ -37,7 +47,12 @@ export function ExerciseCard({ exercise }: { exercise: OpenExercise }) {
         </div>
         <Button
           className="shrink-0"
-          render={<NavLink to={`/exercises/${String(exercise.id)}/submit`} />}
+          render={
+            <NavLink
+              to={`/exercises/${String(exercise.id)}/submit`}
+              state={{ from: origin }}
+            />
+          }
         >
           Resolver
           <ArrowRightIcon data-icon="inline-end" />

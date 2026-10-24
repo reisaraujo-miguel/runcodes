@@ -6,12 +6,14 @@ import {
   GraduationCapIcon,
   PlusIcon,
   TicketIcon,
+  UploadIcon,
   UsersIcon,
 } from "lucide-react";
-import { Link, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 
 import { PageHeader } from "@/components/app/PageHeader";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
+import { ImportClassModal } from "@/components/professor/ImportClassModal";
 import { NewClassModal } from "@/components/professor/NewClassModal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,6 +29,9 @@ function countLabel(count: number, singular: string, plural: string): string {
 
 /** A single managed class, linking to its detail page. */
 function ClassCard({ offering }: { offering: ManagedOffering }) {
+  const location = useLocation();
+  const origin = `${location.pathname}${location.search}`;
+
   return (
     <Card className="flex flex-col">
       <CardContent className="flex flex-1 flex-col gap-4">
@@ -83,7 +88,12 @@ function ClassCard({ offering }: { offering: ManagedOffering }) {
         <Button
           variant="outline"
           className="mt-auto"
-          render={<Link to={`/professor/class/${String(offering.id)}`} />}
+          render={
+            <Link
+              to={`/professor/class/${String(offering.id)}`}
+              state={{ from: origin }}
+            />
+          }
         >
           Abrir turma
         </Button>
@@ -99,6 +109,7 @@ function ClassCard({ offering }: { offering: ManagedOffering }) {
 export function ProfessorClassesPage() {
   const navigate = useNavigate();
   const [showNew, setShowNew] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const offerings = useAsync(
     () => listOfferings(),
     "managed-offerings",
@@ -120,14 +131,25 @@ export function ProfessorClassesPage() {
         title="Gerenciar Turmas"
         description="Turmas que você criou ou nas quais leciona."
         actions={
-          <Button
-            onClick={() => {
-              setShowNew(true);
-            }}
-          >
-            <PlusIcon />
-            Nova turma
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowImport(true);
+              }}
+            >
+              <UploadIcon />
+              Importar turma
+            </Button>
+            <Button
+              onClick={() => {
+                setShowNew(true);
+              }}
+            >
+              <PlusIcon />
+              Nova turma
+            </Button>
+          </>
         }
       />
 
@@ -165,6 +187,15 @@ export function ProfessorClassesPage() {
             setShowNew(false);
           }}
           onCreated={handleCreated}
+        />
+      ) : null}
+
+      {showImport ? (
+        <ImportClassModal
+          onClose={() => {
+            setShowImport(false);
+          }}
+          onImported={handleCreated}
         />
       ) : null}
     </div>

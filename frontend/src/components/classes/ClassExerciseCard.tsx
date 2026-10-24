@@ -4,7 +4,7 @@ import {
   SendIcon,
   type LucideIcon,
 } from "lucide-react";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 
 import { StatusBadge } from "@/components/app/StatusBadge";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +32,8 @@ export function ClassExerciseCard({
   /** Current timestamp, owned by the page so this component stays pure. */
   now: number;
 }) {
+  const location = useLocation();
+  const origin = `${location.pathname}${location.search}`;
   const open = isExerciseOpen(exercise, now);
   const pending = isSubmissionPending(exercise);
   const submitted = exercise.submission_count > 0;
@@ -102,7 +104,12 @@ export function ClassExerciseCard({
           <Button
             size="sm"
             variant={open ? "default" : "outline"}
-            render={<Link to={`/exercises/${String(exercise.id)}/submit`} />}
+            render={
+              <Link
+                to={`/exercises/${String(exercise.id)}/submit`}
+                state={{ from: origin }}
+              />
+            }
           >
             <ActionIcon />
             {actionLabel}

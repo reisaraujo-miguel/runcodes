@@ -4,7 +4,7 @@ import {
   LogOutIcon,
   UserRoundIcon,
 } from "lucide-react";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 
 import { ConfirmButton } from "@/components/app/ConfirmDialog";
 import { EnrollmentRoleBadge } from "@/components/app/RoleBadge";
@@ -22,6 +22,9 @@ function ClassCard({
   offering: UserOffering;
   onLeave: (offeringId: number) => void | Promise<void>;
 }) {
+  const location = useLocation();
+  const origin = `${location.pathname}${location.search}`;
+
   return (
     <Card className="@container">
       <CardContent className="flex flex-col gap-4 @md:flex-row @md:items-start @md:justify-between">
@@ -29,6 +32,7 @@ function ClassCard({
           <div className="flex flex-wrap items-center gap-2">
             <Link
               to={`/classes/${String(offering.offering_id)}`}
+              state={{ from: origin }}
               className="truncate font-medium hover:underline"
             >
               {offering.name}
@@ -59,7 +63,12 @@ function ClassCard({
           <Button
             variant="outline"
             size="sm"
-            render={<Link to={`/classes/${String(offering.offering_id)}`} />}
+            render={
+              <Link
+                to={`/classes/${String(offering.offering_id)}`}
+                state={{ from: origin }}
+              />
+            }
           >
             Abrir turma
             <ArrowRightIcon data-icon="inline-end" />

@@ -1,4 +1,10 @@
-import { LogOutIcon, UserRoundIcon } from "lucide-react";
+import {
+  BookOpenIcon,
+  GraduationCapIcon,
+  LogOutIcon,
+  Undo2Icon,
+  UserRoundIcon,
+} from "lucide-react";
 import { NavLink } from "react-router";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -12,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/use-auth";
+import { usePreview } from "@/hooks/use-preview";
 import { platformRoleLabel } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 
@@ -37,7 +44,11 @@ export function UserMenu({
   collapsed?: boolean;
 }) {
   const { user, signOut } = useAuth();
+  const preview = usePreview();
   if (!user) return null;
+
+  const isPreviewing = Boolean(user.previewing_role);
+  const canPreview = user.role === "admin" && !isPreviewing;
 
   return (
     <DropdownMenu>
@@ -66,13 +77,65 @@ export function UserMenu({
         {/* Base UI's group label only works inside a group, so the role header
             is wrapped in one. */}
         <DropdownMenuGroup>
-          <DropdownMenuLabel>{platformRoleLabel(user.role)}</DropdownMenuLabel>
+          <DropdownMenuLabel>
+            {platformRoleLabel(user.role)}
+            {isPreviewing ? " · pré-visualização" : ""}
+          </DropdownMenuLabel>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem render={<NavLink to="/profile" />}>
           <UserRoundIcon />
           Meu perfil
         </DropdownMenuItem>
+
+        {canPreview ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Visualizar como</DropdownMenuLabel>
+              <DropdownMenuItem
+                disabled={preview.pending !== null}
+                onClick={() => {
+                  void preview.start("student");
+                }}
+              >
+                <BookOpenIcon />
+                Estudante
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={preview.pending !== null}
+                onClick={() => {
+                  void preview.start("professor");
+                }}
+              >
+                <GraduationCapIcon />
+                Professor
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </>
+        ) : null}
+
+        {isPreviewing ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              disabled={preview.pending !== null}
+              onClick={() => {
+                void preview.stop();
+              }}
+            >
+              <Undo2Icon />
+              Voltar para administrador
+            </DropdownMenuItem>
+          </>
+        ) : null}
+
+        {preview.error ? (
+          <DropdownMenuLabel className="text-destructive text-xs font-normal whitespace-normal">
+            {preview.error}
+          </DropdownMenuLabel>
+        ) : null}
+
         <DropdownMenuSeparator />
         <DropdownMenuItem
           variant="destructive"

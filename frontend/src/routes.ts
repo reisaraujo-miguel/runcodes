@@ -169,6 +169,14 @@ export const router = createBrowserRouter([
                     },
                   },
                   {
+                    path: "file-types",
+                    lazy: async () => {
+                      const { AdminFileTypesPage } =
+                        await import("./routes/admin/file-types/page.tsx");
+                      return { Component: AdminFileTypesPage };
+                    },
+                  },
+                  {
                     path: "settings",
                     lazy: async () => {
                       const { AdminSettingsPage } =

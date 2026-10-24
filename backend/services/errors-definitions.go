@@ -45,6 +45,7 @@ var (
 	ErrAttachedFileNotFound    = errors.New("attached file not found")
 	ErrInvalidTestCase         = errors.New("invalid test case")
 	ErrInvalidExercise         = errors.New("invalid exercise")
+	ErrInvalidEmail            = errors.New("invalid email message")
 
 	ErrInvalidEnrollmentCode = errors.New("invalid enrollment code")
 	ErrEnrollmentClosed      = errors.New("enrollment is closed for this offering")
@@ -61,4 +62,22 @@ var (
 	ErrNotAProfessor         = errors.New("only a professor or admin account can be assigned to teach a class")
 	ErrCannotBanOwner        = errors.New("the owner of an offering cannot be banned or removed")
 	ErrAlreadyMember         = errors.New("user is already a member of this offering")
+
+	ErrFileTypeNotFound = errors.New("file type not found")
+	ErrFileTypeExists   = errors.New("a file type with that name or extension already exists")
+	// ErrFileTypeInUse refuses to delete a catalog entry that exercises still
+	// reference; hiding it with is_available is the reversible alternative.
+	ErrFileTypeInUse = errors.New("this file type is used by at least one exercise; disable it instead")
+	// ErrCannotPreview refuses a preview for an account that is not an
+	// administrator or for a role that cannot be previewed.
+	ErrCannotPreview      = errors.New("only an administrator can preview a role")
+	ErrInvalidPreviewRole = errors.New("preview role must be \"student\" or \"professor\"")
+	ErrNotPreviewing      = errors.New("this session is not a role preview session")
+	// ErrInvalidArchive reports an upload that is not a readable zip file.
+	ErrInvalidArchive = errors.New("the uploaded file is not a valid zip archive")
+	// ErrArchiveTooLarge is returned when a compressed or expanded archive
+	// exceeds the platform's limits.
+	ErrArchiveTooLarge = errors.New("the uploaded archive is too large")
+	ErrInvalidTransfer = errors.New("the offering archive is not valid")
+	ErrImportFailed    = errors.New("could not import the offering archive")
 )

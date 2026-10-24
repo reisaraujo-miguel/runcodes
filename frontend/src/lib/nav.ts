@@ -1,5 +1,6 @@
 import {
   BookOpenIcon,
+  FileCode2Icon,
   GraduationCapIcon,
   HomeIcon,
   LayoutDashboardIcon,
@@ -71,6 +72,11 @@ export function navSectionsFor(role: UserRole): NavSection[] {
           to: "/admin/courses",
           label: "Todas as Turmas",
           icon: GraduationCapIcon,
+        },
+        {
+          to: "/admin/file-types",
+          label: "Tipos de Arquivo",
+          icon: FileCode2Icon,
         },
         {
           to: "/admin/settings",

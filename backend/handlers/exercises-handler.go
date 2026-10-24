@@ -48,20 +48,36 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, err error) {
 		errors.Is(err, services.ErrAttachedFileNotFound),
 		errors.Is(err, services.ErrUserNotFound),
 		errors.Is(err, services.ErrMemberNotFound),
+		errors.Is(err, services.ErrFileTypeNotFound),
 		errors.Is(err, services.ErrInvalidEnrollmentCode):
 		WriteResponse(w, http.StatusNotFound, models.Error{Message: err.Error()})
 	case errors.Is(err, services.ErrInvalidFileType),
 		errors.Is(err, services.ErrInvalidTestCase),
 		errors.Is(err, services.ErrInvalidExercise),
+		errors.Is(err, services.ErrInvalidEmail),
 		errors.Is(err, services.ErrInvalidMemberRole),
 		errors.Is(err, services.ErrInvalidRole),
+		errors.Is(err, services.ErrInvalidArchive),
+		errors.Is(err, services.ErrInvalidTransfer),
+		errors.Is(err, services.ErrNotPreviewing),
+		errors.Is(err, services.ErrInvalidPreviewRole),
 		errors.Is(err, validation.ErrRequiredField),
 		errors.Is(err, validation.ErrInputTooLong),
 		errors.Is(err, validation.ErrParsingField):
 		WriteResponse(w, http.StatusBadRequest, models.Error{Message: err.Error()})
-	case errors.Is(err, services.ErrNotAProfessor):
-		// The request is well formed; it is the account that cannot hold the
-		// role, which the admin panel can fix by promoting it.
+	case errors.Is(err, services.ErrArchiveTooLarge):
+		WriteResponse(w, http.StatusRequestEntityTooLarge,
+			models.Error{Message: err.Error()},
+		)
+	case errors.Is(err, services.ErrJudgeUnavailable):
+		WriteResponse(w, http.StatusServiceUnavailable,
+			models.Error{Message: err.Error()},
+		)
+	case errors.Is(err, services.ErrNotAProfessor),
+		errors.Is(err, services.ErrCannotPreview),
+		errors.Is(err, services.ErrImportFailed):
+		// The request is well formed; it is the account or archive content that
+		// cannot be used, which the admin panel or a corrected archive can fix.
 		WriteResponse(w, http.StatusUnprocessableEntity,
 			models.Error{Message: err.Error()},
 		)
@@ -75,7 +91,9 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, err error) {
 		errors.Is(err, services.ErrCannotBanOwner),
 		errors.Is(err, services.ErrAlreadyMember),
 		errors.Is(err, services.ErrSelfManagement),
-		errors.Is(err, services.ErrSelfUnconfirm):
+		errors.Is(err, services.ErrSelfUnconfirm),
+		errors.Is(err, services.ErrFileTypeExists),
+		errors.Is(err, services.ErrFileTypeInUse):
 		WriteResponse(w, http.StatusConflict, models.Error{Message: err.Error()})
 	default:
 		slog.ErrorContext(ctx, "unhandled service error",

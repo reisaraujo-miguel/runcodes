@@ -52,10 +52,18 @@ type User struct {
 }
 
 // AuthInfo is returned by the session endpoints: the user plus when the
-// session token expires (unix timestamp in seconds).
+// session token expires (unix timestamp in seconds). PreviewingRole is present
+// only while an administrator is previewing the platform with the role of a
+// student or professor on their own account.
 type AuthInfo struct {
 	User
-	ExpiresAt int64 `json:"expires_at"`
+	ExpiresAt      int64  `json:"expires_at"`
+	PreviewingRole string `json:"previewing_role,omitempty"`
+}
+
+// PreviewRequest is the JSON body of POST /api/v1/admin/preview.
+type PreviewRequest struct {
+	Role string `json:"role"`
 }
 
 // Profile is the caller's own account, as returned by the profile endpoints.

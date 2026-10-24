@@ -1,6 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
 
-import { ApiRequestError, UNAUTHORIZED_EVENT, apiRequest } from "./client";
+import {
+  ApiRequestError,
+  UNAUTHORIZED_EVENT,
+  apiRequest,
+  filenameFromDisposition,
+} from "./client";
 
 const originalFetch = globalThis.fetch;
 
@@ -62,4 +67,41 @@ test("other failures do not clear the session", async () => {
   } finally {
     globalThis.removeEventListener(UNAUTHORIZED_EVENT, listener);
   }
+});
+
+test("a failed request keeps the structured error body", async () => {
+  globalThis.fetch = (() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({
+          error_msg: "arquivo inválido",
+          invalid_folders: [{ folder: "caso1", reason: "falta .out" }],
+        }),
+        {
+          status: 422,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    )) as unknown as typeof fetch;
+
+  const error = await apiRequest("/batch").catch((caught: unknown) => caught);
+  if (!(error instanceof ApiRequestError)) {
+    throw new Error("expected an ApiRequestError");
+  }
+  expect(error.status).toBe(422);
+  expect(error.message).toBe("arquivo inválido");
+  expect(error.body).toEqual({
+    error_msg: "arquivo inválido",
+    invalid_folders: [{ folder: "caso1", reason: "falta .out" }],
+  });
+});
+
+test("filenameFromDisposition reads the server-suggested name", () => {
+  expect(
+    filenameFromDisposition('attachment; filename="notas-turma-1.csv"'),
+  ).toBe("notas-turma-1.csv");
+  expect(filenameFromDisposition("attachment; filename=backup.zip")).toBe(
+    "backup.zip",
+  );
+  expect(filenameFromDisposition(null)).toBe("download");
 });

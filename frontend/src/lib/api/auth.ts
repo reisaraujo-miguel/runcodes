@@ -2,6 +2,9 @@ import { apiGet, apiPost } from "./client";
 
 export type UserRole = "student" | "professor" | "admin";
 
+/** A reduced role an administrator may preview on their own account. */
+export type PreviewRole = "student" | "professor";
+
 /** The authenticated user as returned by GET /api/v1/auth. */
 export interface AuthUser {
   id: number;
@@ -10,6 +13,11 @@ export interface AuthUser {
   role: UserRole;
   /** When the session token expires (unix timestamp in seconds). */
   expires_at: number;
+  /**
+   * Present only while an administrator previews the platform with a reduced
+   * role. The account and its data are still the admin's own.
+   */
+  previewing_role?: PreviewRole | null;
 }
 
 export interface LoginPayload {
@@ -91,4 +99,18 @@ export function resetPassword(payload: ResetPasswordPayload): Promise<void> {
  */
 export function logout(): Promise<void> {
   return apiPost<undefined>("/api/v1/user/logout");
+}
+
+/**
+ * Start previewing the platform with a student or professor role. The session
+ * stays on the administrator's own account; only the role claim changes, so the
+ * caller must refresh the auth state afterwards.
+ */
+export function adminPreview(role: PreviewRole): Promise<AuthUser> {
+  return apiPost<AuthUser>("/api/v1/admin/preview", { role });
+}
+
+/** End the role preview and restore the administrator's real role. */
+export function stopPreview(): Promise<AuthUser> {
+  return apiPost<AuthUser>("/api/v1/auth/stop-preview");
 }

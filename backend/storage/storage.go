@@ -531,6 +531,19 @@ func GetFileObject(ctx context.Context, key string) (*FileObject, error) {
 }
 
 /*
+GetCaseObject opens an object from the cases bucket (test-case input, expected
+output or an extra file). The caller must close Body.
+*/
+func GetCaseObject(ctx context.Context, key string) (*FileObject, error) {
+	_, buckets, err := Client()
+	if err != nil {
+		return nil, err
+	}
+
+	return getObject(ctx, buckets.Cases, key)
+}
+
+/*
 GetCommitObject opens a submitted source from the commits bucket. The caller
 must close Body.
 */
