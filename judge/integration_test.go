@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -48,6 +49,36 @@ int main(void) {
 }
 `
 
+type languageFixture struct {
+	extension string
+	source    string
+	// artifact is true when the source deliberately creates a user output
+	// file, so the downloadable archive must exist.
+	artifact bool
+}
+
+var languageFixtures = map[string]languageFixture{
+	"c": {
+		extension: "c",
+		source:    cSource,
+		artifact:  true,
+	},
+	"r": {
+		extension: "r",
+		source: `cat("hello\n")
+`,
+	},
+	"verilog": {
+		extension: "v",
+		source: `module main;
+initial begin
+  $display("hello");
+end
+endmodule
+`,
+	},
+}
+
 func envOr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -77,6 +108,12 @@ func requireOrSkip(t *testing.T, format string, args ...any) {
 }
 
 func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
+	language := strings.ToLower(strings.TrimSpace(envOr("JUDGE_TEST_LANGUAGE", "c")))
+	fixture, ok := languageFixtures[language]
+	if !ok {
+		t.Fatalf("unknown JUDGE_TEST_LANGUAGE %q (want c, r or verilog)", language)
+	}
+
 	dsn := os.Getenv("JUDGE_TEST_DB_DSN")
 	if dsn == "" {
 		requireOrSkip(t, "JUDGE_TEST_DB_DSN is not set; start the harness with integration/run.sh")
@@ -152,7 +189,7 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 		t.Fatalf("insert test case: %v", err)
 	}
 
-	sourceKey := fmt.Sprintf("itest-%d/main.c", time.Now().UnixNano())
+	sourceKey := fmt.Sprintf("itest-%d/main.%s", time.Now().UnixNano(), fixture.extension)
 	if err := db.QueryRowContext(ctx, `
 		INSERT INTO commits (user_id, exercise_id, status, s3_key)
 		VALUES ($1, $2, 'queued', $3)
@@ -160,7 +197,7 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 		t.Fatalf("insert commit: %v", err)
 	}
 
-	putObject(ctx, t, s3client, s3cfg.CommitsBucket(), sourceKey, []byte(cSource))
+	putObject(ctx, t, s3client, s3cfg.CommitsBucket(), sourceKey, []byte(fixture.source))
 	// The test case is text-based: its input and expected output live in the
 	// database. Deliberately do not create S3 objects for them, so this test
 	// covers the legacy/migrated text-case fallback.
@@ -221,7 +258,8 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 	if commit.ID != commitID {
 		t.Fatalf("claimed commit %d, want %d (is the database shared?)", commit.ID, commitID)
 	}
-	t.Logf("claimed commit %d (exercise %d, real exercise %d)", commit.ID, commit.ExerciseID, commit.RealExerciseID)
+	t.Logf("claimed commit %d (exercise %d, real exercise %d, language %s)",
+		commit.ID, commit.ExerciseID, commit.RealExerciseID, language)
 
 	sub := hub.Subscribe(commitID, 0)
 	defer sub.Cancel()
@@ -308,11 +346,14 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 		t.Errorf("score = %v, want 100", score)
 	}
 
-	// The output archive should have been produced.
-	if info, err := os.Stat(eng.ArtifactPath(commitID)); err != nil {
-		t.Errorf("output archive missing: %v", err)
-	} else if info.Size() == 0 {
-		t.Error("output archive is empty")
+	// The C fixture deliberately creates a user file; R and Verilog have no
+	// user output file, so their archive is allowed to be absent.
+	if fixture.artifact {
+		if info, err := os.Stat(eng.ArtifactPath(commitID)); err != nil {
+			t.Errorf("output archive missing: %v", err)
+		} else if info.Size() == 0 {
+			t.Error("output archive is empty")
+		}
 	}
 }
 
