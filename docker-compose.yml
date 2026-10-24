@@ -243,6 +243,13 @@ services:
   seaweed-s3-init:
     image: alpine:3.24
     restart: "no"
+    # SELinux (enforcing on Fedora) labels the checkout user_home_t, which
+    # container_t cannot read: without this the one-shot dies with
+    # "/bin/sh: can't open '/init.sh': Permission denied" and the gateway never
+    # starts. Same workaround as judge-exec-init above; relabelling the file
+    # (`:z`) would mutate the checkout, which the other bind mounts avoid.
+    security_opt:
+      - label=disable
     environment:
       RUNCODES_S3_CREDENTIALS_KEY: "${RUNCODES_S3_CREDENTIALS_KEY:?RUNCODES_S3_CREDENTIALS_KEY must be set}"
       RUNCODES_S3_CREDENTIALS_SECRET: "${RUNCODES_S3_CREDENTIALS_SECRET:?RUNCODES_S3_CREDENTIALS_SECRET must be set}"

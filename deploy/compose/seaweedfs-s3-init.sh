@@ -7,12 +7,18 @@ set -eu
 key="${RUNCODES_S3_CREDENTIALS_KEY:?RUNCODES_S3_CREDENTIALS_KEY must be set}"
 secret="${RUNCODES_S3_CREDENTIALS_SECRET:?RUNCODES_S3_CREDENTIALS_SECRET must be set}"
 
-# Keep the JSON valid without pulling a JSON tool into a one-shot image. The
-# generated credentials are hex/base64; reject anything outside that alphabet
-# rather than trying to escape it.
+# Keep the JSON valid without pulling a JSON tool into a one-shot image. Both
+# values are interpolated into JSON strings verbatim, so reject only the bytes
+# that cannot appear there: control characters, the double quote and the
+# backslash. Punctuation such as `&` or `*` is valid inside a JSON string and in
+# an S3 credential, so hand-written development values are accepted too.
 case "${key}${secret}" in
-	*[!A-Za-z0-9+/=_-]*)
-		echo "S3 credentials must be URL-safe base64/hex characters" >&2
+	*'"'* | *'\'*)
+		echo "S3 credentials must not contain double quotes or backslashes" >&2
+		exit 1
+		;;
+	*[![:print:]]*)
+		echo "S3 credentials must be printable characters" >&2
 		exit 1
 		;;
 esac
