@@ -28,7 +28,11 @@ The observability stack is a **separate opt-in overlay**; see
 
 Only the frontend publishes on a network interface. The backend, judge,
 database, SeaweedFS and smtp4dev bind to loopback. The backend and judge reach
-each other and the data services over the internal `runcodes-network`.
+each other and the data services over the internal `runcodes-network`. Every
+host port above is overridable from `.env` (`FRONTEND_HTTP_PORT`,
+`FRONTEND_HTTPS_PORT`, `BACKEND_PORT`, `JUDGE_PORT`, `DATABASE_PORT`,
+`SEAWEED_S3_PORT`, `SMTP4DEV_WEB_PORT`, `SMTP4DEV_SMTP_PORT`), which lets a
+second stack run on the same machine.
 
 Caddy handles two jobs: it serves the SPA with a client-side-routing fallback,
 and it reverse-proxies `/api/*` to `backend:8443`. That keeps the API same-origin
@@ -89,7 +93,10 @@ Optional and commonly set:
 | `RUNCODES_SMTP_HOST` / `_PORT` | Compose sets `smtp4dev:25` | real relay |
 | `RUNCODES_SMTP_USERNAME` / `_PASSWORD` | empty | relay credentials |
 | `RUNCODES_DOMAIN` | `:80` | Caddy site: hostname enables automatic HTTPS |
-| `FRONTEND_HTTP_PORT` / `FRONTEND_HTTPS_PORT` | `8080` / `8444` | host ports |
+| `FRONTEND_HTTP_PORT` / `FRONTEND_HTTPS_PORT` | `8080` / `8444` | frontend host ports |
+| `BACKEND_PORT` / `JUDGE_PORT` | `8443` / `9000` | loopback host ports |
+| `DATABASE_PORT` / `SEAWEED_S3_PORT` | `5432` / `8333` | loopback host ports |
+| `SMTP4DEV_WEB_PORT` / `SMTP4DEV_SMTP_PORT` | `8081` / `1025` | loopback host ports |
 | `PODMAN_SOCKET` | `/run/user/1000/podman/podman.sock` | rootless socket path |
 | `JUDGE_UID` / `JUDGE_GID` | `0` / `0` | container identity for the judge |
 | `RUNCODES_JUDGE_STALE_TIMEOUT` | `35m` | backend age before a claimed run is marked stale |

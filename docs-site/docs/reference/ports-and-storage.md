@@ -9,16 +9,20 @@ description: Network matrix for the Compose and four-machine deployments, object
 
 ### Published on the host
 
-| Host port | Service | Binding |
-| --- | --- | --- |
-| `8080` | frontend / Caddy HTTP | `0.0.0.0` (override with `FRONTEND_HTTP_PORT`) |
-| `8444` | frontend / Caddy HTTPS | `0.0.0.0` (override with `FRONTEND_HTTPS_PORT`) |
-| `8443` | backend API | `127.0.0.1` |
-| `9000` | judge API | `127.0.0.1` |
-| `5432` | PostgreSQL | `127.0.0.1` |
-| `8333` | SeaweedFS S3 | `127.0.0.1` |
-| `8081` | smtp4dev web UI | `127.0.0.1` |
-| `1025` | smtp4dev SMTP | `127.0.0.1` |
+| Host port | Variable | Service | Binding |
+| --- | --- | --- | --- |
+| `8080` | `FRONTEND_HTTP_PORT` | frontend / Caddy HTTP | `0.0.0.0` |
+| `8444` | `FRONTEND_HTTPS_PORT` | frontend / Caddy HTTPS | `0.0.0.0` |
+| `8443` | `BACKEND_PORT` | backend API | `127.0.0.1` |
+| `9000` | `JUDGE_PORT` | judge API | `127.0.0.1` |
+| `5432` | `DATABASE_PORT` | PostgreSQL | `127.0.0.1` |
+| `8333` | `SEAWEED_S3_PORT` | SeaweedFS S3 | `127.0.0.1` |
+| `8081` | `SMTP4DEV_WEB_PORT` | smtp4dev web UI | `127.0.0.1` |
+| `1025` | `SMTP4DEV_SMTP_PORT` | smtp4dev SMTP | `127.0.0.1` |
+
+The ports above are the defaults; every one can be changed with its variable
+(set it in `.env`) to run this stack next to another one on the same machine.
+Only the frontend is published on every interface.
 
 Redis is not published; the backend reaches it as `redis:6379` on the Compose
 network.

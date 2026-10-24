@@ -255,6 +255,9 @@ Source: `docker-compose.yml`, `.env.example`.
 | `RUNCODES_SMTP_USERNAME` / `_PASSWORD` | | backend | relay credentials |
 | `RUNCODES_LEGACY_PASSWORD_SALT` | | backend | legacy hashes |
 | `FRONTEND_HTTP_PORT` / `FRONTEND_HTTPS_PORT` | | frontend | host ports (8080/8444) |
+| `BACKEND_PORT` / `JUDGE_PORT` | | backend, judge | loopback host ports (8443/9000) |
+| `DATABASE_PORT` / `SEAWEED_S3_PORT` | | database, seaweed | loopback host ports (5432/8333) |
+| `SMTP4DEV_WEB_PORT` / `SMTP4DEV_SMTP_PORT` | | smtp4dev | loopback host ports (8081/1025) |
 | `RUNCODES_DOMAIN` | | frontend | Caddy site address |
 | `PODMAN_SOCKET` | | judge | rootless socket path |
 | `JUDGE_UID` / `JUDGE_GID` | | judge | container identity (0:0) |

@@ -1,3 +1,7 @@
+# Every published host port is overridable so this stack can run next to another
+# one on the same machine; the defaults are inline in each mapping and listed in
+# .env.example. Only the frontend is published on every interface, the rest bind
+# to loopback.
 services:
   # Caddy: serves the SPA and reverse-proxies /api/* to the backend, so the API
   # is same-origin (no CORS, no build-time API URL). Point RUNCODES_DOMAIN at a
@@ -37,7 +41,7 @@ services:
     ports:
       # Host-local only: the API is served through the Caddy proxy. Loopback
       # keeps it reachable for local frontend development (`bun run dev`).
-      - "127.0.0.1:8443:8443"
+      - "127.0.0.1:${BACKEND_PORT:-8443}:8443"
     networks:
       - runcodes-network
     environment:
@@ -116,7 +120,7 @@ services:
       # Loopback only. The backend reaches the judge over the compose network, so
       # nothing needs this published: the judge runs untrusted code and its API is
       # guarded by a single shared token.
-      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:${JUDGE_PORT:-9000}:9000"
     # Rootless podman maps container root to the host user, so the judge runs as
     # root *inside* the container. A container uid of 1000 would map to a host
     # subuid (524288+), which can neither open the socket below (0660, owned by
@@ -181,7 +185,7 @@ services:
     build: ./database/
     restart: unless-stopped
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${DATABASE_PORT:-5432}:5432"
     environment:
       TZ: "America/Sao_Paulo"
       POSTGRES_USER: runcodes
@@ -205,8 +209,8 @@ services:
     ports:
       # Loopback only: the mail catcher has no authentication and keeps every
       # message the platform has sent.
-      - "127.0.0.1:8081:80" # web UI
-      - "127.0.0.1:1025:25" # SMTP, for a backend running outside Compose
+      - "127.0.0.1:${SMTP4DEV_WEB_PORT:-8081}:80" # web UI
+      - "127.0.0.1:${SMTP4DEV_SMTP_PORT:-1025}:25" # SMTP, for a backend running outside Compose
     environment:
       TZ: "America/Sao_Paulo"
       ServerOptions__HostName: "smtp4dev"
@@ -265,7 +269,7 @@ services:
     ports:
       # Loopback only: the S3 gateway holds every submission and expected output,
       # so reaching it directly must not be possible from the network.
-      - "127.0.0.1:8333:8333"
+      - "127.0.0.1:${SEAWEED_S3_PORT:-8333}:8333"
     environment:
       TZ: "America/Sao_Paulo"
     command:
