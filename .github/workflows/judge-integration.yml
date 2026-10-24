@@ -121,10 +121,7 @@ jobs:
           podman build --isolation=chroot --pull=never \
             -t runcodes-runner-r:itest \
             -f runners/r/Dockerfile runners/r
-          # The Verilog image starts from a third-party base, so it still needs
-          # registry access for that base; only the copied runner executables
-          # come from the local base.
-          podman build --isolation=chroot \
+          podman build --isolation=chroot --pull=never \
             -t runcodes-runner-verilog:itest \
             -f runners/verilog/Dockerfile runners/verilog
 
