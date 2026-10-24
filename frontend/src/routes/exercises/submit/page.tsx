@@ -11,7 +11,6 @@ import {
 import {
   lazy,
   Suspense,
-  useEffect,
   useMemo,
   useState,
   type ChangeEvent,
@@ -45,15 +44,8 @@ import {
   getExerciseTestCases,
   listAttachedFiles,
   listExerciseSubmissions,
-  subscribeSubmissionEvents,
-  type AllowedFileType,
-  type CommitStatus,
-  type Exercise,
-  type SubmissionArtifact,
-  type SubmissionStatusEvent,
   type SubmissionSummary,
 } from "@/lib/api";
-import { ApiRequestError } from "@/lib/api/client";
 import { deadlineInfo } from "@/lib/deadline";
 import {
   DOCK_SPLITTER_SIZE,
@@ -69,22 +61,20 @@ import {
   editorLanguageForFilename,
   editorLanguagesFor,
 } from "@/lib/editor/languages";
-import { normalizeExtension, validateFileType } from "@/lib/file-types";
+import { validateFileType } from "@/lib/file-types";
 import { formatDateTime } from "@/lib/format";
 import { initialCommitId } from "@/lib/submission-hydration";
-import { isPendingStatus, isTerminalStatus } from "@/lib/submission-status";
-import {
-  upsertCaseResult,
-  viewFromEvent,
-  viewFromSnapshot,
-  type CaseResultView,
-  type CompilationInfo,
-  type FinalSummary,
-} from "@/lib/submission-view";
+import { isPendingStatus } from "@/lib/submission-status";
 import { clamp, cn } from "@/lib/utils";
-
-const INITIAL_STATUS: CommitStatus = "queued";
-const FORM_ID = "submission-form";
+import {
+  FORM_ID,
+  readStoredCommit,
+  resolveAllowedExtensions,
+  resolveAllowedFileTypes,
+  storeCommit,
+  submitErrorMessage,
+} from "./submit-page-helpers";
+import { useSubmissionRun } from "./use-submission-run";
 
 // CodeMirror and its grammars are large, so they load only when the editor is
 // actually shown. The grammar for the selected language is fetched separately.
@@ -92,113 +82,6 @@ const CodeEditor = lazy(async () => {
   const { CodeEditor: Editor } = await import("@/components/editor/CodeEditor");
   return { default: Editor };
 });
-
-/** Translates a refused submission, keyed on the HTTP status. */
-function submitErrorMessage(error: unknown): string {
-  if (error instanceof ApiRequestError) {
-    switch (error.status) {
-      case 400:
-        return "Tipo de arquivo não permitido para este exercício.";
-      case 403:
-        return "Você não está matriculado nesta turma.";
-      case 422:
-        return "O prazo deste exercício já passou.";
-      case 503:
-        return "O corretor está indisponível no momento. Tente novamente em alguns instantes.";
-    }
-  }
-  return error instanceof Error
-    ? error.message
-    : "Erro ao enviar a submissão. Tente novamente.";
-}
-
-function commitStorageKey(exerciseId: number): string {
-  return `runcodes:submission:${String(exerciseId)}`;
-}
-
-function readStoredCommit(exerciseId: number): number | null {
-  try {
-    const stored = sessionStorage.getItem(commitStorageKey(exerciseId));
-    if (!stored) return null;
-    const parsed = Number(stored);
-    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function storeCommit(exerciseId: number, commitId: number | null): void {
-  try {
-    if (commitId === null) {
-      sessionStorage.removeItem(commitStorageKey(exerciseId));
-    } else {
-      sessionStorage.setItem(commitStorageKey(exerciseId), String(commitId));
-    }
-  } catch {
-    // Storage unavailable (private mode) — reload will simply not resume.
-  }
-}
-
-/**
- * Resolves the types an exercise accepts on the server: its own allowed types
- * when configured, otherwise every available platform type.
- */
-function resolveAllowedFileTypes(
-  exercise: Exercise | null,
-  allTypes: AllowedFileType[],
-): AllowedFileType[] {
-  if (!exercise) return [];
-
-  const own = exercise.allowed_file_types;
-  if (own && own.length > 0) {
-    const available = own.filter((type) => type.is_available);
-    if (available.length > 0) return available;
-  }
-
-  const ids = exercise.allowed_file_type_ids;
-  if (ids && ids.length > 0) {
-    return allTypes.filter(
-      (type) => ids.includes(type.id) && type.is_available,
-    );
-  }
-
-  // An explicitly empty exercise list means "no restriction": offer everything
-  // the platform can compile so the editor still has languages to choose from.
-  return allTypes.filter((type) => type.is_available);
-}
-
-/**
- * Resolves the extensions the exercise accepts for client-side validation.
- * Returns `null` when nothing is restricted (skip validation).
- */
-function resolveAllowedExtensions(
-  exercise: Exercise | null,
-  allTypes: AllowedFileType[],
-): string[] | null {
-  if (!exercise) return null;
-
-  const own = exercise.allowed_file_types;
-  if (own) {
-    // An empty list means no restriction; a list whose entries are all
-    // unavailable is treated the same way by the backend's validation.
-    const available = own.filter((type) => type.is_available);
-    if (own.length === 0 || available.length === 0) return null;
-    const extensions = [
-      ...new Set(available.map((type) => normalizeExtension(type.extension))),
-    ].filter((extension) => extension !== "");
-    return extensions.length > 0 ? extensions : null;
-  }
-
-  const ids = exercise.allowed_file_type_ids;
-  const source =
-    ids && ids.length > 0
-      ? allTypes.filter((type) => ids.includes(type.id))
-      : allTypes.filter((type) => type.is_available);
-  const extensions = [
-    ...new Set(source.map((type) => normalizeExtension(type.extension))),
-  ].filter((extension) => extension !== "");
-  return extensions.length > 0 ? extensions : null;
-}
 
 /** The submission view for one exercise; remounted when the exercise changes. */
 function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
@@ -291,13 +174,16 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
     storedCommitId,
     latestSubmission.error !== null,
   );
-  const [status, setStatus] = useState<CommitStatus>(INITIAL_STATUS);
-  const [history, setHistory] = useState<SubmissionStatusEvent[]>([]);
-  const [compilation, setCompilation] = useState<CompilationInfo | null>(null);
-  const [results, setResults] = useState<CaseResultView[]>([]);
-  const [artifacts, setArtifacts] = useState<SubmissionArtifact[]>([]);
-  const [final, setFinal] = useState<FinalSummary | null>(null);
-  const [streamError, setStreamError] = useState<string | null>(null);
+  const {
+    status,
+    history,
+    compilation,
+    results,
+    artifacts,
+    final,
+    streamError,
+    resetRunState,
+  } = useSubmissionRun(commitId);
 
   const allowedFileTypes = useMemo(
     () => resolveAllowedFileTypes(exercise.data, allowedTypes.data ?? []),
@@ -341,114 +227,6 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
     filename: filenameDraft,
     initialDraft: restoredDraft,
   });
-
-  useEffect(() => {
-    if (commitId === null) return;
-
-    const unsubscribe = subscribeSubmissionEvents(commitId, {
-      onSnapshot: (event) => {
-        // A frame only arrives on a live connection, so any earlier stream
-        // warning is stale.
-        setStreamError(null);
-        setStatus(event.commit.status);
-        setHistory([]);
-        setCompilation({
-          compiled: event.commit.compiled,
-          message: event.commit.compilation_message,
-          error: event.commit.compilation_error,
-        });
-        setResults(event.results.map(viewFromSnapshot));
-        // Artifact frames are transient; the snapshot rehydrates availability
-        // after a reload for a settled submission. Merge rather than replace so
-        // a reconnect cannot drop an artifact seen earlier in this run.
-        setArtifacts((previous) => {
-          const fromSnapshot = event.artifacts ?? [];
-          if (fromSnapshot.length === 0) return previous;
-          const merged = new Map(
-            previous.map((artifact) => [artifact.kind, artifact]),
-          );
-          for (const artifact of fromSnapshot) {
-            merged.set(artifact.kind, artifact);
-          }
-          return [...merged.values()];
-        });
-        if (isTerminalStatus(event.commit.status)) {
-          setFinal({
-            status: event.commit.status,
-            numCorrectCases: event.commit.num_correct_cases,
-            score: event.commit.score,
-            compilationMessage: event.commit.compilation_message,
-            compilationError: event.commit.compilation_error,
-          });
-        } else {
-          setFinal(null);
-        }
-      },
-      onStatus: (event) => {
-        setStreamError(null);
-        setStatus(event.status);
-        setHistory((previous) => [...previous, event]);
-      },
-      onCompilation: (event) => {
-        setStreamError(null);
-        setCompilation({
-          compiled: event.compiled,
-          message: event.message,
-          error: event.error,
-        });
-      },
-      onCaseResult: (event) => {
-        setStreamError(null);
-        setResults((previous) =>
-          upsertCaseResult(previous, viewFromEvent(event)),
-        );
-      },
-      onArtifact: (event) => {
-        setStreamError(null);
-        setArtifacts((previous) =>
-          previous.some((artifact) => artifact.kind === event.kind)
-            ? previous
-            : [...previous, { kind: event.kind }],
-        );
-      },
-      onFinished: (event) => {
-        setStreamError(null);
-        setStatus(event.status);
-        setFinal({
-          status: event.status,
-          numCorrectCases: event.num_correct_cases,
-          score: event.score,
-          compilationMessage: event.compilation_message,
-          compilationError: event.compilation_error,
-        });
-        setCompilation({
-          compiled: event.compilation_error === "",
-          message: event.compilation_message,
-          error: event.compilation_error,
-        });
-      },
-      onError: (event) => {
-        setStreamError(event.message);
-      },
-      onConnectionError: () => {
-        setStreamError(
-          "Não foi possível obter os resultados em tempo real. Recarregue a página para tentar novamente.",
-        );
-      },
-    });
-
-    return unsubscribe;
-  }, [commitId]);
-
-  function resetRunState() {
-    setStatus(INITIAL_STATUS);
-    setHistory([]);
-    setCompilation(null);
-    setResults([]);
-    setArtifacts([]);
-    setFinal(null);
-    setStreamError(null);
-  }
 
   /**
    * Stores the language the editor is actually using. The selected id can be
