@@ -76,6 +76,10 @@ func createRoutes(router *chi.Mux) {
 
 			r.Get("/api/v1/auth", handlers.GetAuth)
 			r.Post("/api/v1/auth/refresh", handlers.RefreshAuth)
+			// Only a role preview can end itself; the handler checks the preview
+			// claim, so the route is not under the admin group (the current role
+			// is the previewed role, not the admin's).
+			r.Post("/api/v1/auth/stop-preview", handlers.StopPreview)
 
 			// the caller's own account
 			r.Get("/api/v1/user/profile", handlers.GetProfile)
@@ -114,6 +118,12 @@ func createRoutes(router *chi.Mux) {
 
 			r.Get("/api/v1/exercises/{id}/test-cases", handlers.ListTestCases)
 			r.Post("/api/v1/exercises/{id}/test-cases", handlers.CreateTestCase)
+			// Batch endpoints keep the same access rule as the single-case ones:
+			// the service checks the caller may author this exercise.
+			r.Post("/api/v1/exercises/{id}/test-cases/batch",
+				handlers.CreateTestCasesBatch)
+			r.Get("/api/v1/exercises/{id}/test-cases/export",
+				handlers.ExportExerciseTestCases)
 			r.Put("/api/v1/exercises/{id}/test-cases/{caseId}", handlers.UpdateTestCase)
 			r.Delete("/api/v1/exercises/{id}/test-cases/{caseId}", handlers.DeleteTestCase)
 
@@ -143,6 +153,20 @@ func createRoutes(router *chi.Mux) {
 				r.Post("/api/v1/offerings/{id}/members", handlers.AddOfferingMember)
 				r.Put("/api/v1/offerings/{id}/members/{userId}", handlers.UpdateOfferingMember)
 				r.Delete("/api/v1/offerings/{id}/members/{userId}", handlers.RemoveOfferingMember)
+
+				// Grades and statistics derived from the class submissions.
+				r.Get("/api/v1/offerings/{id}/grades", handlers.GetOfferingGradebook)
+				r.Get("/api/v1/offerings/{id}/grades.csv", handlers.ExportOfferingGradesCSV)
+
+				// Whole-class tools: backup/restore of the class material and batch
+				// operations on the students' submissions.
+				r.Get("/api/v1/offerings/{id}/export", handlers.ExportOffering)
+				r.Post("/api/v1/offerings/import", handlers.ImportOffering)
+				r.Get("/api/v1/offerings/{id}/submissions/export",
+					handlers.ExportOfferingSubmissions)
+				r.Post("/api/v1/offerings/{id}/submissions/recompile",
+					handlers.RecompileOfferingSubmissions)
+				r.Post("/api/v1/offerings/{id}/notify", handlers.NotifyOfferingMembers)
 			})
 
 			// admin panel
@@ -160,6 +184,18 @@ func createRoutes(router *chi.Mux) {
 
 				r.Get("/api/v1/admin/settings", handlers.GetSettings)
 				r.Put("/api/v1/admin/settings", handlers.UpdateSettings)
+
+				// See the platform with a student or professor role on the
+				// administrator's own account. The admin session is restored by
+				// /auth/stop-preview.
+				r.Post("/api/v1/admin/preview", handlers.AdminStartPreview)
+
+				// Runtime catalog of accepted file types, so a new language does
+				// not require a redeploy.
+				r.Get("/api/v1/admin/file-types", handlers.AdminListFileTypes)
+				r.Post("/api/v1/admin/file-types", handlers.AdminCreateFileType)
+				r.Put("/api/v1/admin/file-types/{id}", handlers.AdminUpdateFileType)
+				r.Delete("/api/v1/admin/file-types/{id}", handlers.AdminDeleteFileType)
 			})
 		})
 	})
