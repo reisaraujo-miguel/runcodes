@@ -108,6 +108,29 @@ The check is one indexed primary-key lookup per request, next to the queries the
 handlers already run. Tokens issued before token_version existed have no claim
 and are rejected, so a deployment of this change signs everyone out once.
 */
+/*
+sessionRoleAllowed decides whether the role in a token still describes the
+account's role. Normally the two must match. The exception is an administrator
+previewing a reduced role: the token names a student or professor role, the
+account is still an admin in the database, and the preview claim says exactly
+which role was requested. A token that merely claims a different real role is
+rejected, so this cannot be used to retain privileges after a demotion.
+*/
+func sessionRoleAllowed(claimRole, databaseRole, previewRole string) bool {
+	if claimRole == databaseRole {
+		// A preview marker never preserves an admin role: a preview must be a
+		// reduced role, and a normal token has no marker at all.
+		return previewRole == ""
+	}
+	if previewRole == "" || previewRole != claimRole {
+		return false
+	}
+	if databaseRole != "admin" {
+		return false
+	}
+	return claimRole == "student" || claimRole == "professor"
+}
+
 func RequireCurrentSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -140,7 +163,9 @@ func RequireCurrentSession(next http.Handler) http.Handler {
 
 		claimVersion, ok := claims["token_version"].(float64)
 		claimRole, _ := claims["role"].(string)
-		if !ok || int(claimVersion) != state.TokenVersion || claimRole != state.Role {
+		previewRole, _ := claims[services.PreviewClaim].(string)
+		if !ok || int(claimVersion) != state.TokenVersion ||
+			!sessionRoleAllowed(claimRole, state.Role, previewRole) {
 			WriteResponse(w, http.StatusUnauthorized, nil)
 			return
 		}

@@ -203,7 +203,8 @@ func LogOut(w http.ResponseWriter, _ *http.Request) {
 
 /*
 GetAuth returns the current session's user info (read from the JWT claims),
-including the user role and the session expiry.
+including the user role, the session expiry and, for an admin preview, the
+role being previewed.
 */
 func GetAuth(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -218,11 +219,22 @@ func GetAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, okID := claims["id"].(float64)
-	name, okName := claims["name"].(string)
-	email, okEmail := claims["email"].(string)
-	role, okRole := claims["role"].(string)
-	if !okID || !okName || !okEmail || !okRole {
+	if _, okID := claims["id"].(float64); !okID {
+		slog.ErrorContext(ctx, "invalid claims in auth request")
+		WriteResponse(w, http.StatusUnauthorized, nil)
+		return
+	}
+	if _, okName := claims["name"].(string); !okName {
+		slog.ErrorContext(ctx, "invalid claims in auth request")
+		WriteResponse(w, http.StatusUnauthorized, nil)
+		return
+	}
+	if _, okEmail := claims["email"].(string); !okEmail {
+		slog.ErrorContext(ctx, "invalid claims in auth request")
+		WriteResponse(w, http.StatusUnauthorized, nil)
+		return
+	}
+	if _, okRole := claims["role"].(string); !okRole {
 		slog.ErrorContext(ctx, "invalid claims in auth request")
 		WriteResponse(w, http.StatusUnauthorized, nil)
 		return
@@ -242,15 +254,9 @@ func GetAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	WriteResponse(w, http.StatusOK, models.AuthInfo{
-		User: models.User{
-			ID:    int(id),
-			Name:  name,
-			Email: email,
-			Role:  role,
-		},
-		ExpiresAt: expiresAt,
-	})
+	WriteResponse(w, http.StatusOK,
+		authInfoFromClaims(claims, time.Unix(expiresAt, 0)),
+	)
 }
 
 /*
@@ -302,6 +308,22 @@ func RefreshAuth(w http.ResponseWriter, r *http.Request) {
 		"role":          user.Role,
 		"token_version": user.TokenVersion,
 	}
+
+	// A preview session renews with the same preview role. Rebuilding it from the
+	// current database state keeps every permission identical, while re-reading
+	// the account means a demoted administrator cannot keep a preview alive.
+	if previewRole, previewing := claims[services.PreviewClaim].(string); previewing {
+		newClaims, err = services.PreviewClaims(user, previewRole)
+		if err != nil {
+			slog.InfoContext(ctx, "ending role preview on refresh",
+				slog.Int("user_id", user.ID),
+				slog.String("error", err.Error()),
+			)
+			WriteResponse(w, http.StatusUnauthorized, nil)
+			return
+		}
+	}
+
 	jwtauth.SetIssuedAt(newClaims, time.Now())
 	jwtauth.SetExpiryIn(newClaims, validation.SessionTTL)
 
@@ -319,8 +341,7 @@ func RefreshAuth(w http.ResponseWriter, r *http.Request) {
 
 	setSessionCookie(w, tokenString)
 
-	WriteResponse(w, http.StatusOK, models.AuthInfo{
-		User:      *user,
-		ExpiresAt: time.Now().Add(validation.SessionTTL).Unix(),
-	})
+	WriteResponse(w, http.StatusOK,
+		authInfoFromClaims(newClaims, time.Now().Add(validation.SessionTTL)),
+	)
 }
