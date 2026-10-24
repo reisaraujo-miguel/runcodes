@@ -17,8 +17,9 @@ import {
   type CSSProperties,
   type SubmitEvent,
 } from "react";
-import { Link, useParams } from "react-router";
+import { useParams } from "react-router";
 
+import { BackLink } from "@/components/app/BackLink";
 import { ConfirmDialog } from "@/components/app/ConfirmDialog";
 import { ErrorState, LoadingState } from "@/components/app/states";
 import { CodeDraftIndicator } from "@/components/editor/CodeDraftIndicator";
@@ -393,13 +394,11 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
   return (
     <div className="flex flex-col gap-3 xl:h-full">
       <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2">
-        <Link
+        <BackLink
           to="/exercises"
-          className="text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1 text-xs font-medium"
-        >
-          <ArrowLeftIcon className="size-3.5" aria-hidden />
-          Exercícios
-        </Link>
+          icon={<ArrowLeftIcon className="size-3.5" aria-hidden />}
+          className="hover:text-foreground shrink-0 text-xs"
+        />
         <span className="bg-border hidden h-4 w-px sm:block" aria-hidden />
         <h1 className="min-w-0 text-lg font-semibold tracking-tight text-balance">
           {current.title}

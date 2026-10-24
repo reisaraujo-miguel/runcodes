@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 
 import { BookOpenIcon, FilterXIcon, LayoutListIcon } from "lucide-react";
-import { Link, useParams } from "react-router";
+import { Link, useLocation, useParams } from "react-router";
 
+import { BackLink } from "@/components/app/BackLink";
 import { PageHeader } from "@/components/app/PageHeader";
 import { EnrollmentRoleBadge } from "@/components/app/RoleBadge";
 import { SectionCard } from "@/components/app/SectionCard";
@@ -23,11 +24,7 @@ import {
 } from "@/lib/class-exercises";
 import { formatDateTime } from "@/lib/format";
 
-const breadcrumb = (
-  <Link to="/classes" className="text-muted-foreground text-sm hover:underline">
-    ← Minhas turmas
-  </Link>
-);
+const breadcrumb = <BackLink to="/classes" />;
 
 const FILTERS: readonly { value: ClassExerciseFilter; label: string }[] = [
   { value: "all", label: "Todos" },
@@ -54,6 +51,8 @@ function parseSort(value: string): ClassExerciseSort {
  */
 export function OfferingPage() {
   const { offeringId } = useParams();
+  const location = useLocation();
+  const origin = `${location.pathname}${location.search}`;
   const id = Number(offeringId);
   const valid = Number.isInteger(id) && id > 0;
   const key = offeringId ?? "";
@@ -121,7 +120,12 @@ export function OfferingPage() {
               <Button
                 size="sm"
                 variant="outline"
-                render={<Link to={`/professor/class/${String(offering.id)}`} />}
+                render={
+                  <Link
+                    to={`/professor/class/${String(offering.id)}`}
+                    state={{ from: origin }}
+                  />
+                }
               >
                 <LayoutListIcon />
                 Gerenciar turma

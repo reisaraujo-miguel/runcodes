@@ -1,8 +1,9 @@
 import { useState } from "react";
 
 import { PencilIcon, Trash2Icon } from "lucide-react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 
+import { BackLink } from "@/components/app/BackLink";
 import { ConfirmButton } from "@/components/app/ConfirmDialog";
 import { PageHeader } from "@/components/app/PageHeader";
 import { ErrorState, LoadingState } from "@/components/app/states";
@@ -78,14 +79,7 @@ export function ExercisePage() {
       <div className="space-y-6">
         <PageHeader
           title="Exercício"
-          breadcrumb={
-            <Link
-              to="/professor"
-              className="text-muted-foreground text-sm hover:underline"
-            >
-              ← Gerenciar turmas
-            </Link>
-          }
+          breadcrumb={<BackLink to="/professor" />}
         />
         <ErrorState
           description={
@@ -133,14 +127,7 @@ export function ExercisePage() {
       <PageHeader
         title={current.title}
         description="Gerencie o enunciado, os casos de teste e os arquivos deste exercício."
-        breadcrumb={
-          <Link
-            to={classLink}
-            className="text-muted-foreground text-sm hover:underline"
-          >
-            ← Voltar para a turma
-          </Link>
-        }
+        breadcrumb={<BackLink to={classLink} />}
         actions={
           current.removed ? (
             <Badge variant="destructive">Removido</Badge>

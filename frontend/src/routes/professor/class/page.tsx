@@ -8,8 +8,15 @@ import {
   RefreshCwIcon,
   Trash2Icon,
 } from "lucide-react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router";
 
+import { BackLink } from "@/components/app/BackLink";
 import { ConfirmButton } from "@/components/app/ConfirmDialog";
 import { PageHeader } from "@/components/app/PageHeader";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
@@ -40,14 +47,7 @@ import {
 import { errorMessage } from "@/lib/errors";
 import { formatDateTime } from "@/lib/format";
 
-const breadcrumb = (
-  <Link
-    to="/professor"
-    className="text-muted-foreground text-sm hover:underline"
-  >
-    ← Gerenciar turmas
-  </Link>
-);
+const breadcrumb = <BackLink to="/professor" />;
 
 type ClassTab = "details" | "exercises" | "participants";
 
@@ -114,6 +114,7 @@ function EnrollmentCode({ code }: { code: string }) {
 export function ClassPage() {
   const { offeringId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const id = Number(offeringId);
   const valid = Number.isInteger(id) && id > 0;
@@ -467,6 +468,9 @@ export function ClassPage() {
                             render={
                               <Link
                                 to={`/exercises/${String(exercise.id)}/submit`}
+                                state={{
+                                  from: `${location.pathname}${location.search}`,
+                                }}
                               />
                             }
                           >
@@ -478,6 +482,9 @@ export function ClassPage() {
                             render={
                               <Link
                                 to={`/professor/exercise/${String(exercise.id)}`}
+                                state={{
+                                  from: `${location.pathname}${location.search}`,
+                                }}
                               />
                             }
                           >
