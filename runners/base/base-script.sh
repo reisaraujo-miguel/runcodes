@@ -224,7 +224,10 @@ run_tests() {
     local test_dir test_id
     for test_dir in "${test_dirs[@]}"; do
         test_id="${test_dir#./test_}"
-        cp -r --update=none ./src/* "${test_dir}"
+        # `-n` is the portable no-clobber form; the newer `--update=none`
+        # spelling is not available in every third-party runner base (the
+        # Verilog image, for example, ships an older coreutils).
+        cp -r -n ./src/* "${test_dir}"
 
         cd "${test_dir}" || exit
 
