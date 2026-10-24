@@ -1,4 +1,4 @@
-h1:CS8UGgxfY3/Cv3tIhgGLC2wssdkIvovvXBevngtGUC4=
+h1:rMtcTfsoR6BrbeY6wTUU3te7ueTiElLczrb9gZGfG8Y=
 20261020150022_baseline.sql h1:lH82Kx6gK/CEJuhe2Frs4qg8ruVTkzK0fVq2OOCYRTw=
 20261020150023_add_code_editor_preference.sql h1:+O6onQoRPu9aPFE/ARdhA/tDPaZ1a1F0IlHThsnlHlQ=
 20261020160000_add_email_verification_tokens.sql h1:trEVBFEHbF5TltShrpZIN1FmvhdtexcLifl9WXa9ams=
@@ -8,3 +8,4 @@ h1:CS8UGgxfY3/Cv3tIhgGLC2wssdkIvovvXBevngtGUC4=
 20261022161000_enable_rls.sql h1:31hVZGk+vmpA9Jk6aBn/vnbY4ZgCAyO/ibxK9oYVsHg=
 20261022170000_normalize_emails.sql h1:u7klfIX+DA6zrP4LnI0PpTlSKV17gJc0cbK8wnXDcgk=
 20261023210000_rotate_legacy_enrollment_codes.sql h1:jKHKSv1oHoQku2W9NdXoX/LdlfBW0+gq0E6j3a8SXS0=
+20261024160000_add_deadline_reminders.sql h1:z5tso79uCoXh3j+707XSgm0S97lCF9WJFLqqdjPOZc0=

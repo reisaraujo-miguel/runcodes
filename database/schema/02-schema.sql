@@ -122,6 +122,18 @@ CREATE TABLE exercises_allowed_file_types (
   PRIMARY KEY (exercise_id, allowed_file_type_id)
 );
 
+-- One row per (exercise, student, reminder threshold) already emailed. It makes
+-- the deadline reminder idempotent across restarts and stops the same warning
+-- from being sent twice when the notifier runs again inside the window.
+-- `days_before` names the threshold: 7 = one week left, 3 = three days left.
+CREATE TABLE exercise_deadline_notifications (
+  exercise_id int NOT NULL REFERENCES exercises (id) ON DELETE CASCADE,
+  user_id int NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  days_before int NOT NULL CHECK (days_before IN (3, 7)),
+  sent_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  PRIMARY KEY (exercise_id, user_id, days_before)
+);
+
 CREATE TYPE input_output_type_t AS ENUM ('text', 'file');
 
 CREATE TABLE exercises_test_cases (
@@ -271,6 +283,10 @@ CREATE INDEX idx_commits_exercise_id ON commits (exercise_id);
 CREATE INDEX idx_results_exercise_test_case_id ON commits_exercise_test_cases_results (exercise_test_case_id);
 CREATE INDEX idx_system_logs_user_id ON system_logs (user_id);
 CREATE INDEX idx_user_messages_user_id ON user_messages (user_id);
+-- The notifier looks a student up when an exercise enters a reminder window, and
+-- the PK covers exercise_id; this index serves the reverse lookup.
+CREATE INDEX idx_exercise_deadline_notifications_user_id
+  ON exercise_deadline_notifications (user_id);
 
 -- At most one in-flight email change per address. The partial predicate keeps
 -- the many NULL pending_email rows out of the index.
@@ -367,5 +383,10 @@ CREATE POLICY "runcodes_app_only" ON "system_logs" TO PUBLIC
 
 ALTER TABLE "user_messages" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "runcodes_app_only" ON "user_messages" TO PUBLIC
+  USING (current_user = 'runcodes_app')
+  WITH CHECK (current_user = 'runcodes_app');
+
+ALTER TABLE "exercise_deadline_notifications" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "runcodes_app_only" ON "exercise_deadline_notifications" TO PUBLIC
   USING (current_user = 'runcodes_app')
   WITH CHECK (current_user = 'runcodes_app');
