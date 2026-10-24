@@ -204,9 +204,12 @@ judge:
 
 The frontend publishes `8080` and `8444`, the backend `127.0.0.1:8443`, the judge
 `127.0.0.1:9000`, SeaweedFS `127.0.0.1:8333`, smtp4dev `127.0.0.1:8081` and
-`127.0.0.1:1025`, and PostgreSQL `127.0.0.1:5432`. Override the frontend ports
-with `FRONTEND_HTTP_PORT` / `FRONTEND_HTTPS_PORT`; for the others, stop the
-conflicting service or edit the Compose file.
+`127.0.0.1:1025`, and PostgreSQL `127.0.0.1:5432`. Every one of them is
+overridable: `FRONTEND_HTTP_PORT`, `FRONTEND_HTTPS_PORT`, `BACKEND_PORT`,
+`JUDGE_PORT`, `DATABASE_PORT`, `SEAWEED_S3_PORT`, `SMTP4DEV_WEB_PORT` and
+`SMTP4DEV_SMTP_PORT`. Uncomment the ones you need in `.env` to run this stack
+next to another one; when the frontend moves, also set `RUNCODES_PUBLIC_URL` to
+the same origin so verification links match.
 
 ### Database was created before a feature
 
