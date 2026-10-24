@@ -18,15 +18,15 @@ func newArtifactEngine(t *testing.T) (*Engine, *workspace) {
 
 	baseDir := t.TempDir()
 	return &Engine{
-			cfg: &config.Config{
-				ExecDir:          t.TempDir(),
-				MaxArtifactBytes: 1 << 20,
-			},
-			logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		}, &workspace{
-			BaseDir:   baseDir,
-			SourceDir: filepath.Join(baseDir, "src"),
-		}
+		cfg: &config.Config{
+			ExecDir:          t.TempDir(),
+			MaxArtifactBytes: 1 << 20,
+		},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}, &workspace{
+		BaseDir:   baseDir,
+		SourceDir: filepath.Join(baseDir, "src"),
+	}
 }
 
 func outputDir(t *testing.T, baseDir string) string {
