@@ -1,4 +1,13 @@
-import { apiDelete, apiGet, apiPost, apiPut, apiRequest } from "./client";
+import {
+  apiDelete,
+  apiDownload,
+  apiGet,
+  apiPost,
+  apiPut,
+  apiRequest,
+  apiUpload,
+  type DownloadedFile,
+} from "./client";
 
 /** A file type the platform can accept for submissions. */
 export interface AllowedFileType {
@@ -272,5 +281,83 @@ export function deleteCompilationFile(
 ): Promise<void> {
   return apiDelete(
     `/api/v1/exercises/${String(exerciseId)}/compilation-files/${String(fileId)}`,
+  );
+}
+
+/** Configuration shared by every case of a batch import. */
+export interface BatchTestCaseConfig {
+  input_type: string;
+  expected_output_type: string;
+  show_input?: boolean;
+  show_expected_output?: boolean;
+  show_user_output?: boolean;
+  cpu_time_limit_seconds?: number;
+  mem_usage_limit_bytes?: number;
+  stack_limit_bytes?: number;
+  file_size_limit_bytes?: number;
+}
+
+/** One folder of the archive the batch importer could not parse. */
+export interface BatchTestCaseIssue {
+  folder: string;
+  reason: string;
+}
+
+/** The error body of a rejected batch import. */
+export interface BatchTestCaseErrorBody {
+  error_msg: string;
+  invalid_folders?: BatchTestCaseIssue[];
+}
+
+export interface BatchTestCaseImportResult {
+  created: number;
+  test_cases: TestCase[];
+}
+
+/**
+ * Upload a zip with one folder per test case. Each folder must contain exactly
+ * one `.in` and one `.out`; the configuration applies to every case.
+ */
+export function importTestCasesBatch(
+  exerciseId: number,
+  archive: File,
+  config: BatchTestCaseConfig,
+): Promise<BatchTestCaseImportResult> {
+  const form = new FormData();
+  form.append("archive", archive);
+  form.append("input_type", config.input_type);
+  form.append("expected_output_type", config.expected_output_type);
+  appendWhenDefined(form, "show_input", config.show_input);
+  appendWhenDefined(form, "show_expected_output", config.show_expected_output);
+  appendWhenDefined(form, "show_user_output", config.show_user_output);
+  appendWhenDefined(
+    form,
+    "cpu_time_limit_seconds",
+    config.cpu_time_limit_seconds,
+  );
+  appendWhenDefined(
+    form,
+    "mem_usage_limit_bytes",
+    config.mem_usage_limit_bytes,
+  );
+  appendWhenDefined(form, "stack_limit_bytes", config.stack_limit_bytes);
+  appendWhenDefined(
+    form,
+    "file_size_limit_bytes",
+    config.file_size_limit_bytes,
+  );
+
+  return apiUpload<BatchTestCaseImportResult>(
+    `/api/v1/exercises/${String(exerciseId)}/test-cases/batch`,
+    form,
+  );
+}
+
+/** Download every test case in the same folder layout the batch importer reads. */
+export function downloadExerciseTestCases(
+  exerciseId: number,
+): Promise<DownloadedFile> {
+  return apiDownload(
+    `/api/v1/exercises/${String(exerciseId)}/test-cases/export`,
   );
 }

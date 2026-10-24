@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPut } from "./client";
+import { apiDelete, apiGet, apiPost, apiPut } from "./client";
 import type { OfferingMember } from "./offerings";
 import type { PlatformSettings } from "./settings";
 
@@ -130,4 +130,50 @@ export function adminUpdateSettings(
   payload: PlatformSettings,
 ): Promise<PlatformSettings> {
   return apiPut<PlatformSettings>("/api/v1/admin/settings", payload);
+}
+
+/** One entry of the platform-wide allowed file type catalog. */
+export interface AdminFileType {
+  id: number;
+  name: string;
+  extension: string;
+  is_compilable: boolean;
+  is_available: boolean;
+}
+
+export interface CreateFileTypePayload {
+  name: string;
+  extension: string;
+  is_compilable?: boolean;
+  is_available?: boolean;
+}
+
+export type UpdateFileTypePayload = Partial<CreateFileTypePayload>;
+
+/** List every file type, including the ones hidden from the professor picker. */
+export function adminListFileTypes(): Promise<AdminFileType[]> {
+  return apiGet<AdminFileType[]>("/api/v1/admin/file-types");
+}
+
+/** Register a new file type at runtime. No redeploy is needed. */
+export function adminCreateFileType(
+  payload: CreateFileTypePayload,
+): Promise<AdminFileType> {
+  return apiPost<AdminFileType>("/api/v1/admin/file-types", payload);
+}
+
+/** Edit a file type, or hide it with is_available=false. */
+export function adminUpdateFileType(
+  id: number,
+  payload: UpdateFileTypePayload,
+): Promise<AdminFileType> {
+  return apiPut<AdminFileType>(
+    `/api/v1/admin/file-types/${String(id)}`,
+    payload,
+  );
+}
+
+/** Delete an unused file type. A referenced one is refused with 409. */
+export function adminDeleteFileType(id: number): Promise<void> {
+  return apiDelete(`/api/v1/admin/file-types/${String(id)}`);
 }
