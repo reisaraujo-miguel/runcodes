@@ -45,9 +45,10 @@ The jobs:
 ### Judge end-to-end
 
 `judge-integration.yml` runs when the judge, monitor, runner or schema changes.
-It starts rootless Podman, builds the monitor, base and C runner images from the
-checkout, starts PostgreSQL and SeaweedFS through `judge/integration/run.sh`,
-and runs the real `TestJudgeRunsLanguageImageEndToEnd` path. The harness sets
+It starts rootless Podman, builds the monitor, base, C, R and Verilog runner
+images from the checkout, starts PostgreSQL and SeaweedFS through
+`judge/integration/run.sh`, and runs the real
+`TestJudgeRunsLanguageImageEndToEnd` path once per language. The harness sets
 `JUDGE_TEST_REQUIRE=1`, so an unavailable database, object store or Podman API
 fails the job instead of producing a skipped test. Hosted runners have no
 systemd user session/cgroup delegation, so the workflow sets

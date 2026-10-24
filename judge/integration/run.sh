@@ -15,7 +15,8 @@
 #
 # Environment overrides:
 #   ITEST_DB_PORT, ITEST_S3_PORT, RUNCODES_S3_BUCKET_PREFIX, JUDGE_PODMAN_URI,
-#   JUDGE_TEST_IMAGE_FORMAT, JUDGE_TEST_REQUIRE, JUDGE_TEST_DISABLE_CGROUPS, TAGS
+#   JUDGE_TEST_IMAGE_FORMAT, JUDGE_TEST_REQUIRE, JUDGE_TEST_DISABLE_CGROUPS,
+#   JUDGE_TEST_LANGUAGES, TAGS
 
 set -euo pipefail
 
@@ -89,9 +90,13 @@ TAGS="${TAGS:-$default_tags}"
 
 echo ">> running integration test"
 cd "$judge_dir"
-JUDGE_TEST_DB_DSN="host=127.0.0.1 port=${DB_PORT} user=${DB_USER} password=${DB_PASS} dbname=${DB_DB} sslmode=disable" \
-RUNCODES_S3_ENDPOINT="http://127.0.0.1:${SEA_PORT}" \
-RUNCODES_S3_CREDENTIALS_KEY="test_key" \
-RUNCODES_S3_CREDENTIALS_SECRET="test_secret" \
-RUNCODES_S3_BUCKET_PREFIX="${RUNCODES_S3_BUCKET_PREFIX:-runcodes-itest}" \
-go test -tags "$TAGS" -count=1 -v -run TestJudgeRunsLanguageImageEndToEnd .
+for language in ${JUDGE_TEST_LANGUAGES:-c}; do
+  echo ">> language: $language"
+  JUDGE_TEST_LANGUAGE="$language" \
+  JUDGE_TEST_DB_DSN="host=127.0.0.1 port=${DB_PORT} user=${DB_USER} password=${DB_PASS} dbname=${DB_DB} sslmode=disable" \
+  RUNCODES_S3_ENDPOINT="http://127.0.0.1:${SEA_PORT}" \
+  RUNCODES_S3_CREDENTIALS_KEY="test_key" \
+  RUNCODES_S3_CREDENTIALS_SECRET="test_secret" \
+  RUNCODES_S3_BUCKET_PREFIX="${RUNCODES_S3_BUCKET_PREFIX:-runcodes-itest}" \
+  go test -tags "$TAGS" -count=1 -v -run TestJudgeRunsLanguageImageEndToEnd .
+done

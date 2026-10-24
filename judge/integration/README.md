@@ -13,19 +13,21 @@ language image through rootless Podman.
 - `curl`.
 - A rootless Podman API socket, by default
   `unix:///run/user/$UID/podman/podman.sock`.
-- The language image; the default is
-  `ghcr.io/runcodes-icmc/runcodes-runner-c:latest`.
+- The language images used by `JUDGE_TEST_LANGUAGES` (default `c`) or a
+  `JUDGE_TEST_IMAGE_FORMAT` pointing at them.
 
 ## Run
 
 ```bash
-make integration          # starts containers, runs the test, tears down
-./integration/run.sh --keep   # keep the containers for inspection
+make integration                    # starts containers, runs the C test, tears down
+JUDGE_TEST_LANGUAGES="c r verilog" ./integration/run.sh  # language matrix
+./integration/run.sh --keep         # keep the containers for inspection
 ```
 
 The Go test skips itself unless `JUDGE_TEST_DB_DSN` is set; `run.sh` sets it.
 The harness connects as the database **owner**, because it creates and drops its
-own scratch database. A deployment points the judge at `runcodes_app` instead.
+own scratch database. A deployment points the judge at `runcodes_judge` instead.
 
 Useful overrides: `ITEST_DB_PORT`, `ITEST_S3_PORT`, `RUNCODES_S3_ENDPOINT`,
-`JUDGE_PODMAN_URI`, `JUDGE_TEST_IMAGE_FORMAT`, `JUDGE_TEST_KEEP`.
+`JUDGE_PODMAN_URI`, `JUDGE_TEST_IMAGE_FORMAT`, `JUDGE_TEST_LANGUAGES`,
+`JUDGE_TEST_REQUIRE`, `JUDGE_TEST_DISABLE_CGROUPS`, `JUDGE_TEST_KEEP`.
