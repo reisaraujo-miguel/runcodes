@@ -23,6 +23,8 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
 import { ClassMembersCard } from "@/components/professor/ClassMembersCard";
 import { EditClassForm } from "@/components/professor/EditClassForm";
 import { NewExerciseForm } from "@/components/professor/NewExerciseForm";
+import { OfferingGradesCard } from "@/components/professor/OfferingGradesCard";
+import { OfferingToolsCard } from "@/components/professor/OfferingToolsCard";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,15 +51,21 @@ import { formatDateTime } from "@/lib/format";
 
 const breadcrumb = <BackLink to="/professor" />;
 
-type ClassTab = "details" | "exercises" | "participants";
+type ClassTab = "details" | "exercises" | "grades" | "tools" | "participants";
 
 const DEFAULT_TAB: ClassTab = "details";
 
 /** Reads the selected tab from `?tab=`, falling back to the details tab. */
 function parseTab(value: string | null): ClassTab {
-  return value === "exercises" || value === "participants"
-    ? value
-    : DEFAULT_TAB;
+  switch (value) {
+    case "exercises":
+    case "grades":
+    case "tools":
+    case "participants":
+      return value;
+    default:
+      return DEFAULT_TAB;
+  }
 }
 
 /** The enrollment code with a copy affordance, so the professor can share it. */
@@ -211,6 +219,8 @@ export function ClassPage() {
       label: "Exercícios",
       badge: exerciseCount ?? exerciseList.length,
     },
+    { value: "grades", label: "Notas" },
+    { value: "tools", label: "Ferramentas" },
     {
       value: "participants",
       label: "Participantes",
@@ -497,6 +507,27 @@ export function ClassPage() {
                 </TableBody>
               </Table>
             )}
+          </div>
+
+          <div
+            role="tabpanel"
+            id="class-overview-panel-grades"
+            aria-labelledby="class-overview-tab-grades"
+            hidden={tab !== "grades"}
+          >
+            <OfferingGradesCard offeringId={offering.id} />
+          </div>
+
+          <div
+            role="tabpanel"
+            id="class-overview-panel-tools"
+            aria-labelledby="class-overview-tab-tools"
+            hidden={tab !== "tools"}
+          >
+            <OfferingToolsCard
+              offeringId={offering.id}
+              offeringName={offering.name}
+            />
           </div>
 
           <div
