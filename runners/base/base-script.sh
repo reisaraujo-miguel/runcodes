@@ -215,14 +215,12 @@ run_tests() {
     # Save working dir to return to it later
     wd="$(pwd)"
 
-    # The list of test directories is read up front: the straggler sweep below
-    # kills every other process, and a `find` still feeding the loop would be one
-    # of them.
-    local test_dirs=()
-    mapfile -t -d '' test_dirs < <(find . -maxdepth 1 -type d -name 'test_*' -print0)
-
     local test_dir test_id
-    for test_dir in "${test_dirs[@]}"; do
+    # The glob is expanded before the loop starts, so the straggler sweep below
+    # cannot kill a find that is still feeding the loop. Unlike `find`/`mapfile`,
+    # a glob works in the older third-party bases (the Verilog image, for one).
+    for test_dir in ./test_*; do
+        [ -d "${test_dir}" ] || continue
         test_id="${test_dir#./test_}"
         # `-n` is the portable no-clobber form; the newer `--update=none`
         # spelling is not available in every third-party runner base (the
