@@ -6,6 +6,7 @@ import {
   UsersIcon,
 } from "lucide-react";
 
+import { PreviewControls } from "@/components/admin/PreviewControls";
 import { PageHeader } from "@/components/app/PageHeader";
 import { StatCard } from "@/components/app/StatCard";
 import { ErrorState, LoadingState } from "@/components/app/states";
@@ -57,6 +58,8 @@ export function AdminDashboard() {
         title="Painel"
         description="Visão geral da plataforma a partir das contas e turmas."
       />
+
+      <PreviewControls />
 
       {overview.loading ? (
         <LoadingState />
