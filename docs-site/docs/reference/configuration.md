@@ -97,6 +97,8 @@ judge's `JUDGE_MAX_RUN_DURATION` plus margin.
 | `RUNCODES_SMTP_FROM` | — | ✓ | valid `From` address |
 | `RUNCODES_SMTP_USERNAME` | empty | | relay username |
 | `RUNCODES_SMTP_PASSWORD` | empty | | relay password |
+| `RUNCODES_DEADLINE_REMINDERS` | `true` | | email students without a submission when an exercise closes in a week and again in three days |
+| `RUNCODES_DEADLINE_REMINDER_INTERVAL` | `30m` | | how often the deadline notifier looks for exercises entering a reminder window; at least `1m` |
 
 STARTTLS is used when the server advertises it. In Compose the host is
 `smtp4dev`, port 25; for a local backend outside Compose, `127.0.0.1:1025`.

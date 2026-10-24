@@ -34,6 +34,7 @@ import (
 	"github.com/runcodes-icmc/runcodes/config"
 	"github.com/runcodes-icmc/runcodes/database"
 	"github.com/runcodes-icmc/runcodes/judge"
+	"github.com/runcodes-icmc/runcodes/services"
 	"github.com/runcodes-icmc/runcodes/telemetry"
 	"github.com/runcodes-icmc/runcodes/validation"
 
@@ -127,6 +128,10 @@ func run() error {
 
 	// start the judge reconciliation service in a separate goroutine
 	go judge.StartReconciliation(ctx)
+
+	// deadline email reminders run inside the API process; they are disabled by
+	// configuration when a deployment does not want outgoing mail.
+	services.StartDeadlineNotifier(ctx)
 
 	r := chi.NewRouter()
 	configureMiddleware(r, cfg)

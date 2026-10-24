@@ -23,15 +23,16 @@ import (
 
 // Defaults for the optional settings.
 const (
-	defaultFrontendOrigin = "http://localhost:5173"
-	defaultRedisAddr      = "redis:6379"
-	defaultS3Endpoint     = "http://seaweed:8333"
-	defaultS3Region       = "sa-east-1"
-	defaultS3Prefix       = "runcodes"
-	defaultJudgeURL       = "http://judge:9000"
-	defaultStaleTimeout   = 35 * time.Minute
-	defaultMaxQueueDepth  = 100
-	defaultSMTPPort       = "587"
+	defaultFrontendOrigin           = "http://localhost:5173"
+	defaultRedisAddr                = "redis:6379"
+	defaultS3Endpoint               = "http://seaweed:8333"
+	defaultS3Region                 = "sa-east-1"
+	defaultS3Prefix                 = "runcodes"
+	defaultJudgeURL                 = "http://judge:9000"
+	defaultStaleTimeout             = 35 * time.Minute
+	defaultMaxQueueDepth            = 100
+	defaultSMTPPort                 = "587"
+	defaultDeadlineReminderInterval = 30 * time.Minute
 )
 
 // Config holds every tunable of the backend service.
@@ -56,6 +57,19 @@ type Config struct {
 	S3    S3Config
 	Judge JudgeConfig
 	Mail  MailConfig
+	// Notifications configures the background deadline reminders.
+	Notifications NotificationConfig
+}
+
+// NotificationConfig describes the background email reminders. The notifier
+// runs inside the API process, so an interval that is a multiple of the window
+// granularity is enough; there is no external scheduler to configure.
+type NotificationConfig struct {
+	// DeadlineReminders enables the "closing in a week / in three days" emails.
+	DeadlineReminders bool
+	// DeadlineReminderInterval is how often the notifier looks for exercises that
+	// entered a reminder window.
+	DeadlineReminderInterval time.Duration
 }
 
 // DBConfig describes the PostgreSQL connection.
@@ -168,6 +182,22 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	deadlineReminders, err := envBool("RUNCODES_DEADLINE_REMINDERS", true)
+	if err != nil {
+		return nil, err
+	}
+	deadlineReminderInterval, err := envDuration(
+		"RUNCODES_DEADLINE_REMINDER_INTERVAL", defaultDeadlineReminderInterval,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if deadlineReminderInterval < time.Minute {
+		return nil, fmt.Errorf(
+			"RUNCODES_DEADLINE_REMINDER_INTERVAL must be at least one minute",
+		)
+	}
+
 	// A prefix of only dashes trims down to nothing, which would leave the
 	// buckets named "-commits" and so on.
 	prefix := strings.Trim(env("RUNCODES_S3_BUCKET_PREFIX", defaultS3Prefix), "-")
@@ -217,6 +247,10 @@ func Load() (*Config, error) {
 			Username: os.Getenv("RUNCODES_SMTP_USERNAME"),
 			Password: os.Getenv("RUNCODES_SMTP_PASSWORD"),
 			From:     os.Getenv("RUNCODES_SMTP_FROM"),
+		},
+		Notifications: NotificationConfig{
+			DeadlineReminders:        deadlineReminders,
+			DeadlineReminderInterval: deadlineReminderInterval,
 		},
 	}
 

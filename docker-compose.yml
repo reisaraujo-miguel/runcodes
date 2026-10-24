@@ -80,6 +80,10 @@ services:
       RUNCODES_SMTP_FROM: "${RUNCODES_SMTP_FROM:-RunCodes <no-reply@runcodes.local>}"
       RUNCODES_SMTP_USERNAME: "${RUNCODES_SMTP_USERNAME:-}"
       RUNCODES_SMTP_PASSWORD: "${RUNCODES_SMTP_PASSWORD:-}"
+      # Deadline reminders for students who have not submitted an exercise that
+      # closes in a week, then again when it closes in three days.
+      RUNCODES_DEADLINE_REMINDERS: "${RUNCODES_DEADLINE_REMINDERS:-true}"
+      RUNCODES_DEADLINE_REMINDER_INTERVAL: "${RUNCODES_DEADLINE_REMINDER_INTERVAL:-30m}"
     depends_on:
       database:
         condition: service_started
