@@ -62,6 +62,10 @@ func CreateSubmission(ctx context.Context, in SubmissionInput) (int64, error) {
 		return 0, err
 	}
 
+	if err := validateTestCases(ctx, in.ExerciseID); err != nil {
+		return 0, err
+	}
+
 	if err := validateFileType(ctx, in.ExerciseID, in.Filename); err != nil {
 		return 0, err
 	}
@@ -285,6 +289,38 @@ func validateExercise(ctx context.Context, exerciseID, userID int64) error {
 		return ErrDeadlinePassed
 	}
 
+	return nil
+}
+
+/*
+validateTestCases refuses a submission to an exercise with no test cases. Without
+this check the judge would receive a run it cannot grade; the judge also treats
+an empty case list as 0/uncompleted for commits queued before the check existed.
+Ghost exercises have no cases of their own, so the count follows the same real
+exercise the judge will use.
+*/
+func validateTestCases(ctx context.Context, exerciseID int64) error {
+	var count int
+	if err := database.DB.QueryRowContext(ctx, `
+		SELECT count(*)
+		FROM exercises e
+		JOIN exercises_test_cases tc
+		  ON tc.exercise_id = CASE
+		       WHEN e.ghost AND e.real_id IS NOT NULL THEN e.real_id
+		       ELSE e.id
+		     END
+		WHERE e.id = $1`, exerciseID,
+	).Scan(&count); err != nil {
+		slog.ErrorContext(ctx, "error counting exercise test cases",
+			slog.Int64("exercise_id", exerciseID),
+			slog.String("error", err.Error()),
+		)
+		return ErrServer
+	}
+
+	if count == 0 {
+		return ErrNoTestCases
+	}
 	return nil
 }
 

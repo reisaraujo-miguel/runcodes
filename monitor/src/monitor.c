@@ -181,6 +181,79 @@ static void exec_cmd(const MonitorParams *params) {
   }
 }
 
+/*
+ * read_cpu_v2_file reads the `usage_usec` field of a cgroup v2 cpu.stat file.
+ * It returns -1 when the file cannot be read.
+ */
+static long long read_cpu_v2_file(const char *path) {
+  FILE *f = fopen(path, "r");
+  if (f == NULL)
+    return -1;
+
+  char key[64];
+  long long value;
+  while (fscanf(f, "%63s %lld", key, &value) == 2) {
+    if (strcmp(key, "usage_usec") == 0) {
+      fclose(f);
+      return value * 1000;
+    }
+  }
+  fclose(f);
+  return -1;
+}
+
+/*
+ * read_cpu_usage_ns returns the aggregate CPU time charged to this process's
+ * cgroup, in nanoseconds, or -1 when the host does not expose accounting (for
+ * example a restricted cgroup namespace).
+ *
+ * /proc/self/cgroup is consulted instead of assuming the process is at the
+ * cgroup root: a container whose cgroup namespace was not made private still
+ * lives below the host hierarchy.
+ */
+static long long read_cpu_usage_ns(void) {
+  FILE *cg = fopen("/proc/self/cgroup", "r");
+  if (cg != NULL) {
+    char line[PATH_MAX + 64];
+    char rel[PATH_MAX];
+
+    while (fgets(line, sizeof(line), cg) != NULL) {
+      if (sscanf(line, "0::%4095s", rel) == 1) {
+        char path[PATH_MAX];
+        int n;
+        if (strcmp(rel, "/") == 0)
+          n = snprintf(path, sizeof(path), "/sys/fs/cgroup/cpu.stat");
+        else
+          n = snprintf(path, sizeof(path), "/sys/fs/cgroup%s/cpu.stat", rel);
+
+        if (n > 0 && (size_t)n < sizeof(path)) {
+          fclose(cg);
+          return read_cpu_v2_file(path);
+        }
+      }
+    }
+    fclose(cg);
+  }
+
+  /* Some containers mount only the v1 cpuacct controller. */
+  FILE *f = fopen("/sys/fs/cgroup/cpuacct/cpuacct.usage", "r");
+  if (f != NULL) {
+    long long value;
+    if (fscanf(f, "%lld", &value) == 1) {
+      fclose(f);
+      return value;
+    }
+    fclose(f);
+  }
+
+  return -1;
+}
+
+static float rusage_cpu_secs(const struct rusage *usage) {
+  return (float)usage->ru_utime.tv_sec + (float)usage->ru_utime.tv_usec / 1e6f +
+         (float)usage->ru_stime.tv_sec + (float)usage->ru_stime.tv_usec / 1e6f;
+}
+
 static void kill_group(pid_t pgid) {
   /* Everything the command started shares its process group, including a
      program that forked helpers for itself. Killing the group here - after the
@@ -198,29 +271,28 @@ static void kill_group(pid_t pgid) {
 
 static void trace_child(pid_t child_pid, MonitorStats *stats) {
   int status;
+  struct rusage usage = {0};
 
   struct timespec ts_start, ts_end;
   clock_gettime(CLOCK_MONOTONIC, &ts_start);
   for (;;) {
-    pid_t pid = waitpid(child_pid, &status, 0);
+    pid_t pid = wait4(child_pid, &status, 0, &usage);
     if (pid == -1) {
       if (errno == EINTR)
         continue;
 
       // error (ECHILD means the child was already reaped elsewhere)
-      fprintf(stderr, "monitor: error: waitpid()\n");
+      fprintf(stderr, "monitor: error: wait4()\n");
       break;
     }
-    if (WIFEXITED(status)) {
+    if (WIFEXITED(status) || WIFSIGNALED(status)) {
       clock_gettime(CLOCK_MONOTONIC, &ts_end);
       stats->time_sec = elapsed_secs(&ts_start, &ts_end);
-      stats->exit_status = WEXITSTATUS(status);
-      break;
-    } else if (WIFSIGNALED(status)) {
-      clock_gettime(CLOCK_MONOTONIC, &ts_end);
-      stats->time_sec = elapsed_secs(&ts_start, &ts_end);
-      if (!WCOREDUMP(status))
+      stats->child_cpu_sec = rusage_cpu_secs(&usage);
+      if (WIFSIGNALED(status) && !WCOREDUMP(status))
         stats->signal = WTERMSIG(status);
+      else if (WIFEXITED(status))
+        stats->exit_status = WEXITSTATUS(status);
       break;
     }
   }
@@ -230,10 +302,13 @@ static void init_stats(MonitorStats *stats) {
   stats->exit_status = -1;
   stats->signal = -1;
   stats->time_sec = -1.0f;
+  stats->cpu_sec = -1.0f;
+  stats->child_cpu_sec = -1.0f;
 }
 
 int run_monitor(const MonitorParams *params, MonitorStats *stats) {
   init_stats(stats);
+  long long cpu_before = read_cpu_usage_ns();
 
   pid_t pid = fork();
   switch (pid) {
@@ -251,6 +326,13 @@ int run_monitor(const MonitorParams *params, MonitorStats *stats) {
     setpgid(pid, pid);
     trace_child(pid, stats);
     kill_group(pid);
+
+    long long cpu_after = read_cpu_usage_ns();
+    if (cpu_before >= 0 && cpu_after >= cpu_before) {
+      stats->cpu_sec = (float)(cpu_after - cpu_before) / 1e9f;
+    } else {
+      stats->cpu_sec = stats->child_cpu_sec;
+    }
     break;
   }
 
@@ -262,8 +344,10 @@ int format_report(const MonitorStats *stats, char *buf, size_t buflen) {
       snprintf(buf, buflen,
                "exit_status=%d\n"
                "signal=%s\n"
-               "time=%f\n",
-               stats->exit_status, signal_name(stats->signal), stats->time_sec);
+               "time=%f\n"
+               "cpu_time=%f\n",
+               stats->exit_status, signal_name(stats->signal), stats->time_sec,
+               stats->cpu_sec);
 
   if (written < 0 || (size_t)written >= buflen)
     return -1;

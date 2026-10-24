@@ -24,7 +24,9 @@ typedef struct {
 typedef struct {
   int exit_status;
   int signal;
-  float time_sec;
+  float time_sec;   /* wall-clock elapsed time */
+  float cpu_sec;    /* aggregate CPU time, -1 when unavailable */
+  float child_cpu_sec; /* direct child fallback, -1 when unavailable */
 } MonitorStats;
 
 /*

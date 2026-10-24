@@ -24,6 +24,8 @@ import (
 type monitorInfo struct {
 	Signal string
 	Time   float64
+	CPU    float64
+	HasCPU bool
 	Mem    int64
 	HasMem bool
 	// ExitStatus is the status the monitored command exited with. It is only
@@ -41,8 +43,9 @@ const maxMonitorBytes = 1 << 20
 // readMonitor parses the monitor's INI-ish output (`<id>.monitor_out`). Keys
 // live under an `[info]` section; the parser is deliberately lenient.
 //
-// The report carries the exit status, the signal and the wall clock time. It
-// carries no memory figure: the harness runs the program through `timeout`, so the
+// The report carries the exit status, the signal, wall time and (when the
+// monitor could measure it) CPU time. It carries no memory figure: the harness
+// runs the program through `timeout`, so the
 // monitor is not its parent and cannot read its peak RSS — it is never measured
 // rather than guessed, which is why MemUsage stays -1 (unknown).
 func readMonitor(path string) monitorInfo {
@@ -83,6 +86,11 @@ func readMonitor(path string) monitorInfo {
 			}
 		case "time":
 			info.Time, _ = strconv.ParseFloat(value, 64)
+		case "cpu_time":
+			if v, err := strconv.ParseFloat(value, 64); err == nil && v >= 0 {
+				info.CPU = v
+				info.HasCPU = true
+			}
 		case "mem", "memory", "mem_usage", "memused":
 			// Parse memory usage as an integer. If parsing fails, we ignore it.
 			if n, err := strconv.ParseInt(value, 10, 64); err == nil {
@@ -174,6 +182,9 @@ func (e *Engine) gradeCase(ctx context.Context, tc model.TestCase, ws *workspace
 	// Read the monitor output to get resource usage and signal information.
 	info := readMonitor(monitorPath)
 	result.CPUTime = info.Time
+	if info.HasCPU {
+		result.CPUTime = info.CPU
+	}
 	if info.HasMem {
 		result.MemUsage = info.Mem
 	}
@@ -377,9 +388,10 @@ func scoreRun(cases []model.TestCase, results []model.CaseResult) (int, float64,
 		}
 	}
 
-	// If there are no test cases, we return a score of 100 and a completed status.
+	// An exercise with no cases has nothing to grade. Commits queued before the
+	// backend started rejecting them must not receive an automatic full score.
 	if len(cases) == 0 {
-		return 0, 100, model.RunCompleted
+		return 0, 0, model.RunUncompleted
 	}
 
 	// Calculate the score as a percentage of correct cases out of total cases.

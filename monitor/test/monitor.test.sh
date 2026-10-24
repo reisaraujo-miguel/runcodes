@@ -70,8 +70,10 @@ check "the report is printed to stdout when -r is absent" \
     grep -q 'exit_status=0' <<<"${stdout_report}"
 check "the exit status is reported" \
     grep -q '^exit_status=0$' <<<"${stdout_report}"
-check "the time is reported" \
+check "the wall time is reported" \
     grep -q '^time=' <<<"${stdout_report}"
+check "the CPU time line is reported" \
+    grep -q '^cpu_time=' <<<"${stdout_report}"
 
 # A non-zero exit status is reported as such.
 "${monitor}" -o "${work}/out" -e "${work}/err" -r "${work}/report_fail" -c /bin/false

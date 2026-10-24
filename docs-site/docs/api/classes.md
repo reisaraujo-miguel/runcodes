@@ -282,7 +282,7 @@ that file inputs and outputs can be uploaded together.
 | `show_input` | bool | expose input to students |
 | `show_expected_output` | bool | expose expected output |
 | `show_user_output` | bool | expose the student's output |
-| `cpu_time_limit_seconds` | int | wall/CPU budget for the case |
+| `cpu_time_limit_seconds` | int | wall-clock timeout for the case; reported `cpu_time` is measured CPU time |
 | `mem_usage_limit_bytes` | int64 | address-space limit |
 | `stack_limit_bytes` | int64 | stack limit |
 | `file_size_limit_bytes` | int64 | file-size limit |
