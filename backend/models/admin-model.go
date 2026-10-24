@@ -49,3 +49,22 @@ type AdminUpdateOfferingRequest struct {
 	VisibleToEnroll *bool      `json:"visible_to_enroll"`
 	OwnerID         *int64     `json:"owner_id"`
 }
+
+// CreateAllowedFileTypeRequest is the JSON body of POST
+// /api/v1/admin/file-types. The boolean fields default to true, matching the
+// schema.
+type CreateAllowedFileTypeRequest struct {
+	Name         string `json:"name"`
+	Extension    string `json:"extension"`
+	IsCompilable *bool  `json:"is_compilable"`
+	IsAvailable  *bool  `json:"is_available"`
+}
+
+// UpdateAllowedFileTypeRequest is the JSON body of PUT
+// /api/v1/admin/file-types/{id}. Every field is optional.
+type UpdateAllowedFileTypeRequest struct {
+	Name         *string `json:"name"`
+	Extension    *string `json:"extension"`
+	IsCompilable *bool   `json:"is_compilable"`
+	IsAvailable  *bool   `json:"is_available"`
+}
