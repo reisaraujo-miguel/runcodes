@@ -73,7 +73,6 @@ var languageFixtures = map[string]languageFixture{
 		source: `module main;
 initial begin
   $display("hello");
-  $finish;
 end
 endmodule
 `,

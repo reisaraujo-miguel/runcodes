@@ -1,27 +1,21 @@
-FROM hdlc/iverilog:latest
+FROM ghcr.io/runcodes-icmc/runcodes-runner-base:latest
 
-# Load base executables
-COPY --from=ghcr.io/runcodes-icmc/runcodes-runner-base:latest /usr/bin/monitor /usr/bin/monitor
-COPY --from=ghcr.io/runcodes-icmc/runcodes-runner-base:latest /usr/bin/runcodes /usr/bin/runcodes
+# The base image runs as the runcodes user; installing the language toolchain
+# and appending to the harness below need root.
+USER root
 
-# Submissions run as this user, never as root: the judge relies on the run being
-# unable to change the image it is graded in. A system user is used so the uid
-# comes from the range the distribution keeps free, and the home directory is
-# /root because that is where the judge bind-mounts the workspace.
-RUN groupadd --system runcodes && \
-    useradd --system --gid runcodes --no-create-home --home-dir /root --shell /bin/bash runcodes
-
-# System Upgrade
-RUN apt-get update -y &&\
-		apt-get install -y --no-install-recommends make &&\
-		apt-get clean &&\
-		rm -rf /var/lib/apt/lists/*
+# Install the Verilog toolchain. Keeping this image on the same Debian base as
+# the monitor avoids the glibc mismatch of the old third-party iverilog image.
+RUN apt-get update &&\
+    apt-get install -y --no-install-recommends iverilog make &&\
+    apt-get clean &&\
+    rm -rf /var/lib/apt/lists/*
 
 # Load script
 COPY ./verilog-script.sh /tmp/script.sh
 
 RUN cat /tmp/script.sh >> /usr/bin/runcodes &&\
-		rm /tmp/script.sh
+    rm /tmp/script.sh
 
 WORKDIR /root
 
