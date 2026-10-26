@@ -6,7 +6,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o backend .
 
 FROM alpine:3.24 AS runner
 
@@ -16,11 +16,11 @@ USER runcodes
 
 WORKDIR /app/
 
-COPY --from=builder /app/main .
+COPY --from=builder /app/backend .
 
 EXPOSE 8443
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -q -O /dev/null "http://127.0.0.1:${RUNCODES_API_PORT:-8443}/healthz" || exit 1
+    CMD wget -q -O /dev/null "http://127.0.0.1:${RUNCODES_API_PORT:-8443}/healthz" || exit 1
 
-CMD ["./main"]
+CMD ["./backend"]
