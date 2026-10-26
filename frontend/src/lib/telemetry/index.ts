@@ -1,7 +1,7 @@
+import { FetchInstrumentation } from "@opentelemetry/browser-instrumentation/experimental/fetch";
 import { W3CTraceContextPropagator } from "@opentelemetry/core";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { registerInstrumentations } from "@opentelemetry/instrumentation";
-import { FetchInstrumentation } from "@opentelemetry/instrumentation-fetch";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
   BatchSpanProcessor,
@@ -21,10 +21,10 @@ import { browserTelemetryConfig } from "./config";
 /**
  * Initializes browser traces for the SPA.
  *
- * The app uses `fetch` for every API call, so `FetchInstrumentation` both
- * creates the client span and injects the W3C `traceparent` header. The backend
- * extracts it in its OTel middleware, which is what turns a click into a trace
- * spanning browser -> Caddy -> backend (and the judge, for submissions).
+ * The app uses `fetch` for every API call, so the browser fetch instrumentation
+ * both creates the client span and injects the W3C `traceparent` header. The
+ * backend extracts it in its OTel middleware, which is what turns a click into a
+ * trace spanning browser -> Caddy -> backend (and the judge, for submissions).
  *
  * This is intentionally fire-and-forget: telemetry must never prevent the app
  * from rendering, and a collector that is down only drops spans.

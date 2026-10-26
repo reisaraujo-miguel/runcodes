@@ -1,8 +1,8 @@
 #!/bin/bash
 #
 # Browser tracing smoke test. It loads the real SPA in Chromium, issues a fetch,
-# extracts the traceparent that FetchInstrumentation injected, and verifies the
-# same trace contains the frontend and backend spans in Tempo.
+# extracts the traceparent that the browser fetch instrumentation injected, and
+# verifies the same trace contains the frontend and backend spans in Tempo.
 #
 # Prerequisites:
 #   make observability-up
