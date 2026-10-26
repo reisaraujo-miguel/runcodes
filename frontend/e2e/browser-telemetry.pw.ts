@@ -49,7 +49,7 @@ test("browser fetch spans continue into the backend and reach Tempo", async ({
 }) => {
   await page.goto("/");
   // The SPA awaits the lazy telemetry import before mounting React. Give the
-  // module a moment to install FetchInstrumentation before issuing the probe.
+  // module a moment to install the fetch instrumentation before issuing the probe.
   await page.waitForTimeout(1_000);
 
   const marker = `browser-smoke-${String(Date.now())}`;

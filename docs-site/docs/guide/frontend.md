@@ -40,7 +40,7 @@ browser sees one origin and no CORS.
 | `/exercises/:exerciseId/submit` | signed in | full-width submission workspace with editor |
 | `/classes` | signed in | the caller's classes |
 | `/classes/:offeringId` | signed in | class detail and exercise progress |
-| `/profile` | signed in | name, email, organization, editor preference |
+| `/profile` | signed in | name, email, institutional id, editor preference |
 | `/professor` | professor/admin | classes the caller owns or teaches |
 | `/professor/class/:offeringId` | professor/admin | class authoring and membership |
 | `/professor/exercise/:exerciseId` | professor/admin | exercise, test cases and files |
@@ -130,8 +130,8 @@ same-origin edge route and no hostname is baked into the image.
 Browser tracing is **build-time opt-in**. When `VITE_OTEL_ENABLED=true`, the
 SPA lazy-loads the OpenTelemetry Web SDK; otherwise it is a no-op.
 
-`FetchInstrumentation` creates a span for every API call and injects the W3C
-`traceparent` header. The backend continues the trace, so one trace can contain
+The browser fetch instrumentation creates a span for every API call and
+injects the W3C `traceparent` header. The backend continues the trace, so one trace can contain
 the browser fetch, the API request, the judge work and the database/S3 calls. The
 collector must allow the SPA's origin in its OTLP HTTP CORS configuration
 (`http://localhost:8080` and `http://localhost:5173` by default).

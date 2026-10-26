@@ -1,7 +1,12 @@
 import { useState } from "react";
 
 import { PencilIcon, Trash2Icon } from "lucide-react";
-import { useNavigate, useParams, useSearchParams } from "react-router";
+import {
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router";
 
 import { BackLink } from "@/components/app/BackLink";
 import { ConfirmButton } from "@/components/app/ConfirmDialog";
@@ -42,6 +47,7 @@ function parseTab(value: string | null): ExerciseTab {
 export function ExercisePage() {
   const { exerciseId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const id = Number(exerciseId);
   const valid = Number.isInteger(id) && id > 0;
@@ -68,7 +74,9 @@ export function ExercisePage() {
         nextParams.set("tab", next);
         return nextParams;
       },
-      { replace: true },
+      // Keep the remembered origin across tab changes; setSearchParams would
+      // otherwise replace the entry with an empty state.
+      { replace: true, state: location.state as unknown },
     );
   }
 

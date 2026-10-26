@@ -35,7 +35,7 @@ export function getProfile(): Promise<Profile> {
   return apiGet<Profile>("/api/v1/user/profile");
 }
 
-/** Update the caller's own name, email and organization id. */
+/** Update the caller's own name, email and institutional id. */
 export function updateProfile(payload: ProfilePayload): Promise<Profile> {
   return apiPut<Profile>("/api/v1/user/profile", payload);
 }

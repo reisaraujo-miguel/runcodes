@@ -37,7 +37,7 @@ func GetProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 /*
-UpdateProfile updates the caller's own name, email and organization id.
+UpdateProfile updates the caller's own name, email and institutional id.
 */
 func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

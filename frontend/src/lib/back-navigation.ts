@@ -7,6 +7,18 @@
  */
 
 /**
+ * How a back control should leave the current page.
+ *
+ * `history` pops the previous in-app entry, `navigate` replaces the current
+ * entry with a remembered path (there is no history to pop), and `link` renders
+ * the page's natural parent as an ordinary link for a direct visit.
+ */
+export type BackNavigation =
+  | { kind: "history"; label: string }
+  | { kind: "navigate"; path: string; label: string }
+  | { kind: "link"; path: string; label: string };
+
+/**
  * Reads the origin a page stored in `location.state.from`. Only an in-app
  * absolute path is accepted, so a crafted state cannot send the browser to
  * another origin (or a `javascript:` URL).
@@ -17,6 +29,56 @@ export function originFromState(state: unknown): string | null {
   if (typeof from !== "string") return null;
   if (!from.startsWith("/") || from.startsWith("//")) return null;
   return from;
+}
+
+/**
+ * Picks the back target for a page.
+ *
+ * History wins whenever there is an in-app entry to pop. That entry is the page
+ * the user actually came from, and popping it keeps the history stack
+ * consistent. Returning to the remembered origin with a push instead would
+ * leave a duplicate of the current page behind, so a second back would bounce
+ * between the detail page and its origin. The remembered origin remains the
+ * fallback for a direct visit (new tab, bookmark), where there is no entry to
+ * pop, and the static parent is the fallback when even that is unknown.
+ */
+export function resolveBackNavigation({
+  origin,
+  currentPath,
+  canGoBack,
+  fallbackPath,
+}: {
+  /** Raw `location.state.from`, already validated by `originFromState`. */
+  origin: string | null;
+  /** The page the control is rendered on, including its query string. */
+  currentPath: string;
+  /** True when the browser has an in-app history entry to pop. */
+  canGoBack: boolean;
+  /** The page's natural parent, used for a direct visit. */
+  fallbackPath: string;
+}): BackNavigation {
+  const remembered = origin !== null && origin !== currentPath ? origin : null;
+
+  if (canGoBack) {
+    return {
+      kind: "history",
+      label: remembered ? backLabelForPath(remembered) : "Voltar",
+    };
+  }
+
+  if (remembered) {
+    return {
+      kind: "navigate",
+      path: remembered,
+      label: backLabelForPath(remembered),
+    };
+  }
+
+  return {
+    kind: "link",
+    path: fallbackPath,
+    label: backLabelForPath(fallbackPath),
+  };
 }
 
 /** A short, human label for the page represented by an in-app path. */

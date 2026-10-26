@@ -23,11 +23,14 @@ import { updateTestCase, type TestCase } from "@/lib/api";
 export function EditTestCaseForm({
   exerciseId,
   testCase,
+  number,
   onSaved,
   onCancel,
 }: {
   exerciseId: number;
   testCase: TestCase;
+  /** 1-based position within the exercise, not the global test case id. */
+  number: number;
   onSaved: (testCase: TestCase) => void;
   onCancel: () => void;
 }) {
@@ -65,9 +68,7 @@ export function EditTestCaseForm({
 
   return (
     <div className="bg-muted/40 space-y-4 rounded-lg border p-4">
-      <h3 className="text-sm font-medium">
-        Editar caso #{String(testCase.id)}
-      </h3>
+      <h3 className="text-sm font-medium">Editar caso #{String(number)}</h3>
 
       <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-xs">
         <span>

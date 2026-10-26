@@ -31,7 +31,7 @@ import {
 
 /**
  * Edits a class from the admin panel: its name, description, deadline and
- * enrollment visibility, and transfers ownership to another user id.
+ * enrollment visibility, and transfers ownership by email or institutional id.
  */
 export function OfferingEditDialog({
   offering,
@@ -55,9 +55,7 @@ export function OfferingEditDialog({
   const [visibleToEnroll, setVisibleToEnroll] = useState(
     offering.visible_to_enroll,
   );
-  const [ownerId, setOwnerId] = useState(
-    offering.owner_id === null ? "" : String(offering.owner_id),
-  );
+  const [ownerReference, setOwnerReference] = useState("");
 
   function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -81,14 +79,16 @@ export function OfferingEditDialog({
       visible_to_enroll: visibleToEnroll,
     };
 
-    const ownerIdInput = ownerId.trim();
-    if (ownerIdInput !== "") {
-      const parsed = Number(ownerIdInput);
-      if (!Number.isInteger(parsed) || parsed <= 0) {
-        submit.setError("Informe um ID de responsável válido.");
-        return;
+    const reference = ownerReference.trim();
+    if (reference !== "") {
+      // An address contains "@"; anything else is the institutional id (for
+      // example, a university registration number). The internal user id is
+      // deliberately not accepted here.
+      if (reference.includes("@")) {
+        payload.owner_email = reference;
+      } else {
+        payload.owner_org_id = reference;
       }
-      payload.owner_id = parsed;
     }
 
     void submit.run(async () => {
@@ -155,23 +155,30 @@ export function OfferingEditDialog({
             />
 
             <div className="space-y-2">
-              <Label htmlFor="admin-course-owner-id">ID do responsável</Label>
+              <Label htmlFor="admin-course-owner">Novo responsável</Label>
               <Input
-                id="admin-course-owner-id"
-                type="number"
-                min={1}
-                value={ownerId}
+                id="admin-course-owner"
+                value={ownerReference}
                 disabled={submit.pending}
                 onChange={(event) => {
-                  setOwnerId(event.target.value);
+                  setOwnerReference(event.target.value);
                 }}
-                placeholder="Deixe vazio para manter"
+                placeholder="Email ou identificação institucional"
+                autoComplete="off"
               />
+              <p className="text-muted-foreground text-xs">
+                Deixe em branco para manter. Informe o email ou a identificação
+                institucional (como a matrícula) de um professor ou
+                administrador; o ID interno da conta não é usado.
+              </p>
               <p className="text-muted-foreground text-xs">
                 Responsável atual:{" "}
                 {offering.owner_id === null
                   ? "sem responsável"
-                  : `${offering.owner_name || "—"} (id ${String(offering.owner_id)})`}
+                  : `${offering.owner_name || offering.owner_email} (${offering.owner_email})`}
+                {offering.owner_org_id
+                  ? ` · identificação ${offering.owner_org_id}`
+                  : ""}
               </p>
             </div>
           </div>

@@ -24,6 +24,7 @@ import type {
   CompilationInfo,
   FinalSummary,
 } from "@/lib/submission-view";
+import { testCaseNumbers } from "@/lib/test-case-numbering";
 import { cn } from "@/lib/utils";
 
 import {
@@ -42,6 +43,8 @@ import {
 
 interface CaseEntry {
   id: number;
+  /** 1-based position in the exercise; null for a result whose case is gone. */
+  number: number | null;
   testCase: TestCase | undefined;
   result: CaseResultView | undefined;
 }
@@ -111,8 +114,10 @@ export function ResultsPanel({
     [results],
   );
   const cases = useMemo<CaseEntry[]>(() => {
+    const numbers = testCaseNumbers(testCases);
     const entries: CaseEntry[] = testCases.map((testCase) => ({
       id: testCase.id,
+      number: numbers.get(testCase.id) ?? null,
       testCase,
       result: resultById.get(testCase.id),
     }));
@@ -124,6 +129,7 @@ export function ResultsPanel({
       if (!known.has(result.testCaseId)) {
         entries.push({
           id: result.testCaseId,
+          number: null,
           testCase: undefined,
           result,
         });
@@ -164,6 +170,35 @@ export function ResultsPanel({
       strip.scrollLeft += chipRect.right - stripRect.right;
     }
   }, [activeCase?.id, cases.length]);
+
+  // A mouse wheel scrolls vertically by default, so a horizontal strip would
+  // otherwise be reachable only with Shift+wheel or a trackpad. Translate the
+  // wheel over the strip while it still has room to move, and let the page
+  // scroll normally once an edge is reached.
+  useEffect(() => {
+    const strip = caseStripRef.current;
+    if (!strip || cases.length === 0) return;
+    const scroller = strip;
+
+    function handleWheel(event: WheelEvent) {
+      if (event.ctrlKey) return;
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+      if (scroller.scrollWidth <= scroller.clientWidth) return;
+
+      const delta = event.deltaMode === 1 ? event.deltaY * 24 : event.deltaY;
+      const maxScroll = scroller.scrollWidth - scroller.clientWidth;
+      const next = scroller.scrollLeft + delta;
+      if (next < 0 || next > maxScroll) return;
+
+      event.preventDefault();
+      scroller.scrollLeft = next;
+    }
+
+    strip.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      strip.removeEventListener("wheel", handleWheel);
+    };
+  }, [cases.length]);
 
   const pending =
     commitId !== null && final === null && isPendingStatus(status);
@@ -242,12 +277,13 @@ export function ResultsPanel({
             ref={caseStripRef}
             role="group"
             aria-label="Casos de teste"
-            className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden"
+            className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain [scrollbar-color:var(--border)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-track]:bg-transparent"
           >
             {cases.map((entry) => (
               <CaseChip
                 key={entry.id}
                 id={entry.id}
+                number={entry.number}
                 status={entry.result?.status}
                 active={activeCaseId === entry.id}
                 onSelect={() => {

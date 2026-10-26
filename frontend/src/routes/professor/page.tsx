@@ -108,6 +108,7 @@ function ClassCard({ offering }: { offering: ManagedOffering }) {
  */
 export function ProfessorClassesPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [showNew, setShowNew] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const offerings = useAsync(
@@ -118,8 +119,11 @@ export function ProfessorClassesPage() {
 
   function handleCreated(offering: Offering) {
     setShowNew(false);
+    setShowImport(false);
+    // Both "Nova turma" and "Importar turma" open the new class management page
+    // directly, instead of leaving the professor on the list.
     void navigate(`/professor/class/${String(offering.id)}`, {
-      state: offering,
+      state: { from: `${location.pathname}${location.search}` },
     });
   }
 

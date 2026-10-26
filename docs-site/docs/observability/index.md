@@ -93,7 +93,8 @@ flowchart LR
 ### Browser
 
 - opt-in at build time (`VITE_OTEL_ENABLED=true`);
-- `FetchInstrumentation` creates a span per API call and injects `traceparent`;
+- the browser fetch instrumentation creates a span per API call and injects
+  `traceparent`;
 - the backend continues the trace, so a click becomes one trace spanning the
   browser, Caddy, backend, judge, PostgreSQL and S3;
 - only traces are exported from the browser.

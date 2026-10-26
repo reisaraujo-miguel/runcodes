@@ -2,17 +2,34 @@ import type { ReactNode } from "react";
 
 import { Link, useLocation, useNavigate } from "react-router";
 
-import { backLabelForPath, originFromState } from "@/lib/back-navigation";
+import { originFromState, resolveBackNavigation } from "@/lib/back-navigation";
 import { cn } from "@/lib/utils";
+
+/**
+ * The number of in-app history entries before the current one.
+ *
+ * React Router stores its history index in `window.history.state.idx`, starting
+ * at zero for the entry the app was opened on. Anything above zero means a back
+ * action can pop to a previous page of this app instead of the login flow or an
+ * external site.
+ */
+function historyIndex(): number {
+  if (typeof window === "undefined") return 0;
+  const state = window.history.state as { idx?: unknown } | null;
+  return typeof state?.idx === "number" && Number.isFinite(state.idx)
+    ? state.idx
+    : 0;
+}
 
 /**
  * A back control for pages reached from more than one place.
  *
- * A link that knows its origin stores it in `location.state.from`; the control
- * then returns there exactly. Links that do not carry state fall back to the
- * browser history when there is an in-app entry to go back to, and finally to
- * the static `to` destination for a direct visit (bookmark, new tab, search
- * result), where there is no previous page to remember.
+ * Whenever there is in-app history, the control pops it, so repeated presses
+ * keep walking back instead of bouncing between a detail page and its origin.
+ * A link that knows its origin stores it in `location.state.from`; that origin
+ * labels the control and is the destination when the page was opened directly
+ * (bookmark, new tab, search result), where there is no history to pop. The
+ * static `to` destination is the last fallback.
  *
  * The visible label follows the remembered origin, so a class opened from the
  * dashboard says "Início" while the same class opened from "Minhas turmas" says
@@ -36,38 +53,40 @@ export function BackLink({
   const location = useLocation();
   const from = originFromState(location.state);
   const current = `${location.pathname}${location.search}`;
-  const remembered = from && from !== current ? from : null;
-  const canUseHistory =
-    !remembered &&
-    typeof window !== "undefined" &&
-    ((window.history.state as { idx?: number } | null)?.idx ?? 0) > 0;
+  const target = resolveBackNavigation({
+    origin: from,
+    currentPath: current,
+    canGoBack: historyIndex() > 0,
+    fallbackPath: to,
+  });
 
   const classes = cn(
     "text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex items-center gap-1 rounded-sm text-sm font-medium outline-none focus-visible:ring-2",
     className,
   );
+  const text = label ?? target.label;
 
-  if (!remembered && !canUseHistory) {
+  if (target.kind === "link") {
     return (
-      <Link to={to} className={classes}>
+      <Link to={target.path} className={classes}>
         {icon ?? <span aria-hidden>←</span>}
-        {label ?? backLabelForPath(to)}
+        {text}
       </Link>
     );
   }
-
-  const text = label ?? (remembered ? backLabelForPath(remembered) : "Voltar");
 
   return (
     <button
       type="button"
       className={classes}
       onClick={() => {
-        if (remembered) {
-          void navigate(remembered);
+        if (target.kind === "history") {
+          void navigate(-1);
           return;
         }
-        void navigate(-1);
+        // A direct visit has no entry to pop, so replace it instead of leaving
+        // the detail page behind in history.
+        void navigate(target.path, { replace: true });
       }}
     >
       {icon ?? <span aria-hidden>←</span>}

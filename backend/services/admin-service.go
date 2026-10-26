@@ -55,7 +55,7 @@ func normalizePage(limit, offset int) (int, int) {
 
 /*
 AdminListUsers lists the platform's users, optionally filtered by a search term
-matched against the name, the email and the organization id.
+matched against the name, the email and the institutional id.
 */
 func AdminListUsers(
 	ctx context.Context, query string, limit, offset int,
@@ -400,12 +400,12 @@ func AdminUpdateOffering(
 		return nil, err
 	}
 
-	if req.OwnerID != nil {
-		owner, err := loadOfferingOwner(ctx, *req.OwnerID)
-		if err != nil {
-			return nil, err
-		}
-		ownerID = sql.NullInt64{Int64: int64(owner.ID), Valid: true}
+	transferOwner, err := resolveAdminOfferingOwner(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if transferOwner.Valid {
+		ownerID = transferOwner
 	}
 
 	update := &models.UpdateOfferingRequest{
@@ -440,10 +440,10 @@ func AdminUpdateOffering(
 		return nil, err
 	}
 
-	if req.OwnerID != nil {
+	if transferOwner.Valid {
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE offerings SET owner_id = $1, updated_at = now()
-			WHERE id = $2`, *req.OwnerID, offeringID,
+			WHERE id = $2`, transferOwner.Int64, offeringID,
 		); err != nil {
 			slog.ErrorContext(ctx, "error transferring offering",
 				slog.String("error", err.Error()),
@@ -469,12 +469,95 @@ func AdminUpdateOffering(
 }
 
 /*
-loadOfferingOwner checks that a user exists and can hold a class.
+resolveAdminOfferingOwner finds the account a class is being transferred to.
+The caller may identify it by email, institutional id or the legacy database
+id. At most one reference is accepted; none means the owner is unchanged.
 */
-func loadOfferingOwner(ctx context.Context, userID int64) (*models.User, error) {
+func resolveAdminOfferingOwner(
+	ctx context.Context, req *models.AdminUpdateOfferingRequest,
+) (sql.NullInt64, error) {
+	references := 0
+	if req.OwnerID != nil {
+		references++
+	}
+	if req.OwnerEmail != nil {
+		references++
+	}
+	if req.OwnerOrgID != nil {
+		references++
+	}
+	if references > 1 {
+		return sql.NullInt64{}, ErrOwnerReferenceConflict
+	}
+	if references == 0 {
+		return sql.NullInt64{}, nil
+	}
+
+	var owner *models.User
+	var err error
+	switch {
+	case req.OwnerEmail != nil:
+		email := validation.NormalizeEmail(*req.OwnerEmail)
+		if email == "" {
+			return sql.NullInt64{}, ErrOwnerReferenceEmpty
+		}
+		if err := validation.ValidateEmailFormat(ctx, email); err != nil {
+			return sql.NullInt64{}, err
+		}
+		owner, err = loadOfferingOwnerByEmail(ctx, email)
+	case req.OwnerOrgID != nil:
+		orgID := strings.TrimSpace(*req.OwnerOrgID)
+		if orgID == "" {
+			return sql.NullInt64{}, ErrOwnerReferenceEmpty
+		}
+		if err := validation.ValidateRequiredString(
+			orgID, MaxOrgIDLength,
+		); err != nil {
+			return sql.NullInt64{}, err
+		}
+		owner, err = loadOfferingOwnerByOrgID(ctx, orgID)
+	default:
+		owner, err = loadOfferingOwnerByID(ctx, *req.OwnerID)
+	}
+	if err != nil {
+		return sql.NullInt64{}, err
+	}
+
+	return sql.NullInt64{Int64: int64(owner.ID), Valid: true}, nil
+}
+
+/*
+The owner lookups only differ in the column they match. Each predicate below is
+a fixed string, never caller input.
+*/
+func loadOfferingOwnerByID(
+	ctx context.Context, userID int64,
+) (*models.User, error) {
+	return loadOfferingOwner(ctx, "id = $1", userID, "id")
+}
+
+func loadOfferingOwnerByEmail(
+	ctx context.Context, email string,
+) (*models.User, error) {
+	return loadOfferingOwner(ctx, "lower(email) = $1", email, "email")
+}
+
+func loadOfferingOwnerByOrgID(
+	ctx context.Context, orgID string,
+) (*models.User, error) {
+	return loadOfferingOwner(ctx, "org_id = $1", orgID, "org_id")
+}
+
+/*
+loadOfferingOwner reads the account matching a fixed lookup predicate and
+enforces that only a professor or administrator can own a class.
+*/
+func loadOfferingOwner(
+	ctx context.Context, predicate string, value any, lookup string,
+) (*models.User, error) {
 	var user models.User
 	err := database.DB.QueryRowContext(ctx,
-		"SELECT id, name, email, role FROM users WHERE id = $1", userID,
+		"SELECT id, name, email, role FROM users WHERE "+predicate, value,
 	).Scan(&user.ID, &user.Name, &user.Email, &user.Role)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -482,7 +565,7 @@ func loadOfferingOwner(ctx context.Context, userID int64) (*models.User, error) 
 		}
 		slog.ErrorContext(ctx, "error fetching offering owner",
 			slog.String("error", err.Error()),
-			slog.Int64("user_id", userID),
+			slog.String("lookup", lookup),
 		)
 		return nil, ErrServer
 	}
@@ -548,6 +631,7 @@ const adminOfferingSelect = `
 	SELECT o.id, o.name, COALESCE(o.description, ''), o.end_date,
 	       COALESCE(o.enrollment_code, ''), o.visible_to_enroll,
 	       o.owner_id, COALESCE(owner.name, ''), COALESCE(owner.email, ''),
+	       COALESCE(owner.org_id, ''),
 	       (SELECT count(*) FROM enrollments en WHERE en.offering_id = o.id),
 	       (SELECT count(*) FROM exercises ex
 	         WHERE ex.offering_id = o.id AND NOT ex.removed),
@@ -591,7 +675,7 @@ func queryAdminOfferings(
 			&offering.ID, &offering.Name, &offering.Description,
 			&offering.EndDate, &offering.EnrollmentCode,
 			&offering.VisibleToEnroll, &offering.OwnerID, &offering.OwnerName,
-			&offering.OwnerEmail, &offering.MemberCount,
+			&offering.OwnerEmail, &offering.OwnerOrgID, &offering.MemberCount,
 			&offering.ExerciseCount, &offering.CreatedAt,
 		); err != nil {
 			slog.ErrorContext(ctx, "error scanning offering",

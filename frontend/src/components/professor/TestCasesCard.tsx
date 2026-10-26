@@ -226,13 +226,18 @@ export function TestCasesCard({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {list.map((testCase) =>
-              editingId === testCase.id ? (
+            {list.map((testCase, index) => {
+              // Test cases are numbered per exercise, from 1, in display order.
+              // Their database id is global and would make a second exercise's
+              // first case appear as #2.
+              const number = index + 1;
+              return editingId === testCase.id ? (
                 <TableRow key={testCase.id}>
                   <TableCell colSpan={7}>
                     <EditTestCaseForm
                       exerciseId={exerciseId}
                       testCase={testCase}
+                      number={number}
                       onCancel={() => {
                         setEditingId(null);
                       }}
@@ -247,13 +252,14 @@ export function TestCasesCard({
                 <TestRow
                   key={testCase.id}
                   testCase={testCase}
+                  number={number}
                   onEdit={() => {
                     setEditingId(testCase.id);
                   }}
                   onDelete={() => handleDelete(testCase.id)}
                 />
-              ),
-            )}
+              );
+            })}
           </TableBody>
         </Table>
       )}
@@ -286,10 +292,13 @@ export function TestCasesCard({
 /** One test case row, with its type, flags, limits and actions. */
 function TestRow({
   testCase,
+  number,
   onEdit,
   onDelete,
 }: {
   testCase: TestCase;
+  /** 1-based position within the exercise, not the global test case id. */
+  number: number;
   onEdit: () => void;
   onDelete: () => Promise<void>;
 }) {
@@ -298,7 +307,7 @@ function TestRow({
   return (
     <TableRow>
       <TableCell className="font-medium whitespace-nowrap">
-        #{String(testCase.id)}
+        #{String(number)}
       </TableCell>
       <TableCell>
         <Badge variant="outline">
@@ -377,7 +386,7 @@ function TestRow({
             destructive
             variant="destructive"
             title="Remover caso de teste"
-            description={`Remover o caso #${String(testCase.id)}? Esta ação não pode ser desfeita.`}
+            description={`Remover o caso #${String(number)}? Esta ação não pode ser desfeita.`}
             confirmLabel="Remover"
             onConfirm={onDelete}
           >

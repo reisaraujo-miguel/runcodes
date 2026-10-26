@@ -34,7 +34,7 @@ func AdminListUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 /*
-AdminUpdateUser changes any user of the platform: name, email, organization id,
+AdminUpdateUser changes any user of the platform: name, email, institutional id,
 role and confirmation.
 */
 func AdminUpdateUser(w http.ResponseWriter, r *http.Request) {
