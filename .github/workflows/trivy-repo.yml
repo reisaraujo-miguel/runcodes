@@ -1,4 +1,4 @@
-name: Trivy Security Scan
+name: Trivy Scan Repository
 
 on:
   push:
