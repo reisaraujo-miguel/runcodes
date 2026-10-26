@@ -36,11 +36,14 @@ function formatEventTime(at: string): string {
 
 export function CaseChip({
   id,
+  number,
   status,
   active,
   onSelect,
 }: {
   id: number;
+  /** 1-based position in the exercise; null when the case was removed. */
+  number: number | null;
   status?: CaseResultStatus;
   active: boolean;
   onSelect: () => void;
@@ -68,7 +71,7 @@ export function CaseChip({
           : "text-muted-foreground hover:bg-muted hover:text-foreground border-transparent",
       )}
     >
-      Caso {String(id)}
+      {number === null ? "Caso removido" : `Caso ${String(number)}`}
       {icon}
       {value ? <span className="sr-only">{value.label}</span> : null}
     </button>
