@@ -31,14 +31,27 @@ RUN bun install --frozen-lockfile
 COPY . .
 RUN bun -b run build
 
-FROM caddy:2.11.7-alpine AS dist
+# The published caddy:2.11.7-alpine binary was compiled with an older Go
+# toolchain and an x/net version with a known HTTP/2 DoS. Rebuild the same
+# Caddy release with the current Go toolchain and the fixed x/net.
+FROM caddy:2.11.7-builder-alpine AS caddy-builder
 
-RUN addgroup -S caddy && adduser -S caddy -G caddy
+RUN CGO_ENABLED=0 xcaddy build v2.11.7 \
+  --replace golang.org/x/net=golang.org/x/net@v0.60.0 \
+  --output /usr/bin/caddy
+
+FROM alpine:3.24 AS dist
+
+RUN apk add --no-cache ca-certificates libcap && \
+  addgroup -S caddy && adduser -S caddy -G caddy && \
+  mkdir -p /data /config && chown caddy:caddy /data /config
+
+COPY --from=caddy-builder /usr/bin/caddy /usr/bin/caddy
 
 # The unprivileged user needs CAP_NET_BIND_SERVICE to bind Caddy's privileged
 # HTTP/HTTPS ports (80/443). Grant it on the binary: capabilities added to the
 # container are dropped when switching from root to the caddy user.
-RUN apk add --no-cache libcap && setcap cap_net_bind_service=+ep "$(command -v caddy)"
+RUN setcap cap_net_bind_service=+ep /usr/bin/caddy
 
 USER caddy
 
@@ -46,8 +59,16 @@ COPY --from=builder /app/dist /usr/share/caddy
 
 COPY Caddyfile /etc/caddy/Caddyfile
 
+ENV CADDY_VERSION=v2.11.7 \
+  XDG_CONFIG_HOME=/config \
+  XDG_DATA_HOME=/data
+
 EXPOSE 80
 EXPOSE 443
+EXPOSE 2019
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD wget -q -O /dev/null "http://127.0.0.1:2019/config/" || exit 1
+
+ENTRYPOINT ["caddy"]
+CMD ["run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
