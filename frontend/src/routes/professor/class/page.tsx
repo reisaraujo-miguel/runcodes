@@ -169,7 +169,9 @@ export function ClassPage() {
         nextParams.set("tab", next);
         return nextParams;
       },
-      { replace: true },
+      // Keep the remembered origin across tab changes; setSearchParams would
+      // otherwise replace the entry with an empty state.
+      { replace: true, state: location.state as unknown },
     );
   }
 
@@ -566,10 +568,15 @@ export function ClassPage() {
           onClose={() => {
             setCreatingExercise(false);
           }}
-          onCreated={() => {
+          onCreated={(exercise) => {
             setCreatingExercise(false);
-            exercises.reload();
-            data.reload();
+            // Creating an exercise opens its management page, so the professor
+            // can add test cases and files without hunting for it in the list.
+            void navigate(`/professor/exercise/${String(exercise.id)}`, {
+              state: {
+                from: `${location.pathname}${location.search}`,
+              },
+            });
           }}
         />
       ) : null}
