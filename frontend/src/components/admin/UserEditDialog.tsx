@@ -25,9 +25,9 @@ import {
 import { platformRoleLabel } from "@/lib/roles";
 
 /**
- * Edits the fields an admin may change on any account: name, email, org id and
- * role, plus its confirmation status. The role of the signed-in account is
- * disabled, since the API refuses to change it.
+ * Edits the fields an admin may change on any account: name, email,
+ * institutional id and role, plus its confirmation status. The role of the
+ * signed-in account is disabled, since the API refuses to change it.
  */
 export function UserEditDialog({
   user,
@@ -118,14 +118,14 @@ export function UserEditDialog({
             />
             {isSelf ? (
               <p className="text-muted-foreground text-xs">
-                Altere o seu próprio email na página de perfil; o painel não pode
-                trocar o endereço da conta que está a administrar.
+                Altere o seu próprio email na página de perfil; o painel não
+                pode trocar o endereço da conta que está a administrar.
               </p>
             ) : null}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="admin-user-org">Organização</Label>
+            <Label htmlFor="admin-user-org">Identificação institucional</Label>
             <Input
               id="admin-user-org"
               value={orgId}
@@ -135,6 +135,9 @@ export function UserEditDialog({
               }}
               placeholder="Opcional"
             />
+            <p className="text-muted-foreground text-xs">
+              Número que identifica a pessoa na instituição, como a matrícula.
+            </p>
           </div>
 
           <div className="space-y-2">

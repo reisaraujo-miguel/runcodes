@@ -29,9 +29,9 @@ import { errorMessage } from "@/lib/errors";
 import { formatDate } from "@/lib/format";
 
 /**
- * Lists every account and lets an admin edit it (name, email, org id, role and
- * confirmation) or delete it — which also removes the classes the user owns.
- * The signed-in admin cannot change their own role or delete themselves.
+ * Lists every account and lets an admin edit it (name, email, institutional id,
+ * role and confirmation) or delete it — which also removes the classes the user
+ * owns. The signed-in admin cannot change their own role or delete themselves.
  */
 export function AdminUsersPage() {
   const { user: currentUser } = useAuth();
@@ -71,7 +71,7 @@ export function AdminUsersPage() {
     <div className="space-y-6">
       <PageHeader
         title="Usuários"
-        description="Busque por nome, email ou id da organização para editar ou excluir contas."
+        description="Busque por nome, email ou identificação institucional para editar ou excluir contas."
       />
 
       <SectionCard
@@ -91,7 +91,7 @@ export function AdminUsersPage() {
                 onChange={(event) => {
                   setSearch(event.target.value);
                 }}
-                placeholder="Nome, email ou id da organização"
+                placeholder="Nome, email ou identificação institucional"
               />
             </div>
             <Button type="submit" disabled={list.loading}>
@@ -143,7 +143,9 @@ export function AdminUsersPage() {
                   <TableRow>
                     <TableHead scope="col">Nome</TableHead>
                     <TableHead scope="col">Email</TableHead>
-                    <TableHead scope="col">Organização</TableHead>
+                    <TableHead scope="col">
+                      Identificação institucional
+                    </TableHead>
                     <TableHead scope="col">Papel</TableHead>
                     <TableHead scope="col">Confirmado</TableHead>
                     <TableHead scope="col">Criado em</TableHead>

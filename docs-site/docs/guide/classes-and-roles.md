@@ -110,7 +110,7 @@ judge's cgroup caps are a separate, deployment-wide backstop. See
 
 Admins can work across all classes and users:
 
-- search accounts, change name/email/organization/role, confirm or unconfirm,
+- search accounts, change name/email/institutional id/role, confirm or unconfirm,
   delete;
 - list and edit any class, transfer ownership, delete it;
 - list the members of any class;

@@ -33,18 +33,24 @@ export interface AdminOffering {
   owner_id: number | null;
   owner_name: string;
   owner_email: string;
+  owner_org_id: string;
   member_count: number;
   exercise_count: number;
   created_at: string;
 }
 
-/** Fields an admin may change on any class, including its owner. */
+/**
+ * Fields an admin may change on any class, including its owner. The owner is
+ * identified by email or institutional id, so the admin does not need an
+ * internal database id.
+ */
 export interface UpdateAdminOfferingPayload {
   name?: string;
   description?: string;
   end_date?: string;
   visible_to_enroll?: boolean;
-  owner_id?: number;
+  owner_email?: string;
+  owner_org_id?: string;
 }
 
 /** Roles a user account can hold. */

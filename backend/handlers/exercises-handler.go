@@ -61,6 +61,8 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, err error) {
 		errors.Is(err, services.ErrInvalidTransfer),
 		errors.Is(err, services.ErrNotPreviewing),
 		errors.Is(err, services.ErrInvalidPreviewRole),
+		errors.Is(err, services.ErrOwnerReferenceConflict),
+		errors.Is(err, services.ErrOwnerReferenceEmpty),
 		errors.Is(err, validation.ErrRequiredField),
 		errors.Is(err, validation.ErrInputTooLong),
 		errors.Is(err, validation.ErrParsingField):

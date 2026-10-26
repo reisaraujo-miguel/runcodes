@@ -203,7 +203,7 @@ address awaiting confirmation.
 | `200` | updated profile |
 | `400` | invalid input or `current_password` missing for an email change |
 | `401` | `current_password` is incorrect |
-| `409` | email or organization id already in use |
+| `409` | email or institutional id already in use |
 
 Role and confirmation are not editable here; an admin changes them through
 [Administration](./admin.md).

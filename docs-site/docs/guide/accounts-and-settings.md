@@ -130,7 +130,7 @@ Users created by the current system are unaffected by that variable.
 | --- | --- | --- |
 | `name` | yes | display name |
 | `email` | yes, with the current password | two-step: `pending_email` then verification |
-| `org_id` | yes | organization identifier, unique when present |
+| `org_id` | yes | institutional identifier, unique when present |
 | `code_editor_enabled` | yes | whether the in-browser editor is enabled |
 | `role` | no | changed by an admin |
 | `confirmed` | no | changed by verification or an admin |

@@ -65,7 +65,7 @@ source of a past submission can also be downloaded and restored into the editor.
 
 ### 6. Manage your profile
 
-**Profile** lets you change your name, email and organization id, and turn the
+**Profile** lets you change your name, email and institutional id, and turn the
 in-browser code editor on or off. Changing your email does not unconfirm the
 account, but the new address must be unique.
 
@@ -139,7 +139,7 @@ The **Admin** area is available to accounts with the `admin` role.
 | Page | What it does |
 | --- | --- |
 | Dashboard | platform overview |
-| Users | search accounts, change name/email/organization/role, confirm/unconfirm, delete |
+| Users | search accounts, change name/email/institutional id/role, confirm/unconfirm, delete |
 | Courses | list every class, edit it, transfer ownership, delete |
 | Settings | contact email and login-page disclaimer |
 

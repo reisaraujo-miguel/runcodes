@@ -16,7 +16,7 @@ import (
 var adminOfferingColumns = []string{
 	"id", "name", "description", "end_date", "enrollment_code",
 	"visible_to_enroll", "owner_id", "owner_name", "owner_email",
-	"member_count", "exercise_count", "created_at",
+	"owner_org_id", "member_count", "exercise_count", "created_at",
 }
 
 /*
@@ -65,7 +65,7 @@ func TestAdminListOfferingsAppliesPagination(t *testing.T) {
 				WithArgs(tc.wantPat, tc.wantLimit, tc.wantOff).
 				WillReturnRows(sqlmock.NewRows(adminOfferingColumns).AddRow(
 					int64(1), "Turma", "Descrição", endDate, "ABCD",
-					true, int64(7), "Professor", "prof@example.com",
+					true, int64(7), "Professor", "prof@example.com", "1234567",
 					int64(3), int64(2), createdAt,
 				))
 
@@ -122,7 +122,7 @@ func TestAdminOfferingByIDBindsTheLookup(t *testing.T) {
 		WithArgs(int64(7), 1, 0).
 		WillReturnRows(sqlmock.NewRows(adminOfferingColumns).AddRow(
 			int64(7), "Turma", "", time.Now(), "", true,
-			nil, "", "", int64(0), int64(0), time.Now(),
+			nil, "", "", "", int64(0), int64(0), time.Now(),
 		))
 
 	offering, err := adminOfferingByID(context.Background(), 7)
@@ -154,6 +154,140 @@ func TestAdminUpdateUserRejectsSelfEmailChange(t *testing.T) {
 	}, 7)
 	if !errors.Is(err, ErrSelfManagement) {
 		t.Fatalf("AdminUpdateUser = %v, want ErrSelfManagement", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestResolveAdminOfferingOwnerByEmail(t *testing.T) {
+	mock := newMockDB(t)
+	mock.ExpectQuery(regexp.QuoteMeta(
+		"SELECT id, name, email, role FROM users WHERE lower(email) = $1",
+	)).
+		WithArgs("prof@example.com").
+		WillReturnRows(sqlmock.NewRows(
+			[]string{"id", "name", "email", "role"},
+		).AddRow(7, "Professor", "prof@example.com", "professor"))
+
+	ownerID, err := resolveAdminOfferingOwner(
+		context.Background(),
+		&models.AdminUpdateOfferingRequest{
+			OwnerEmail: ptrString("  Prof@Example.com "),
+		},
+	)
+	if err != nil {
+		t.Fatalf("resolveAdminOfferingOwner = %v, want nil", err)
+	}
+	if !ownerID.Valid || ownerID.Int64 != 7 {
+		t.Fatalf("owner = %+v, want valid id 7", ownerID)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestResolveAdminOfferingOwnerByOrgID(t *testing.T) {
+	mock := newMockDB(t)
+	mock.ExpectQuery(regexp.QuoteMeta(
+		"SELECT id, name, email, role FROM users WHERE org_id = $1",
+	)).
+		WithArgs("1234567").
+		WillReturnRows(sqlmock.NewRows(
+			[]string{"id", "name", "email", "role"},
+		).AddRow(9, "Admin", "admin@example.com", "admin"))
+
+	ownerID, err := resolveAdminOfferingOwner(
+		context.Background(),
+		&models.AdminUpdateOfferingRequest{
+			OwnerOrgID: ptrString(" 1234567 "),
+		},
+	)
+	if err != nil {
+		t.Fatalf("resolveAdminOfferingOwner = %v, want nil", err)
+	}
+	if !ownerID.Valid || ownerID.Int64 != 9 {
+		t.Fatalf("owner = %+v, want valid id 9", ownerID)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestResolveAdminOfferingOwnerKeepsLegacyIDLookup(t *testing.T) {
+	mock := newMockDB(t)
+	mock.ExpectQuery(regexp.QuoteMeta(
+		"SELECT id, name, email, role FROM users WHERE id = $1",
+	)).
+		WithArgs(int64(12)).
+		WillReturnRows(sqlmock.NewRows(
+			[]string{"id", "name", "email", "role"},
+		).AddRow(12, "Professor", "prof@example.com", "professor"))
+
+	ownerID, err := resolveAdminOfferingOwner(
+		context.Background(),
+		&models.AdminUpdateOfferingRequest{OwnerID: ptrInt64(12)},
+	)
+	if err != nil {
+		t.Fatalf("resolveAdminOfferingOwner = %v, want nil", err)
+	}
+	if !ownerID.Valid || ownerID.Int64 != 12 {
+		t.Fatalf("owner = %+v, want valid id 12", ownerID)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestResolveAdminOfferingOwnerRejectsAmbiguousReferences(t *testing.T) {
+	mock := newMockDB(t)
+	_, err := resolveAdminOfferingOwner(
+		context.Background(),
+		&models.AdminUpdateOfferingRequest{
+			OwnerEmail: ptrString("prof@example.com"),
+			OwnerOrgID: ptrString("1234567"),
+		},
+	)
+	if !errors.Is(err, ErrOwnerReferenceConflict) {
+		t.Fatalf("resolveAdminOfferingOwner = %v, want ErrOwnerReferenceConflict", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestResolveAdminOfferingOwnerRequiresAPrivilegedAccount(t *testing.T) {
+	mock := newMockDB(t)
+	mock.ExpectQuery(regexp.QuoteMeta(
+		"SELECT id, name, email, role FROM users WHERE org_id = $1",
+	)).
+		WithArgs("7654321").
+		WillReturnRows(sqlmock.NewRows(
+			[]string{"id", "name", "email", "role"},
+		).AddRow(3, "Student", "student@example.com", "student"))
+
+	_, err := resolveAdminOfferingOwner(
+		context.Background(),
+		&models.AdminUpdateOfferingRequest{
+			OwnerOrgID: ptrString("7654321"),
+		},
+	)
+	if !errors.Is(err, ErrInvalidRole) {
+		t.Fatalf("resolveAdminOfferingOwner = %v, want ErrInvalidRole", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestResolveAdminOfferingOwnerRejectsEmptyReferences(t *testing.T) {
+	mock := newMockDB(t)
+	_, err := resolveAdminOfferingOwner(
+		context.Background(),
+		&models.AdminUpdateOfferingRequest{OwnerEmail: ptrString("  ")},
+	)
+	if !errors.Is(err, ErrOwnerReferenceEmpty) {
+		t.Fatalf("resolveAdminOfferingOwner = %v, want ErrOwnerReferenceEmpty", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

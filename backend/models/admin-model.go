@@ -35,6 +35,7 @@ type AdminOffering struct {
 	OwnerID         *int64    `json:"owner_id"`
 	OwnerName       string    `json:"owner_name"`
 	OwnerEmail      string    `json:"owner_email"`
+	OwnerOrgID      string    `json:"owner_org_id"`
 	MemberCount     int64     `json:"member_count"`
 	ExerciseCount   int64     `json:"exercise_count"`
 	CreatedAt       time.Time `json:"created_at"`
@@ -42,12 +43,18 @@ type AdminOffering struct {
 
 // AdminUpdateOfferingRequest is the JSON body of PUT
 // /api/v1/admin/offerings/{id}. Every field is optional.
+//
+// The owner may be given by email, institutional id or the legacy database id;
+// at most one of the three may be set. The admin panel uses email or the
+// institutional id, because neither requires knowing an internal user id.
 type AdminUpdateOfferingRequest struct {
 	Name            *string    `json:"name"`
 	Description     *string    `json:"description"`
 	EndDate         *time.Time `json:"end_date"`
 	VisibleToEnroll *bool      `json:"visible_to_enroll"`
 	OwnerID         *int64     `json:"owner_id"`
+	OwnerEmail      *string    `json:"owner_email"`
+	OwnerOrgID      *string    `json:"owner_org_id"`
 }
 
 // CreateAllowedFileTypeRequest is the JSON body of POST

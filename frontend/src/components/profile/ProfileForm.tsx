@@ -154,7 +154,7 @@ function ProfileFields({
         ) : null}
 
         <div className="space-y-2">
-          <Label htmlFor="profile-org-id">ID da organização</Label>
+          <Label htmlFor="profile-org-id">Identificação institucional</Label>
           <Input
             id="profile-org-id"
             value={orgId}
@@ -163,6 +163,10 @@ function ProfileFields({
             }}
             placeholder="Ex.: 12345678"
           />
+          <p className="text-muted-foreground text-xs">
+            Número que identifica você na instituição, como a matrícula.
+            Opcional.
+          </p>
         </div>
 
         {error ? (
@@ -208,7 +212,7 @@ function ProfileFields({
 
 /**
  * Loads the caller's own account, edits the mutable fields (name, email,
- * organization id) and shows the read-only ones.
+ * institutional id) and shows the read-only ones.
  */
 export function ProfileForm() {
   const profile = useAsync(() => getProfile(), "profile");
@@ -227,7 +231,7 @@ export function ProfileForm() {
   return (
     <SectionCard
       title="Dados da conta"
-      description="Atualize o seu nome, email e organização."
+      description="Atualize o seu nome, email e identificação institucional."
     >
       <ProfileFields
         key={profile.data.id}

@@ -17,7 +17,7 @@ Search and paginate accounts.
 
 | Query | Default | Notes |
 | --- | --- | --- |
-| `query` | empty | case-insensitive match on name, email or organization id |
+| `query` | empty | case-insensitive match on name, email or institutional id |
 | `limit` | 50 | clamped to 200 |
 | `offset` | 0 | negative values become 0 |
 
@@ -53,7 +53,7 @@ Partial update. All fields optional:
 | --- | --- |
 | `200` | updated user |
 | `400` | invalid id/body or invalid role |
-| `409` | email or organization id already in use; or the target is the caller and the request changes their own role/email or unconfirms them |
+| `409` | email or institutional id already in use; or the target is the caller and the request changes their own role/email or unconfirms them |
 
 Valid roles are `student`, `professor`, `admin` and `dev`. Promoting a user to
 `admin` grants the entire admin panel; demoting an admin is subject to the
@@ -89,6 +89,7 @@ pagination as users.
     "owner_id": 3,
     "owner_name": "Grace Hopper",
     "owner_email": "grace@example.com",
+    "owner_org_id": "1234567",
     "member_count": 42,
     "exercise_count": 8,
     "created_at": "2026-02-01T12:00:00Z"
@@ -98,7 +99,9 @@ pagination as users.
 
 ### `PUT /admin/offerings/{id}`
 
-Partial update, including **ownership transfer**:
+Partial update, including **ownership transfer**. Identify the new owner by
+email or by their institutional id (for example, a university registration
+number):
 
 ```json
 {
@@ -106,13 +109,24 @@ Partial update, including **ownership transfer**:
   "description": "…",
   "end_date": "2027-01-15T23:59:59-03:00",
   "visible_to_enroll": false,
-  "owner_id": 12
+  "owner_email": "grace@example.com"
 }
 ```
 
-The new owner must exist. Transferring a class does not re-enroll the previous
-owner; they lose the owner privileges but keep any enrollment they had.
-Returns the updated class.
+Or, when the admin knows the owner's institutional id instead of the email:
+
+```json
+{
+  "owner_org_id": "1234567"
+}
+```
+
+`owner_id` remains accepted for compatibility, but the admin panel does not use
+it: the internal database id is not needed to transfer a class. Set at most one
+of `owner_email`, `owner_org_id` and `owner_id`. The new owner must exist and
+must have the `professor` or `admin` role. Transferring a class does not
+re-enroll the previous owner; they lose the owner privileges but keep any
+enrollment they had. Returns the updated class.
 
 ### `DELETE /admin/offerings/{id}`
 
