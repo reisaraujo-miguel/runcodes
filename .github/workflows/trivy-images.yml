@@ -1,10 +1,9 @@
-name: Container Images
+name: Trivy Scan Images
 
 on:
   push:
     branches:
       - main
-      - development
   pull_request:
   schedule:
     # Weekly, Mondays at 03:00 UTC — catches new CVEs in the base images even

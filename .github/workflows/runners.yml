@@ -1,4 +1,4 @@
-name: Docker Build and Publish Runners
+name: Publish Runners
 
 on:
   push:
