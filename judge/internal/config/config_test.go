@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -12,6 +13,7 @@ func clearEnv(t *testing.T) {
 		"JUDGE_ADDR", "JUDGE_AUTH_TOKEN", "RUNCODES_JUDGE_TOKEN",
 		"JUDGE_CONCURRENCY", "JUDGE_POLL_INTERVAL", "JUDGE_EVENT_RETENTION",
 		"JUDGE_PODMAN_URI", "CONTAINER_HOST", "JUDGE_IMAGE_FORMAT",
+		"JUDGE_IMAGE_REGISTRY", "JUDGE_RUNNER_IMAGE_PREFIX", "JUDGE_RUNNER_IMAGE_TAG",
 		"JUDGE_EXEC_DIR", "JUDGE_EXEC_DIR_REMOTE", "JUDGE_KEEP_WORKSPACES",
 		"JUDGE_DEFAULT_COMPILATION_TIMEOUT", "JUDGE_COMPILATION_WAIT",
 		"JUDGE_DEFAULT_EXEC_TIMEOUT", "JUDGE_DEFAULT_CASE_TIMEOUT",
@@ -51,6 +53,9 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.ExecDirRemote != cfg.ExecDir {
 		t.Errorf("ExecDirRemote = %q, want ExecDir %q", cfg.ExecDirRemote, cfg.ExecDir)
+	}
+	if cfg.ImageFormat != "ghcr.io/runcodes-icmc/runcodes-runner-%s:latest" {
+		t.Errorf("ImageFormat = %q, want the default runner template", cfg.ImageFormat)
 	}
 	// The compilation limit is the image's; the judge only bounds its own patience.
 	if cfg.CompilationTimeout != 0 {
@@ -160,6 +165,85 @@ func TestLoadRejectsInvalidConcurrency(t *testing.T) {
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected an error for JUDGE_CONCURRENCY=0")
+	}
+}
+
+func TestRunnerImageFormat(t *testing.T) {
+	tests := []struct {
+		name       string
+		registry   string
+		prefix     string
+		tag        string
+		format     string
+		wantFormat string
+		wantImage  string
+	}{
+		{
+			name:       "default",
+			wantFormat: "ghcr.io/runcodes-icmc/runcodes-runner-%s:latest",
+			wantImage:  "ghcr.io/runcodes-icmc/runcodes-runner-c:latest",
+		},
+		{
+			name:       "custom registry, prefix and tag",
+			registry:   "ghcr.io",
+			prefix:     "reisaraujo-miguel/runcodes-runner",
+			tag:        "v1.2.3",
+			wantFormat: "ghcr.io/reisaraujo-miguel/runcodes-runner-%s:v1.2.3",
+			wantImage:  "ghcr.io/reisaraujo-miguel/runcodes-runner-c:v1.2.3",
+		},
+		{
+			name:       "trailing separators are ignored",
+			registry:   "ghcr.io/",
+			prefix:     "/reisaraujo-miguel/runcodes-runner-/",
+			wantFormat: "ghcr.io/reisaraujo-miguel/runcodes-runner-%s:latest",
+			wantImage:  "ghcr.io/reisaraujo-miguel/runcodes-runner-c:latest",
+		},
+		{
+			name:       "blank tag falls back to latest",
+			registry:   "ghcr.io",
+			prefix:     "reisaraujo-miguel/runcodes-runner",
+			tag:        "  ",
+			wantFormat: "ghcr.io/reisaraujo-miguel/runcodes-runner-%s:latest",
+			wantImage:  "ghcr.io/reisaraujo-miguel/runcodes-runner-c:latest",
+		},
+		{
+			name:       "explicit format wins",
+			registry:   "ghcr.io",
+			prefix:     "reisaraujo-miguel/runcodes-runner",
+			tag:        "v1.2.3",
+			format:     "registry.example.com/team/runners/%s:edge",
+			wantFormat: "registry.example.com/team/runners/%s:edge",
+			wantImage:  "registry.example.com/team/runners/c:edge",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearEnv(t)
+			if tt.registry != "" {
+				t.Setenv("JUDGE_IMAGE_REGISTRY", tt.registry)
+			}
+			if tt.prefix != "" {
+				t.Setenv("JUDGE_RUNNER_IMAGE_PREFIX", tt.prefix)
+			}
+			if tt.tag != "" {
+				t.Setenv("JUDGE_RUNNER_IMAGE_TAG", tt.tag)
+			}
+			if tt.format != "" {
+				t.Setenv("JUDGE_IMAGE_FORMAT", tt.format)
+			}
+
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if cfg.ImageFormat != tt.wantFormat {
+				t.Errorf("ImageFormat = %q, want %q", cfg.ImageFormat, tt.wantFormat)
+			}
+			if got := fmt.Sprintf(cfg.ImageFormat, "c"); got != tt.wantImage {
+				t.Errorf("expanded image = %q, want %q", got, tt.wantImage)
+			}
+		})
 	}
 }
 

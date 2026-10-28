@@ -18,6 +18,10 @@ There are 22 language images. Twelve inherit `FROM` the base image; the other te
 copy `/usr/bin/runcodes` and `/usr/bin/monitor` into a third-party base that
 provides their toolchain. Images are published for `linux/amd64` only.
 
+The names above are the upstream defaults. The judge can pull a mirror or another
+namespace through `JUDGE_RUNNER_IMAGE_REPOSITORY` and `JUDGE_RUNNER_IMAGE_TAG`;
+the mirror must keep the `runcodes-runner-<language>` naming.
+
 ## Build
 
 ```bash
