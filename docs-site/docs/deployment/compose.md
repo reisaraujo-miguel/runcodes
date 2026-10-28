@@ -1,14 +1,18 @@
 ---
-title: Docker Compose deployment
-description: Run RunCodes on a single host with Docker Compose, including TLS, volumes, updates and backups.
+title: Docker Compose from source
+description: Run the source-build RunCodes stack on a single host with Docker Compose, including TLS, volumes, updates and backups.
 ---
 
-# Docker Compose deployment
+# Docker Compose from source
 
-`docker-compose.yml` runs the full application stack on one host: Caddy and the
-SPA, the backend, the judge, PostgreSQL, Redis, SeaweedFS and smtp4dev. It is
-the quickest way to run RunCodes and a reasonable fit for a small single-host
-installation.
+`docker-compose.yml` at the repository root builds the application from source
+and runs the full stack on one host: Caddy and the SPA, the backend, the judge,
+PostgreSQL, Redis, SeaweedFS and smtp4dev. It is the development, demo and
+source-inspection path.
+
+For a single production host that pulls published images instead of building,
+use [Image-based Compose](./image-compose.md) and
+`deploy/compose/deploy.sh`.
 
 The observability stack is a **separate opt-in overlay**; see
 [Local observability stack](../observability/local.md).
@@ -98,6 +102,10 @@ Optional and commonly set:
 | `DATABASE_PORT` / `SEAWEED_S3_PORT` | `5432` / `8333` | loopback host ports |
 | `SMTP4DEV_WEB_PORT` / `SMTP4DEV_SMTP_PORT` | `8081` / `1025` | loopback host ports |
 | `PODMAN_SOCKET` | `/run/user/1000/podman/podman.sock` | rootless socket path |
+| `RUNCODES_IMAGE_REGISTRY` | `ghcr.io` | runner image registry |
+| `RUNCODES_RUNNER_IMAGE_PREFIX` | `runcodes-icmc/runcodes-runner` | runner image path; `-<language>` is appended |
+| `RUNCODES_RUNNER_IMAGE_TAG` | `latest` | runner image tag |
+| `JUDGE_IMAGE_FORMAT` | derived | advanced full template; wins over the registry, prefix and tag |
 | `JUDGE_UID` / `JUDGE_GID` | `0` / `0` | container identity for the judge |
 | `RUNCODES_JUDGE_STALE_TIMEOUT` | `35m` | backend age before a claimed run is marked stale |
 | `JUDGE_MAX_RUN_DURATION` | `30m` | judge end-to-end budget per claim |

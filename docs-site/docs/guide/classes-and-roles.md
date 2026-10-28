@@ -7,7 +7,9 @@ description: Offerings, enrollment roles, the access model and exercise rules.
 
 A **class** is called an *offering* in the database and API. It groups students,
 exercises and staff. Understanding the role model is the key to understanding
-what a user can see and do.
+what a user can see and do. The task-level guides are the
+[Student guide](./student-guide.md), [Professor guide](./professor-guide.md) and
+[Administrator guide](../administration/index.md).
 
 ## Account roles
 
@@ -41,20 +43,38 @@ loses the access that comes with it. The owner cannot be banned or removed.
 
 | Action | Owner | Co-professor | Monitor | Student | Admin panel |
 | --- | :-: | :-: | :-: | :-: | :-: |
-| View class | ✓ | ✓ | ✓ | ✓ (visible) | ✓ |
-| View exercises | ✓ | ✓ | ✓ | ✓ (open/visible) | ✓ |
+| View class metadata | ✓ | ✓ | ✓ | ✓ | ✓ |
+| View exercises | ✓ | ✓ | ✓ | ✓ (open/visible) | — |
 | Submit solutions | ✓ | ✓ | ✓ | ✓ | — |
 | Submit after deadline | ✓ | ✓ | ✓ | — | — |
 | Create/edit exercises | ✓ | ✓ | — | — | — |
 | Manage test cases & files | ✓ | ✓ | — | — | — |
-| List/add/change members | ✓ | — | — | — | ✓ |
+| View the gradebook | ✓ | ✓ | — | — | — |
+| Export the class, recompile, email | ✓ | ✓ | — | — | — |
+| List/add/change members | ✓ | — | — | — | list only |
 | Edit/delete class | ✓ | — | — | — | ✓ |
+| Rotate the enrollment code | ✓ | — | — | — | — |
 | Transfer ownership | — | — | — | — | ✓ |
-| Platform settings | — | — | — | — | ✓ |
+| Manage file types & settings | — | — | — | — | ✓ |
+| Preview as student or professor | — | — | — | — | ✓ |
 
 "Admin panel" means the `/api/v1/admin/*` routes: they act on classes the admin
 does not own. The admin's platform role does not automatically give them the
-owner's authoring routes; the panel uses its own endpoints.
+owner's authoring routes; the panel uses its own endpoints. An admin who owns a
+class or teaches it as a co-professor gets the teaching routes for that class.
+
+## Grade visibility
+
+- A student sees their own best score and latest status on each exercise, and
+  their own submission history. They do not see other students' scores.
+- The class owner and co-professors see the full gradebook and its statistics.
+- Monitors and students cannot read the gradebook.
+- The admin panel does not expose a gradebook. An administrator who needs to read
+  one must own the class or be added as a co-professor.
+
+The grade is the best score among the student's submissions. The class grade is
+the mean of those best scores over every exercise, counting a missing exercise as
+zero. See [How grading works](./grading.md).
 
 ## Enrollment
 
@@ -82,11 +102,15 @@ Each exercise has an `open_date` and a `deadline`.
 - After the deadline, students can no longer submit. Staff can, because the
   deadline is a rule for the students being graded and staff need to try an
   exercise before handing it out.
+- The class has its own end date. It closes enrollment; it does not change the
+  exercise deadlines. Existing students keep access after it.
+- The backend can email a student who has not submitted when an exercise closes
+  in 7 days and again in 3 days. Administrators can disable the reminders.
 - `removed` hides an exercise from students without deleting its history;
   `ghost` is retained from the legacy model.
 
-The `GET /api/v1/user/exercises` endpoint returns the exercises currently open
-in the caller's classes, which is what the home dashboard uses.
+The `GET /api/v1/user/exercises` endpoint returns up to 50 exercises currently
+open in the caller's classes, which is what the home dashboard uses.
 
 ## Exercise authoring
 
@@ -114,11 +138,19 @@ Admins can work across all classes and users:
   delete;
 - list and edit any class, transfer ownership, delete it;
 - list the members of any class;
-- edit the platform contact email and disclaimer shown on the login page.
+- maintain the file type catalog;
+- edit the platform contact email and disclaimer shown on the login page;
+- preview the platform as a student or professor.
 
-An admin cannot change their own role, delete their own account, or unconfirm
-themselves. These safeguards prevent an admin from accidentally locking
-themselves out.
+The panel does not author exercises, manage membership, read a gradebook or set
+another user's password. Those actions stay with the class owner, co-professors
+and the user's own recovery flow. See
+[User & role administration](../administration/users.md) and
+[Class & ownership administration](../administration/classes.md).
+
+An admin cannot change their own role, delete their own account, unconfirm
+themselves, or change their own email from the panel. These safeguards prevent an
+administrator from accidentally locking themselves out.
 
 ## Platform settings
 

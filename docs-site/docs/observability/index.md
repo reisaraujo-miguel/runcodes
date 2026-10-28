@@ -176,6 +176,8 @@ Versions are pinned in `docker-compose.observability.yml` and in
 
 ## Related pages
 
+- [Administrator guide](../administration/index.md)
+- [Platform operations](../administration/operations.md)
 - [Configuration: observability](../reference/configuration.md#observability)
 - [CI/CD](../ci-cd.md)
 - [Runbook](./runbook.md)

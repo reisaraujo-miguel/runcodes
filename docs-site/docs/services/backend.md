@@ -81,8 +81,8 @@ The full endpoint reference starts at [API](../api/index.md).
 | Self-service | profile, password, my classes, open exercises | signed in + confirmed |
 | Submissions | create, events, source, output, history | signed in + confirmed |
 | Authoring | exercises, test cases, compilation/attached files | staff of the class |
-| Class staff | list, create, edit, delete, members | professor/admin + ownership |
-| Admin | users, any class, settings | admin |
+| Class management | list, create, edit, delete, members | professor/admin; owner for edit/delete/members |
+| Admin | users, any class, settings, file types, role preview | admin |
 
 The route table is the source of truth: [`backend/router.go`](https://github.com/reisaraujo-miguel/runcodes/blob/main/backend/router.go).
 
@@ -100,8 +100,9 @@ Order matters. The backend installs, in order:
 5. **Recoverer** — converts a panic into a `500` instead of killing the process.
 6. **CORS** — one explicit frontend origin, credentials allowed.
 7. **Trusted-proxy hop count** — one proxy (Caddy) in front of the API.
-8. **Rate limiting** — 100 requests/minute per client IP, with a stricter
-   10/minute limit on the verification and password-recovery routes.
+8. **Rate limiting** — 600 requests/minute per client IP, with tighter limits:
+   20/minute for signup and login, 10/minute for verification and
+   password-recovery routes, and 5/minute per account for enrollment codes.
 
 A malformed payload is logged with a replayable `curl` command (the
 `Authorization` header is removed) when body logging is enabled.
@@ -124,7 +125,7 @@ for. If the wake fails, both the row and the object are removed.
 
 `GET /api/v1/submissions/{id}/events`:
 
-- authorizes the owner, a professor or an admin;
+- authorizes the commit owner or a member of staff who teaches the exercise;
 - loads the persisted snapshot (commit, case results, artifacts);
 - checks whether the judge has an output archive and advertises it to the owner;
 - writes the `snapshot` event and, if the commit is not terminal, subscribes to
@@ -139,7 +140,7 @@ top of the database, not the source of truth.
 
 If a judge process dies mid-run, the commit row stays `compiling` or `running`.
 `judge.StartReconciliation` periodically looks for rows older than
-`RUNCODES_JUDGE_STALE_TIMEOUT` (default 15 minutes) and marks them
+`RUNCODES_JUDGE_STALE_TIMEOUT` (default 35 minutes) and marks them
 `server_error`. Claiming is still crash-safe: a restarted judge can claim other
 queued commits immediately.
 

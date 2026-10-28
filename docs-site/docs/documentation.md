@@ -18,10 +18,10 @@ Markdown files are deliberately short entry points:
 
 - service READMEs keep only the commands needed to run and test that directory,
   plus links here;
-- the root README keeps the project overview, quick start and deployment/API
-  links;
-- `docs/` contains only a pointer to this site; the old observability guides
-  were consolidated into the observability pages;
+- the root README keeps the project overview, quick start and role, deployment
+  and API links;
+- the old `docs/` guides were consolidated into this site; no `docs/` tree
+  remains;
 - `deploy/ansible/docs/` was retired in favour of the deployment pages;
 - `judge/DESIGN.md` was folded into the judge and judge-API pages.
 
@@ -52,10 +52,11 @@ docs-site/
     │       └── styles/custom.css
     ├── public/                logo and static assets
     ├── index.md               landing page
-    ├── guide/                 product and architecture
+    ├── guide/                 product, architecture, role guides, grading, setup
+    ├── administration/        admin panel, accounts, classes, settings, operations
     ├── services/              per-service internals
     ├── api/                   HTTP API reference
-    ├── deployment/            Compose, Ansible, operations, security
+    ├── deployment/            Compose (source and images), Ansible, checklist, security
     ├── observability/         stack, local, production, runbook
     ├── reference/             configuration, ports, languages, glossary
     ├── ci-cd.md
@@ -157,7 +158,7 @@ domain in the Pages settings.
 ### Links
 
 - Link to other pages with relative `.md` paths:
-  `[Judge](../services/judge.md)`. VitePress rewrites them to `.html`.
+  `[Judge](./services/judge.md)`. VitePress rewrites them to `.html`.
 - Link to source files with full GitHub URLs; repository-relative paths do not
   exist on the published site.
 - Link to the site page, not to a service README, for explanatory content. The

@@ -145,10 +145,31 @@ Without a token the judge refuses `/v1` with `503` unless
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `JUDGE_PODMAN_URI` | `unix:///run/user/<uid>/podman/podman.sock` | rootless Podman API |
-| `JUDGE_IMAGE_FORMAT` | `ghcr.io/runcodes-icmc/runcodes-runner-%s:latest` | image name template |
+| `JUDGE_IMAGE_REGISTRY` | `ghcr.io` | registry that holds the runner images |
+| `JUDGE_RUNNER_IMAGE_PREFIX` | `runcodes-icmc/runcodes-runner` | image path inside the registry; the judge appends `-<language>` |
+| `JUDGE_RUNNER_IMAGE_TAG` | `latest` | tag pulled for every runner image |
+| `JUDGE_IMAGE_FORMAT` | derived | full printf template; overrides the registry, prefix and tag |
 | `JUDGE_EXEC_DIR` | `$TMPDIR/runcodes-judge` | workspace directory |
 | `JUDGE_EXEC_DIR_REMOTE` | same as `JUDGE_EXEC_DIR` | path as seen by the Podman service |
 | `JUDGE_KEEP_WORKSPACES` | `false` | keep per-commit workspaces for inspection |
+
+The judge combines the three settings as
+`<registry>/<prefix>-<language>:<tag>`. For example:
+
+```bash
+JUDGE_IMAGE_REGISTRY=ghcr.io
+JUDGE_RUNNER_IMAGE_PREFIX=reisaraujo-miguel/runcodes-runner
+JUDGE_RUNNER_IMAGE_TAG=v1.2.3
+```
+
+pulls `ghcr.io/reisaraujo-miguel/runcodes-runner-c:v1.2.3` for a C submission.
+A trailing slash on the registry and leading/trailing slashes or a trailing
+hyphen on the prefix are ignored, so the Ansible prefix form
+(`.../runcodes-runner-`) also works.
+
+`JUDGE_IMAGE_FORMAT` is the advanced escape hatch. When it is set, it wins over
+all three variables and its `%s` is replaced with the language suffix directly,
+for example `registry.example.com/team/runners/%s:edge`.
 
 ### Timeouts and limits
 
@@ -238,7 +259,7 @@ four-machine release, `VITE_OTEL_EXPORTER_OTLP_ENDPOINT=/otel`.
 | `RUNCODES_DOMAIN` | `:80` | Caddy site address; hostname enables automatic HTTPS |
 | `BACKEND_UPSTREAM` | `http://backend:8443` | API upstream |
 
-## Docker Compose
+## Docker Compose (source build)
 
 Source: `docker-compose.yml`, `.env.example`.
 
@@ -262,12 +283,47 @@ Source: `docker-compose.yml`, `.env.example`.
 | `SMTP4DEV_WEB_PORT` / `SMTP4DEV_SMTP_PORT` | | smtp4dev | loopback host ports (8081/1025) |
 | `RUNCODES_DOMAIN` | | frontend | Caddy site address |
 | `PODMAN_SOCKET` | | judge | rootless socket path |
+| `RUNCODES_IMAGE_REGISTRY` | `ghcr.io` | judge | runner image registry |
+| `RUNCODES_RUNNER_IMAGE_PREFIX` | `runcodes-icmc/runcodes-runner` | judge | runner image path inside the registry |
+| `RUNCODES_RUNNER_IMAGE_TAG` | `latest` | judge | runner image tag |
+| `JUDGE_IMAGE_FORMAT` | | judge | advanced runner image template; wins over the three variables above |
 | `JUDGE_UID` / `JUDGE_GID` | | judge | container identity (0:0) |
 | `CONTACT_EMAIL` / `CONTACT_DISCLAIMER` | | frontend build | login-page fallbacks |
 | `DEPLOYMENT_ENVIRONMENT` | | observability | environment label |
 
 Compose uses `:?` for the required secrets, so it fails before starting with an
 explicit message.
+
+## Image-based Compose
+
+Source: `deploy/compose/docker-compose.yml`, `deploy/compose/.env.example`.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `COMPOSE_PROJECT_NAME` | `runcodes` | Compose project and volume prefix |
+| `RUNCODES_IMAGE_REGISTRY` | `ghcr.io` | registry for application and runner images |
+| `RUNCODES_IMAGE_NAMESPACE` | `runcodes-icmc` | namespace holding the four application images |
+| `RUNCODES_IMAGE_TAG` | `latest` | application image tag |
+| `RUNCODES_RUNNER_IMAGE_PREFIX` | `runcodes-icmc/runcodes-runner` | runner image path inside the registry |
+| `RUNCODES_RUNNER_IMAGE_TAG` | `latest` | runner image tag |
+| `JUDGE_IMAGE_FORMAT` | derived | full runner template; wins over registry/prefix/tag |
+| `RUNCODES_EXEC_DIR` | `./exec` | host directory for judge workspaces; the script makes it absolute |
+| `PODMAN_SOCKET` | `/run/user/<uid>/podman/podman.sock` | rootless Podman API socket |
+| `RUNCODES_DOMAIN` | `:80` | Caddy site address; a hostname enables HTTPS |
+| `RUNCODES_PUBLIC_URL` | `http://localhost:8080` | browser origin used in mailed links |
+| `FRONTEND_HTTP_PORT` / `FRONTEND_HTTPS_PORT` | `8080` / `8444` | frontend host ports |
+| `BACKEND_PORT` / `JUDGE_PORT` | `8443` / `9000` | loopback host ports |
+| `DATABASE_PORT` / `SEAWEED_S3_PORT` | `5432` / `8333` | loopback host ports |
+| `SMTP4DEV_WEB_PORT` / `SMTP4DEV_SMTP_PORT` | `8081` / `1025` | loopback host ports |
+| `RUNCODES_SMTP_HOST` / `_PORT` | `smtp4dev` / `25` | relay or the bundled catcher |
+| `RUNCODES_SMTP_FROM` | `RunCodes <no-reply@runcodes.local>` | sender |
+| `RUNCODES_SMTP_USERNAME` / `_PASSWORD` | empty | relay credentials |
+| `JUDGE_CONCURRENCY` | `4` | containers the judge runs at once |
+| `SEAWEEDFS_VERSION` | `4.48` | public SeaweedFS image tag |
+
+The required secrets are the same as the source-build stack. The
+[image-based deployment page](../deployment/image-compose.md) documents the
+workflow, first boot and upgrades.
 
 ## Observability
 
@@ -326,7 +382,7 @@ Source: `deploy/ansible/inventories/group_vars/all/config.yml.example` and
 | `config_runcodes_image_tag` | `latest` | application image tag |
 | `config_runcodes_pull_images` | `true` | pull before restart |
 | `config_runcodes_runner_tag` | `latest` | runner image tag |
-| `config_runcodes_runner_image_prefix` | `ghcr.io/runcodes-icmc/runcodes-runner-` | runner prefix |
+| `config_runcodes_runner_image_prefix` | `ghcr.io/runcodes-icmc/runcodes-runner-` | runner prefix, ending in `-`; set the namespace here too |
 | `config_runcodes_prepull_runner_images` | `true` | pre-pull runners |
 | `config_runcodes_runner_languages` | 22 languages | languages to pre-pull |
 

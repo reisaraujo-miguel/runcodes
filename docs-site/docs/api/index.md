@@ -61,8 +61,9 @@ route:
 | class membership | reading and submitting to a class |
 | admin | `/api/v1/admin/*` |
 
-A caller who is authenticated but not allowed receives `403`; a missing or
-expired session receives `401`.
+A caller who is authenticated but not allowed receives `403`. A resource whose
+existence is hidden from the caller (a gradebook, another user's source or output
+download) returns `404` instead. A missing or expired session receives `401`.
 
 ## Request and response conventions
 
@@ -78,18 +79,31 @@ expired session receives `401`.
 - `201 Created` responses include the created object (or, for a submission, the
   commit handle).
 - `204 No Content` responses have no body.
-- There is no pagination. Lists that can grow are bounded by the API: submission
-  history returns at most 50 entries.
+- Most lists are bounded. Admin user and class listings accept `limit` and
+  `offset` (default 50, maximum 200). Submission history returns at most 50
+  entries. Other lists are small by design and are not paginated.
 
 ## Rate limits
 
-| Scope | Limit |
-| --- | --- |
-| API (all routes) | 100 requests/minute per client IP |
-| Email flows (verify, resend, forgot, reset) | 10 requests/minute per client IP |
+| Scope | Limit | Key |
+| --- | --- | --- |
+| API (all routes) | 600 requests/minute | client IP |
+| Signup and login | 20 requests/minute | client IP |
+| Email flows (verify, resend, forgot, reset) | 10 requests/minute | client IP |
+| Enrollment with a class code | 5 attempts/minute | authenticated account |
 
-The client IP is taken from the first `X-Forwarded-For` hop (Caddy). Limits are
-in-memory per process; a multi-instance deployment does not share them.
+The limits are in-memory per process; a multi-instance deployment does not share
+them. The API-wide ceiling is sized for a classroom behind one NAT address, so a
+whole lab can share it. The credential and mail routes are tighter on purpose.
+
+Request bodies are capped at 1 MiB for non-multipart requests, with a 30-second
+read deadline. Multipart uploads have their own caps and a 5-minute read
+deadline; see the endpoint page for the exact size. A rejected oversized request
+returns `413`.
+
+The client IP comes from the address Caddy appends to `X-Forwarded-For`. The
+backend trusts exactly one proxy hop and canonicalizes the address, so a
+client-supplied header cannot choose its own rate-limit key.
 
 ## Tracing headers
 
@@ -133,6 +147,7 @@ origin. A wildcard origin is rejected at startup.
 | POST | `/api/v1/user/logout` | signed in |
 | GET | `/api/v1/auth` | signed in |
 | POST | `/api/v1/auth/refresh` | signed in |
+| POST | `/api/v1/auth/stop-preview` | preview session |
 | GET / PUT | `/api/v1/user/profile` | signed in |
 | PUT | `/api/v1/user/password` | signed in |
 
@@ -147,18 +162,35 @@ origin. A wildcard origin is rejected at startup.
 | DELETE | `/api/v1/offerings/{id}/enrollment` | signed in |
 | GET | `/api/v1/offerings` | professor/admin |
 | POST | `/api/v1/offerings/create` | professor/admin |
-| GET / PUT / DELETE | `/api/v1/offerings/{id}` | owner / admin |
+| POST | `/api/v1/offerings/import` | professor/admin |
+| GET | `/api/v1/offerings/{id}` | owner / co-professor |
+| PUT / DELETE | `/api/v1/offerings/{id}` | owner |
+| POST | `/api/v1/offerings/{id}/enrollment-code/rotate` | owner |
 | GET / POST | `/api/v1/offerings/{id}/members` | owner |
 | PUT / DELETE | `/api/v1/offerings/{id}/members/{userId}` | owner |
+| GET | `/api/v1/offerings/{id}/grades` | owner / co-professor |
+| GET | `/api/v1/offerings/{id}/grades.csv` | owner / co-professor |
+| GET | `/api/v1/offerings/{id}/export` | owner / co-professor |
+| GET | `/api/v1/offerings/{id}/submissions/export` | owner / co-professor |
+| POST | `/api/v1/offerings/{id}/submissions/recompile` | owner / co-professor |
+| POST | `/api/v1/offerings/{id}/notify` | owner / co-professor |
 | POST | `/api/v1/offerings/{offeringId}/exercises` | staff |
 | GET | `/api/v1/offerings/{offeringId}/exercises` | member/staff |
-| GET / PUT / DELETE | `/api/v1/exercises/{id}` | member / staff |
-| GET / POST | `/api/v1/exercises/{id}/test-cases` | member / staff |
+| GET | `/api/v1/exercises/{id}` | member/staff |
+| PUT / DELETE | `/api/v1/exercises/{id}` | staff |
+| GET | `/api/v1/exercises/{id}/test-cases` | member/staff |
+| POST | `/api/v1/exercises/{id}/test-cases` | staff |
+| POST | `/api/v1/exercises/{id}/test-cases/batch` | staff |
+| GET | `/api/v1/exercises/{id}/test-cases/export` | staff |
 | PUT / DELETE | `/api/v1/exercises/{id}/test-cases/{caseId}` | staff |
-| GET / POST | `/api/v1/exercises/{id}/compilation-files` | member / staff |
-| GET / DELETE | `/api/v1/exercises/{id}/compilation-files/{fileId}` | member / staff |
-| GET / POST | `/api/v1/exercises/{id}/attached-files` | member / staff |
-| GET / DELETE | `/api/v1/exercises/{id}/attached-files/{fileId}` | member / staff |
+| GET | `/api/v1/exercises/{id}/compilation-files` | member/staff |
+| POST | `/api/v1/exercises/{id}/compilation-files` | staff |
+| GET | `/api/v1/exercises/{id}/compilation-files/{fileId}` | member/staff |
+| DELETE | `/api/v1/exercises/{id}/compilation-files/{fileId}` | staff |
+| GET | `/api/v1/exercises/{id}/attached-files` | member/staff |
+| POST | `/api/v1/exercises/{id}/attached-files` | staff |
+| GET | `/api/v1/exercises/{id}/attached-files/{fileId}` | member/staff |
+| DELETE | `/api/v1/exercises/{id}/attached-files/{fileId}` | staff |
 | GET | `/api/v1/allowed-file-types` | signed in |
 
 ### Submissions
@@ -166,7 +198,7 @@ origin. A wildcard origin is rejected at startup.
 | Method | Path | Who |
 | --- | --- | --- |
 | POST | `/api/v1/submissions` | enrolled student or staff |
-| GET | `/api/v1/submissions/{id}/events` | owner, professor, admin |
+| GET | `/api/v1/submissions/{id}/events` | owner or staff of the exercise |
 | GET | `/api/v1/submissions/{id}/source` | owner |
 | GET | `/api/v1/submissions/{id}/output` | owner |
 | GET | `/api/v1/exercises/{id}/submissions` | owner |
@@ -181,6 +213,10 @@ origin. A wildcard origin is rejected at startup.
 | PUT / DELETE | `/api/v1/admin/offerings/{id}` | admin |
 | GET | `/api/v1/admin/offerings/{id}/members` | admin |
 | GET / PUT | `/api/v1/admin/settings` | admin |
+| GET | `/api/v1/admin/file-types` | admin |
+| POST | `/api/v1/admin/file-types` | admin |
+| PUT / DELETE | `/api/v1/admin/file-types/{id}` | admin |
+| POST | `/api/v1/admin/preview` | admin |
 
 The detailed pages document request bodies, responses and edge cases:
 

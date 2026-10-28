@@ -43,6 +43,10 @@ Pull requests are expected to keep the test suite green:
 
 ## Development setup
 
+The [Development setup](./guide/development-setup.md) page covers the complete
+environment: dependencies, service `.env` files, the judge socket, the database
+workflow and common failures. This section is the short version.
+
 ### Frontend
 
 ```bash

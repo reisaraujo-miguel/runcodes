@@ -17,11 +17,12 @@ A membership row linking a user to an offering with a role (`student`,
 
 **Owner**
 The professor (or admin) in `offerings.owner_id`. The owner manages members,
-edits and deletes the class, and has every class permission.
+edits and deletes the class, and has every class permission except ownership
+transfer, which an administrator performs.
 
 **Co-professor**
 An enrolled member with the `professor` role. Authors exercises, test cases and
-files; cannot manage members.
+files, and reads the gradebook; cannot manage members or edit the class.
 
 **Monitor**
 An enrolled member who can read the class and exercises and submit, but cannot
@@ -36,8 +37,10 @@ One input/expected-output pair plus per-case CPU, memory, stack and file-size
 limits and visibility flags.
 
 **Allowed file type**
-An extension the exercise accepts for submissions. The judge maps the extension
-to a runner image.
+An extension the exercise accepts for submissions. The platform catalog stores
+the available and hidden entries; the judge maps the submitted extension to a
+runner image. The catalog flag `is_compilable` controls whether the browser
+editor offers the type, not whether the judge compiles it.
 
 **Commit / submission**
 A row in `commits` representing one submitted solution and its lifecycle,
@@ -50,6 +53,18 @@ One row in `commits_exercise_test_cases_results`, with a verdict (`correct`,
 
 **Score**
 A percentage in `[0, 100]` computed from the correct test cases.
+
+**Best score**
+The highest score among a student's submissions on one exercise. It is the grade
+shown on the class page and the value the gradebook uses.
+
+**Class grade**
+The mean of a student's best scores over every exercise of a class, counting an
+exercise without a submission as zero.
+
+**Gradebook**
+The owner and co-professor view of every student's best score per exercise, plus
+class and per-exercise statistics and a CSV export.
 
 **Snapshot**
 The persisted state (commit, results, artifacts) sent at the start of an SSE

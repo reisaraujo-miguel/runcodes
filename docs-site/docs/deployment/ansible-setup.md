@@ -139,7 +139,7 @@ The most important settings:
 | `config_runcodes_image_registry` / `_namespace` / `_tag` | application images (default `ghcr.io` / `runcodes-icmc` / `latest`) |
 | `config_runcodes_pull_images` | pull app/third-party images before restarting a stack |
 | `config_runcodes_runner_tag` | runner image tag (`latest` supported) |
-| `config_runcodes_runner_image_prefix` | full prefix for runner images |
+| `config_runcodes_runner_image_prefix` | full prefix for runner images, ending in `-`; for example `ghcr.io/reisaraujo-miguel/runcodes-runner-` |
 | `config_runcodes_prepull_runner_images` | pre-pull every language before deploying the judge |
 | `config_runcodes_runner_languages` | languages to pre-pull; matches `runners/` |
 | `config_runcodes_domain` / `_public_url` | hostname and HTTPS origin |

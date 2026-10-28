@@ -1,175 +1,102 @@
 ---
-title: Using RunCodes
-description: End-to-end workflows for students, professors and administrators.
+title: Workflows at a glance
+description: A one-page map of the student, professor and administrator workflows, with links to the detailed guides.
 ---
 
-# Using RunCodes
+# Workflows at a glance
 
-This is the product guide: what each role does in the web application, in the
-order they usually do it.
+RunCodes has three browser workflows: students solve exercises, professors run
+classes and administrators run the platform. This page maps them in one place.
+Each role has a detailed guide:
 
-## Students
+| Role | Detailed guide | What the role does |
+| --- | --- | --- |
+| Student | [Student guide](./student-guide.md) | join a class, submit code, read verdicts, download work |
+| Professor | [Professor guide](./professor-guide.md) | create a class, author exercises, grade, reuse material |
+| Administrator | [Administrator guide](../administration/index.md) | manage accounts, classes, settings, file types and operations |
 
-### 1. Create and verify an account
+The interface is in Brazilian Portuguese. The detailed guides use the on-screen
+labels with an English translation on first use.
 
-Sign up at `/login?mode=signup`. The account starts **unconfirmed**; open the
-link in the verification email before trying to sign in (the login page explains
-this and can resend the link). In a local Compose stack, the mail is caught by
-smtp4dev at <http://localhost:8081>.
+## Student workflow
 
-If you forget your password later, use **Esqueceu a senha?** on the login page
-to receive a recovery link. Reset the password, then sign in with the new one.
+1. Sign up and open the verification link.
+2. Join a class with the enrollment code.
+3. Open an exercise from the dashboard, **Exercícios** or the class page.
+4. Write in the editor or upload a file.
+5. Submit and follow the per-case verdicts.
+6. Resubmit until the deadline; the best score is kept.
+7. Download your source from the history or your generated output files from the
+   results panel.
 
-### 2. Join a class
+Read the [Student guide](./student-guide.md) for the full flow, including drafts,
+deadlines, visibility rules and troubleshooting.
 
-A class is called an **offering**. Open **Classes**, enter the enrollment code
-from your professor, and join. The class then appears on your dashboard.
+## Professor workflow
 
-### 3. Find an exercise
+1. Ask an administrator to promote the account to `professor`.
+2. Create a class and share its six-character enrollment code.
+3. Add co-professors and monitors by email.
+4. Create exercises with dates, instructions, allowed file types and materials.
+5. Add test cases, limits and visibility flags.
+6. Test the exercise with a real submission.
+7. Publish it and monitor the class gradebook.
+8. Export the class at the end of the term.
 
-The home dashboard lists exercises that are **open right now** across your
-classes. The exercises page shows all exercises in your classes, with open and
-deadline times. An exercise may be visible before its open date depending on the
-professor's setting.
+Read the [Professor guide](./professor-guide.md) for authoring, batch test cases,
+class tools, gradebook details and recompilation.
 
-### 4. Solve and submit
+## Administrator workflow
 
-Open the exercise, then the submission workspace:
+1. Bootstrap the seeded admin and change its password.
+2. Create a second administrator and promote professors.
+3. Set the contact email and login disclaimer.
+4. Review the file type catalog against the runner images.
+5. Verify mail delivery and judge readiness.
+6. Configure backups, telemetry and alerting.
+7. Manage users, classes and ownership changes during the term.
+8. Upgrade outside submission windows and keep the restore procedure tested.
 
-- write in the in-browser editor or upload a file;
-- only the file types the exercise allows are accepted;
-- the editor keeps a local draft and can restore your previous submission;
-- the source file limit is 10 MiB.
+Read the [Administrator guide](../administration/index.md) for the panel, and
+[Platform operations](../administration/operations.md) for day-2 work.
 
-Submitting creates a commit immediately. The page follows the run live:
+## Rules that cross roles
 
-| What you see | Meaning |
-| --- | --- |
-| `queued` | waiting for a judge worker |
-| `compiling` | the compiler is running |
-| `running` | test cases are executing |
-| case verdicts | `correct`, wrong output, or killed |
-| `completed` | every case passed |
-| `uncompleted` | the run finished with failures |
-| `compilation_error` | the compiler rejected the code |
-| `timeout` / `server_error` | infrastructure or budget failure |
+- **A class is an offering.** The UI says **turma**; the API and database say
+  offering.
+- **Enrollment is a code, not an invitation.** Students join with the class code;
+  monitors and co-professors are added by email.
+- **Deadlines apply to students.** Owners and co-professors can submit after the
+  deadline to test an exercise.
+- **The best score counts.** The per-exercise grade is the best score among the
+  student's submissions; the class grade averages those best scores and counts a
+  missing exercise as zero.
+- **Removed exercises are excluded from the gradebook.** Deleting a class or an
+  account cascades to submissions and is irreversible.
+- **The judge owns execution.** The backend owns persistence. A judge outage
+  stops new runs but not sign-in, classes or browsing.
 
-You can close the page and come back: the persisted state is restored from a
-snapshot. The submission history shows your last 50 submissions for the exercise,
-with score and status.
-
-### 5. Download what you produced
-
-If a run wrote output files, the result page offers an archive. The original
-source of a past submission can also be downloaded and restored into the editor.
-
-### 6. Manage your profile
-
-**Profile** lets you change your name, email and institutional id, and turn the
-in-browser code editor on or off. Changing your email does not unconfirm the
-account, but the new address must be unique.
-
-::: tip Deadline rules
-Students cannot submit after the deadline. Professors, co-professors and the
-class owner can, because they need to try an exercise before assigning it.
-:::
-
-## Professors
-
-A **professor** account can own classes. If your account is a student, ask an
-administrator to change your role.
-
-### 1. Create a class
-
-**Professor → Classes → New class**. Set a name, an end date and an optional
-description. The server generates a six-character enrollment code. The owner
-can generate a new code from the class page; the previous one stops working
-immediately. Share that code with students; add co-professors and monitors from
-the class page by email.
-
-- **Co-professor** (`professor` enrollment) can author exercises, test cases and
-  files, but cannot manage members.
-- **Monitor** can read the class and exercises and submit, but cannot author.
-- **Students** join with the code and cannot be added by email.
-
-### 2. Create an exercise
-
-Open the class and create an exercise with:
-
-- a title and description;
-- an open date and deadline;
-- the allowed file types (the judge maps the extension to a language image).
-
-### 3. Add test cases
-
-Each test case has an input, an expected output and limits. Inputs and expected
-outputs can be **text** or **files**; extra files can be attached to a case. The
-limits are:
-
-- CPU time in seconds;
-- memory (address space) in bytes;
-- stack size in bytes;
-- file size in bytes.
-
-Visibility flags decide whether students see the input, the expected output and
-their own output.
-
-### 4. Add supporting files
-
-- **Compilation files** are placed in the workspace before compilation (headers,
-  Makefiles, libraries).
-- **Attached files** are student-visible material (statements, datasets).
-
-### 5. Test the exercise yourself
-
-Staff can submit to their own exercises, including after the deadline. Do that
-before releasing the exercise: it validates the test cases, the allowed file
-types and the resource limits against a real run.
-
-### 6. Monitor the class
-
-The class page shows exercises and member counts. Student submissions are graded
-independently; the class owner can list members, change roles, ban or remove
-members, and transfer nothing (only an admin can transfer ownership).
-
-## Administrators
-
-The **Admin** area is available to accounts with the `admin` role.
-
-| Page | What it does |
-| --- | --- |
-| Dashboard | platform overview |
-| Users | search accounts, change name/email/institutional id/role, confirm/unconfirm, delete |
-| Courses | list every class, edit it, transfer ownership, delete |
-| Settings | contact email and login-page disclaimer |
-
-Typical first steps after a fresh deployment:
-
-1. Bootstrap the seeded admin password (see
-   [Getting started](./getting-started.md#_3-bootstrap-the-admin-account)).
-2. Sign in and promote the professors who will create classes.
-3. Update the contact email/disclaimer in **Settings**.
-4. Optionally unconfirm or delete test accounts.
-
-An admin cannot change their own role, delete their own account or unconfirm
-themselves, to avoid locking themselves out.
+The grading rules are in [How grading works](./grading.md). The role model is in
+[Classes, roles & access](./classes-and-roles.md).
 
 ## A worked example
 
-1. Admin: bootstrap `admin@admin.com`, promote `grace@example.edu` to
-   professor.
-2. Grace: create "CS101 — Introduction to Programming", share the code.
-3. Grace: create "Hello, world", allow `.c`, add one test case with input
+1. An administrator bootstraps `admin@admin.com` and promotes
+   `grace@example.edu` to professor.
+2. Grace creates "CS101 — Introduction to Programming" and shares the code.
+3. Grace creates "Hello, world", allows `.c` and adds one test case with input
    `Ada` and expected output `Hello, Ada!`.
-4. Ada: signs up, verifies, joins with the code, opens the exercise, writes a C
-   program and submits.
-5. The judge compiles and runs it, the page shows the case verdict and score,
-   and Ada can resubmit until the deadline.
-6. Grace: reviews the class and the submissions.
+4. Ada signs up, verifies her email, joins with the code and opens the exercise.
+5. Ada writes a C program and submits it. The judge compiles and runs it, and
+   the page shows the case verdict and score.
+6. Ada resubmits until the deadline. Grace opens **Notas** and downloads the
+   gradebook CSV.
 
 ## Related pages
 
+- [Student guide](./student-guide.md)
+- [Professor guide](./professor-guide.md)
+- [Administrator guide](../administration/index.md)
 - [Submissions & live judging](./submissions.md)
 - [Classes, roles & access](./classes-and-roles.md)
 - [Accounts & settings](./accounts-and-settings.md)
-- [Frontend application](./frontend.md)

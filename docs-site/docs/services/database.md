@@ -328,5 +328,5 @@ and test restores.
 
 - [Architecture](../guide/architecture.md)
 - [Backend](./backend.md)
-- [Ansible operations: migrations](../deployment/ansible-operations.md#database-migrations)
+- [Ansible operations: migrations](../deployment/ansible-operations.md#database-lifecycle-and-migrations)
 - [Configuration: database](../reference/configuration.md#backend)
