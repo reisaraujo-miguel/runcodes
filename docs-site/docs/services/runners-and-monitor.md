@@ -205,7 +205,7 @@ defaults to `:latest`; the version tags exist for pinning.
 ## Tests
 
 The harness contract is checked against the real script, a real monitor build and
-real child processes — no Docker required:
+real child processes — no container engine required:
 
 ```sh
 ./runners/test/harness.test.sh

@@ -9,7 +9,8 @@ Each service loads configuration once at startup and fails fast on a missing
 required value or an unparseable one. This page lists the variables by service.
 
 ::: tip Where values live
-- **Docker Compose** reads a root `.env` or the process environment.
+- **Compose** (Podman by default, Docker supported) reads a root `.env` or the
+  process environment.
 - **Four-machine deployment** reads `deploy/ansible/inventories/group_vars/all/config.yml`
   (untracked) and secrets from `vault.yml` (encrypted).
 - Each service also has an `.env.example` with the development defaults.
@@ -259,9 +260,10 @@ four-machine release, `VITE_OTEL_EXPORTER_OTLP_ENDPOINT=/otel`.
 | `RUNCODES_DOMAIN` | `:80` | Caddy site address; hostname enables automatic HTTPS |
 | `BACKEND_UPSTREAM` | `http://backend:8443` | API upstream |
 
-## Docker Compose (source build)
+## Compose (source build)
 
-Source: `docker-compose.yml`, `.env.example`.
+Source: `docker-compose.yml`, `.env.example`. The same file works with Podman
+Compose (default) and Docker Compose v2.
 
 | Variable | Required | Used by | Meaning |
 | --- | :-: | --- | --- |
@@ -296,11 +298,13 @@ explicit message.
 
 ## Image-based Compose
 
-Source: `deploy/compose/docker-compose.yml`, `deploy/compose/.env.example`.
+Source: `deploy/compose/docker-compose.yml`, `deploy/compose/.env.example`. The
+stack runs on Podman Compose by default and on Docker Compose v2 when selected.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `COMPOSE_PROJECT_NAME` | `runcodes` | Compose project and volume prefix |
+| `CONTAINER_ENGINE` | `auto` | `auto` prefers Podman and falls back to Docker; `podman` or `docker` forces one engine. An environment value overrides `.env`. |
 | `RUNCODES_IMAGE_REGISTRY` | `ghcr.io` | registry for application and runner images |
 | `RUNCODES_IMAGE_NAMESPACE` | `runcodes-icmc` | namespace holding the four application images |
 | `RUNCODES_IMAGE_TAG` | `latest` | application image tag |

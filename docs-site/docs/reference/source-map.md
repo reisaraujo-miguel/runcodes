@@ -62,7 +62,7 @@ and leave the README pointer alone.
 | Deployment paths and topology | [Deployment overview](../deployment/index.md) |
 | Production readiness checklist | [Production checklist](../deployment/checklist.md) |
 | Single host from published images | [Image-based Compose deployment](../deployment/image-compose.md) |
-| Single-host source build | [Docker Compose from source](../deployment/compose.md) |
+| Single-host source build | [Compose from source](../deployment/compose.md) |
 | Four-machine setup | [Ansible deployment: setup](../deployment/ansible-setup.md) |
 | Upgrades, backups, migrations, troubleshooting | [Ansible deployment: operations](../deployment/ansible-operations.md) |
 | Security model, limits, scaling, capacity | [Security & scaling](../deployment/security.md) |

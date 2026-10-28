@@ -10,6 +10,10 @@ the frontend, backend, judge or database; `deploy/compose/deploy.sh` pulls the
 four application images from the configured registry and starts the stack. The
 judge pulls the language runner images on its own.
 
+The deployment runs on **Podman by default** and also supports **Docker
+Compose v2**. Both engines use the same Compose file; the judge always drives
+the host's rootless Podman socket.
+
 Use it when you want a production-like single host without a Go, Bun or
 container build toolchain. For local development or a demo from source, use
 [Getting started](../guide/getting-started.md). For four hosts and the full
@@ -32,10 +36,13 @@ reverse-proxies `/api/*` to the backend, so the API is same-origin.
 
 ## Requirements
 
-- Docker Engine with Compose v2.
-- Rootless Podman on the host, with its API socket.
+- Podman with a Compose provider (the default), or Docker Engine with Compose v2.
+- Rootless Podman on the host, with its API socket. The judge needs the socket
+  even when Compose runs on Docker.
 - A host directory for the judge workspaces, shared with the Podman service.
-- Network access to the configured registry, and `docker login` when private.
+- Network access to the configured registry. `podman login ghcr.io`
+  authenticates the application pulls and the judge's runner pulls; with Docker
+  Compose, also use `docker login ghcr.io` for the application images.
 - About 15 GB of disk for the runner images, plus space for PostgreSQL,
   SeaweedFS and the workspaces.
 
@@ -59,14 +66,37 @@ $EDITOR .env
 `deploy.sh up`:
 
 1. loads `.env` and resolves the host execution directory to an absolute path;
-2. checks the rootless Podman socket;
-3. runs `docker compose pull` for the application and infrastructure images;
-4. starts the stack with `docker compose up -d --remove-orphans`;
-5. prints the container status.
+2. selects the Compose engine: Podman by default, Docker when Podman is absent
+   or `CONTAINER_ENGINE=docker`;
+3. checks the rootless Podman socket the judge needs;
+4. runs `<engine> compose pull` for the application and infrastructure images;
+5. starts the stack with `<engine> compose up -d --remove-orphans`;
+6. prints the container status.
 
 The first start initializes PostgreSQL from the database image. The seeded
 `admin@admin.com` account has no usable password; see
 [First boot](#first-boot).
+
+### Compose engine
+
+`CONTAINER_ENGINE` selects the engine. An environment value overrides the value
+in `deploy/compose/.env`.
+
+| Value | Behaviour |
+| --- | --- |
+| `auto` (default) | uses `podman compose` when available, otherwise `docker compose` |
+| `podman` | requires Podman and a Compose provider |
+| `docker` | requires Docker Engine and Compose v2 |
+
+With `auto`, Podman wins when both engines are installed and working. Force
+Docker for one run:
+
+```bash
+CONTAINER_ENGINE=docker ./deploy.sh up
+```
+
+The judge still needs the rootless Podman socket with either engine, because it
+creates the runner containers through the Podman API.
 
 ### Required secrets
 
@@ -173,9 +203,13 @@ missing, Compose fails during `pull` with a `not found` or `unauthorized` error.
 script sources that file, so keep it shell-compatible: quote values with spaces
 (as `.env.example` does) and avoid a literal `$` in secrets.
 
+The script runs `podman compose` by default and uses `docker compose` when
+Podman is unavailable or `CONTAINER_ENGINE=docker`. Set `CONTAINER_ENGINE` in
+the environment or in `deploy/compose/.env`; an environment value wins.
+
 The Compose file itself is
 [`deploy/compose/docker-compose.yml`](https://github.com/reisaraujo-miguel/runcodes/blob/main/deploy/compose/docker-compose.yml).
-It has no `build:` sections.
+It has no `build:` sections and works with either engine.
 
 ## First boot
 
@@ -300,10 +334,10 @@ deploy/compose/
 | Symptom | Cause and fix |
 | --- | --- |
 | `deploy.sh: .env not found` | copy `.env.example` to `.env` in `deploy/compose` |
-| `podman socket not found` | start `podman.socket` or set `PODMAN_SOCKET` |
-| `unauthorized` during pull | run `docker login ghcr.io` for the registry that holds the images |
+| `podman socket not found` | start `podman.socket` or set `PODMAN_SOCKET`; the judge needs it with Docker too |
+| `unauthorized` during pull | run `podman login ghcr.io` for the runner images (and the application images with Podman); with Docker Compose, also run `docker login ghcr.io` for the application images |
 | `not found` during pull | the namespace/tag does not contain that image; check `RUNCODES_IMAGE_NAMESPACE`, `RUNCODES_IMAGE_TAG` and the runner settings |
-| judge says `podman unavailable` | the socket mount is stale; recreate the judge with `docker compose --env-file .env -f docker-compose.yml up -d --force-recreate judge` |
+| judge says `podman unavailable` | the socket mount is stale; recreate the judge with `podman compose --env-file .env -f docker-compose.yml up -d --force-recreate judge` (use `docker compose` when Compose runs on Docker) |
 | judge cannot write the workspace | check `RUNCODES_EXEC_DIR` permissions and the SELinux label; the one-shot makes it writable, but the host must allow it |
 | the frontend loads but API calls fail | run `./deploy.sh logs` and check the backend and Caddy |
 | no verification mail | smtp4dev is the target, or the real relay settings are wrong; see [Mail](#mail) |
@@ -314,7 +348,7 @@ deploy/compose/
 
 - [Deployment overview](./index.md)
 - [Production checklist](./checklist.md)
-- [Docker Compose from source](./compose.md)
+- [Compose from source](./compose.md)
 - [Ansible setup](./ansible-setup.md)
 - [Configuration reference](../reference/configuration.md)
 - [Platform operations](../administration/operations.md)

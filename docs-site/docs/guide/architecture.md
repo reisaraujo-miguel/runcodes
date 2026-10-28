@@ -7,7 +7,8 @@ description: Component architecture, submission lifecycle, state machine and sto
 
 RunCodes separates the public web tier, the stateless API, the stateful data
 tier, and the untrusted execution tier. The same shape is used locally with
-Docker Compose and in the four-machine Ansible deployment.
+Podman Compose (the default) or Docker Compose and in the four-machine Ansible
+deployment.
 
 ## High-level topology
 

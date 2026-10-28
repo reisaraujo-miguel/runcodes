@@ -25,7 +25,8 @@ cd backend && go run . -debug
 cd judge && make run
 ```
 
-For the complete stack use `docker compose up --build`. The
+For the complete stack use `podman compose up --build` (Podman is the default)
+or `docker compose up --build` with Docker Compose v2. The
 [contributor guide](https://reisaraujo-miguel.github.io/runcodes/contributing.html#development-setup)
 covers dependencies, the observability overlay and each service's commands.
 

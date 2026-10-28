@@ -91,8 +91,9 @@ documentation site is in English.
 
 - [Bun](https://bun.sh/) (recommended) or Node.js 18+.
 - The backend and (for submissions) the judge running locally. The easiest path
-  is `docker compose up -d database seaweed redis smtp4dev` plus the backend and
-  judge; see [Getting started](../guide/getting-started.md).
+  is `podman compose up -d database seaweed redis smtp4dev` (or `docker compose
+  up -d database seaweed redis smtp4dev`) plus the backend and judge; see
+  [Getting started](../guide/getting-started.md).
 
 ### Commands
 

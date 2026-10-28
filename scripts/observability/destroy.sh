@@ -2,18 +2,23 @@
 #
 # Destroys the observability stack's containers AND only the observability
 # volumes. The application volumes (Postgres, Redis, SeaweedFS, Caddy and
-# smtp4dev) are left untouched: `docker compose down -v` would delete those too,
+# smtp4dev) are left untouched: `compose down -v` would delete those too,
 # which is not what this command promises.
 #
 # Usage:
 #   ./scripts/observability/destroy.sh           # prompt before deleting
 #   FORCE=1 ./scripts/observability/destroy.sh   # no prompt (CI/automation)
+#
+# CONTAINER_ENGINE selects Podman (default), Docker, or auto.
 set -Eeuo pipefail
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
-COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.observability.yml)
+# shellcheck source=scripts/observability/engine.sh
+source "$ROOT/scripts/observability/engine.sh"
+runcodes_select_engine || exit 1
+
 VOLUME_SUFFIXES=(
   prometheus-data
   alertmanager-data
@@ -41,9 +46,9 @@ echo "observability: stopping and removing containers"
 
 for suffix in "${VOLUME_SUFFIXES[@]}"; do
   volume="${project}_${suffix}"
-  if docker volume inspect "$volume" >/dev/null 2>&1; then
+  if "$CONTAINER_ENGINE" volume inspect "$volume" >/dev/null 2>&1; then
     echo "observability: removing volume $volume"
-    docker volume rm "$volume" >/dev/null
+    "$CONTAINER_ENGINE" volume rm "$volume" >/dev/null
   fi
 done
 

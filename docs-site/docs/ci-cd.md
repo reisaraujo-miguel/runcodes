@@ -23,7 +23,7 @@ it runs, and what a release publishes.
 | `docs.yml` | push to `main` touching `docs-site/`, manual | build this site and deploy it to GitHub Pages |
 
 Dependabot updates Bun, Go modules, Dockerfiles, GitHub Actions and
-docker-compose files weekly.
+Compose files weekly.
 
 ## Tests
 
@@ -103,8 +103,9 @@ Findings are uploaded as SARIF to the Security tab. The repository scan
 (`trivy-repo.yml`) overrides the exit code to 0: findings are reported, not
 blocking.
 
-`docker compose` builds are covered by the same configuration. Base-image CVEs are
-caught by the weekly schedule even without code changes.
+`podman compose` and `docker compose` builds are covered by the same
+configuration. Base-image CVEs are caught by the weekly schedule even without
+code changes.
 
 ## Releases
 

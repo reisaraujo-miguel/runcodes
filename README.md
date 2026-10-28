@@ -28,8 +28,10 @@ The original compiler engine and language images live in separate repositories
 
 ## Quick start
 
-Requirements: Docker Compose v2, a rootless Podman socket, and about 15 GB of
-free disk. Start the socket before creating the judge container:
+Requirements: Podman with a Compose provider (default), or Docker Engine with
+Compose v2, plus a rootless Podman socket and about 15 GB of free disk. The
+judge needs the Podman socket with either Compose engine. Start it before
+creating the judge container:
 
 ```bash
 systemctl --user start podman.socket
@@ -48,7 +50,8 @@ export RUNCODES_JUDGE_TOKEN="$(openssl rand -hex 32)"
 export RUNCODES_S3_CREDENTIALS_KEY="$(openssl rand -hex 16)"
 export RUNCODES_S3_CREDENTIALS_SECRET="$(openssl rand -hex 24)"
 
-docker compose up --build
+podman compose up --build    # Podman
+# docker compose up --build  # Docker Compose v2
 ```
 
 | Service | URL |
@@ -75,7 +78,8 @@ cd judge && make run
 cd frontend && bun install && bun run dev
 ```
 
-Use `docker compose up -d database seaweed redis smtp4dev` for the dependencies,
+Use `podman compose up -d database seaweed redis smtp4dev` (or
+`docker compose up -d database seaweed redis smtp4dev`) for the dependencies,
 and point the backend's S3, Redis and judge URLs at `127.0.0.1` (the Compose
 environment uses service names that only resolve inside the network). See
 [Contributing](CONTRIBUTING.md) for tests, hooks and database changes.
@@ -84,7 +88,7 @@ environment uses service names that only resolve inside the network). See
 
 - **Single host, published images:** [Image-based Compose](https://reisaraujo-miguel.github.io/runcodes/deployment/image-compose.html),
   with the workflow in [`deploy/compose/`](deploy/compose/README.md).
-- **Single host, built from source:** [Docker Compose from source](https://reisaraujo-miguel.github.io/runcodes/deployment/compose.html).
+- **Single host, built from source:** [Compose from source](https://reisaraujo-miguel.github.io/runcodes/deployment/compose.html).
 - **Four machines:** [Ansible deployment](https://reisaraujo-miguel.github.io/runcodes/deployment/ansible-setup.html),
   with the rootless Podman topology, observability stack and operations guide in
   [`deploy/ansible/`](deploy/ansible/README.md).

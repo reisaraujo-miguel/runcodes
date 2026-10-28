@@ -9,7 +9,7 @@ The backend exposes a JSON API under `/api/v1`. In both supported deployments
 it is reached through Caddy at the same origin as the SPA, so the base URL is:
 
 ```text
-http://localhost:8080/api/v1        # Docker Compose
+http://localhost:8080/api/v1        # single-host Compose (Podman or Docker)
 https://<your-domain>/api/v1        # four-machine deployment
 ```
 

@@ -6,7 +6,14 @@ description: Run the opt-in telemetry overlay locally, configure the services an
 # Local observability stack
 
 The local overlay adds the complete telemetry stack to the normal application
-Compose stack. It is opt-in: `docker compose up` keeps its default behaviour.
+Compose stack. It is opt-in: `podman compose up` keeps its default behaviour;
+the same applies with `docker compose up` under Docker Compose v2.
+
+::: tip Podman is the default, Docker is supported
+The examples use `podman compose`. With Docker, replace it with
+`docker compose`; set `CONTAINER_ENGINE=docker` for the Make targets and the
+helper scripts.
+:::
 
 ```bash
 make observability-init       # generate the local Grafana admin password
@@ -17,7 +24,7 @@ make observability-smoke-test # generate traffic and validate every signal
 The equivalent explicit command (run the init first) is:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d --build
+podman compose -f docker-compose.yml -f docker-compose.observability.yml up -d --build
 ```
 
 The stack publishes every UI and API on **127.0.0.1** by default. Nothing is
@@ -25,10 +32,10 @@ exposed publicly.
 
 ## Prerequisites
 
-- Docker Compose v2, or a Docker-compatible API.
+- Podman with a Compose provider (the default), or Docker Engine with Compose v2.
 - `make`, `curl`, `jq`.
 - The application secrets from the root `.env` or the environment.
-- The judge's rootless Podman socket for submissions to run.
+- The judge's rootless Podman socket for submissions to run, with either engine.
 - For the browser test: Playwright Chromium installed once with
   `cd frontend && bun run test:e2e:install`.
 - For the authenticated submission test: an admin password bootstrapped with
@@ -61,7 +68,7 @@ exposed publicly.
 
 The application's readiness is `GET /readyz`: the database is required, and the
 judge is reported as `ok`/`unavailable` without failing readiness. Liveness is
-`/healthz`, which is what the Docker health check uses.
+`/healthz`, which is what the Compose health check uses.
 
 ## Application telemetry variables
 
@@ -210,9 +217,9 @@ test asserts the judge's `judge.grade_test_case` span, its verdict, and the
 `pyroscope.profile.id` attribute.
 
 Expected output ends with `All observability smoke checks passed.` and lists the
-service URLs, the trace id and elapsed time. On failure the script prints
-`docker compose ps`, the last 40 lines of each service log and the last API
-responses.
+service URLs, the trace id and elapsed time. On failure the script prints the
+Compose status (`podman compose ps` or `docker compose ps`), the last 40 lines
+of each service log and the last API responses.
 
 ## Start, stop and destroy
 
@@ -237,7 +244,8 @@ files:
 make observability-up       # rebuilds the instrumented images
 ```
 
-For a backend-only telemetry change, `docker compose ... up -d --build backend`.
+For a backend-only telemetry change, run
+`podman compose ... up -d --build backend` (or `docker compose ...`).
 For a collector config change, recreate the collector. For a Grafana provisioning
 change, restart Grafana (a provisioning error intentionally fails startup).
 

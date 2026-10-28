@@ -1,7 +1,7 @@
 # Loki single-binary configuration for the local observability stack.
 #
 # Logs arrive from the OpenTelemetry Collector over Loki's native OTLP endpoint
-# (http://loki:3100/otlp/v1/logs), not from Docker log files. The collector's
+# (http://loki:3100/otlp/v1/logs), not from the container runtime log files. The collector's
 # otlphttp exporter appends /v1/logs to the configured /otlp endpoint.
 #
 # The filesystem backend and an in-memory ring make this a single-node setup.

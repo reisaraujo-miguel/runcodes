@@ -53,8 +53,8 @@ make all \
 ./test/harness.test.sh
 ```
 
-The harness test needs no Docker: it checks the real script, a local monitor
-build and real child processes. It covers nonce-protected milestones, deletion of
+The harness test needs no container engine: it checks the real script, a local
+monitor build and real child processes. It covers nonce-protected milestones, deletion of
 `container.config` before submitted code runs, per-case limits, daemon isolation
 and judge-global precedence.
 

@@ -7,7 +7,19 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-COMPOSE ?= podman compose
+# Podman is the default Compose engine. Pass CONTAINER_ENGINE=docker or
+# COMPOSE="docker compose" to use Docker Compose v2 with the observability
+# targets. The helper scripts read CONTAINER_ENGINE, so keep it in sync with
+# COMPOSE and export it.
+CONTAINER_ENGINE ?= podman
+
+ifeq ($(origin COMPOSE),undefined)
+  COMPOSE := $(CONTAINER_ENGINE) compose
+else
+  CONTAINER_ENGINE := $(firstword $(COMPOSE))
+endif
+
+export CONTAINER_ENGINE
 OBS_COMPOSE = $(COMPOSE) -f docker-compose.yml -f docker-compose.observability.yml
 
 .PHONY: help rootfs-smoke observability-init observability-up observability-down observability-status observability-logs observability-smoke-test observability-browser-smoke-test observability-submission-smoke-test observability-validate observability-destroy
@@ -24,6 +36,8 @@ help:
 	@echo "  make observability-validate    validate configs (compose, promtool, amtool, collector)"
 	@echo "  make observability-destroy     DESTRUCTIVE: remove observability volumes (prompts; FORCE=1 skips)"
 	@echo "  make rootfs-smoke              compile/run a C case under the read-only runner rootfs (Podman host)"
+	@echo ""
+	@echo "  Podman is the default Compose engine; add CONTAINER_ENGINE=docker for Docker Compose v2."
 
 # Real-container check of the runner's read-only rootfs and capped tmpfs.
 rootfs-smoke:

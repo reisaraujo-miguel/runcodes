@@ -195,7 +195,7 @@ For the first week:
 
 - [Deployment overview](./index.md)
 - [Image-based Compose](./image-compose.md)
-- [Docker Compose from source](./compose.md)
+- [Compose from source](./compose.md)
 - [Ansible setup](./ansible-setup.md)
 - [Ansible operations](./ansible-operations.md)
 - [Security & scaling](./security.md)

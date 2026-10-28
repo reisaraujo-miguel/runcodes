@@ -3,13 +3,20 @@
 # Deploy the image-based single-host stack in this directory.
 #
 # The script reads .env (or ENV_FILE), resolves the host paths Compose cannot
-# derive, checks the rootless Podman socket, then pulls and starts the stack.
-# It never builds from source.
+# derive, checks the rootless Podman socket the judge needs, then pulls and
+# starts the stack. It never builds from source.
+#
+# Compose can run on Podman (the default) or Docker. CONTAINER_ENGINE selects
+# the engine; "auto" prefers Podman and falls back to Docker.
 
 set -Eeuo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$script_dir"
+
+# Keep an explicit engine choice ahead of the one in .env, so
+# `CONTAINER_ENGINE=docker ./deploy.sh up` overrides the file.
+requested_engine="${CONTAINER_ENGINE:-}"
 
 env_file="${ENV_FILE:-$script_dir/.env}"
 if [[ ! -f "$env_file" ]]; then
@@ -30,8 +37,49 @@ die() {
   exit 1
 }
 
-command -v docker >/dev/null 2>&1 || die "docker is not installed"
-docker compose version >/dev/null 2>&1 || die "docker compose v2 is required"
+engine="${requested_engine:-${CONTAINER_ENGINE:-auto}}"
+engine="$(printf '%s' "$engine" | tr '[:upper:]' '[:lower:]')"
+
+has_podman_compose() {
+  command -v podman >/dev/null 2>&1 &&
+    podman compose version >/dev/null 2>&1
+}
+
+has_docker_compose() {
+  command -v docker >/dev/null 2>&1 &&
+    docker compose version >/dev/null 2>&1
+}
+
+case "$engine" in
+  podman)
+    command -v podman >/dev/null 2>&1 ||
+      die "podman is not installed; install Podman or set CONTAINER_ENGINE=docker"
+    podman compose version >/dev/null 2>&1 ||
+      die "podman compose is required; install a Compose provider or set CONTAINER_ENGINE=docker"
+    ;;
+  docker)
+    command -v docker >/dev/null 2>&1 ||
+      die "docker is not installed; install Docker or set CONTAINER_ENGINE=podman"
+    docker compose version >/dev/null 2>&1 ||
+      die "docker compose v2 is required; install the Compose plugin or set CONTAINER_ENGINE=podman"
+    ;;
+  auto)
+    if has_podman_compose; then
+      engine=podman
+    elif has_docker_compose; then
+      engine=docker
+    else
+      die "neither 'podman compose' nor 'docker compose' is available; install Podman with a Compose provider, or Docker with Compose v2"
+    fi
+    ;;
+  *)
+    die "CONTAINER_ENGINE must be 'podman', 'docker' or 'auto' (got '$engine')"
+    ;;
+esac
+
+CONTAINER_ENGINE="$engine"
+export CONTAINER_ENGINE
+printf 'deploy.sh: using %s compose\n' "$engine" >&2
 
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-runcodes}"
 export RUNCODES_IMAGE_REGISTRY="${RUNCODES_IMAGE_REGISTRY:-ghcr.io}"
@@ -41,7 +89,8 @@ export RUNCODES_RUNNER_IMAGE_PREFIX="${RUNCODES_RUNNER_IMAGE_PREFIX:-runcodes-ic
 export RUNCODES_RUNNER_IMAGE_TAG="${RUNCODES_RUNNER_IMAGE_TAG:-latest}"
 
 # Compose needs an absolute host path for JUDGE_EXEC_DIR_REMOTE: Podman mounts
-# it from the host, not from the judge container.
+# it from the host, not from the judge container. This applies with either
+# Compose engine because the judge always drives Podman.
 exec_dir="${RUNCODES_EXEC_DIR:-$script_dir/exec}"
 mkdir -p "$exec_dir"
 RUNCODES_EXEC_DIR="$(cd -- "$exec_dir" && pwd -P)"
@@ -53,10 +102,10 @@ export PODMAN_SOCKET
 
 require_podman_socket() {
   [[ -S "$podman_socket" ]] || die \
-    "podman socket not found at $podman_socket; run 'systemctl --user start podman.socket' or set PODMAN_SOCKET"
+    "podman socket not found at $podman_socket; the judge needs it even when Compose runs on Docker. Run 'systemctl --user start podman.socket' or set PODMAN_SOCKET"
 }
 
-compose=(podman compose --env-file "$env_file" -f "$script_dir/docker-compose.yml")
+compose=("$engine" compose --env-file "$env_file" -f "$script_dir/docker-compose.yml")
 action="${1:-up}"
 
 case "$action" in
@@ -97,6 +146,11 @@ Commands:
   logs     Follow the stack logs
   status   Show container status
   config   Render the final Compose configuration
+
+Environment:
+  CONTAINER_ENGINE  Compose engine: auto (default; Podman first), podman, docker
+  ENV_FILE          environment file to read (default: ./.env)
+  PODMAN_SOCKET     rootless Podman socket used by the judge
 EOF
     exit 2
     ;;

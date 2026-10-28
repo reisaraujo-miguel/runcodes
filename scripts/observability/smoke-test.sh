@@ -18,11 +18,15 @@
 # Environment overrides: BACKEND_URL, FRONTEND_URL, JUDGE_URL, PROMETHEUS_URL,
 # LOKI_URL, TEMPO_URL, GRAFANA_URL, ALERTMANAGER_URL, ALERT_SINK_URL,
 # GRAFANA_ADMIN_USER, GRAFANA_ADMIN_PASSWORD, SMOKE_START, SMOKE_TIMEOUT,
-# SMOKE_BUILD.
+# SMOKE_BUILD, CONTAINER_ENGINE.
 set -Eeuo pipefail
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
+
+# shellcheck source=scripts/observability/engine.sh
+source "$ROOT/scripts/observability/engine.sh"
+runcodes_select_engine || exit 1
 
 BACKEND_URL="${BACKEND_URL:-http://127.0.0.1:8443}"
 FRONTEND_URL="${FRONTEND_URL:-http://127.0.0.1:8080}"
@@ -49,7 +53,6 @@ SMOKE_START="${SMOKE_START:-1}"
 SMOKE_BUILD="${SMOKE_BUILD:-1}"
 SMOKE_TIMEOUT="${SMOKE_TIMEOUT:-180}"
 
-COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.observability.yml)
 SMOKE_ID="smoke-$(date +%s)-${RANDOM}"
 START_EPOCH="$(date +%s)"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/runcodes-smoke.XXXXXX")"

@@ -18,7 +18,8 @@ go run . -debug     # or DEBUG_MODE=true
 The service reads its configuration from the environment (or `backend/.env`);
 required values are listed in [`backend/.env.example`](.env.example) and the
 [configuration reference](https://reisaraujo-miguel.github.io/runcodes/reference/configuration.html#backend).
-For a complete stack, run `docker compose up --build` from the repository root.
+For a complete stack, run `podman compose up --build` from the repository root.
+Docker Compose v2 works too with `docker compose up --build`.
 
 The backend and judge log in as `runcodes_app`, the row-only database role. Use
 the owner role only for migrations and bootstrap.

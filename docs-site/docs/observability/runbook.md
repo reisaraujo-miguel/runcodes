@@ -8,8 +8,14 @@ description: Operational procedures for the telemetry stack — validation, fail
 Operational procedures for the stack described in
 [Local observability stack](./local.md) and
 [Four-machine observability](./production.md). Commands assume the repository
-root and a working Docker Compose (or a Docker-compatible API); substitute the
-four-machine paths where noted.
+root and a working Podman Compose (the default) or Docker Compose v2;
+substitute the four-machine paths where noted.
+
+::: tip Podman is the default, Docker is supported
+The examples use `podman compose`. Replace it with `docker compose` for Docker
+Compose v2; set `CONTAINER_ENGINE=docker` for the Make targets and helper
+scripts.
+:::
 
 ## Starting and stopping
 
@@ -25,9 +31,9 @@ make observability-status
 make observability-logs
 
 # Follow one service
-docker compose -f docker-compose.yml -f docker-compose.observability.yml \
+podman compose -f docker-compose.yml -f docker-compose.observability.yml \
   logs -f backend
-docker compose -f docker-compose.yml -f docker-compose.observability.yml \
+podman compose -f docker-compose.yml -f docker-compose.observability.yml \
   logs -f otel-collector
 
 # Stop, keep data volumes
@@ -45,6 +51,9 @@ If `make observability-up` fails while building with a read-only Docker config
 export DOCKER_CONFIG="$PWD/.cache/docker"
 make observability-up
 ```
+
+This workaround is Docker-specific; Podman uses its own configuration
+directory.
 
 The non-application images and versions are pinned in
 `docker-compose.observability.yml`. Changing a version requires updating
@@ -67,8 +76,9 @@ SMOKE_ADMIN_PASSWORD='...' make observability-submission-smoke-test
 `.observability/grafana_admin_password` unless `GRAFANA_ADMIN_PASSWORD` is set.
 
 Expected output ends with `All observability smoke checks passed.` On failure the
-script prints `docker compose ps`, the last 40 lines of each service log and the
-last API responses, then exits non-zero.
+script prints the Compose status (`podman compose ps` or `docker compose ps`),
+the last 40 lines of each service log and the last API responses, then exits
+non-zero.
 
 ### Manual checks
 
@@ -200,7 +210,7 @@ checkout normally has mode 0644; a restrictive umask or an editor may leave 0600
 ```bash
 chmod -R a+rX observability
 chmod a+r .observability/grafana_admin_password
-docker compose -f docker-compose.yml -f docker-compose.observability.yml \
+podman compose -f docker-compose.yml -f docker-compose.observability.yml \
   up -d --force-recreate loki tempo prometheus alertmanager otel-collector grafana alert-sink
 ```
 
@@ -228,7 +238,7 @@ health route for external Alertmanager. Use the proxy
 3. Is the Prometheus target up?
    `curl -s localhost:9090/api/v1/targets | jq '.data.activeTargets[] | select(.labels.job=="otel-collector")'`.
 4. Are the apps exporting?
-   `docker compose ... logs backend | grep -i opentelemetry`.
+   `podman compose ... logs backend | grep -i opentelemetry`.
 5. Query by the actual label: `{service_name="runcodes-backend"}`. If the metric
    exists with a different service label, inspect
    `/api/v1/label/__name__/values` and the collector resource configuration.
@@ -266,7 +276,8 @@ health route for external Alertmanager. Use the proxy
 1. `curl -s http://localhost:4040/ready` is 200 and
    `curl -s http://localhost:12345/-/healthy` reports all components healthy.
 2. Check the pprof listener from the Compose network:
-   `docker run --rm --network runcodes-react_runcodes-network curlimages/curl -s -o /dev/null -w '%{http_code}\n' http://backend:6060/debug/pprof/`.
+   `podman run --rm --network runcodes-react_runcodes-network curlimages/curl -s -o /dev/null -w '%{http_code}\n' http://backend:6060/debug/pprof/`
+   (use `docker run` with Docker Compose).
    A 404/connection refused means `PPROF_ADDR` is empty or the binary predates
    the listener.
 3. `curl -s http://localhost:12345/api/v0/web/components` shows
@@ -331,7 +342,8 @@ health route for external Alertmanager. Use the proxy
 
 ### Host disk or memory pressure
 
-- `make observability-status` / `docker stats` shows which container grows.
+- `make observability-status` / `podman stats` (or `docker stats`) shows which
+  container grows.
 - Prometheus keeps 15d/8GB; Loki/Tempo/Pyroscope 7d. They fill volumes under
   high traffic or raised retention.
 - The dashboard's resource row and `RunCodesHostDiskSpaceLow` give early warning.
@@ -517,7 +529,7 @@ account; the ordinary account password is rejected.
 5. Recreate Alertmanager so it reads the new config and secret:
 
    ```bash
-   docker compose -f docker-compose.yml -f docker-compose.observability.yml \
+   podman compose -f docker-compose.yml -f docker-compose.observability.yml \
      up -d --force-recreate alertmanager
    ```
 
@@ -527,7 +539,7 @@ account; the ordinary account password is rejected.
    curl -s -X POST http://localhost:9093/api/v2/alerts \
      -H 'Content-Type: application/json' \
      -d '[{"labels":{"alertname":"GmailTest","severity":"warning","service_name":"runcodes-backend"},"annotations":{"summary":"Gmail test"}}]'
-   docker compose -f docker-compose.yml -f docker-compose.observability.yml \
+   podman compose -f docker-compose.yml -f docker-compose.observability.yml \
      logs alertmanager
    ```
 
@@ -549,7 +561,7 @@ Alertmanager:
 ```bash
 printf '%s\n' 'https://alerts.example.invalid/webhook' \
   > .observability/alertmanager_webhook_url
-docker compose -f docker-compose.yml -f docker-compose.observability.yml \
+podman compose -f docker-compose.yml -f docker-compose.observability.yml \
   up -d --force-recreate alertmanager
 ```
 
@@ -562,7 +574,7 @@ Slack and PagerDuty receivers with `*_file` settings.
 ```bash
 rm .observability/grafana_admin_password
 make observability-init
-docker compose -f docker-compose.yml -f docker-compose.observability.yml \
+podman compose -f docker-compose.yml -f docker-compose.observability.yml \
   up -d --force-recreate grafana
 ```
 
@@ -575,7 +587,7 @@ Production should use a secret manager and
 2. `curl -s localhost:13133/health/status` — is the collector up?
 3. `curl -s localhost:9090/-/ready`, `3100/ready`, `3200/ready`, `9093/-/ready`,
    `3000/api/health` — which backend is down?
-4. `docker compose ... logs --tail=100 <service>` — the first error, not the last
+4. `podman compose ... logs --tail=100 <service>` — the first error, not the last
    restart-loop message.
 5. Prometheus `/targets` — is the failing component a scrape target?
 6. Tempo `/api/search` and Loki `query_range` with a known recent trace id — is
