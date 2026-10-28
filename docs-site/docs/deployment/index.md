@@ -127,7 +127,7 @@ hosts:
 | `ghcr.io/runcodes-icmc/runcodes-backend` | `backend/` | `app-images.yml` |
 | `ghcr.io/runcodes-icmc/runcodes-database` | `database/` | `app-images.yml` |
 | `ghcr.io/runcodes-icmc/runcodes-judge` | `judge/` | `app-images.yml` |
-| `ghcr.io/runcodes-icmc/runcodes-monitor` | `monitor/` | `monitor.yml` |
+| `ghcr.io/runcodes-icmc/runcodes-monitor` | `monitor/` | `monitor.yml` (called by `runners.yml`) |
 | `ghcr.io/runcodes-icmc/runcodes-runner-<language>` | `runners/` | `runners.yml` |
 
 The workflows run on `v*.*.*` tags and manual dispatch, publish `:latest` and
@@ -135,9 +135,12 @@ version tags, and build for `linux/amd64`. The Ansible and image-based Compose
 deployments default to `:latest` and can pin any release tag. See
 [CI/CD & releases](../ci-cd.md).
 
-The table shows the upstream namespace. Both image-based paths let the deployment
-choose a registry, namespace and runner prefix; publish or mirror the same image
-names under that namespace before pointing the deployment at it.
+The workflows derive the namespace from the repository that runs them. The
+table shows the upstream `runcodes-icmc/runcodes` output; a fork publishes
+`ghcr.io/<owner>/<repo>-frontend`, `...-monitor`, `...-runner-<language>` and so
+on. Both image-based paths let the deployment choose the registry, namespace
+and runner prefix, so point them at the fork namespace when deploying fork
+images. See [CI/CD & releases](../ci-cd.md).
 
 ::: warning Judge and runners are one contract
 Changing `container.config` or the milestone format requires a judge release

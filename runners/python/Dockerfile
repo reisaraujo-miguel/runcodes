@@ -1,7 +1,10 @@
+ARG RUNNER_BASE_IMAGE=ghcr.io/runcodes-icmc/runcodes-runner-base:latest
+FROM ${RUNNER_BASE_IMAGE} AS runner-base
+
 FROM python:3.14-slim-trixie
 # Load base executables
-COPY --from=ghcr.io/runcodes-icmc/runcodes-runner-base:latest /usr/bin/monitor /usr/bin/monitor
-COPY --from=ghcr.io/runcodes-icmc/runcodes-runner-base:latest /usr/bin/runcodes /usr/bin/runcodes
+COPY --from=runner-base /usr/bin/monitor /usr/bin/monitor
+COPY --from=runner-base /usr/bin/runcodes /usr/bin/runcodes
 
 # Submissions run as this user, never as root: the judge relies on the run being
 # unable to change the image it is graded in. A system user is used so the uid

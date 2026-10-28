@@ -19,8 +19,11 @@ together.
 | `ghcr.io/runcodes-icmc/runcodes-runner-base` | `runners/base/` | Debian base with the harness and monitor |
 | `ghcr.io/runcodes-icmc/runcodes-runner-<language>` | `runners/<language>/` | one toolchain per language |
 
-These are the upstream names. The judge can pull the same images from a mirror or
-another namespace with `JUDGE_IMAGE_REGISTRY`, `JUDGE_RUNNER_IMAGE_PREFIX` and
+These are the upstream names. The publish workflows derive the namespace from
+the repository that runs them, so a fork produces
+`ghcr.io/<owner>/<repo>-monitor` and `ghcr.io/<owner>/<repo>-runner-*`. The judge
+can pull the same images from a mirror or another namespace with
+`JUDGE_IMAGE_REGISTRY`, `JUDGE_RUNNER_IMAGE_PREFIX` and
 `JUDGE_RUNNER_IMAGE_TAG`; a mirror must keep the `-<language>` and `-base` naming.
 See [Configuration: judge](../reference/configuration.md#podman-and-execution).
 
@@ -175,10 +178,11 @@ choosing — or point the path at another file with a symlink. A process that
 starts a new session still escapes the process-group kill; the harness kills
 whatever is left as soon as the monitor returns.
 
-The monitor is shipped as `ghcr.io/runcodes-icmc/runcodes-monitor`; the base
-Dockerfile is the only place that copies the binary out of it. The `:latest` tag
-is therefore the one in use; bumping only the version tags would leave graded
-containers on the previous monitor.
+The monitor is shipped as `ghcr.io/<owner>/<repo>-monitor` (upstream:
+`ghcr.io/runcodes-icmc/runcodes-monitor`); the base Dockerfile is the only place
+that copies the binary out of it. The `:latest` tag is therefore the one in use;
+bumping only the version tags would leave graded containers on the previous
+monitor.
 
 ## Building and publishing
 
@@ -188,13 +192,15 @@ make all          # builds base first, then every language
 ```
 
 The build order matters: every language depends on `base`, and `base` depends on
-the monitor image. `.github/workflows/runners.yml` builds `base` first and then
-one job per language, so a release always pairs the language images with the
-base they were built from. `monitor.yml` publishes the monitor.
+the monitor image. `.github/workflows/runners.yml` calls `monitor.yml` first,
+then builds `base`, then one job per language, so a release always pairs the
+language images with the monitor and base they were built from. `monitor.yml`
+remains manually dispatchable.
 
-All three workflows run on a `v*.*.*` tag and on manual dispatch, and publish
-`:latest` plus semver tags. The deployment defaults to `:latest`; the version
-tags exist for pinning.
+All three workflows publish `:latest` plus semver tags. `app-images.yml` and
+`runners.yml` run on a `v*.*.*` tag and on manual dispatch; `monitor.yml` is
+called by `runners.yml` and can also be dispatched on its own. The deployment
+defaults to `:latest`; the version tags exist for pinning.
 
 ## Tests
 

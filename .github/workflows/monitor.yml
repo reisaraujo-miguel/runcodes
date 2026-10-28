@@ -1,9 +1,10 @@
 name: Publish Monitor
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
+  # The reusable entry point is called by runners.yml before it builds the base
+  # image, so a release cannot publish language images that copy a stale monitor.
+  # Manual dispatch still publishes a monitor image on its own.
+  workflow_call:
   workflow_dispatch:
 
 concurrency:
@@ -16,11 +17,10 @@ permissions:
   packages: write
 
 env:
-  # The monitor is consumed by name: `runners/base/Dockerfile` copies the
-  # binary out of exactly this reference. It is spelled out rather than derived
-  # from github.repository, which in a fork would publish to a name that no
-  # Dockerfile and no judge ever pulls.
-  IMAGE: ghcr.io/runcodes-icmc/runcodes-monitor
+  # Derived from the repository that runs the workflow: the upstream repository
+  # publishes ghcr.io/runcodes-icmc/runcodes-monitor, a fork publishes
+  # ghcr.io/<owner>/<repo>-monitor.
+  IMAGE: ghcr.io/${{ github.repository }}-monitor
 
 jobs:
   docker-build:
@@ -52,7 +52,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ github.token }}
 
       - name: Build and push
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
@@ -69,5 +69,5 @@ jobs:
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ github.workflow }}
-          cache-to: type=gha,mode=max,scope=${{ github.workflow }}
+          cache-from: type=gha,scope=monitor
+          cache-to: type=gha,mode=max,scope=monitor

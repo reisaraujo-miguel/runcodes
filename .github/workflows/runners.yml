@@ -16,16 +16,22 @@ permissions:
   packages: write
 
 env:
-  # Every image reference in this repository is literal and absolute:
-  # the per-language Dockerfiles copy out of `${IMAGE_PREFIX}-base`, and the
-  # judge resolves a submission's language to `${IMAGE_PREFIX}-<lang>` (see
-  # `language.DefaultImageFormat`). Publishing under `github.repository` would
-  # therefore build images that nothing ever pulls.
-  IMAGE_PREFIX: ghcr.io/runcodes-icmc/runcodes-runner
+  # Derived from the repository that runs the workflow. The upstream repository
+  # publishes ghcr.io/runcodes-icmc/runcodes-runner-*; a fork publishes
+  # ghcr.io/<owner>/<repo>-runner-*.
+  IMAGE_PREFIX: ghcr.io/${{ github.repository }}-runner
+  MONITOR_IMAGE: ghcr.io/${{ github.repository }}-monitor
 
 jobs:
+  # Reusable monitor build. The base image copies /usr/bin/monitor out of this
+  # image, so it must exist before docker-build-base starts.
+  monitor:
+    name: Build & push monitor
+    uses: ./.github/workflows/monitor.yml
+
   docker-build-base:
     name: Build & push base
+    needs: monitor
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -59,19 +65,24 @@ jobs:
         with:
           context: ./runners/base
           push: true
+          # The monitor job pushed :latest immediately before this job. Pull it
+          # so a cached COPY --from cannot supply an older monitor binary.
+          pull: true
+          build-args: |
+            MONITOR_IMAGE=${{ env.MONITOR_IMAGE }}:latest
           # Images are built for the judge's architecture only; the sources they
           # install (toolchains distributed as amd64 packages, for the most part)
           # are not all available for arm64.
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ github.workflow }}-base
-          cache-to: type=gha,mode=max,scope=${{ github.workflow }}-base
+          cache-from: type=gha,scope=runners-base
+          cache-to: type=gha,mode=max,scope=runners-base
 
   docker-build-others:
     name: Build & push ${{ matrix.image }}
-    # The language images are built on top of the base just pushed: all 23 pull
-    # it, 12 as their own base image and 11 to copy `/usr/bin/runcodes` and
+    # The language images are built on top of the base just pushed: all 22 pull
+    # it, 12 as their own base image and 10 to copy `/usr/bin/runcodes` and
     # `/usr/bin/monitor` into a third-party base.
     needs: docker-build-base
     strategy:
@@ -139,6 +150,10 @@ jobs:
         with:
           context: ./runners/${{ matrix.image }}
           push: true
+          # Build against the base image this run just pushed, not an upstream
+          # copy with a possibly older monitor.
+          build-args: |
+            RUNNER_BASE_IMAGE=${{ env.IMAGE_PREFIX }}-base:latest
           # Every referenced image (starting with the base pushed above, then
           # the language's own distribution base) is resolved at build time:
           # without this, a builder could reuse a base image cached from an
@@ -147,5 +162,5 @@ jobs:
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ github.workflow }}-${{ matrix.image }}
-          cache-to: type=gha,mode=max,scope=${{ github.workflow }}-${{ matrix.image }}
+          cache-from: type=gha,scope=runners-${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=runners-${{ matrix.image }}

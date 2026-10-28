@@ -14,10 +14,10 @@ it runs, and what a release publishes.
 | --- | --- | --- |
 | `tests.yml` | push to `main`/`development`, all PRs, manual | formatting, vet, unit/integration tests, schema and migration checks |
 | `judge-integration.yml` | judge/runner/monitor/schema paths, manual | real PostgreSQL + SeaweedFS + rootless Podman end-to-end grading test |
-| `images.yml` | push to `main`/`development`, PRs, weekly, manual | build the four application images and scan them with Trivy |
+| `trivy-images.yml` | push to `main`, PRs, weekly, manual | build the four application images and scan them with Trivy |
 | `app-images.yml` | `v*.*.*` tag, manual | publish frontend, backend, database and judge to GHCR |
-| `monitor.yml` | `v*.*.*` tag, manual | publish the monitor image |
-| `runners.yml` | `v*.*.*` tag, manual | publish the base image and 22 language images |
+| `monitor.yml` | called by `runners.yml`, manual | build and publish the monitor image |
+| `runners.yml` | `v*.*.*` tag, manual | call the monitor build, then publish the base and 22 language images |
 | `observability.yml` | telemetry-related paths on push/PR, manual | validate collector/Prometheus/Alertmanager/Grafana config |
 | `trivy-repo.yml` | push to `main`, PRs, weekly, manual | scan the repository (report-only) |
 | `docs.yml` | push to `main` touching `docs-site/`, manual | build this site and deploy it to GitHub Pages |
@@ -88,7 +88,7 @@ and `05-app-role.sh`, then asserts both directions of the role:
 
 ## Image builds and scanning
 
-`images.yml` builds `backend`, `frontend`, `database` and `judge` with Buildx on
+`trivy-images.yml` builds `backend`, `frontend`, `database` and `judge` with Buildx on
 pushes, PRs, a weekly schedule and manual dispatch. Each image is loaded locally
 and scanned by Trivy (`vuln`, `secret`, `misconfig`).
 
@@ -108,16 +108,35 @@ caught by the weekly schedule even without code changes.
 
 ## Releases
 
-A release is a `v*.*.*` tag. Three workflows react to it:
+A release is a `v*.*.*` tag. Two workflows react to it directly; the runner
+workflow calls the monitor build before it starts the base image.
+
+### Image namespace
+
+The publish workflows derive the GHCR namespace from the repository that runs
+them:
+
+```text
+ghcr.io/<github.repository>-<service>
+```
+
+The upstream `runcodes-icmc/runcodes` repository therefore publishes
+`ghcr.io/runcodes-icmc/runcodes-*`. A fork publishes to its own
+`ghcr.io/<owner>/<repo>-*` namespace; point the deployment's
+`RUNCODES_IMAGE_NAMESPACE` and `RUNCODES_RUNNER_IMAGE_PREFIX` at that namespace
+instead of using the upstream defaults.
 
 ### `app-images.yml`
 
 Publishes:
 
-- `ghcr.io/runcodes-icmc/runcodes-frontend`
-- `ghcr.io/runcodes-icmc/runcodes-backend`
-- `ghcr.io/runcodes-icmc/runcodes-database`
-- `ghcr.io/runcodes-icmc/runcodes-judge`
+- `ghcr.io/<owner>/<repo>-frontend`
+- `ghcr.io/<owner>/<repo>-backend`
+- `ghcr.io/<owner>/<repo>-database`
+- `ghcr.io/<owner>/<repo>-judge`
+
+For the upstream repository those are
+`ghcr.io/runcodes-icmc/runcodes-{frontend,backend,database,judge}`.
 
 Tags: semver (`1.2.3`, `1.2`, `1`), `sha-<short>` and `latest`. All are
 `linux/amd64`. The frontend is built with:
@@ -137,27 +156,31 @@ same-origin Caddy route without a baked-in hostname.
 
 ### `monitor.yml`
 
-Publishes `ghcr.io/runcodes-icmc/runcodes-monitor` with the same tag scheme,
-including `:latest`. The base runner image copies the monitor binary out of
-`:latest`, so the moving tag is the one in use.
+Publishes `ghcr.io/<owner>/<repo>-monitor` with the same tag scheme, including
+`:latest`. It is a reusable workflow: `runners.yml` calls it before building the
+base image, so a release cannot build language images against a stale monitor.
+Manual dispatch still publishes a monitor image alone.
 
 ### `runners.yml`
 
-Publishes `runcodes-runner-base` first, then one job per language:
+Calls `monitor.yml` first, then publishes `runcodes-runner-base`, then one job
+per language:
 
 ```text
 c cpp c-omp c-omp-mpi cpp-omp cpp-omp-mpi dotnet fortran go haskell
 java julia lua octave pascal portugol prolog python r rust verilog zig
 ```
 
-The language jobs depend on the base job and use a fail-fast-disabled matrix, so
-a partial release is visible as a full matrix rather than stopping at the first
-failure. Images are `linux/amd64`.
+The base job depends on the monitor job; the language jobs depend on the base
+job and use a fail-fast-disabled matrix, so a partial release is visible as a
+full matrix rather than stopping at the first failure. The Dockerfiles accept
+`MONITOR_IMAGE` and `RUNNER_BASE_IMAGE` build arguments, and the workflow passes
+the namespace derived from the repository, so a fork builds against its own
+monitor and base rather than the upstream ones. Images are `linux/amd64`.
 
-The publish workflows target the upstream `ghcr.io/runcodes-icmc` namespace. To
-run with a mirror or a fork's namespace, publish the same
-`runcodes-runner-<language>` names there and set `JUDGE_IMAGE_REGISTRY`,
-`JUDGE_RUNNER_IMAGE_PREFIX` and `JUDGE_RUNNER_IMAGE_TAG` in the judge (see
+The judge only pulls the runner images. Set `JUDGE_IMAGE_REGISTRY`,
+`JUDGE_RUNNER_IMAGE_PREFIX` and `JUDGE_RUNNER_IMAGE_TAG` to the namespace and
+release the deployment should consume (see
 [Configuration: judge](./reference/configuration.md#podman-and-execution)).
 
 ## The judge ⇄ runner contract

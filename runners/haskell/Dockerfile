@@ -1,12 +1,9 @@
-FROM ghcr.io/runcodes-icmc/runcodes-runner-base:latest
+ARG RUNNER_BASE_IMAGE=ghcr.io/runcodes-icmc/runcodes-runner-base:latest
+FROM ${RUNNER_BASE_IMAGE}
 
 # The base image runs as the runcodes user; installing the language toolchain
 # and appending to the harness below need root.
 USER root
-
-# Load base executables
-COPY --from=ghcr.io/runcodes-icmc/runcodes-runner-base:latest /usr/bin/monitor /usr/bin/monitor
-COPY --from=ghcr.io/runcodes-icmc/runcodes-runner-base:latest /usr/bin/runcodes /usr/bin/runcodes
 
 # System Upgrade
 RUN apt-get update -y &&\

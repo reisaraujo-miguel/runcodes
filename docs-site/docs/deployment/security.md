@@ -148,7 +148,7 @@ key, or disable browser telemetry. Metrics and logs are not exposed.
 
 ## Image and dependency scanning
 
-- `.github/workflows/images.yml` builds and scans the four application images
+- `.github/workflows/trivy-images.yml` builds and scans the four application images
   with Trivy on pushes, pull requests and a weekly schedule, uploading SARIF to
   the Security tab.
 - `.github/workflows/trivy-repo.yml` scans the repository with `trivy.yaml`;

@@ -2,8 +2,8 @@ name: Publish Application Images
 
 # The four application images are consumed by name by deploy/ansible.
 # Publishing them here keeps the deployment hosts from needing a source build
-# and a Go/Bun toolchain. The runner and monitor images have their own
-# workflows (monitor.yml and runners.yml).
+# and a Go/Bun toolchain. The runner workflow calls monitor.yml and then builds
+# the base and language images; see runners.yml.
 on:
   push:
     tags:
@@ -20,10 +20,11 @@ permissions:
   packages: write
 
 env:
-  # Keep this literal: the Ansible deployment refers to these exact names.
-  # Deriving it from github.repository would publish to a fork namespace that
-  # nothing pulls.
-  IMAGE_PREFIX: ghcr.io/runcodes-icmc/runcodes
+  # Derive the GHCR namespace from the repository that runs the workflow. The
+  # upstream repository publishes ghcr.io/runcodes-icmc/runcodes-<service>; a
+  # fork publishes ghcr.io/<owner>/<repo>-<service> and a deployment can point
+  # its image variables there.
+  IMAGE_PREFIX: ghcr.io/${{ github.repository }}
 
 jobs:
   publish:
