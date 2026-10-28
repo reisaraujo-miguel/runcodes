@@ -33,11 +33,14 @@ RUN bun -b run build
 
 # The published caddy:2.11.7-alpine binary was compiled with an older Go
 # toolchain and an x/net version with a known HTTP/2 DoS. Rebuild the same
-# Caddy release with the current Go toolchain and the fixed x/net.
+# Caddy release with the current Go toolchain, the fixed x/net and the fixed
+# go-jose v4. Caddy still links go-jose v3 through its internal PKI/ACME server;
+# upstream has no fixed v3 release, so that finding is scoped in .trivyignore.yaml.
 FROM caddy:2.11.7-builder-alpine AS caddy-builder
 
 RUN CGO_ENABLED=0 xcaddy build v2.11.7 \
   --replace golang.org/x/net=golang.org/x/net@v0.60.0 \
+  --replace github.com/go-jose/go-jose/v4=github.com/go-jose/go-jose/v4@v4.1.6 \
   --output /usr/bin/caddy
 
 FROM alpine:3.24 AS dist
