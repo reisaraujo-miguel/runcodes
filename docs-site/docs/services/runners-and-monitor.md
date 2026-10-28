@@ -19,6 +19,11 @@ together.
 | `ghcr.io/runcodes-icmc/runcodes-runner-base` | `runners/base/` | Debian base with the harness and monitor |
 | `ghcr.io/runcodes-icmc/runcodes-runner-<language>` | `runners/<language>/` | one toolchain per language |
 
+These are the upstream names. The judge can pull the same images from a mirror or
+another namespace with `JUDGE_IMAGE_REGISTRY`, `JUDGE_RUNNER_IMAGE_PREFIX` and
+`JUDGE_RUNNER_IMAGE_TAG`; a mirror must keep the `-<language>` and `-base` naming.
+See [Configuration: judge](../reference/configuration.md#podman-and-execution).
+
 There are **22 language images**. Twelve inherit `FROM` the base image and
 inherit `/usr/bin/runcodes` and `/usr/bin/monitor`. The other ten are built on a
 third-party base (`python:3.14-slim-trixie`, `eclipse-temurin`, `golang`,
@@ -222,8 +227,9 @@ make rootfs-smoke
 ./judge/test/rootfs-smoke.sh
 ```
 
-It defaults to `ghcr.io/runcodes-icmc/runcodes-runner-c:latest`. For a locally
-built image:
+It defaults to `ghcr.io/runcodes-icmc/runcodes-runner-c:latest`. To test an image
+from another repository or tag, pass the full reference or set
+`RUNCODES_SMOKE_IMAGE`:
 
 ```sh
 podman build -t ghcr.io/runcodes-icmc/runcodes-monitor:latest monitor

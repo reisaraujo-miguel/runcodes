@@ -5,9 +5,10 @@ description: Admin endpoints for users, classes and platform settings.
 
 # Administration API
 
-Every route here requires an account with the `admin` platform role. The admin
-panel acts on classes the admin does not own; it uses its own endpoints instead
-of the owner routes.
+Every `/admin/*` route here requires an account with the `admin` platform role.
+The admin panel acts on classes the admin does not own; it uses its own endpoints
+instead of the owner routes. The preview stop route is the exception: it runs
+from a preview session, not from the admin group.
 
 ## Users
 
@@ -152,6 +153,100 @@ Lists the members of any class, in the same shape as the owner's member route:
 The admin panel does not add or remove members; it lists them. Ownership transfer
 is the supported way to hand a class to another professor.
 
+## File types
+
+The platform-wide catalog of extensions a professor can attach to an exercise.
+These routes include hidden entries; the public `/allowed-file-types` route
+returns only available ones.
+
+### `GET /admin/file-types`
+
+Returns every entry, ordered by name:
+
+```json
+[
+  {
+    "id": 3,
+    "name": "C",
+    "extension": "c",
+    "is_compilable": true,
+    "is_available": true
+  }
+]
+```
+
+### `POST /admin/file-types`
+
+Creates an entry. Returns `201` with the stored object.
+
+```json
+{
+  "name": "Python 3.13",
+  "extension": "py",
+  "is_compilable": false,
+  "is_available": true
+}
+```
+
+- `name` is required, trimmed and at most 100 characters.
+- `extension` is required, lower-cased, has the leading dot removed and is at
+  most 24 characters. It may contain letters, digits, `.`, `+`, `#`, `_` and `-`;
+  `..` is rejected.
+- `is_compilable` and `is_available` default to `true` when omitted.
+
+`is_compilable` only controls whether the browser editor offers the type. The
+judge has its own language mapping. `is_available` controls both the public
+catalog and submission validation.
+
+| Status | Meaning |
+| --- | --- |
+| `201` | created |
+| `400` | invalid name or extension |
+| `409` | another entry already uses the extension |
+
+### `PUT /admin/file-types/{id}`
+
+Partial update of the same fields. Returns `200` with the updated entry. A
+missing id returns `404`; a duplicate extension returns `409`.
+
+### `DELETE /admin/file-types/{id}`
+
+Deletes an unused entry. Returns `204`. An entry referenced by at least one
+exercise returns `409`; hide it with `is_available: false` instead.
+
+## Role preview
+
+An administrator can replace the role claim of their own session with `student`
+or `professor`. The account, name, email and token version stay the same. The
+admin panel and every admin-only route become inaccessible until the preview
+ends.
+
+### `POST /admin/preview`
+
+```json
+{ "role": "student" }
+```
+
+Valid roles are `student` and `professor`. Returns `200` with the session info
+and sets a new `jwt` cookie. The response includes `previewing_role`.
+
+| Status | Meaning |
+| --- | --- |
+| `200` | preview started |
+| `400` | invalid role or body |
+| `404` | the account no longer exists |
+| `422` | the account is no longer an admin and cannot preview |
+
+The preview uses the normal session lifetime (30 minutes, sliding). Refresh keeps
+the preview claim; a preview does not silently turn back into an admin session.
+
+### `POST /auth/stop-preview`
+
+Restores the administrator's own role and returns the session info. The route is
+outside the admin group because the current role is the previewed role. It
+requires a session that carries the preview claim; a regular student or
+professor session returns `400`.
+
 ## Platform settings
 
 ### `GET /admin/settings`
@@ -190,7 +285,10 @@ Returns the stored settings. The public cache entry is invalidated immediately.
 | delete own account | rejected (`409`) |
 | unconfirm own account | rejected (`409`) |
 | assign `professor` enrollment to a student | rejected (`422`) |
+| transfer a class to a student | rejected (`400`) |
 | ban or remove a class owner | rejected (`409`) |
+| delete a file type used by an exercise | rejected (`409`); hide it instead |
+| preview a role from a non-admin account | rejected (`422`) |
 | delete a user or class | cascades to dependent rows; irreversible |
 
 ## Related pages

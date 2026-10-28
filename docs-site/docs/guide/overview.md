@@ -17,6 +17,20 @@ original compiler engine and language images lived in separate repositories
 [`runners/`](https://github.com/reisaraujo-miguel/runcodes/tree/main/runners) and
 [`monitor/`](https://github.com/reisaraujo-miguel/runcodes/tree/main/monitor).
 
+## Who it is for
+
+- **Students** join a class, write or upload a solution, and read per-case
+  verdicts and the score. Start with the [Student guide](./student-guide.md).
+- **Professors** create classes, author exercises and test cases, grade a class
+  and reuse the material next term. Start with the
+  [Professor guide](./professor-guide.md).
+- **Administrators** manage accounts, classes, platform settings and the file
+  type catalog, and keep the deployment healthy. Start with the
+  [Administrator guide](../administration/index.md).
+- **Contributors and operators** run the services, deploy them and diagnose
+  incidents. Start with [Development setup](./development-setup.md) or
+  [Deployment](../deployment/index.md).
+
 ## What it does
 
 - **Courses and classes.** Professors create offerings (classes), enroll
@@ -29,10 +43,13 @@ original compiler engine and language images lived in separate repositories
   the run over Server-Sent Events.
 - **Grading.** Every test case produces a verdict (`correct`,
   `bad_formatted_output`, or `killed_with_signal`), CPU time, output and
-  diagnostics. The commit receives a score and a terminal status.
+  diagnostics. The commit receives a score and a terminal status. The class
+  gradebook keeps each student's best score per exercise and exports a CSV.
 - **Authoring and administration.** Professors manage their classes and
-  exercises; admins manage users, any class, and platform settings such as the
-  contact address shown on the login page.
+  exercises; admins manage users, any class, the file type catalog and platform
+  settings such as the contact address shown on the login page.
+- **Reuse.** A class can be exported to a zip and imported as a new class with
+  shifted exercise dates; submissions and grades are not included.
 - **Optional observability.** Traces, metrics, logs, continuous CPU profiles and
   alerts can be enabled with an opt-in OpenTelemetry stack.
 
@@ -85,12 +102,12 @@ extension and image matrix.
 ├── monitor/          In-container process monitor (limits, timing, report)
 ├── database/         PostgreSQL schema, seeds, migrations and legacy import
 ├── observability/    Collector, Prometheus, Loki, Tempo, Grafana, Pyroscope config
-├── docs/             Pointer to this site (old guides consolidated)
 ├── docs-site/        This documentation website (VitePress)
 ├── scripts/          Developer and observability validation scripts
 ├── deploy/ansible/   Four-machine rootless Podman deployment
 ├── docker-compose.yml
-└── docker-compose.observability.yml
+├── docker-compose.observability.yml
+└── trivy.yaml
 ```
 
 ## Design principles
@@ -118,7 +135,10 @@ The platform is built around a few boundaries that explain most of its design:
 
 - [Architecture](./architecture.md) — the full component and data-flow picture.
 - [Getting started](./getting-started.md) — run the stack locally.
-- [Using RunCodes](./using-runcodes.md) — student, professor and admin workflows.
+- [Student guide](./student-guide.md) — submit solutions and read results.
+- [Professor guide](./professor-guide.md) — author and grade a class.
+- [Administrator guide](../administration/index.md) — run the platform.
+- [How grading works](./grading.md) — scores, comparisons and the gradebook.
 - [Deployment](../deployment/index.md) — put it on real hosts.
 - [API reference](../api/index.md) — integrate with or test the platform.
 - [Documentation map](../reference/source-map.md) — the canonical pages and the

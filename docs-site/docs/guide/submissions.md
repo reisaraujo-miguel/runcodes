@@ -42,7 +42,7 @@ The API refuses the request before creating anything in these cases:
 | `404` | the exercise does not exist or is not visible to the caller |
 | `413` | the file exceeds 10 MiB |
 | `422` | the deadline has passed, or the exercise has no test cases |
-| `429` | the caller already has the maximum number of unfinished submissions |
+| `429` | the caller already has the maximum number of unfinished submissions (two) |
 | `503` | the judge is unavailable, or its queued backlog is at the configured depth |
 
 Staff (class owner or co-professor) can submit to their own exercises without
@@ -52,8 +52,9 @@ students.
 ## Following a submission
 
 `GET /api/v1/submissions/{id}/events` is an SSE stream. It requires the commit
-owner, a professor or an admin. The stream always starts with a **snapshot**
-event containing the persisted state:
+owner or a member of staff who teaches the commit's exercise (the class owner or
+a co-professor). A professor who teaches another class cannot read it. The stream
+always starts with a **snapshot** event containing the persisted state:
 
 ```text
 event: snapshot
@@ -104,7 +105,10 @@ Terminal commit statuses:
 | `server_error` | an infrastructure or harness failure |
 | `timeout` | the wall-clock budget for the commit was exceeded |
 
-The `score` is a percentage in `[0, 100]`.
+The `score` is a percentage in `[0, 100]`: the number of exactly correct cases
+divided by the total number of cases. A case that is `bad_formatted_output` or
+`killed_with_signal` counts as zero. See [How grading works](./grading.md) for
+the comparison rules and the class grade.
 
 ## Reloading and replay
 

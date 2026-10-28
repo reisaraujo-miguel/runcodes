@@ -8,6 +8,11 @@ description: Signup, email verification, password recovery, sessions, password p
 Authentication is cookie-based: the backend issues a signed JWT and stores it in
 an `HttpOnly` cookie. The frontend never holds the token in JavaScript.
 
+This page explains the mechanism. The task-level walkthrough is in the
+[Student guide](./student-guide.md#create-your-account); the administrator's
+account changes are in
+[Users & role administration](../administration/users.md).
+
 ## Signup
 
 `POST /api/v1/user/signup` accepts:
@@ -172,6 +177,8 @@ stateDiagram-v2
 
 ## Related pages
 
+- [Student guide](./student-guide.md)
+- [Users & role administration](../administration/users.md)
 - [API: users & accounts](../api/auth.md)
 - [Classes, roles & access](./classes-and-roles.md)
 - [Configuration: mail](../reference/configuration.md#mail)

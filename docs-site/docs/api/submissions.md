@@ -43,6 +43,7 @@ Response `201`:
 | `404` | exercise not found or not visible |
 | `413` | file exceeds 10 MiB |
 | `422` | deadline passed, or the exercise has no test cases |
+| `429` | the caller already has two unfinished submissions |
 | `500` | server error |
 | `503` | judge or object storage unavailable |
 
@@ -52,7 +53,9 @@ anything. If the judge is unreachable, no row is created and the API answers
 
 ## `GET /submissions/{id}/events`
 
-Server-Sent Events. Requires the commit owner, a professor or an admin.
+Server-Sent Events. Requires the commit owner or a member of staff who teaches
+the commit's exercise (class owner or co-professor). A professor who teaches
+another class receives `403`.
 
 ```bash
 curl -N -b cookies.txt \

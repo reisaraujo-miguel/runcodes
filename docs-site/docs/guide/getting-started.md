@@ -9,6 +9,17 @@ This guide brings up the complete stack locally with Docker Compose and gets
 you from a fresh clone to a working submission. It takes roughly ten minutes plus
 image builds.
 
+## Choose a path
+
+| Goal | Start here |
+| --- | --- |
+| Try the platform, demo it, or run a small single-host install | this page |
+| Change the backend, judge or frontend | [Development setup](./development-setup.md) |
+| Deploy for real | [Deployment overview](../deployment/index.md) and the [production checklist](../deployment/checklist.md) |
+| Inspect or integrate with the API | [API reference](../api/index.md) |
+
+The rest of this page is the local Compose path.
+
 ## Prerequisites
 
 - **Docker Engine with Compose v2**, or a Docker-compatible API. Podman's socket
@@ -218,8 +229,11 @@ migrations explicitly; see [Database](../services/database.md#migrations).
 
 ## Next steps
 
+- [Student guide](./student-guide.md) — submit a solution and read the result.
+- [Professor guide](./professor-guide.md) — author a class and grade it.
+- [Administrator guide](../administration/index.md) — manage the running platform.
 - [Submissions & live judging](./submissions.md) — understand statuses and events.
-- [Platform guide](./classes-and-roles.md) — classes, roles and deadlines.
+- [How grading works](./grading.md) — scores and comparisons.
 - [Backend](../services/backend.md) and [Judge](../services/judge.md) — service
   internals.
 - [Observability local stack](../observability/local.md) — add traces, metrics,

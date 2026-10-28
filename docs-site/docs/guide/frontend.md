@@ -44,14 +44,19 @@ browser sees one origin and no CORS.
 | `/professor` | professor/admin | classes the caller owns or teaches |
 | `/professor/class/:offeringId` | professor/admin | class authoring and membership |
 | `/professor/exercise/:exerciseId` | professor/admin | exercise, test cases and files |
-| `/admin` | admin | admin dashboard |
+| `/admin` | admin | admin dashboard and role preview |
 | `/admin/users` | admin | user search and management |
 | `/admin/courses` | admin | all classes, ownership transfer |
+| `/admin/file-types` | admin | extension catalog |
 | `/admin/settings` | admin | contact email and disclaimer |
 
 Route access is enforced twice: the UI hides routes by role, and every API
 endpoint enforces its own authorization. Hiding a link is not a security
 control.
+
+The interface strings are in Brazilian Portuguese. The role guides show the
+on-screen labels with an English translation. The HTML `lang` is `pt-BR`; the
+documentation site is in English.
 
 ## User-facing features
 
@@ -65,9 +70,14 @@ control.
 - **Class pages** — exercises, deadlines, staff, member list for owners, and
   progress for students.
 - **Professor authoring** — create and edit exercises, test cases, attached
-  files and compilation files, assign monitors and co-professors.
+  files and compilation files, assign monitors and co-professors, batch-import
+  test cases and reuse a class archive.
+- **Gradebook** — best score per student and exercise, class statistics and a
+  CSV export.
+- **Class tools** — export the class, download the latest submissions,
+  recompile, and email every member.
 - **Admin panel** — account search and role management, class management,
-  platform settings.
+  ownership transfer, file type catalog, platform settings and role preview.
 - **Theming** — light/dark mode preference.
 - **Verification flow** — when login fails because the email is unconfirmed,
   resend the verification link directly from the login card and land on a
@@ -185,7 +195,9 @@ frontend/
 
 ## Related pages
 
-- [Using RunCodes](./using-runcodes.md)
+- [Student guide](./student-guide.md)
+- [Professor guide](./professor-guide.md)
+- [Administrator guide](../administration/index.md)
 - [API reference](../api/index.md)
 - [Local observability stack](../observability/local.md)
 - [Configuration: frontend](../reference/configuration.md#frontend)

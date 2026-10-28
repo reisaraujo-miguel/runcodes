@@ -15,16 +15,38 @@ const guideSidebar = [
       { text: 'What is RunCodes?', link: '/guide/overview' },
       { text: 'Architecture', link: '/guide/architecture' },
       { text: 'Getting started', link: '/guide/getting-started' },
-      { text: 'Using RunCodes', link: '/guide/using-runcodes' }
+      { text: 'Development setup', link: '/guide/development-setup' }
     ]
   },
   {
-    text: 'Platform guide',
+    text: 'Using RunCodes',
+    items: [
+      { text: 'Workflows at a glance', link: '/guide/using-runcodes' },
+      { text: 'Student guide', link: '/guide/student-guide' },
+      { text: 'Professor guide', link: '/guide/professor-guide' },
+      { text: 'How grading works', link: '/guide/grading' }
+    ]
+  },
+  {
+    text: 'Platform concepts',
     items: [
       { text: 'Submissions & live judging', link: '/guide/submissions' },
       { text: 'Classes, roles & access', link: '/guide/classes-and-roles' },
       { text: 'Accounts & settings', link: '/guide/accounts-and-settings' },
       { text: 'Frontend application', link: '/guide/frontend' }
+    ]
+  }
+]
+
+const administrationSidebar = [
+  {
+    text: 'Administration',
+    items: [
+      { text: 'Administrator guide', link: '/administration/' },
+      { text: 'Users & role administration', link: '/administration/users' },
+      { text: 'Classes & ownership', link: '/administration/classes' },
+      { text: 'Settings & file types', link: '/administration/platform' },
+      { text: 'Platform operations', link: '/administration/operations' }
     ]
   }
 ]
@@ -63,7 +85,9 @@ const deploymentSidebar = [
     text: 'Deployment',
     items: [
       { text: 'Choose a deployment', link: '/deployment/' },
-      { text: 'Docker Compose', link: '/deployment/compose' },
+      { text: 'Production checklist', link: '/deployment/checklist' },
+      { text: 'Image-based Compose', link: '/deployment/image-compose' },
+      { text: 'Compose from source', link: '/deployment/compose' },
       { text: 'Ansible: setup', link: '/deployment/ansible-setup' },
       { text: 'Ansible: operations', link: '/deployment/ansible-operations' },
       { text: 'Security & scaling', link: '/deployment/security' }
@@ -169,6 +193,11 @@ export default withMermaid(
 
       nav: [
         { text: 'Guide', link: '/guide/overview', activeMatch: '/guide/' },
+        {
+          text: 'Administration',
+          link: '/administration/',
+          activeMatch: '/administration/'
+        },
         { text: 'Services', link: '/services/backend', activeMatch: '/services/' },
         { text: 'API', link: '/api/', activeMatch: '/api/' },
         { text: 'Deployment', link: '/deployment/', activeMatch: '/deployment/' },
@@ -194,6 +223,7 @@ export default withMermaid(
 
       sidebar: {
         '/guide/': guideSidebar,
+        '/administration/': administrationSidebar,
         '/services/': servicesSidebar,
         '/api/': apiSidebar,
         '/deployment/': deploymentSidebar,

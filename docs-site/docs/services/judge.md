@@ -130,6 +130,39 @@ Text test-case inputs and expected outputs are materialised from the database
 columns; file-based cases use their S3 objects. This keeps legacy text cases,
 which never had separate objects, gradeable.
 
+### Runner images
+
+The judge names a runner image as
+`<registry>/<prefix>-<language>:<tag>`:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `JUDGE_IMAGE_REGISTRY` | `ghcr.io` | registry that holds the images |
+| `JUDGE_RUNNER_IMAGE_PREFIX` | `runcodes-icmc/runcodes-runner` | image path; `-<language>` is appended |
+| `JUDGE_RUNNER_IMAGE_TAG` | `latest` | tag |
+| `JUDGE_IMAGE_FORMAT` | derived | full printf template; wins over the three variables above |
+
+For example, this pulls `ghcr.io/reisaraujo-miguel/runcodes-runner-c:v1.2.3`
+for a C submission:
+
+```bash
+JUDGE_IMAGE_REGISTRY=ghcr.io
+JUDGE_RUNNER_IMAGE_PREFIX=reisaraujo-miguel/runcodes-runner
+JUDGE_RUNNER_IMAGE_TAG=v1.2.3
+```
+
+A trailing slash on the registry and leading/trailing slashes or a trailing
+hyphen on the prefix are ignored. The full override is useful for a registry
+path that does not follow the `<registry>/<prefix>-<language>` convention:
+
+```bash
+JUDGE_IMAGE_FORMAT=registry.example.com/team/runners/%s:edge
+```
+
+The judge only pulls the image; the deployment must publish or mirror the
+runner images under the configured registry. See
+[Languages & images](../reference/languages.md#image-names).
+
 These globals override the image's own defaults. The language script is appended
 to the base script and assigns `monitor_max_fs`, `monitor_max_ms` and
 `compilation_timeout` itself (for example Python asks for 1 GiB). The harness

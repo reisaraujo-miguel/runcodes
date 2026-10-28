@@ -28,8 +28,8 @@ and leave the README pointer alone.
 | `database/README.md` | schema change and migration commands |
 | `database/legacy-migration/README.md` | importer requirements and commands |
 | `deploy/README.md` | deployment entry point |
+| `deploy/compose/README.md` | image-based single-host Compose deployment |
 | `deploy/ansible/README.md` | four-machine quick start and operating commands |
-| `docs/README.md` | pointer to this site (the old guides were retired) |
 | `docs-site/README.md` | how to edit and deploy the documentation site |
 
 ## Where each topic lives
@@ -39,19 +39,30 @@ and leave the README pointer alone.
 | Product overview, services, repository layout | [What is RunCodes?](../guide/overview.md) |
 | Component architecture, submission lifecycle, security boundaries | [Architecture](../guide/architecture.md) |
 | First local run, secrets, admin bootstrap, verification | [Getting started](../guide/getting-started.md) |
-| Student, professor and admin workflows | [Using RunCodes](../guide/using-runcodes.md) |
+| Running services from source | [Development setup](../guide/development-setup.md) |
+| Student workflow: account, classes, submissions, results | [Student guide](../guide/student-guide.md) |
+| Professor workflow: classes, authoring, gradebook, reuse | [Professor guide](../guide/professor-guide.md) |
+| Score, comparisons and class grade | [How grading works](../guide/grading.md) |
+| One-page map of the three roles | [Workflows at a glance](../guide/using-runcodes.md) |
 | Statuses, SSE events, artifacts, failure handling | [Submissions & live judging](../guide/submissions.md) |
 | Classes, enrollment roles, deadlines, permissions | [Classes, roles & access](../guide/classes-and-roles.md) |
 | Signup, verification, sessions, password policy | [Accounts & settings](../guide/accounts-and-settings.md) |
 | SPA routes, stack, editor, browser telemetry | [Frontend application](../guide/frontend.md) |
+| Admin panel, role preview, first-run checklist | [Administrator guide](../administration/index.md) |
+| Account roles, confirmation, deletion and support playbooks | [Users & role administration](../administration/users.md) |
+| Class metadata, ownership transfer, deletion | [Class & ownership administration](../administration/classes.md) |
+| Public settings, file type catalog, mail, public URL | [Platform settings & file types](../administration/platform.md) |
+| Health checks, backups, upgrades, capacity, incidents | [Platform operations](../administration/operations.md) |
 | Backend internals and readiness | [Backend API](../services/backend.md) |
 | Judge queue, contract, limits, isolation | [Judge](../services/judge.md) |
 | Runner images, harness, monitor, release contract | [Runner images & monitor](../services/runners-and-monitor.md) |
 | Schema, Atlas migrations, legacy import | [Database](../services/database.md) |
 | HTTP API (auth, classes, submissions, admin) | [API overview & authentication](../api/index.md) |
 | Internal judge API and event schemas | [Judge API](../api/judge.md) |
-| Compose vs Ansible, topology | [Deployment overview](../deployment/index.md) |
-| Single-host deployment | [Docker Compose](../deployment/compose.md) |
+| Deployment paths and topology | [Deployment overview](../deployment/index.md) |
+| Production readiness checklist | [Production checklist](../deployment/checklist.md) |
+| Single host from published images | [Image-based Compose deployment](../deployment/image-compose.md) |
+| Single-host source build | [Docker Compose from source](../deployment/compose.md) |
 | Four-machine setup | [Ansible deployment: setup](../deployment/ansible-setup.md) |
 | Upgrades, backups, migrations, troubleshooting | [Ansible deployment: operations](../deployment/ansible-operations.md) |
 | Security model, limits, scaling, capacity | [Security & scaling](../deployment/security.md) |

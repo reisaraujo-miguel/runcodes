@@ -160,6 +160,8 @@ free.
 | --- | --- |
 | Submission upload | 10 MiB |
 | Authoring upload (test case/files) | 32 MiB |
+| Test-case batch import | 64 MiB compressed / 256 MiB expanded |
+| Class archive import | 256 MiB compressed / 512 MiB expanded |
 | OTLP browser trace body (Caddy) | 4 MiB |
 | Per-case comparison files | 16 MiB |
 | Output archive | 64 MiB |
@@ -169,8 +171,10 @@ free.
 | Verification token lifetime | 24 hours |
 | Password reset token lifetime | 1 hour |
 | Judge event retention | 10 minutes after finish |
-| API rate limit | 100/min per IP |
-| Email route rate limit | 10/min per IP |
+| API rate limit | 600/min per client IP |
+| Signup/login rate limit | 20/min per client IP |
+| Email route rate limit | 10/min per client IP |
+| Enrollment code attempts | 5/min per account |
 
 ## Related pages
 

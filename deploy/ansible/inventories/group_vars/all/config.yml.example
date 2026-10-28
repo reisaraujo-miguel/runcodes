@@ -36,6 +36,9 @@ config_runcodes_pull_images: true
 # Runner images are pulled by the judge at run time. They are pre-pulled into
 # the rootless podman storage on the compute host so the first submission does
 # not wait for 20+ images.
+# Set the prefix to the namespace that publishes the runner images, for example
+# "ghcr.io/reisaraujo-miguel/runcodes-runner-". Keep the trailing hyphen: the
+# language name is appended to it.
 config_runcodes_runner_tag: "latest"
 config_runcodes_runner_image_prefix: "ghcr.io/runcodes-icmc/runcodes-runner-"
 config_runcodes_prepull_runner_images: true

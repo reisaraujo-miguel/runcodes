@@ -154,6 +154,12 @@ The language jobs depend on the base job and use a fail-fast-disabled matrix, so
 a partial release is visible as a full matrix rather than stopping at the first
 failure. Images are `linux/amd64`.
 
+The publish workflows target the upstream `ghcr.io/runcodes-icmc` namespace. To
+run with a mirror or a fork's namespace, publish the same
+`runcodes-runner-<language>` names there and set `JUDGE_IMAGE_REGISTRY`,
+`JUDGE_RUNNER_IMAGE_PREFIX` and `JUDGE_RUNNER_IMAGE_TAG` in the judge (see
+[Configuration: judge](./reference/configuration.md#podman-and-execution)).
+
 ## The judge ⇄ runner contract
 
 The judge, the monitor and the language images are one contract:

@@ -11,4 +11,19 @@
 # The previous gosu 1.19 standard-library exceptions are no longer needed: the
 # database image now builds gosu 1.20 with the current Go toolchain.
 
-vulnerabilities: []
+vulnerabilities:
+  # Caddy v2.11.7 (the current release) links go-jose v3 through
+  # go.step.sm/crypto for its internal PKI/ACME server. The v3 module has no
+  # fixed release: upstream fixed the parsing DoS in go-jose v4.1.6, which this
+  # image already uses for the v4 dependency. RunCodes runs Caddy only as a
+  # static file server and reverse proxy, never the internal ACME server, so
+  # the affected JWK parser is not reachable from the shipped Caddyfile.
+  # Revisit when Caddy updates its smallstep dependency or a v3 backport ships.
+  - id: CVE-2026-116587
+    paths:
+      - "usr/bin/caddy"
+    statement: >-
+      Caddy still links go-jose v3 through its internal PKI/ACME server, which
+      this deployment does not configure. No fixed v3 release exists; the
+      fixed v4.1.6 is used for the v4 dependency.
+    expired_at: 2027-01-31

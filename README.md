@@ -82,7 +82,9 @@ environment uses service names that only resolve inside the network). See
 
 ## Deployment
 
-- **Single host:** [Docker Compose](https://reisaraujo-miguel.github.io/runcodes/deployment/compose.html).
+- **Single host, published images:** [Image-based Compose](https://reisaraujo-miguel.github.io/runcodes/deployment/image-compose.html),
+  with the workflow in [`deploy/compose/`](deploy/compose/README.md).
+- **Single host, built from source:** [Docker Compose from source](https://reisaraujo-miguel.github.io/runcodes/deployment/compose.html).
 - **Four machines:** [Ansible deployment](https://reisaraujo-miguel.github.io/runcodes/deployment/ansible-setup.html),
   with the rootless Podman topology, observability stack and operations guide in
   [`deploy/ansible/`](deploy/ansible/README.md).
@@ -94,7 +96,11 @@ Application, monitor and runner images are published to GHCR by the workflows in
 ## Documentation
 
 - [Published documentation](https://reisaraujo-miguel.github.io/runcodes/)
+- [Student guide](https://reisaraujo-miguel.github.io/runcodes/guide/student-guide.html)
+- [Professor guide](https://reisaraujo-miguel.github.io/runcodes/guide/professor-guide.html)
+- [Administrator guide](https://reisaraujo-miguel.github.io/runcodes/administration/)
 - [Architecture](https://reisaraujo-miguel.github.io/runcodes/guide/architecture.html)
+- [How grading works](https://reisaraujo-miguel.github.io/runcodes/guide/grading.html)
 - [API reference](https://reisaraujo-miguel.github.io/runcodes/api/)
 - [Configuration reference](https://reisaraujo-miguel.github.io/runcodes/reference/configuration.html)
 - [Observability](https://reisaraujo-miguel.github.io/runcodes/observability/)

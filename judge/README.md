@@ -40,6 +40,12 @@ and the [configuration reference](https://reisaraujo-miguel.github.io/runcodes/r
 `JUDGE_AUTH_TOKEN` (or `RUNCODES_JUDGE_TOKEN`) is required for `/v1`; the judge
 refuses those routes when it is unset.
 
+Runner images default to
+`ghcr.io/runcodes-icmc/runcodes-runner-<language>:latest`. Set
+`JUDGE_IMAGE_REGISTRY`, `JUDGE_RUNNER_IMAGE_PREFIX` and
+`JUDGE_RUNNER_IMAGE_TAG` to pull the same images from another namespace, or
+`JUDGE_IMAGE_FORMAT` for a full template.
+
 ## Integration test
 
 ```bash

@@ -28,6 +28,8 @@ DOCS_BASE=/ npm run dev
 ## Editing
 
 - Content lives in `docs/`.
+- Role guides are under `docs/guide/`; platform administration is under
+  `docs/administration/`.
 - Navigation and sidebars are defined in `docs/.vitepress/config.mts`.
 - Branding and layout tweaks are in `docs/.vitepress/theme/styles/custom.css`.
 - The logo is `docs/public/runcodes-icon.svg`.

@@ -147,6 +147,13 @@ services:
       JUDGE_PODMAN_URI: "unix:///run/podman/podman.sock"
       JUDGE_EXEC_DIR: "/exec"
       JUDGE_EXEC_DIR_REMOTE: "${PWD}/exec"
+      # Runner image source: <registry>/<prefix>-<language>:<tag>. Leave the
+      # variables unset to use the upstream GHCR images; JUDGE_IMAGE_FORMAT is
+      # an advanced full template and wins when set.
+      JUDGE_IMAGE_REGISTRY: "${RUNCODES_IMAGE_REGISTRY:-ghcr.io}"
+      JUDGE_RUNNER_IMAGE_PREFIX: "${RUNCODES_RUNNER_IMAGE_PREFIX:-runcodes-icmc/runcodes-runner}"
+      JUDGE_RUNNER_IMAGE_TAG: "${RUNCODES_RUNNER_IMAGE_TAG:-latest}"
+      JUDGE_IMAGE_FORMAT: "${JUDGE_IMAGE_FORMAT:-}"
       JUDGE_CONTAINER_TMPFS_BYTES: "${JUDGE_CONTAINER_TMPFS_BYTES:-268435456}"
       # Required: without it the judge refuses every /v1 request, because the API
       # serves other people's submissions and outputs.

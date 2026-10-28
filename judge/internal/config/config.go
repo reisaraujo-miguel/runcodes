@@ -11,6 +11,21 @@ import (
 	"time"
 )
 
+const (
+	// DefaultRunnerImageRegistry is the registry that holds the language
+	// images. The judge combines it with DefaultRunnerImagePrefix and
+	// DefaultRunnerImageTag, so the default produces
+	// "ghcr.io/runcodes-icmc/runcodes-runner-c:latest".
+	DefaultRunnerImageRegistry = "ghcr.io"
+	// DefaultRunnerImagePrefix is the image path inside the registry, without
+	// the trailing hyphen or language suffix. The judge appends "-<language>"
+	// and then the tag.
+	DefaultRunnerImagePrefix = "runcodes-icmc/runcodes-runner"
+	// DefaultRunnerImageTag is the tag pulled when the deployment does not pin
+	// a release.
+	DefaultRunnerImageTag = "latest"
+)
+
 // Config holds every tunable of the judge service.
 type Config struct {
 	// HTTP API.
@@ -173,7 +188,7 @@ func Load() (*Config, error) {
 		EventRetention:   envDuration("JUDGE_EVENT_RETENTION", 10*time.Minute),
 
 		PodmanURI:   podmanURI(),
-		ImageFormat: env("JUDGE_IMAGE_FORMAT", "ghcr.io/runcodes-icmc/runcodes-runner-%s:latest"),
+		ImageFormat: runnerImageFormat(),
 
 		ExecDir:        env("JUDGE_EXEC_DIR", filepath.Join(os.TempDir(), "runcodes-judge")),
 		KeepWorkspaces: envBool("JUDGE_KEEP_WORKSPACES", false),
@@ -328,6 +343,46 @@ func podmanURI() string {
 	}
 
 	return fmt.Sprintf("unix:///run/user/%d/podman/podman.sock", os.Getuid())
+}
+
+/*
+runnerImageFormat resolves the printf template used to name a runner image.
+
+JUDGE_IMAGE_FORMAT is the full override and wins when set. Otherwise the
+template is built from JUDGE_IMAGE_REGISTRY, JUDGE_RUNNER_IMAGE_PREFIX and
+JUDGE_RUNNER_IMAGE_TAG: the judge joins registry and prefix with a slash,
+appends the language suffix and the tag, so the default is
+"ghcr.io/runcodes-icmc/runcodes-runner-%s:latest". A trailing slash on the
+registry and leading/trailing slashes or a trailing hyphen on the prefix are
+ignored, which lets the same prefix work in Compose and Ansible.
+*/
+func runnerImageFormat() string {
+	if format := strings.TrimSpace(os.Getenv("JUDGE_IMAGE_FORMAT")); format != "" {
+		return format
+	}
+
+	registry := strings.TrimRight(
+		strings.TrimSpace(env("JUDGE_IMAGE_REGISTRY", DefaultRunnerImageRegistry)),
+		"/",
+	)
+	if registry == "" {
+		registry = DefaultRunnerImageRegistry
+	}
+
+	prefix := strings.Trim(
+		strings.TrimSpace(env("JUDGE_RUNNER_IMAGE_PREFIX", DefaultRunnerImagePrefix)),
+		"/-",
+	)
+	if prefix == "" {
+		prefix = DefaultRunnerImagePrefix
+	}
+
+	tag := strings.TrimSpace(env("JUDGE_RUNNER_IMAGE_TAG", DefaultRunnerImageTag))
+	if tag == "" {
+		tag = DefaultRunnerImageTag
+	}
+
+	return registry + "/" + prefix + "-%s:" + tag
 }
 
 // env returns the value of the environment variable named by the key.

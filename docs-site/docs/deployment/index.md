@@ -1,29 +1,30 @@
 ---
 title: Deployment overview
-description: Compare the Docker Compose and four-machine Ansible deployments and choose the right one.
+description: Compare the source-build Compose, image-based Compose and four-machine Ansible deployments and choose the right one.
 ---
 
 # Deployment overview
 
-RunCodes ships two supported deployment paths. They run the same services and
-the same published images; they differ in how many hosts they use and how the
-containers are managed.
+RunCodes ships three deployment paths. They run the same services; they differ
+in where the images come from and how many hosts they use.
 
-| | Docker Compose | Four-machine Ansible |
-| --- | --- | --- |
-| Intended use | local development, demos, a small single-host install | a production-shaped reference deployment |
-| Hosts | 1 | 4 (`edge`, `data`, `compute`, `observability`) |
-| Container runtime | Docker Compose v2 or Podman | rootless Podman + `podman-compose` |
-| Images | built from source (`docker compose up --build`) | pulled from GHCR |
-| Process supervision | Compose restart policy | user systemd units, linger, boot start |
-| Secrets | environment / root `.env` | Ansible Vault, deployment-user-owned files |
-| Telemetry | opt-in overlay (`make observability-up`) | full stack on the observability host |
-| TLS | Caddy, optional hostname | Caddy + ACME on the public edge |
-| Backups | manual `pg_dump` / volume archive | documented backup boundary on `data` |
+| | Source-build Compose | Image-based Compose | Four-machine Ansible |
+| --- | --- | --- | --- |
+| Intended use | local development, demos | a single production host | a production-shaped reference deployment |
+| Hosts | 1 | 1 | 4 (`edge`, `data`, `compute`, `observability`) |
+| Container runtime | Docker Compose v2 or Podman | Docker Compose v2 | rootless Podman + `podman-compose` |
+| Images | built from source | pulled from GHCR | pulled from GHCR |
+| Process supervision | Compose restart policy | Compose restart policy | user systemd units, linger, boot start |
+| Secrets | environment / root `.env` | `deploy/compose/.env` | Ansible Vault, deployment-user-owned files |
+| Telemetry | opt-in overlay (`make observability-up`) | not included; use Ansible | full stack on the observability host |
+| TLS | Caddy, optional hostname | Caddy, optional hostname | Caddy + ACME on the public edge |
+| Backups | manual `pg_dump` / volume archive | manual `pg_dump` / volume archive | documented backup boundary on `data` |
 
-For a first look at the platform, use [Docker Compose](./compose.md) or the
-[quick start](../guide/getting-started.md). For a real deployment with separated
-trust domains, use [Ansible](./ansible-setup.md).
+The [source-build Compose stack](./compose.md) is the development and demo path:
+`docker compose up --build` builds the application on the host. The
+[image-based Compose stack](./image-compose.md) pulls the published images and
+runs `deploy/compose/deploy.sh`; it is the single-host deployment path. For
+separated trust domains, use [Ansible](./ansible-setup.md).
 
 ## The four-machine topology
 
@@ -130,8 +131,13 @@ hosts:
 | `ghcr.io/runcodes-icmc/runcodes-runner-<language>` | `runners/` | `runners.yml` |
 
 The workflows run on `v*.*.*` tags and manual dispatch, publish `:latest` and
-version tags, and build for `linux/amd64`. The Ansible deployment defaults to
-`:latest` and can pin any release tag. See [CI/CD & releases](../ci-cd.md).
+version tags, and build for `linux/amd64`. The Ansible and image-based Compose
+deployments default to `:latest` and can pin any release tag. See
+[CI/CD & releases](../ci-cd.md).
+
+The table shows the upstream namespace. Both image-based paths let the deployment
+choose a registry, namespace and runner prefix; publish or mirror the same image
+names under that namespace before pointing the deployment at it.
 
 ::: warning Judge and runners are one contract
 Changing `container.config` or the milestone format requires a judge release
@@ -156,8 +162,12 @@ is a single point of failure for observability only. See
 
 ## Where to start
 
-1. **Just trying it** → [Docker Compose](./compose.md) or
+1. **Just trying it** → [Docker Compose from source](./compose.md) or
    [Getting started](../guide/getting-started.md).
-2. **Deploying for real** → [Ansible setup](./ansible-setup.md).
-3. **Running it after day one** → [Ansible operations](./ansible-operations.md).
-4. **Adding telemetry** → [Observability](../observability/index.md).
+2. **A single production host** → [Image-based Compose](./image-compose.md) and
+   the [production checklist](./checklist.md).
+3. **Four machines** → [Ansible setup](./ansible-setup.md), then the
+   [production checklist](./checklist.md).
+4. **Running it after day one** → [Ansible operations](./ansible-operations.md)
+   and [Platform operations](../administration/operations.md).
+5. **Adding telemetry** → [Observability](../observability/index.md).

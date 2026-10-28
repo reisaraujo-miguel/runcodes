@@ -1,0 +1,3 @@
+# Deployment environment and runtime state.
+.env
+exec/

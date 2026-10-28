@@ -5,8 +5,9 @@ description: Offerings, enrollment, members, exercises, test cases, compilation 
 
 # Classes & exercises API
 
-Paths are relative to `/api/v1`. "Staff" means the class owner, an enrolled
-co-professor, or the admin panel. See
+Paths are relative to `/api/v1`. "Staff" means the class owner or an enrolled
+co-professor. The admin panel uses its own `/admin/*` routes and does not grant
+these authoring routes to an unrelated administrator. See
 [Classes, roles & access](../guide/classes-and-roles.md) for the authorization
 rules.
 
@@ -63,7 +64,8 @@ enrollment code.
 
 ### `GET /user/exercises`
 
-Exercises open **right now** in the caller's classes. Returns an array of:
+Exercises open **right now** in the caller's classes, ordered by deadline. The
+list is capped at 50 entries. Returns an array of:
 
 ```json
 {
@@ -142,8 +144,9 @@ Classes the caller owns or teaches. Returns `OwnedOffering` objects:
 
 ### `GET /offerings/{id}`
 
-Returns the class including its enrollment code. Owner, co-professor and admin
-panel only.
+Returns the class including its enrollment code. Owner and co-professors only.
+The admin panel uses its own route and does not grant this one to an unrelated
+administrator.
 
 ### `POST /offerings/{id}/enrollment-code/rotate`
 
@@ -176,6 +179,32 @@ Owner only. Returns the updated offering.
 
 Deletes the class and its dependent rows. Owner only. Returns `204`.
 
+### `POST /offerings/import`
+
+Creates a new class from an archive produced by `GET /offerings/{id}/export`.
+Any professor or administrator can import; the caller becomes the owner of the
+new class.
+
+The body is `multipart/form-data`:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `archive` | file | the `.zip` exported by the platform, at most 256 MiB |
+| `name` | string | optional new class name; the manifest name is the fallback |
+| `description` | string | optional new description |
+| `end_date` | RFC 3339 | optional new end date; exercise dates shift by the difference |
+
+The archive contains the class configuration, exercises, test cases, compilation
+files and materials. It does not contain submissions, grades or members. The new
+class gets a new enrollment code.
+
+If `end_date` is omitted and the manifest's end date is already in the past, the
+new class gets a six-month period. Every allowed extension in the archive must
+exist in the platform catalog, or the import fails with `422` before writing
+anything.
+
+Returns `201` with the new offering.
+
 ### Members
 
 | Method | Path | Body | Result |
@@ -205,6 +234,144 @@ Rules:
 - the owner cannot be banned or removed;
 - banning keeps the role but removes access;
 - adding an existing member updates the role and clears the ban.
+
+## Grades and statistics
+
+Owner and co-professors only. Students and monitors receive `404`, like every
+other author-only view. The admin panel has no gradebook route; an administrator
+who needs one must own the class or be a co-professor.
+
+### `GET /offerings/{id}/grades`
+
+Returns the grade table and the statistics derived from it:
+
+```json
+{
+  "offering_id": 7,
+  "offering_name": "CS101",
+  "exercises": [
+    { "id": 15, "title": "Hello, world", "deadline": "2026-03-20T23:59:59-03:00" }
+  ],
+  "students": [
+    {
+      "user_id": 12,
+      "name": "Ada Lovelace",
+      "email": "ada@example.com",
+      "scores": [
+        {
+          "exercise_id": 15,
+          "score": 100,
+          "submission_count": 3,
+          "last_submission_at": "2026-03-18T14:02:11Z"
+        }
+      ],
+      "average": 100,
+      "submission_count": 3,
+      "last_submission_at": "2026-03-18T14:02:11Z"
+    }
+  ],
+  "summary": {
+    "student_count": 1,
+    "students_with_submission": 1,
+    "students_above_50": 1,
+    "global_average": 100,
+    "total_submissions": 3
+  },
+  "exercise_statistics": [
+    {
+      "exercise_id": 15,
+      "title": "Hello, world",
+      "deadline": "2026-03-20T23:59:59-03:00",
+      "student_count": 1,
+      "submitted_students": 1,
+      "students_above_50": 1,
+      "average": 100,
+      "average_submitted": 100,
+      "approval_rate": 100,
+      "best_score": 100,
+      "lowest_score": 100
+    }
+  ]
+}
+```
+
+The exercise grade is the best score among the student's submissions.
+`score` is `null` when the student has no submission; the class `average` still
+counts it as zero. Removed exercises are excluded. Only enrolled, non-banned
+students with the `student` role appear.
+
+### `GET /offerings/{id}/grades.csv`
+
+Streams the same table as RFC 4180 CSV with a UTF-8 byte-order mark, so Excel
+opens accented names correctly. The file name is
+`notas-turma-<offering-id>.csv`.
+
+Columns: `Aluno`, `Email`, one column per exercise, `Média`, `Submissões`,
+`Última submissão`. A missing exercise score is an empty cell. Names and titles
+that start with a spreadsheet formula character are prefixed with an apostrophe.
+
+## Class tools
+
+Owner and co-professors only. These routes act on the whole class.
+
+### `GET /offerings/{id}/export`
+
+Streams a zip with the class configuration, exercises, test cases, compilation
+files and materials. Submissions, members and grades are excluded. The archive
+can be imported with `POST /offerings/import`.
+
+### `GET /offerings/{id}/submissions/export`
+
+Streams a zip with the latest submission of every student on every exercise,
+grouped under `alunos/<user-id>_<name>/<exercise-id>_<title>/`, plus `notas.csv`
+and `LEIA-ME.txt`.
+
+`notas.csv` columns: `Turma`, `Aluno`, `Email`, `Exercício`,
+`Nota da última submissão`, `Situação`, `Enviada em`, `Submissão`. The score is
+the latest submission's score, not the student's best score. A missing source
+object becomes an `.indisponivel.txt` note in its folder instead of failing the
+download.
+
+The response is streamed; the frontend saves it as a file. A client that closes
+the connection early gets a truncated zip, so keep the connection open.
+
+### `POST /offerings/{id}/submissions/recompile`
+
+Queues a fresh run of the latest submission of every student on every exercise.
+Returns `202`:
+
+```json
+{ "queued": 42, "failed": 0 }
+```
+
+A new commit is created for each source; the previous commit and its score stay
+in the history. At most 5000 submissions are queued per request. The judge must
+be ready: if it is not, the request returns `503` and nothing is queued.
+Wake-up calls run in the background, so the response returns before the runs
+finish.
+
+### `POST /offerings/{id}/notify`
+
+Sends one email to every non-banned member of the class, including students,
+monitors, co-professors and the owner.
+
+```json
+{
+  "subject": "Schedule change for exercise 3",
+  "message": "The deadline moved to Friday."
+}
+```
+
+- `subject` is required, at most 200 characters and cannot contain a line break.
+- `message` is required and at most 20,000 characters.
+- The message is sent as plain text with an HTML version. Attachments are not
+  supported.
+- Delivery runs in the background. Returns `202` with the number of recipients
+  queued:
+
+  ```json
+  { "recipients": 41 }
+  ```
 
 ## Exercises
 
@@ -260,7 +427,9 @@ Partial update of the same fields. Staff only.
 
 ### `DELETE /exercises/{id}`
 
-Deletes the exercise and its test cases and files. Staff only. Returns `204`.
+Soft-deletes the exercise: it sets `removed = true` and returns `204`. Students
+stop seeing it and it no longer accepts submissions. Its test cases, files and
+historical submissions are preserved. There is no endpoint to undo the removal.
 
 ### `GET /allowed-file-types`
 
@@ -337,6 +506,71 @@ curl -b cookies.txt -X POST \
 Upload limits are deliberate: a test case can carry at most 32 MiB of multipart
 data.
 
+### `POST /exercises/{id}/test-cases/batch`
+
+Creates many cases from one zip. The body is `multipart/form-data`:
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `archive` | file | — | the zip, at most 64 MiB |
+| `input_type` | `text` / `file` | `text` | applied to every case |
+| `expected_output_type` | `text` / `file` | `text` | applied to every case |
+| `show_input` | bool | `true` | applied to every case |
+| `show_expected_output` | bool | `true` | applied to every case |
+| `show_user_output` | bool | `true` | applied to every case |
+| `cpu_time_limit_seconds` | int | `0` | 0 = platform default |
+| `mem_usage_limit_bytes` | int64 | `0` | 0 = platform default |
+| `stack_limit_bytes` | int64 | `0` | 0 = platform default |
+| `file_size_limit_bytes` | int64 | `0` | 0 = platform default |
+
+The archive layout is one folder per case:
+
+```text
+caso1/
+  entrada.in
+  saida.out
+  ajuda.txt
+caso2/
+  entrada.in
+  saida.out
+  files/notas.in
+```
+
+Each folder must contain exactly one `.in` and one `.out` file. Other files are
+extra case files. An extra file whose name ends in `.in` or `.out` belongs in a
+`files/` subfolder. The whole archive is validated before anything is written.
+
+Limits: 500 cases, 4000 zip entries, 256 MiB expanded and 32 MiB per file.
+
+Returns `201`:
+
+```json
+{ "created": 12 }
+```
+
+The response also contains the created cases in `test_cases`.
+
+A structural failure returns `422` with every bad folder:
+
+```json
+{
+  "error_msg": "invalid test case: 2 folder(s) do not follow the expected format",
+  "invalid_folders": [
+    {
+      "folder": "caso2",
+      "reason": "falta um arquivo com extensão .out (saída esperada do caso)"
+    }
+  ]
+}
+```
+
+### `GET /exercises/{id}/test-cases/export`
+
+Streams a zip in the layout the batch importer accepts, with
+`caso_001/input.in`, `caso_001/output.out` and the extra files. Use it to move
+cases between exercises. The export carries the input and output content, not the
+per-case limits or visibility configuration; the import form supplies those.
+
 ## Compilation and attached files
 
 **Compilation files** are placed in the workspace before compilation (for
@@ -385,6 +619,6 @@ File metadata:
 | `403` | not the owner, not enrolled, or not staff of the class |
 | `404` | class, exercise, test case or file not found; also used when a resource is invisible to the caller |
 | `409` | class ended, already a member, owner cannot be removed, etc. |
-| `413` | upload exceeds the 32 MiB authoring cap |
+| `413` | upload exceeds the endpoint's cap (32 MiB test case, 64 MiB test-case batch, 256 MiB class import) |
 | `422` | a well-formed request the account cannot satisfy (for example assigning co-professor to a student) |
 | `500` | server error |

@@ -42,22 +42,49 @@ path as an unknown extension.
 
 ## Image names
 
-The default template is:
+The judge builds each image reference from three settings:
+
+| Setting | Default |
+| --- | --- |
+| `JUDGE_IMAGE_REGISTRY` | `ghcr.io` |
+| `JUDGE_RUNNER_IMAGE_PREFIX` | `runcodes-icmc/runcodes-runner` |
+| `JUDGE_RUNNER_IMAGE_TAG` | `latest` |
+| `JUDGE_IMAGE_FORMAT` | derived from the three settings above |
+
+The judge joins the registry and prefix with a slash and appends the language
+suffix and tag. By default the template is:
 
 ```text
 ghcr.io/runcodes-icmc/runcodes-runner-%s:latest
 ```
 
-`JUDGE_IMAGE_FORMAT` overrides it. The `%s` is replaced with the image suffix
-from the table, for example:
+The `%s` is replaced with the image suffix from the table, for example:
 
 ```text
 ghcr.io/runcodes-icmc/runcodes-runner-cpp-omp:latest
 ```
 
-The runner images inherit from `ghcr.io/runcodes-icmc/runcodes-runner-base`,
-which contains `/usr/bin/runcodes` and `/usr/bin/monitor`. See
-[Runner images & monitor](../services/runners-and-monitor.md).
+To consume images from another GHCR repository, set the registry and prefix:
+
+```bash
+JUDGE_IMAGE_REGISTRY=ghcr.io
+JUDGE_RUNNER_IMAGE_PREFIX=reisaraujo-miguel/runcodes-runner
+JUDGE_RUNNER_IMAGE_TAG=v1.2.3
+```
+
+That produces `ghcr.io/reisaraujo-miguel/runcodes-runner-cpp-omp:v1.2.3`.
+A trailing slash on the registry and leading/trailing slashes or a trailing
+hyphen on the prefix are ignored.
+
+`JUDGE_IMAGE_FORMAT` is the advanced override. It takes a full printf template and
+wins over the three settings, for example
+`registry.example.com/team/runners/%s:edge`.
+
+The runner images are built from the repository's `-base` image (some copy the
+harness into a third-party base): `ghcr.io/runcodes-icmc/runcodes-runner-base` by
+default, or `<JUDGE_IMAGE_REGISTRY>/<JUDGE_RUNNER_IMAGE_PREFIX>-base` for a
+custom repository. The base image contains `/usr/bin/runcodes` and
+`/usr/bin/monitor`. See [Runner images & monitor](../services/runners-and-monitor.md).
 
 ## How a language is selected
 

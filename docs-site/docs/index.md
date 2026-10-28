@@ -100,6 +100,43 @@ features: []
 </div>
 
 <div class="rc-home-section" style="margin-top: 72px;">
+  <p class="rc-eyebrow">Choose your path</p>
+  <h2 class="rc-section-title">Documentation for every role</h2>
+  <p class="rc-section-lede">
+    The same platform looks different from a student desk, a professor's
+    gradebook and an administrator's console. Start with the guide for your
+    role.
+  </p>
+
+  <div class="rc-grid">
+    <a class="rc-card" href="./guide/student-guide.html">
+      <span class="rc-card-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5Z"/><path d="M4 5.5v16"/><path d="M8 7h8"/><path d="M8 11h6"/></svg>
+      </span>
+      <h3>Student guide</h3>
+      <p>Create an account, join a class, submit solutions, read verdicts and download your work.</p>
+      <span class="rc-arrow">Start as a student →</span>
+    </a>
+    <a class="rc-card" href="./guide/professor-guide.html">
+      <span class="rc-card-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5 12 3l9 4.5-9 4.5Z"/><path d="M7 10v4.5c0 1.5 2.2 2.5 5 2.5s5-1 5-2.5V10"/><path d="M21 7.5V14"/></svg>
+      </span>
+      <h3>Professor guide</h3>
+      <p>Create classes, author exercises and test cases, grade a class and reuse the material.</p>
+      <span class="rc-arrow">Teach with RunCodes →</span>
+    </a>
+    <a class="rc-card" href="./administration/">
+      <span class="rc-card-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.4 3 7.6 7.5 9.5 4.5-1.9 7.5-5.1 7.5-9.5V6Z"/><path d="m9 12 2 2 4-4"/></svg>
+      </span>
+      <h3>Administrator guide</h3>
+      <p>Manage accounts and classes, edit settings and file types, and operate the deployment.</p>
+      <span class="rc-arrow">Administer the platform →</span>
+    </a>
+  </div>
+</div>
+
+<div class="rc-home-section" style="margin-top: 72px;">
   <p class="rc-eyebrow">How it works</p>
   <h2 class="rc-section-title">A durable pipeline, from upload to verdict</h2>
   <p class="rc-section-lede">
