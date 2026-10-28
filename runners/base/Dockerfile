@@ -1,7 +1,12 @@
+# The workflow passes the monitor image from the repository that is publishing
+# these runners. The default keeps a local build pointed at upstream.
+ARG MONITOR_IMAGE=ghcr.io/runcodes-icmc/runcodes-monitor:latest
+FROM ${MONITOR_IMAGE} AS monitor
+
 FROM debian:trixie-slim AS base
 
 # Load Monitor Binary
-COPY --from=ghcr.io/runcodes-icmc/runcodes-monitor:latest /usr/bin/monitor /usr/bin/monitor
+COPY --from=monitor /usr/bin/monitor /usr/bin/monitor
 
 # Load Base Execution Script
 COPY ./base-script.sh /usr/bin/runcodes

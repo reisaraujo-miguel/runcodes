@@ -1,4 +1,5 @@
-FROM ghcr.io/runcodes-icmc/runcodes-runner-base:latest
+ARG RUNNER_BASE_IMAGE=ghcr.io/runcodes-icmc/runcodes-runner-base:latest
+FROM ${RUNNER_BASE_IMAGE}
 
 # The base image runs as the runcodes user; installing the language toolchain
 # and appending to the harness below need root.
