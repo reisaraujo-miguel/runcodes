@@ -139,17 +139,23 @@ JUDGE_IMAGE_FORMAT=registry.example.com/team/runners/%s:edge
 
 ### Publishing the images
 
-The release workflows in this repository publish the upstream application and
-runner images to `ghcr.io/runcodes-icmc`. To deploy from another namespace,
-publish or mirror all of these names there:
+The release workflows derive the GHCR namespace from the repository that runs
+them. The upstream repository publishes:
 
 ```text
-runcodes-frontend  runcodes-backend  runcodes-judge  runcodes-database
-runcodes-runner-<language>
+ghcr.io/runcodes-icmc/runcodes-{frontend,backend,judge,database}
+ghcr.io/runcodes-icmc/runcodes-runner-<language>
 ```
 
-The deployment does not build them. If a required image is missing, Compose
-fails during `pull` with a `not found` or `unauthorized` error.
+A fork publishes the same names under its own namespace, for example
+`ghcr.io/reisaraujo-miguel/runcodes-frontend`. Point `RUNCODES_IMAGE_NAMESPACE`
+and `RUNCODES_RUNNER_IMAGE_PREFIX` at that namespace; no workflow edit is
+needed.
+
+For a different registry or a mirror that is not published by these workflows,
+publish or mirror the application images and the `runcodes-runner-<language>`
+images there. The deployment does not build them. If a required image is
+missing, Compose fails during `pull` with a `not found` or `unauthorized` error.
 
 ## The deploy script
 

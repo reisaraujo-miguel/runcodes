@@ -195,22 +195,26 @@ baked into images.
 ## 4. Application images
 
 The four application images are built and pushed by
-`.github/workflows/app-images.yml` on `v*.*.*` tags and manual dispatch:
+`.github/workflows/app-images.yml` on `v*.*.*` tags and manual dispatch. The
+workflow derives the namespace from the repository; the upstream repository
+publishes:
 
 - `ghcr.io/runcodes-icmc/runcodes-frontend`
 - `ghcr.io/runcodes-icmc/runcodes-backend`
 - `ghcr.io/runcodes-icmc/runcodes-database`
 - `ghcr.io/runcodes-icmc/runcodes-judge`
 
-The workflow publishes `latest`, `sha-<short>` and semver tags. The deployment
-defaults to `latest`; pin `config_runcodes_image_tag` for reproducible deploys.
+A fork publishes the same names under its own GHCR namespace. The workflow
+publishes `latest`, `sha-<short>` and semver tags. The deployment defaults to
+`latest`; pin `config_runcodes_image_tag` for reproducible deploys.
 
 The frontend image is built with `VITE_OTEL_EXPORTER_OTLP_ENDPOINT=/otel`, so the
 SPA emits browser traces to the same-origin edge route. No deployment hostname is
 baked in.
 
-Runner and monitor images are published by `runners.yml` and `monitor.yml`; the
-compute stage pre-pulls every configured language before deploying the judge.
+Runner and monitor images are published by `runners.yml`, which calls
+`monitor.yml` before building the base; the compute stage pre-pulls every
+configured language before deploying the judge.
 
 GHCR packages are **private by default**. Either make the application, runner and
 monitor packages public, or create a token with `read:packages` and put it in

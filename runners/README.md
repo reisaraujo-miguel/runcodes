@@ -18,9 +18,15 @@ There are 22 language images. Twelve inherit `FROM` the base image; the other te
 copy `/usr/bin/runcodes` and `/usr/bin/monitor` into a third-party base that
 provides their toolchain. Images are published for `linux/amd64` only.
 
-The names above are the upstream defaults. The judge can pull a mirror or another
-namespace through `JUDGE_RUNNER_IMAGE_REPOSITORY` and `JUDGE_RUNNER_IMAGE_TAG`;
-the mirror must keep the `runcodes-runner-<language>` naming.
+The names above are the upstream output. The publish workflows derive the
+namespace from the repository, so a fork publishes
+`ghcr.io/<owner>/<repo>-monitor` and `ghcr.io/<owner>/<repo>-runner-*`. The
+language Dockerfiles accept `RUNNER_BASE_IMAGE`, the base accepts
+`MONITOR_IMAGE`, and `make` forwards both, so a local build can point at the
+same fork namespace. The judge can pull a mirror or another namespace through
+`JUDGE_IMAGE_REGISTRY`, `JUDGE_RUNNER_IMAGE_PREFIX` and
+`JUDGE_RUNNER_IMAGE_TAG`; the mirror must keep the
+`runcodes-runner-<language>` naming.
 
 ## Build
 
@@ -30,7 +36,16 @@ make all
 
 Build the base first (the `Makefile` does). Every language depends on the base,
 and the base copies the monitor binary out of `runcodes-monitor:latest`.
-`.github/workflows/runners.yml` publishes the same images on a `v*.*.*` tag.
+`.github/workflows/runners.yml` publishes the same images on a `v*.*.*` tag and
+calls the monitor workflow before it builds the base.
+
+For a fork namespace:
+
+```bash
+make all \
+  IMAGE_PREFIX=ghcr.io/<owner>/<repo>-runner \
+  MONITOR_IMAGE=ghcr.io/<owner>/<repo>-monitor
+```
 
 ## Test
 
