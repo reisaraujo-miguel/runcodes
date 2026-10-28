@@ -12,10 +12,15 @@ stop. It assumes the deployment is already running; installation is covered in
 [Deployment](../deployment/index.md).
 
 Infrastructure-specific commands live in
-[Docker Compose](../deployment/compose.md#operating) and
+[Compose from source](../deployment/compose.md#operating) and
 [Ansible operations](../deployment/ansible-operations.md). Metrics, logs, traces
 and alert configuration are in [Observability](../observability/index.md) and the
 [runbook](../observability/runbook.md).
+
+::: tip Compose engine
+Compose commands on this page use `podman compose`, the default. Replace it with
+`docker compose` when the stack runs on Docker Compose v2.
+:::
 
 ## Know the failure domains
 
@@ -156,12 +161,12 @@ the submitted files. Back up both, or accept that old sources are unavailable.
 ### Compose
 
 ```bash
-docker compose exec -T database \
+podman compose exec -T database \
   pg_dump -U runcodes -d runcodes -Fc > "runcodes-$(date -u +%Y%m%dT%H%M%SZ).dump"
 ```
 
 Stop the writers before archiving the object store, as described in
-[Docker Compose § Data and volumes](../deployment/compose.md#data-and-volumes).
+[Compose § Data and volumes](../deployment/compose.md#data-and-volumes).
 Copy both artifacts off the host and encrypt them at rest.
 
 ### Ansible
@@ -205,8 +210,8 @@ incident review harder.
 
 ```bash
 git pull
-docker compose up -d --build
-docker compose ps
+podman compose up -d --build
+podman compose ps
 curl -s http://localhost:8443/readyz | jq
 ```
 
@@ -425,7 +430,7 @@ a single submission.
 - [Administrator guide](./index.md)
 - [Deployment overview](../deployment/index.md)
 - [Production checklist](../deployment/checklist.md)
-- [Docker Compose](../deployment/compose.md)
+- [Compose from source](../deployment/compose.md)
 - [Ansible operations](../deployment/ansible-operations.md)
 - [Observability overview](../observability/index.md)
 - [Observability runbook](../observability/runbook.md)

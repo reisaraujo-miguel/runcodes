@@ -61,7 +61,7 @@ features: []
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="m7 9 3 3-3 3"/><path d="M13 15h4"/></svg>
       </span>
       <h3>Quick start</h3>
-      <p>Bring the whole stack up with Docker Compose, create the first admin, and verify an account.</p>
+      <p>Bring the whole stack up with Podman Compose (default) or Docker Compose, create the first admin, and verify an account.</p>
       <span class="rc-arrow">Start locally →</span>
     </a>
     <a class="rc-card" href="./guide/submissions.html">

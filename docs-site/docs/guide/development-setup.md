@@ -16,7 +16,7 @@ deploy it, use [Deployment](../deployment/index.md).
 | --- | --- | --- |
 | Go | 1.26 for the backend, 1.27 for the judge | backend and judge |
 | Bun | current release | frontend install, dev server and tests |
-| Docker Compose v2 or Podman | current release | PostgreSQL, Redis, SeaweedFS and smtp4dev |
+| Podman Compose (default) or Docker Compose v2 | current release | PostgreSQL, Redis, SeaweedFS and smtp4dev |
 | Rootless Podman | current release | the judge's execution runtime |
 | `make` | any | judge targets and observability helpers |
 | Node.js | 20 or 22 | the documentation site only |
@@ -48,12 +48,17 @@ git config core.hooksPath .githooks
 
 ## Choose how to run the stack
 
+::: tip Podman is the default, Docker is supported
+The commands below use `podman compose`; Docker Compose v2 works the same way
+with `docker compose`. Rootless Podman is needed for the judge in both cases.
+:::
+
 ### Full stack in containers
 
 ```bash
 cp .env.example .env
 # fill the required RUNCODES_* secrets
-docker compose up --build
+podman compose up --build
 ```
 
 This is the closest to production and needs no local Go or Bun toolchain. Use it
@@ -68,8 +73,8 @@ only some services.
 ```bash
 cp .env.example .env
 # fill the required RUNCODES_* secrets
-docker compose up -d database seaweed redis smtp4dev
-docker compose ps
+podman compose up -d database seaweed redis smtp4dev
+podman compose ps
 ```
 
 The database container initializes the schema, the seed data, the
@@ -318,8 +323,8 @@ This deletes the database, object store, cache and caught mail. It cannot be
 undone.
 
 ```bash
-docker compose down -v
-docker compose up -d database seaweed redis smtp4dev
+podman compose down -v
+podman compose up -d database seaweed redis smtp4dev
 ```
 
 The next database start initializes a fresh volume. Run the admin bootstrap again

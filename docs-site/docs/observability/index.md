@@ -12,8 +12,9 @@ signals out to Tempo, Loki, Prometheus and Pyroscope, and Grafana ties them
 together.
 
 Instrumentation is **off by default**. The services export nothing unless
-`OTEL_EXPORTER_OTLP_ENDPOINT` is set. `docker compose up` has no telemetry
-dependency; the overlay adds it without changing the application's behaviour.
+`OTEL_EXPORTER_OTLP_ENDPOINT` is set. `podman compose up` (or
+`docker compose up` with Docker Compose v2) has no telemetry dependency; the
+overlay adds it without changing the application's behaviour.
 
 ## Pillars
 
@@ -165,8 +166,8 @@ Versions are pinned in `docker-compose.observability.yml` and in
   may have no samples even when the profile link exists.
 - **Judge internals are coarse.** The container's internal compile/test loop is
   one `judge.run_container` span; the API, DB, S3 and per-case spans are finer.
-- **Only application logs go to Loki.** Infrastructure logs stay in the Podman
-  journal / `podman-compose logs`.
+- **Only application logs go to Loki.** Infrastructure logs stay in the
+  container engine journal / `podman compose logs` (or `docker compose logs`).
 - **Single-node storage, no HA, no TLS.** The overlay is for development; the
   four-machine deployment is private and retention-capped but still single-node.
 - **Alerting is webhook- or email-based.** The bundled sink is a test fixture,

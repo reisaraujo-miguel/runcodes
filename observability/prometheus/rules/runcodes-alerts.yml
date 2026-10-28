@@ -176,7 +176,7 @@ groups:
           component: infrastructure
         annotations:
           summary: "Host root filesystem has less than 15% free space"
-          description: "Prometheus, Loki and Tempo keep data in Docker volumes on this host. Free space before the retention windows start failing."
+          description: "Prometheus, Loki and Tempo keep data in container volumes on this host. Free space before the retention windows start failing."
 
       - alert: RunCodesCollectorExportFailures
         expr: |

@@ -1,14 +1,25 @@
 ---
-title: Docker Compose from source
-description: Run the source-build RunCodes stack on a single host with Docker Compose, including TLS, volumes, updates and backups.
+title: Compose from source
+description: Run the source-build RunCodes stack on a single host with Podman Compose (default) or Docker Compose, including TLS, volumes, updates and backups.
 ---
 
-# Docker Compose from source
+# Compose from source
 
 `docker-compose.yml` at the repository root builds the application from source
 and runs the full stack on one host: Caddy and the SPA, the backend, the judge,
 PostgreSQL, Redis, SeaweedFS and smtp4dev. It is the development, demo and
 source-inspection path.
+
+Podman Compose is the default engine; Docker Compose v2 works the same way.
+Both use the same file, and the judge always needs the host's rootless Podman
+socket.
+
+::: tip Podman is the default, Docker is supported
+Commands on this page use `podman compose`. With Docker, replace
+`podman compose` with `docker compose`, and `podman` with `docker` for
+`run`, `exec`, `volume` and `login`. Keep the rootless Podman socket for the
+judge in either case.
+:::
 
 For a single production host that pulls published images instead of building,
 use [Image-based Compose](./image-compose.md) and
@@ -44,9 +55,11 @@ and it reverse-proxies `/api/*` to `backend:8443`. That keeps the API same-origi
 
 ## Prerequisites
 
-- Docker Engine with Compose v2, or a Docker-compatible API.
-- Rootless Podman on the host with `podman.socket` started.
-- Root access (or a user in the `docker` group) to run Compose.
+- Podman with a Compose provider (the default), or Docker Engine with Compose v2.
+- Rootless Podman on the host with `podman.socket` started. The judge needs the
+  socket with either Compose engine.
+- A user that can run Compose: root, a user in the `docker` group, or a
+  rootless Podman user.
 - Free disk for the images, the database and the object store.
 
 ```bash
@@ -54,7 +67,7 @@ systemctl --user start podman.socket
 ls -l /run/user/$(id -u)/podman/podman.sock
 ```
 
-If the socket path is not the default, set `PODMAN_SOCKET` before `docker compose
+If the socket path is not the default, set `PODMAN_SOCKET` before `podman compose
 up`. The judge container mounts it at `/run/podman/podman.sock`.
 
 ::: warning Socket lifetime
@@ -63,7 +76,7 @@ Starting `podman.socket` after the judge, or restarting the socket later,
 requires recreating the judge:
 
 ```bash
-docker compose up -d --force-recreate judge
+podman compose up -d --force-recreate judge
 ```
 :::
 
@@ -118,8 +131,8 @@ The full list is in [Configuration](../reference/configuration.md).
 ## Start and verify
 
 ```bash
-docker compose up -d --build
-docker compose ps
+podman compose up -d --build
+podman compose ps
 
 curl -s http://localhost:8080/api/v1/settings/public | jq
 curl -s http://localhost:9000/readyz | jq
@@ -145,7 +158,7 @@ export RUNCODES_DOMAIN=runcodes.example.com
 export RUNCODES_PUBLIC_URL=https://runcodes.example.com
 export FRONTEND_HTTP_PORT=80
 export FRONTEND_HTTPS_PORT=443
-docker compose up -d
+podman compose up -d
 ```
 
 Caddy obtains and renews a certificate into the `caddy_data` volume. DNS must
@@ -168,27 +181,27 @@ backend so the session cookie is not marked `Secure`. Never do that behind HTTPS
 PostgreSQL:
 
 ```bash
-docker compose exec -T database pg_dump -U runcodes -d runcodes -Fc > runcodes.dump
+podman compose exec -T database pg_dump -U runcodes -d runcodes -Fc > runcodes.dump
 
 # Restore into an empty database
-docker compose exec -T database pg_restore -U runcodes -d runcodes --clean --if-exists < runcodes.dump
+podman compose exec -T database pg_restore -U runcodes -d runcodes --clean --if-exists < runcodes.dump
 ```
 
 SeaweedFS (stop writers first):
 
 ```bash
-docker compose stop backend judge seaweed
-docker run --rm \
+podman compose stop backend judge seaweed
+podman run --rm \
   -v runcodes-react_runcodes-seaweed-vol:/data:ro \
   -v "$PWD:/backup" \
   alpine tar czf /backup/seaweed-$(date -u +%Y%m%dT%H%M%SZ).tgz -C /data .
-docker compose start seaweed backend judge
+podman compose start seaweed backend judge
 ```
 
 The exact volume name depends on the Compose project name; check
-`docker volume ls`.
+`podman volume ls`.
 
-::: danger `docker compose down -v` destroys data
+::: danger `podman compose down -v` destroys data
 It removes the database and object-store volumes. A new volume is initialized
 from `database/schema/02-schema.sql` and must be stamped in Atlas history before
 the next migration; see [Database](../services/database.md#existing-databases).
@@ -198,7 +211,7 @@ the next migration; see [Database](../services/database.md#existing-databases).
 
 ```bash
 git pull
-docker compose up -d --build
+podman compose up -d --build
 ```
 
 Compose recreates changed containers. The judge and backend roll with the new
@@ -208,7 +221,7 @@ the backend's stale sweeper. Schedule updates outside submission windows.
 If only one service changed:
 
 ```bash
-docker compose up -d --build backend
+podman compose up -d --build backend
 ```
 
 If the schema changed, apply migrations before or after the rollout as the
@@ -217,11 +230,11 @@ release notes direct. See [Database](../services/database.md#migrations).
 ## Operating
 
 ```bash
-docker compose ps
-docker compose logs -f --tail=100 judge
-docker compose logs -f backend
-docker compose restart backend
-docker compose exec judge id          # root inside the namespace
+podman compose ps
+podman compose logs -f --tail=100 judge
+podman compose logs -f backend
+podman compose restart backend
+podman compose exec judge id          # root inside the namespace
 ```
 
 ### Common failures
@@ -236,7 +249,7 @@ docker compose exec judge id          # root inside the namespace
 | verification mail missing | smtp4dev at `:8081`, `RUNCODES_PUBLIC_URL`, SMTP vars |
 
 See [Getting started § First-run troubleshooting](../guide/getting-started.md#first-run-troubleshooting)
-for the detailed Podman diagnosis.
+for the detailed Podman socket diagnosis.
 
 ## Adding observability
 
@@ -250,7 +263,9 @@ make observability-smoke-test
 ```
 
 It uses the same Compose project and volumes, so it is not a separate
-deployment. See [Local observability stack](../observability/local.md).
+deployment. The Make targets use `podman compose` by default; set
+`CONTAINER_ENGINE=docker` to use Docker. See
+[Local observability stack](../observability/local.md).
 
 ## Related pages
 

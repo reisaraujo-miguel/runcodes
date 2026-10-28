@@ -81,7 +81,7 @@ loopback.
 | Cache          | Redis (optional; the API degrades to a no-op when unreachable)          |
 | Execution      | Rootless Podman + one container image per language                     |
 | Telemetry      | OpenTelemetry Go/Web SDK, Collector, Prometheus, Loki, Tempo, Pyroscope, Grafana, Alertmanager |
-| Deployment     | Docker Compose (single host) or Ansible + rootless Podman (four hosts)  |
+| Deployment     | Podman Compose (default) or Docker Compose (single host), or Ansible + rootless Podman (four hosts) |
 
 ## Supported languages
 
@@ -128,8 +128,8 @@ The platform is built around a few boundaries that explain most of its design:
    before they are relayed. A reload reconnects and receives a snapshot, so the
    UI can never end up in a state the database does not agree with.
 5. **Observability is opt-in.** Both Go services are instrumented, but export
-   nothing unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set. The normal `docker
-   compose up` has no telemetry dependency.
+   nothing unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set. The normal `podman
+   compose up` (or `docker compose up`) has no telemetry dependency.
 
 ## Where to go next
 

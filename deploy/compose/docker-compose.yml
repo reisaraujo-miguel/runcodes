@@ -7,7 +7,8 @@
 #
 # Required environment is documented in .env.example. The deploy script loads
 # that file, prepares the execution directory and Podman socket, then pulls and
-# starts the stack.
+# starts the stack. Compose can run on Podman (default) or Docker; the judge
+# always uses the host's rootless Podman socket.
 name: "${COMPOSE_PROJECT_NAME:-runcodes}"
 
 services:

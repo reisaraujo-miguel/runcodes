@@ -9,7 +9,7 @@ language image through rootless Podman.
 
 ## Requirements
 
-- Docker (for PostgreSQL and SeaweedFS).
+- Docker (the harness starts PostgreSQL and SeaweedFS with Docker directly).
 - `curl`.
 - A rootless Podman API socket, by default
   `unix:///run/user/$UID/podman/podman.sock`.

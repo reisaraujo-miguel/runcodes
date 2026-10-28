@@ -5,7 +5,9 @@ description: Network matrix for the Compose and four-machine deployments, object
 
 # Ports & storage
 
-## Docker Compose
+## Compose (single host)
+
+Podman is the default engine; Docker Compose v2 works the same way.
 
 ### Published on the host
 

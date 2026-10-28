@@ -9,6 +9,11 @@ RunCodes uses PostgreSQL for all relational state and as the judge's durable
 queue. The database directory contains the desired schema, versioned migrations,
 seed data and a one-shot importer for the legacy production database.
 
+::: tip Compose engine
+Compose commands on this page use `podman compose`, the default. Replace it with
+`docker compose` when running the stack on Docker Compose v2.
+:::
+
 ## Layout
 
 | Path | Purpose |
@@ -167,7 +172,7 @@ Atlas needs an empty, disposable database to replay the migration directory.
 migration in it.
 
 ```bash
-docker compose exec database createdb -U runcodes atlas_dev
+podman compose exec database createdb -U runcodes atlas_dev
 
 export ATLAS_DEV_URL="postgres://runcodes:${RUNCODES_DB_PASSWORD}@127.0.0.1:5432/atlas_dev?sslmode=disable&search_path=public"
 ```
@@ -176,8 +181,8 @@ The connection must use the `runcodes` owner role. If an interrupted run leaves
 objects behind, recreate the database:
 
 ```bash
-docker compose exec database dropdb -U runcodes atlas_dev
-docker compose exec database createdb -U runcodes atlas_dev
+podman compose exec database dropdb -U runcodes atlas_dev
+podman compose exec database createdb -U runcodes atlas_dev
 ```
 
 ### Existing databases
@@ -202,7 +207,7 @@ version=$(basename "$(ls -1 database/migrations/*.sql | tail -n1)" | cut -d_ -f1
 ./database/atlas.sh migrate set "$version" --url "$DATABASE_URL"
 ```
 
-Remember this after `docker compose down -v`: the new volume comes from the
+Remember this after `podman compose down -v`: the new volume comes from the
 schema file and must be stamped once before the next migration.
 
 In both cases, `migrate status` must report `Migration Status: OK` with no
@@ -316,7 +321,7 @@ The database is the backup boundary for relational state; the SeaweedFS volume
 is the other half. For a single-host Compose deployment:
 
 ```bash
-docker compose exec -T database pg_dump -U runcodes -d runcodes -Fc > runcodes.dump
+podman compose exec -T database pg_dump -U runcodes -d runcodes -Fc > runcodes.dump
 ```
 
 For the four-machine deployment, see

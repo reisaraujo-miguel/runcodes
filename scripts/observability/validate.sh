@@ -3,14 +3,15 @@
 # Static validation for the observability stack.
 #
 # Runs without starting the application stack:
-#   * compose file resolution (docker compose config)
+#   * compose file resolution (podman compose config)
 #   * Prometheus config and alert rules (promtool)
 #   * Alertmanager config (amtool)
 #   * OpenTelemetry Collector config (collector validate)
 #   * dashboard JSON and shell syntax
 #
-# Docker is required for the tool-specific checks; use SKIP_DOCKER=1 to run only
-# the file checks (useful in an environment without a container runtime).
+# A container engine is required for the tool-specific checks; Podman is the
+# default and Docker Compose v2 is supported. Use SKIP_DOCKER=1 to run only the
+# file checks (useful in an environment without a container runtime).
 set -Eeuo pipefail
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -26,7 +27,7 @@ info() { printf '\033[0;36mINFO\033[0m %s\n' "$*"; }
 fail() { printf '\033[0;31mFAIL\033[0m %s\n' "$*" >&2; exit 1; }
 
 # Compose interpolates required application secrets even for a config parse.
-# These are throwaway values used only by `docker compose config`; the real
+# These are throwaway values used only by the compose config check; the real
 # stack continues to use .env or the caller's environment.
 export RUNCODES_JWT_SECRET="${RUNCODES_JWT_SECRET:-validation-only-not-a-secret}"
 export RUNCODES_DB_PASSWORD="${RUNCODES_DB_PASSWORD:-validation-only}"
@@ -62,22 +63,25 @@ if [[ "$SKIP_DOCKER" == "1" ]]; then
   exit 0
 fi
 
+# shellcheck source=scripts/observability/engine.sh
+source "$ROOT/scripts/observability/engine.sh"
+runcodes_select_engine || exit 1
+
 info "resolving compose configuration"
-docker compose -f docker-compose.yml -f docker-compose.observability.yml config -q \
-  || fail "docker compose config failed"
+"${COMPOSE[@]}" config -q || fail "compose config failed"
 pass "compose configuration resolves"
 
-docker info >/dev/null 2>&1 || fail "Docker daemon is not reachable; set SKIP_DOCKER=1 to skip container-based checks"
+"$CONTAINER_ENGINE" info >/dev/null 2>&1 || fail "container engine is not reachable; set SKIP_DOCKER=1 to skip container-based checks"
 
 info "validating Prometheus config and rules"
-docker run --rm --security-opt label=disable --entrypoint promtool \
+"$CONTAINER_ENGINE" run --rm --security-opt label=disable --entrypoint promtool \
   -v "$ROOT/observability/prometheus:/etc/prometheus:ro" \
   "$PROMETHEUS_IMAGE" \
   check config /etc/prometheus/prometheus.yml
 pass "promtool check config"
 
 info "validating Alertmanager config"
-docker run --rm --security-opt label=disable --entrypoint amtool \
+"$CONTAINER_ENGINE" run --rm --security-opt label=disable --entrypoint amtool \
   -v "$ROOT/observability/alertmanager:/etc/alertmanager:ro" \
   "$ALERTMANAGER_IMAGE" \
   check-config /etc/alertmanager/alertmanager.yml
@@ -85,7 +89,7 @@ pass "amtool check-config"
 
 info "validating the Alertmanager example configs"
 for config in alertmanager.gmail.example.yml alertmanager.production.example.yml; do
-  docker run --rm --security-opt label=disable --entrypoint amtool \
+  "$CONTAINER_ENGINE" run --rm --security-opt label=disable --entrypoint amtool \
     -v "$ROOT/observability/alertmanager:/etc/alertmanager:ro" \
     "$ALERTMANAGER_IMAGE" \
     check-config "/etc/alertmanager/$config"
@@ -93,7 +97,7 @@ for config in alertmanager.gmail.example.yml alertmanager.production.example.yml
 done
 
 info "validating OpenTelemetry Collector config"
-docker run --rm --security-opt label=disable \
+"$CONTAINER_ENGINE" run --rm --security-opt label=disable \
   -e DEPLOYMENT_ENVIRONMENT=development \
   -v "$ROOT/observability/otel-collector/config.yaml:/etc/otelcol/config.yaml:ro" \
   "$COLLECTOR_IMAGE" \

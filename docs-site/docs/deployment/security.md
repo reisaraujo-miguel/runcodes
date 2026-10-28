@@ -153,7 +153,7 @@ key, or disable browser telemetry. Metrics and logs are not exposed.
   the Security tab.
 - `.github/workflows/trivy-repo.yml` scans the repository with `trivy.yaml`;
   accepted risks live in `.trivyignore.yaml`.
-- `docker compose` builds are scanned the same way.
+- `podman compose` and `docker compose` builds are scanned the same way.
 - Dependabot updates dependencies and GitHub Actions.
 
 A finding in a base image is not automatically exploitable in the platform's

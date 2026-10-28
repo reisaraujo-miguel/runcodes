@@ -12,7 +12,7 @@ in where the images come from and how many hosts they use.
 | --- | --- | --- | --- |
 | Intended use | local development, demos | a single production host | a production-shaped reference deployment |
 | Hosts | 1 | 1 | 4 (`edge`, `data`, `compute`, `observability`) |
-| Container runtime | Docker Compose v2 or Podman | Docker Compose v2 | rootless Podman + `podman-compose` |
+| Container runtime | Podman Compose (default) or Docker Compose v2 | Podman Compose (default) or Docker Compose v2 | rootless Podman + `podman-compose` |
 | Images | built from source | pulled from GHCR | pulled from GHCR |
 | Process supervision | Compose restart policy | Compose restart policy | user systemd units, linger, boot start |
 | Secrets | environment / root `.env` | `deploy/compose/.env` | Ansible Vault, deployment-user-owned files |
@@ -21,10 +21,12 @@ in where the images come from and how many hosts they use.
 | Backups | manual `pg_dump` / volume archive | manual `pg_dump` / volume archive | documented backup boundary on `data` |
 
 The [source-build Compose stack](./compose.md) is the development and demo path:
-`docker compose up --build` builds the application on the host. The
+`podman compose up --build` builds the application on the host. Docker Compose
+v2 works the same way with `docker compose up --build`. The
 [image-based Compose stack](./image-compose.md) pulls the published images and
-runs `deploy/compose/deploy.sh`; it is the single-host deployment path. For
-separated trust domains, use [Ansible](./ansible-setup.md).
+runs `deploy/compose/deploy.sh`; it is the single-host deployment path. Both
+single-host paths use Podman by default and require a rootless Podman socket
+for the judge. For separated trust domains, use [Ansible](./ansible-setup.md).
 
 ## The four-machine topology
 
@@ -165,7 +167,7 @@ is a single point of failure for observability only. See
 
 ## Where to start
 
-1. **Just trying it** → [Docker Compose from source](./compose.md) or
+1. **Just trying it** → [Compose from source](./compose.md) or
    [Getting started](../guide/getting-started.md).
 2. **A single production host** → [Image-based Compose](./image-compose.md) and
    the [production checklist](./checklist.md).

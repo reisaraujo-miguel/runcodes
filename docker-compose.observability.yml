@@ -1,8 +1,10 @@
 # Observability overlay.
 #
-# It is intentionally a separate file: `docker compose up` keeps its existing
-# behaviour, and the observability stack is opt-in:
+# It is intentionally a separate file: `podman compose up` (the default) and
+# `docker compose up` keep their existing behaviour, and the observability stack
+# is opt-in:
 #
+#   podman compose -f docker-compose.yml -f docker-compose.observability.yml up -d
 #   docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
 #
 # or, preferably, `make observability-up`.

@@ -1,13 +1,19 @@
 ---
 title: Getting started
-description: Run the complete RunCodes stack locally with Docker Compose, bootstrap the admin account and verify a new account.
+description: Run the complete RunCodes stack locally with Podman Compose (default) or Docker Compose, bootstrap the admin account and verify a new account.
 ---
 
 # Getting started
 
-This guide brings up the complete stack locally with Docker Compose and gets
-you from a fresh clone to a working submission. It takes roughly ten minutes plus
-image builds.
+This guide brings up the complete stack locally with Podman Compose (the
+default) or Docker Compose and gets you from a fresh clone to a working
+submission. It takes roughly ten minutes plus image builds.
+
+::: tip Podman is the default, Docker is supported
+Commands use `podman compose`; replace it with `docker compose` to run the same
+stack with Docker Compose v2. The judge needs the rootless Podman socket with
+either engine.
+:::
 
 ## Choose a path
 
@@ -22,10 +28,10 @@ The rest of this page is the local Compose path.
 
 ## Prerequisites
 
-- **Docker Engine with Compose v2**, or a Docker-compatible API. Podman's socket
-  also works (`DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock`).
+- **Podman with a Compose provider** (default), or **Docker Engine with
+  Compose v2**.
 - **Rootless Podman on the host**, with its API socket. The judge runs the
-  language images through it.
+  language images through it, with either Compose engine.
 - **About 15 GB of free disk** for images (the language runners are large),
   plus space for PostgreSQL and SeaweedFS volumes.
 - `make`, `curl` and `jq` for the optional observability tooling.
@@ -46,7 +52,9 @@ at a directory and the judge reports `podman unavailable` for every readiness
 probe. Recreating the judge after starting the socket fixes it:
 
 ```bash
-docker compose up -d --force-recreate judge
+podman compose up -d --force-recreate judge
+# Docker Compose v2:
+# docker compose up -d --force-recreate judge
 ```
 :::
 
@@ -89,7 +97,7 @@ values; a literal `$` in a value can be interpolated by Compose.
 ## 2. Start the stack
 
 ```bash
-docker compose up --build
+podman compose up --build
 ```
 
 This builds the frontend, backend, judge and database images, starts
@@ -99,8 +107,8 @@ frontend. The first build takes a while; subsequent starts are fast.
 To run detached:
 
 ```bash
-docker compose up -d --build
-docker compose ps
+podman compose up -d --build
+podman compose ps
 ```
 
 ### Service URLs
@@ -175,7 +183,7 @@ If submissions stay queued or fail with `503`, check the judge:
 
 ```bash
 curl -s http://localhost:9000/readyz | jq
-docker compose logs --tail=100 judge
+podman compose logs --tail=100 judge
 ```
 
 The judge's readiness endpoint verifies **both** PostgreSQL and Podman. While it
@@ -191,8 +199,8 @@ The socket probably did not exist when the container was created, or
 
 ```bash
 systemctl --user status podman.socket
-docker compose up -d --force-recreate judge
-docker compose exec judge ls -l /run/podman/podman.sock   # must be 's'
+podman compose up -d --force-recreate judge
+podman compose exec judge ls -l /run/podman/podman.sock   # must be 's'
 curl -s http://localhost:9000/readyz
 ```
 
@@ -224,7 +232,7 @@ the same origin so verification links match.
 
 ### Database was created before a feature
 
-`docker compose` only runs `database/schema/*` on an empty volume. Apply pending
+`podman compose` only runs `database/schema/*` on an empty volume. Apply pending
 migrations explicitly; see [Database](../services/database.md#migrations).
 
 ## Next steps

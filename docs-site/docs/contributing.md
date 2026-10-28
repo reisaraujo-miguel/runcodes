@@ -15,8 +15,8 @@ report includes:
 
 - what you expected and what happened;
 - the commit or release you ran;
-- the relevant service logs (`docker compose logs backend`, judge, browser
-  console);
+- the relevant service logs (`podman compose logs backend`, or
+  `docker compose logs backend`; also the judge and browser console);
 - a trace id if observability is enabled (`TraceId` response header);
 - reproduction steps, ideally with a minimal submission.
 
@@ -46,6 +46,11 @@ Pull requests are expected to keep the test suite green:
 The [Development setup](./guide/development-setup.md) page covers the complete
 environment: dependencies, service `.env` files, the judge socket, the database
 workflow and common failures. This section is the short version.
+
+::: tip Podman is the default, Docker is supported
+Compose commands use `podman compose`; replace it with `docker compose` for
+Docker Compose v2. The judge needs the rootless Podman socket in both cases.
+:::
 
 ### Frontend
 
@@ -91,7 +96,8 @@ Makefile). See [Judge](./services/judge.md#running-the-judge).
 ### Full stack
 
 ```bash
-docker compose up --build
+podman compose up --build    # Podman (default)
+# docker compose up --build  # Docker Compose v2
 ```
 
 See [Getting started](./guide/getting-started.md) for secrets, admin bootstrap

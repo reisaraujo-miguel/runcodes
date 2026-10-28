@@ -363,8 +363,9 @@ the schema, seeds a commit and a test case, uploads source and test I/O, and run
 the real engine against a real language image through rootless Podman. The Go
 test is skipped unless `JUDGE_TEST_DB_DSN` is set; the harness sets it.
 
-Requirements: Docker (for the two dependencies), `curl`, a rootless Podman
-socket, and the C runner image (pulled on demand).
+Requirements: Docker (the integration harness starts the two dependencies with
+Docker directly), `curl`, a rootless Podman socket, and the C runner image
+(pulled on demand).
 
 ```bash
 cd judge
