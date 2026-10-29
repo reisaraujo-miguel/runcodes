@@ -20,7 +20,7 @@ else
 endif
 
 export CONTAINER_ENGINE
-OBS_COMPOSE = $(COMPOSE) -f docker-compose.yml -f docker-compose.observability.yml
+OBS_COMPOSE = $(COMPOSE) -f docker-compose.yml -f docker-compose.observability.yml -f docker-compose.observability.build.yml
 
 .PHONY: help rootfs-smoke observability-init observability-up observability-down observability-status observability-logs observability-smoke-test observability-browser-smoke-test observability-submission-smoke-test observability-validate observability-destroy
 

@@ -14,6 +14,10 @@ on:
       - "frontend/package.json"
       - "frontend/bun.lock"
       - "docker-compose.observability.yml"
+      - "docker-compose.observability.build.yml"
+      - "deploy/compose/docker-compose.yml"
+      - "deploy/compose/deploy.sh"
+      - "frontend/Caddyfile"
       - ".github/workflows/observability.yml"
   push:
     branches:
@@ -30,6 +34,10 @@ on:
       - "frontend/package.json"
       - "frontend/bun.lock"
       - "docker-compose.observability.yml"
+      - "docker-compose.observability.build.yml"
+      - "deploy/compose/docker-compose.yml"
+      - "deploy/compose/deploy.sh"
+      - "frontend/Caddyfile"
       - ".github/workflows/observability.yml"
   workflow_dispatch:
 
@@ -51,6 +59,16 @@ jobs:
 
       - name: Show Docker Compose version
         run: docker compose version
+
+      - name: Validate the frontend Caddyfile
+        # The /otel route carries browser traces into the collector; a syntax
+        # error there breaks the frontend image at startup.
+        run: |
+          docker run --rm \
+            -e RUNCODES_DOMAIN=:80 \
+            -v "$PWD/frontend/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2.11.7-alpine \
+            caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 
       - name: Validate compose, Prometheus, Alertmanager, collector and files
         # The script sets throwaway values for the application secrets that

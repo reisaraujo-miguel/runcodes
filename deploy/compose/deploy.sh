@@ -8,6 +8,11 @@
 #
 # Compose can run on Podman (the default) or Docker. CONTAINER_ENGINE selects
 # the engine; "auto" prefers Podman and falls back to Docker.
+#
+# The observability stack is opt-in: `./deploy.sh observability` adds the
+# repository-root docker-compose.observability.yml overlay together with the
+# telemetry configuration in observability/. Those assets live in the checkout,
+# so the observability commands need more than this directory.
 
 set -Eeuo pipefail
 
@@ -108,6 +113,71 @@ require_podman_socket() {
 compose=("$engine" compose --env-file "$env_file" -f "$script_dir/docker-compose.yml")
 action="${1:-up}"
 
+# --- Optional observability stack -----------------------------------------
+# The telemetry services are the repository-root docker-compose.observability.yml
+# overlay plus the configuration in observability/. A deployment directory that
+# was copied out of a checkout cannot start them: clone the repository, or point
+# the variables below at a copy of those assets.
+repo_root="$(cd -- "$script_dir/../.." && pwd -P)"
+observability_compose=()
+observability_services=(
+  otel-collector prometheus alertmanager alert-sink loki tempo pyroscope
+  alloy grafana node-exporter postgres-exporter redis-exporter blackbox-exporter
+)
+
+observability_available() {
+  local dir="${RUNCODES_OBSERVABILITY_DIR:-$repo_root/observability}"
+  local overlay="${RUNCODES_OBSERVABILITY_COMPOSE:-$repo_root/docker-compose.observability.yml}"
+  [[ -f "$dir/otel-collector/config.yaml" && -f "$overlay" ]]
+}
+
+resolve_observability() {
+  local dir overlay
+
+  dir="${RUNCODES_OBSERVABILITY_DIR:-$repo_root/observability}"
+  [[ -f "$dir/otel-collector/config.yaml" ]] || die \
+    "observability configuration not found at $dir; run this from a repository checkout or set RUNCODES_OBSERVABILITY_DIR"
+  RUNCODES_OBSERVABILITY_DIR="$(cd -- "$dir" && pwd -P)"
+  export RUNCODES_OBSERVABILITY_DIR
+
+  dir="${RUNCODES_OBSERVABILITY_STATE:-$repo_root/.observability}"
+  if [[ -d "$dir" ]]; then
+    dir="$(cd -- "$dir" && pwd -P)"
+  fi
+  RUNCODES_OBSERVABILITY_STATE="$dir"
+  export RUNCODES_OBSERVABILITY_STATE
+
+  # The overlay defaults these to paths relative to the repository root, which
+  # is not the Compose project directory here.
+  export ALERTMANAGER_CONFIG_FILE="${ALERTMANAGER_CONFIG_FILE:-$RUNCODES_OBSERVABILITY_DIR/alertmanager/alertmanager.yml}"
+  export PYROSCOPE_CONFIG_FILE="${PYROSCOPE_CONFIG_FILE:-$RUNCODES_OBSERVABILITY_DIR/pyroscope/config.yaml}"
+
+  overlay="${RUNCODES_OBSERVABILITY_COMPOSE:-$repo_root/docker-compose.observability.yml}"
+  [[ -f "$overlay" ]] || die "observability overlay not found at $overlay"
+
+  observability_compose=("${compose[@]}" -f "$overlay")
+}
+
+init_observability_secrets() {
+  local script="$repo_root/scripts/observability/init-secrets.sh"
+  [[ -f "$script" ]] || die \
+    "observability secret helper not found at $script; run this from a repository checkout"
+  mkdir -p "$RUNCODES_OBSERVABILITY_STATE"
+  OBSERVABILITY_STATE_DIR="$RUNCODES_OBSERVABILITY_STATE" bash "$script"
+}
+
+print_observability_urls() {
+  local bind="${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}"
+  printf 'observability: Grafana      http://%s:%s   (admin password: %s/grafana_admin_password)\n' \
+    "$bind" "${GRAFANA_PORT:-3000}" "$RUNCODES_OBSERVABILITY_STATE"
+  printf 'observability: Prometheus   http://%s:%s\n' "$bind" "${PROMETHEUS_PORT:-9090}"
+  printf 'observability: Tempo        http://%s:%s\n' "$bind" "${TEMPO_PORT:-3200}"
+  printf 'observability: Loki         http://%s:%s\n' "$bind" "${LOKI_PORT:-3100}"
+  printf 'observability: Alertmanager http://%s:%s\n' "$bind" "${ALERTMANAGER_PORT:-9093}"
+  printf 'observability: collector    http://%s:%s/health/status\n' \
+    "$bind" "${OTEL_HEALTH_PORT:-13133}"
+}
+
 case "$action" in
   up)
     require_podman_socket
@@ -115,11 +185,32 @@ case "$action" in
     "${compose[@]}" up -d --remove-orphans
     "${compose[@]}" ps
     ;;
+  observability | observability-up)
+    require_podman_socket
+    resolve_observability
+    init_observability_secrets
+    "${observability_compose[@]}" pull
+    "${observability_compose[@]}" up -d --remove-orphans
+    "${observability_compose[@]}" ps
+    print_observability_urls
+    ;;
+  observability-logs)
+    resolve_observability
+    "${observability_compose[@]}" logs -f --tail=100 \
+      "${observability_services[@]}"
+    ;;
   pull)
     "${compose[@]}" pull
     ;;
   down)
-    "${compose[@]}" down
+    # The telemetry containers are part of the same project; a base-only `down`
+    # would leave them running as orphans.
+    if observability_available; then
+      resolve_observability
+      "${observability_compose[@]}" down
+    else
+      "${compose[@]}" down
+    fi
     ;;
   restart)
     require_podman_socket
@@ -129,7 +220,12 @@ case "$action" in
     "${compose[@]}" logs -f --tail=100
     ;;
   status | ps)
-    "${compose[@]}" ps
+    if observability_available; then
+      resolve_observability
+      "${observability_compose[@]}" ps
+    else
+      "${compose[@]}" ps
+    fi
     ;;
   config)
     "${compose[@]}" config
@@ -139,18 +235,28 @@ case "$action" in
 Usage: ./deploy.sh [command]
 
 Commands:
-  up       Pull images, start or update the stack, then show its status (default)
-  pull     Pull the configured images without starting anything
-  down     Stop and remove the containers (volumes are kept)
-  restart  Restart the existing containers
-  logs     Follow the stack logs
-  status   Show container status
-  config   Render the final Compose configuration
+  up                  Pull images, start or update the stack, then show its status (default)
+  pull                Pull the configured images without starting anything
+  down                Stop and remove the containers, including the observability
+                      stack when it is available (volumes are kept)
+  restart             Restart the existing containers
+  logs                Follow the stack logs
+  status              Show container status
+  config              Render the final Compose configuration
+  observability       Start the stack plus Prometheus, Grafana, Tempo, Loki,
+                      Alertmanager and the OpenTelemetry collector
+  observability-logs  Follow the observability stack logs
 
 Environment:
-  CONTAINER_ENGINE  Compose engine: auto (default; Podman first), podman, docker
-  ENV_FILE          environment file to read (default: ./.env)
-  PODMAN_SOCKET     rootless Podman socket used by the judge
+  CONTAINER_ENGINE                Compose engine: auto (default; Podman first), podman, docker
+  ENV_FILE                        environment file to read (default: ./.env)
+  PODMAN_SOCKET                   rootless Podman socket used by the judge
+  RUNCODES_OBSERVABILITY_DIR      configuration directory (default: <repo>/observability)
+  RUNCODES_OBSERVABILITY_STATE    generated secrets (default: <repo>/.observability)
+  RUNCODES_OBSERVABILITY_COMPOSE  overlay file (default: <repo>/docker-compose.observability.yml)
+
+The observability commands mount configuration from the repository, so they need
+a checkout. `up` never starts the telemetry stack; it is opt-in.
 EOF
     exit 2
     ;;

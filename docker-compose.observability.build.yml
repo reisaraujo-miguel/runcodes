@@ -1,0 +1,22 @@
+# Build-time browser telemetry for the source-build frontend.
+#
+# Applied only by the repository-root stack (`make observability-up` and the
+# observability helper scripts), where Compose builds ./frontend. The values are
+# compiled into the SPA; the browser then posts to the published collector
+# endpoint, not to the Compose service name.
+#
+# The image-based deployment (`deploy/compose`) must not apply this file. Its
+# frontend is a published image that .github/workflows/app-images.yml already
+# builds with VITE_OTEL_ENABLED=true and a same-origin /otel endpoint, and a
+# `build:` section here would make Compose build instead of pull.
+
+services:
+  frontend:
+    build:
+      args:
+        VITE_OTEL_ENABLED: "${FRONTEND_OTEL_ENABLED:-true}"
+        VITE_OTEL_EXPORTER_OTLP_ENDPOINT: "${PUBLIC_OTEL_HTTP_URL:-http://localhost:4318}"
+        VITE_OTEL_SERVICE_NAME: "runcodes-frontend"
+        VITE_OTEL_SERVICE_VERSION: "${OTEL_SERVICE_VERSION:-dev}"
+        VITE_DEPLOYMENT_ENVIRONMENT: "${DEPLOYMENT_ENVIRONMENT:-development}"
+        VITE_OTEL_TRACES_SAMPLER_ARG: "${VITE_OTEL_TRACES_SAMPLER_ARG:-1.0}"

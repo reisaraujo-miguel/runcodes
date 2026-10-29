@@ -9,24 +9,19 @@
 #
 # or, preferably, `make observability-up`.
 #
+# The source-build stack also applies docker-compose.observability.build.yml,
+# which compiles the browser telemetry endpoint into the frontend image. The
+# image-based deployment (`deploy/compose`) consumes a published frontend that
+# already has it and must not apply that file: a `build:` section would make
+# Compose build instead of pull. That deployment reuses this overlay and points
+# RUNCODES_OBSERVABILITY_DIR / RUNCODES_OBSERVABILITY_STATE at absolute paths.
+#
 # Every published port is bound to 127.0.0.1 by default. Override
 # OBSERVABILITY_BIND_ADDRESS only behind an authenticating reverse proxy; these
 # services have no built-in authentication (Grafana has a login, the rest do
 # not).
 
 services:
-  frontend:
-    build:
-      args:
-        # These are compiled into the SPA. The browser talks to the published
-        # collector endpoint, not to the Compose service name.
-        VITE_OTEL_ENABLED: "${FRONTEND_OTEL_ENABLED:-true}"
-        VITE_OTEL_EXPORTER_OTLP_ENDPOINT: "${PUBLIC_OTEL_HTTP_URL:-http://localhost:4318}"
-        VITE_OTEL_SERVICE_NAME: "runcodes-frontend"
-        VITE_OTEL_SERVICE_VERSION: "${OTEL_SERVICE_VERSION:-dev}"
-        VITE_DEPLOYMENT_ENVIRONMENT: "${DEPLOYMENT_ENVIRONMENT:-development}"
-        VITE_OTEL_TRACES_SAMPLER_ARG: "${VITE_OTEL_TRACES_SAMPLER_ARG:-1.0}"
-
   backend:
     environment:
       DEPLOYMENT_ENVIRONMENT: "${DEPLOYMENT_ENVIRONMENT:-development}"
@@ -82,7 +77,7 @@ services:
       - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${OTEL_METRICS_PORT:-8888}:8888" # collector self-metrics
       - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${OTEL_PROM_PORT:-8889}:8889" # OTLP -> Prometheus exporter
     volumes:
-      - ./observability/otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
+      - ${RUNCODES_OBSERVABILITY_DIR:-./observability}/otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
     security_opt:
       - label=disable
     mem_limit: 512m
@@ -110,8 +105,8 @@ services:
     ports:
       - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${PROMETHEUS_PORT:-9090}:9090"
     volumes:
-      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./observability/prometheus/rules:/etc/prometheus/rules:ro
+      - ${RUNCODES_OBSERVABILITY_DIR:-./observability}/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ${RUNCODES_OBSERVABILITY_DIR:-./observability}/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus-data:/prometheus
     security_opt:
       - label=disable
@@ -141,8 +136,8 @@ services:
       # alerts through Gmail instead. See
       # https://reisaraujo-miguel.github.io/runcodes/observability/runbook.html#configuring-gmail-notifications
       - "${ALERTMANAGER_CONFIG_FILE:-./observability/alertmanager/alertmanager.yml}:/etc/alertmanager/alertmanager.yml:ro"
-      - ./.observability/alertmanager_webhook_url:/etc/alertmanager/secrets/webhook_url:ro
-      - ./.observability/alertmanager_gmail_app_password:/etc/alertmanager/secrets/gmail_app_password:ro
+      - ${RUNCODES_OBSERVABILITY_STATE:-./.observability}/alertmanager_webhook_url:/etc/alertmanager/secrets/webhook_url:ro
+      - ${RUNCODES_OBSERVABILITY_STATE:-./.observability}/alertmanager_gmail_app_password:/etc/alertmanager/secrets/gmail_app_password:ro
       - alertmanager-data:/alertmanager
     security_opt:
       - label=disable
@@ -164,7 +159,7 @@ services:
     ports:
       - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${ALERT_SINK_PORT:-8085}:8080"
     volumes:
-      - ./observability/alert-sink/main.py:/app/main.py:ro
+      - ${RUNCODES_OBSERVABILITY_DIR:-./observability}/alert-sink/main.py:/app/main.py:ro
     security_opt:
       - label=disable
     healthcheck:
@@ -189,7 +184,7 @@ services:
     ports:
       - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${LOKI_PORT:-3100}:3100"
     volumes:
-      - ./observability/loki/loki.yaml:/etc/loki/loki.yaml:ro
+      - ${RUNCODES_OBSERVABILITY_DIR:-./observability}/loki/loki.yaml:/etc/loki/loki.yaml:ro
       - loki-data:/loki
     security_opt:
       - label=disable
@@ -205,7 +200,7 @@ services:
     ports:
       - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${TEMPO_PORT:-3200}:3200"
     volumes:
-      - ./observability/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - ${RUNCODES_OBSERVABILITY_DIR:-./observability}/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
       - tempo-data:/var/tempo
     security_opt:
       - label=disable
@@ -253,7 +248,7 @@ services:
     ports:
       - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${ALLOY_PORT:-12345}:12345"
     volumes:
-      - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - ${RUNCODES_OBSERVABILITY_DIR:-./observability}/alloy/config.alloy:/etc/alloy/config.alloy:ro
       - alloy-data:/var/lib/alloy/data
     security_opt:
       - label=disable
@@ -295,9 +290,9 @@ services:
     ports:
       - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000"
     volumes:
-      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
-      - ./.observability/grafana_admin_password:/run/secrets/grafana_admin_password:ro
+      - ${RUNCODES_OBSERVABILITY_DIR:-./observability}/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ${RUNCODES_OBSERVABILITY_DIR:-./observability}/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ${RUNCODES_OBSERVABILITY_STATE:-./.observability}/grafana_admin_password:/run/secrets/grafana_admin_password:ro
       - grafana-data:/var/lib/grafana
     security_opt:
       - label=disable
@@ -381,7 +376,7 @@ services:
     ports:
       - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${BLACKBOX_EXPORTER_PORT:-9115}:9115"
     volumes:
-      - ./observability/blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+      - ${RUNCODES_OBSERVABILITY_DIR:-./observability}/blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
     security_opt:
       - label=disable
     mem_limit: 128m
