@@ -540,6 +540,55 @@ directory copied out of a checkout can still run the application; point
 `observability/` and the overlay to enable telemetry there.
 :::
 
+### Applying configuration changes
+
+Every telemetry service reads its configuration from a bind mount, so a change
+takes effect when that container is recreated. Use the script, which applies the
+same overlay and the same absolute paths as `observability`:
+
+```bash
+./deploy.sh recreate alertmanager
+./deploy.sh recreate backend judge     # after changing OTEL_* in .env
+```
+
+`--no-deps` keeps dependencies running, so recreating the collector does not
+restart Tempo or Loki, and nothing is pulled. A service that only re-reads an
+unchanged mount can also be restarted (`./deploy.sh restart` restarts the
+application containers); recreating is required when the **mount** changes, for
+example a new `ALERTMANAGER_CONFIG_FILE`, and is the safe default either way.
+
+| Changed | Apply with |
+| --- | --- |
+| `observability/alertmanager/alertmanager.yml`, or `$ALERTMANAGER_CONFIG_FILE` | `./deploy.sh recreate alertmanager` |
+| `observability/prometheus/prometheus.yml` or `observability/prometheus/rules/` | `./deploy.sh recreate prometheus`, or the reload below |
+| `observability/otel-collector/config.yaml` | `./deploy.sh recreate otel-collector` |
+| `observability/loki/loki.yaml`, `tempo/tempo.yaml`, `pyroscope/config.yaml` | `./deploy.sh recreate loki` (and so on) |
+| `observability/grafana/provisioning/`, `blackbox/blackbox.yml` | `./deploy.sh recreate grafana` (and so on) |
+| `.env`: `OTEL_*`, `DEPLOYMENT_ENVIRONMENT` | `./deploy.sh recreate backend judge` |
+| `.env`: `OBSERVABILITY_BIND_ADDRESS`, ports, retention | `./deploy.sh recreate <service>` |
+
+Prometheus reloads its configuration and rules without a restart, because the
+overlay starts it with `--web.enable-lifecycle`:
+
+```bash
+curl -fsS -X POST http://127.0.0.1:9090/-/reload
+```
+
+`deploy.sh` resolves a relative `ALERTMANAGER_CONFIG_FILE` or
+`PYROSCOPE_CONFIG_FILE` from `.env` against the repository root, so the
+runbook's `./.observability/alertmanager.yml` works from `deploy/compose/.env`
+as well; an absolute path works everywhere.
+
+::: danger Do not recreate by hand from this directory
+The overlay's configuration paths are absolute only while `deploy.sh` exports
+them. A bare `podman compose -f docker-compose.yml -f ../../docker-compose.observability.yml up -d --force-recreate alertmanager`
+run here resolves the relative defaults under `deploy/compose`, where the files
+do not exist; the engine creates empty directories and the container fails with
+`not a directory` while mounting them. If that already happened, remove the
+stray `deploy/compose/observability/` and `deploy/compose/.observability/`
+paths and run `./deploy.sh recreate` instead.
+:::
+
 `./deploy.sh observability-logs` follows the telemetry containers, and
 `./deploy.sh down` removes them together with the application. The
 [local observability stack](../observability/local.md) documents the signals,

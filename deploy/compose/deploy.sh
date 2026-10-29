@@ -147,10 +147,30 @@ resolve_observability() {
   RUNCODES_OBSERVABILITY_STATE="$dir"
   export RUNCODES_OBSERVABILITY_STATE
 
-  # The overlay defaults these to paths relative to the repository root, which
-  # is not the Compose project directory here.
+  # Alertmanager and Pyroscope take their configuration from host paths. A
+  # relative override is written against the repository root, which is where the
+  # runbook puts .observability/alertmanager.yml; Compose would otherwise anchor
+  # it at this directory (the project directory) and mount the wrong path.
+  local var value
+  for var in ALERTMANAGER_CONFIG_FILE PYROSCOPE_CONFIG_FILE; do
+    value="${!var:-}"
+    case "$value" in
+      "" | /*) ;;
+      *) export "$var=$repo_root/${value#./}" ;;
+    esac
+  done
+
   export ALERTMANAGER_CONFIG_FILE="${ALERTMANAGER_CONFIG_FILE:-$RUNCODES_OBSERVABILITY_DIR/alertmanager/alertmanager.yml}"
   export PYROSCOPE_CONFIG_FILE="${PYROSCOPE_CONFIG_FILE:-$RUNCODES_OBSERVABILITY_DIR/pyroscope/config.yaml}"
+
+  # A missing bind source is not an error to the container engine: it creates an
+  # empty directory in its place and the container then fails to mount it over
+  # the file the image expects. Catch it here instead.
+  for var in ALERTMANAGER_CONFIG_FILE PYROSCOPE_CONFIG_FILE; do
+    value="${!var}"
+    [[ -f "$value" ]] || die \
+      "$var points at $value, which is not a file; fix the path or unset it to use the default configuration"
+  done
 
   overlay="${RUNCODES_OBSERVABILITY_COMPOSE:-$repo_root/docker-compose.observability.yml}"
   [[ -f "$overlay" ]] || die "observability overlay not found at $overlay"
@@ -199,6 +219,24 @@ case "$action" in
     "${observability_compose[@]}" logs -f --tail=100 \
       "${observability_services[@]}"
     ;;
+  recreate)
+    # Apply an edited bind mount (a collector config, a Prometheus rule, a
+    # changed ALERTMANAGER_CONFIG_FILE, a new OTEL variable) without touching the
+    # rest of the stack. The overlay is applied when it is available so the
+    # configuration paths are the same absolute ones `observability` used;
+    # --no-deps keeps dependencies from restarting with it.
+    shift
+    (($# > 0)) || die \
+      "recreate needs at least one service, for example: ./deploy.sh recreate alertmanager"
+    if observability_available; then
+      resolve_observability
+      services_compose=("${observability_compose[@]}")
+    else
+      services_compose=("${compose[@]}")
+    fi
+    "${services_compose[@]}" up -d --force-recreate --no-deps "$@"
+    "${services_compose[@]}" ps "$@"
+    ;;
   pull)
     "${compose[@]}" pull
     ;;
@@ -246,6 +284,8 @@ Commands:
   observability       Start the stack plus Prometheus, Grafana, Tempo, Loki,
                       Alertmanager and the OpenTelemetry collector
   observability-logs  Follow the observability stack logs
+  recreate <service>  Recreate the named services in place, with the observability
+                      overlay when available (no dependencies, no pull)
 
 Environment:
   CONTAINER_ENGINE                Compose engine: auto (default; Podman first), podman, docker

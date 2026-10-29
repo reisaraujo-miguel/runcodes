@@ -46,6 +46,7 @@ CONTAINER_ENGINE=docker ./deploy.sh up   # use Docker Compose v2
 | `./deploy.sh config` | render the final Compose configuration |
 | `./deploy.sh observability` | start the stack plus the telemetry stack |
 | `./deploy.sh observability-logs` | follow the telemetry stack logs |
+| `./deploy.sh recreate <service...>` | recreate services in place after a config or `.env` change |
 
 `ENV_FILE=/path/to/env ./deploy.sh up` reads a different file.
 
@@ -68,6 +69,13 @@ The overlay and its configuration live at the repository root
 repository checkout even though `up` only needs this directory. Point
 `RUNCODES_OBSERVABILITY_DIR` and `RUNCODES_OBSERVABILITY_STATE` elsewhere to use
 a copy.
+
+After editing a telemetry configuration file, apply it with
+`./deploy.sh recreate alertmanager` (or the affected service). Do not use a bare
+`podman compose -f docker-compose.yml -f ../../docker-compose.observability.yml`
+here: the overlay's configuration paths are absolute only while `deploy.sh`
+exports them, and a bare run creates empty directories for the missing files and
+fails with `not a directory`.
 
 `down` removes the telemetry containers too; `up` never starts them.
 
