@@ -40,7 +40,9 @@ const (
 /*
 RequestPasswordReset emails a recovery link to the account that owns the
 address. An unknown address is a silent success: the endpoint is public, and a
-different answer would tell the caller whether an email has an account here.
+different answer would tell the caller whether an email has an account here. A
+request inside the recipient cooldown is silent for the same reason. Both are
+logged, so an operator can tell a suppressed request from a delivered one.
 
 Unconfirmed accounts can request a reset too. Resetting the password does not
 confirm the account, so the user still has to open a verification link before
@@ -58,6 +60,9 @@ func RequestPasswordReset(ctx context.Context, email string) error {
 	).Scan(&id, &name)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			// The caller gets the same answer as a delivery; the log is the only
+			// place that tells an operator the address has no account.
+			slog.InfoContext(ctx, "password reset requested for an unknown address")
 			return nil
 		}
 		slog.ErrorContext(ctx, "error looking up account for password reset",
@@ -66,10 +71,9 @@ func RequestPasswordReset(ctx context.Context, email string) error {
 		return ErrServer
 	}
 
-	if !allowTransactionalEmail(email) {
-		return nil
-	}
-	return SendPasswordResetEmail(ctx, id, name, email)
+	return sendWithinCooldown(ctx, flowPasswordReset, id, email, func() error {
+		return SendPasswordResetEmail(ctx, id, name, email)
+	})
 }
 
 /*
