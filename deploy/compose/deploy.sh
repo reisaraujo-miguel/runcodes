@@ -233,19 +233,46 @@ print_observability_urls() {
     "$bind" "${OTEL_HEALTH_PORT:-13133}"
 }
 
+# The application is always part of the lifecycle. The telemetry overlay is
+# opt-in and shares the Compose project, so the unit records whether it owns it:
+# `install-service --observability` sets this, and `up`/`stop` then cover both
+# halves instead of coming back with only the application running.
+with_observability() {
+  [[ "${RUNCODES_WITH_OBSERVABILITY:-0}" == "1" ]]
+}
+
+resolve_lifecycle_compose() {
+  if with_observability; then
+    observability_available || die \
+      "RUNCODES_WITH_OBSERVABILITY=1 but the observability overlay or its configuration is missing; run this from a repository checkout (or set RUNCODES_OBSERVABILITY_DIR) and re-run './deploy.sh install-service --observability'"
+    resolve_observability
+    lifecycle_compose=("${observability_compose[@]}")
+  else
+    lifecycle_compose=("${compose[@]}")
+  fi
+}
+
 case "$action" in
   up)
     require_podman_socket
     require_linger
+    resolve_lifecycle_compose
     # The installed unit starts the images the host already has: a boot must not
     # depend on the registry or on the pull credentials still being valid.
     if [[ "${RUNCODES_SKIP_PULL:-0}" == "1" ]]; then
       printf 'deploy.sh: RUNCODES_SKIP_PULL=1, using the images already on the host\n' >&2
     else
-      "${compose[@]}" pull
+      "${lifecycle_compose[@]}" pull
     fi
-    "${compose[@]}" up -d --remove-orphans
-    "${compose[@]}" ps
+    # Only a unit that owns every service of the project may prune: for a
+    # base-only `up`, the telemetry containers of the same project look like
+    # orphans and would be removed rather than left alone.
+    if with_observability; then
+      "${lifecycle_compose[@]}" up -d --remove-orphans
+    else
+      "${lifecycle_compose[@]}" up -d
+    fi
+    "${lifecycle_compose[@]}" ps
     ;;
   observability | observability-up)
     require_podman_socket
@@ -301,12 +328,8 @@ case "$action" in
   stop)
     # Used by the installed unit's ExecStop: stop the containers but keep them,
     # so `systemctl --user start` brings the same stack back.
-    if observability_available; then
-      resolve_observability
-      "${observability_compose[@]}" stop
-    else
-      "${compose[@]}" stop
-    fi
+    resolve_lifecycle_compose
+    "${lifecycle_compose[@]}" stop
     ;;
   linger)
     [[ "$(id -u)" -ne 0 ]] || die \
@@ -319,22 +342,48 @@ case "$action" in
     ;;
   install-service)
     require_linger
+    with_obs=0
+    shift
+    while (($# > 0)); do
+      case "$1" in
+        --observability) with_obs=1 ;;
+        *) die "install-service does not take '$1'; the only option is --observability" ;;
+      esac
+      shift
+    done
+    if [[ "$with_obs" == "1" ]]; then
+      observability_available || die \
+        "the observability overlay or its configuration is not available; run this from a repository checkout (or set RUNCODES_OBSERVABILITY_DIR) before installing a unit that owns the telemetry stack"
+      resolve_observability
+      init_observability_secrets
+    fi
     # The unit starts with RUNCODES_SKIP_PULL=1 so a boot never waits on (or
     # fails because of) the registry. Make sure the images exist now, while an
     # operator is here to see a pull failure.
     if [[ "${RUNCODES_SKIP_PULL:-0}" != "1" ]]; then
-      "${compose[@]}" pull
+      if [[ "$with_obs" == "1" ]]; then
+        "${observability_compose[@]}" pull
+      else
+        "${compose[@]}" pull
+      fi
     fi
     template="$script_dir/runcodes-compose.service.in"
     [[ -f "$template" ]] || die "unit template not found at $template"
     unit_dir="$HOME/.config/systemd/user"
     unit="$unit_dir/runcodes-compose.service"
     mkdir -p "$unit_dir"
-    # Rewrite the placeholder with this deployment's absolute path.
-    sed "s|@DEPLOY_DIR@|${script_dir//&/\\&}|g" "$template" >"$unit"
+    # Rewrite the placeholders with this deployment's path and stack choice.
+    sed -e "s|@DEPLOY_DIR@|${script_dir//&/\\&}|g" \
+        -e "s|@OBSERVABILITY@|${with_obs}|g" "$template" >"$unit"
     systemctl --user daemon-reload
     systemctl --user enable --now runcodes-compose.service
     printf 'deploy.sh: installed %s\n' "$unit"
+    if [[ "$with_obs" == "1" ]]; then
+      printf 'deploy.sh: the unit owns the application and the telemetry stack\n'
+    else
+      printf 'deploy.sh: the unit owns the application only; add --observability to include\n'
+      printf '  the telemetry stack before it is started by systemd\n'
+    fi
     printf 'deploy.sh: the stack now runs under the user manager; verify with\n'
     printf '  systemctl --user status runcodes-compose.service\n'
     ;;
@@ -393,7 +442,9 @@ Commands:
                       overlay when available (no dependencies, no pull)
   linger              Enable systemd lingering for this user (needs sudo if polkit refuses)
   install-service     Install and start the user unit that owns the stack, so it
-                      survives logout and starts at boot (requires linger)
+                      survives logout and starts at boot (requires linger).
+                      Add --observability to make the unit own the telemetry
+                      stack as well; otherwise it starts the application only
   uninstall-service   Disable and remove that unit, which also stops the stack
   db-grants           Re-apply the service-role grants and passwords to an existing
                       database volume (the image only runs them on an empty one)
@@ -403,6 +454,8 @@ Environment:
   ENV_FILE                        environment file to read (default: ./.env)
   PODMAN_SOCKET                   rootless Podman socket used by the judge
   RUNCODES_SKIP_PULL              start the images already on the host (the unit sets it)
+  RUNCODES_WITH_OBSERVABILITY     1 makes up/stop cover the telemetry overlay too
+                                  (install-service --observability writes it)
   RUNCODES_SKIP_LINGER_CHECK      start without lingering; the stack stops at the next logout
   RUNCODES_OBSERVABILITY_DIR      configuration directory (default: <repo>/observability)
   RUNCODES_OBSERVABILITY_STATE    generated secrets (default: <repo>/.observability)

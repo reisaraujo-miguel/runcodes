@@ -35,6 +35,10 @@ Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus
 # reachable or on the pull credentials still being valid. `./deploy.sh up` from
 # a shell still pulls.
 Environment=RUNCODES_SKIP_PULL=1
+# Which stack this unit owns: 0 is the application only. `./deploy.sh
+# install-service --observability` writes 1, and the unit then starts and stops
+# the telemetry overlay with the application, so a boot comes back complete.
+Environment=RUNCODES_WITH_OBSERVABILITY=@OBSERVABILITY@
 ExecStart=@DEPLOY_DIR@/deploy.sh up
 # Keep the containers on `systemctl --user stop`; `./deploy.sh down` is for
 # removal. A stop that finds nothing running is not a unit failure.
