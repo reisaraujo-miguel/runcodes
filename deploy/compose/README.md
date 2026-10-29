@@ -54,7 +54,7 @@ CONTAINER_ENGINE=docker ./deploy.sh up   # use Docker Compose v2
 | `./deploy.sh down` | stop and remove the containers, including the observability stack when available; volumes are kept |
 | `./deploy.sh config` | render the final Compose configuration |
 | `./deploy.sh linger` | enable systemd lingering for this user |
-| `./deploy.sh install-service` | install and start the user unit that owns the stack |
+| `./deploy.sh install-service [--observability]` | install and start the user unit that owns the stack; `--observability` makes it own the telemetry stack too |
 | `./deploy.sh uninstall-service` | stop the unit, remove it, keep the data |
 | `./deploy.sh db-grants` | re-apply the service-role grants and passwords to an existing database volume |
 | `./deploy.sh observability` | start the stack plus the telemetry stack |
@@ -95,6 +95,18 @@ systemctl --user restart runcodes-compose.service
 journalctl --user -u runcodes-compose.service -n 50
 ```
 
+The unit owns the **application** by default. A deployment that also runs the
+telemetry overlay has to say so, otherwise a reboot brings back the application
+and leaves Prometheus, Grafana, Loki, Tempo and the collector stopped:
+
+```bash
+./deploy.sh install-service --observability
+```
+
+Re-run it without the flag to take the telemetry stack back out of the unit. A
+plain `./deploy.sh up` never prunes a telemetry stack it did not start: only a
+unit that owns every service of the project runs `--remove-orphans`.
+
 Verify with `loginctl show-user "$USER" -p Linger` → `Linger=yes`, then log out
 completely, wait a minute and run `./deploy.sh status`.
 
@@ -110,6 +122,10 @@ The telemetry stack is opt-in and off by default:
 ```bash
 ./deploy.sh observability
 ```
+
+To make it survive a reboot, install the unit with
+`./deploy.sh install-service --observability` instead of plain
+`install-service`.
 
 It starts the application plus an OpenTelemetry collector, Prometheus,
 Alertmanager, Loki, Tempo, Pyroscope, Grafana and the infrastructure exporters.

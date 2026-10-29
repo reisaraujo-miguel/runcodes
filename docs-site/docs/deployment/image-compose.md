@@ -215,7 +215,7 @@ missing, Compose fails during `pull` with a `not found` or `unauthorized` error.
 | `./deploy.sh stop` | stop the containers but keep them (used by the systemd unit) |
 | `./deploy.sh config` | render the final Compose configuration |
 | `./deploy.sh linger` | enable systemd lingering for this user |
-| `./deploy.sh install-service` | install and start the user unit that owns the stack |
+| `./deploy.sh install-service [--observability]` | install and start the user unit that owns the stack; `--observability` makes it own the telemetry stack too |
 | `./deploy.sh uninstall-service` | stop the unit, remove it, keep the data |
 | `./deploy.sh db-grants` | re-apply the service-role grants and passwords to an existing database volume |
 | `./deploy.sh observability` | start the stack plus the telemetry stack |
@@ -269,6 +269,21 @@ systemctl --user status runcodes-compose.service
 systemctl --user restart runcodes-compose.service
 journalctl --user -u runcodes-compose.service -n 50
 ```
+
+The unit owns the **application** by default. A deployment that also runs the
+observability overlay has to say so, or a reboot brings back the application and
+leaves the telemetry stack stopped:
+
+```bash
+./deploy.sh install-service --observability
+```
+
+Re-running `install-service` without the flag takes the telemetry stack back out
+of the unit. The unit records its scope in
+`Environment=RUNCODES_WITH_OBSERVABILITY`; `up` and `stop` read it, so
+`systemctl --user restart` restarts exactly the stack the unit owns. A plain
+`./deploy.sh up` never prunes a telemetry stack it did not start: `--remove-orphans`
+is only passed by a unit that owns every service of the project.
 
 The unit starts with `RUNCODES_SKIP_PULL=1`: a boot uses the images already on
 the host instead of waiting on (or failing because of) the registry.
@@ -568,7 +583,9 @@ migrated schema needs the database backup restored.
 
 ## Observability
 
-The telemetry stack is opt-in and off by default. Start it on top of the
+The telemetry stack is opt-in and off by default. Add `--observability` to
+`./deploy.sh install-service` if the unit should bring it back after a reboot.
+Start it on top of the
 application:
 
 ```bash
