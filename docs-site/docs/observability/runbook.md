@@ -490,6 +490,32 @@ For production, set `PYROSCOPE_CONFIG_FILE` to a secret-mounted config based on
 set the bucket lifecycle to match retention. The example is not mounted by
 default because it needs real credentials.
 
+## Applying configuration changes
+
+The telemetry services read their configuration from bind mounts, so an edited
+file reaches the process only when the container re-reads it.
+
+- Prometheus reloads `prometheus.yml` and the rule files without a restart,
+  because the stack starts it with `--web.enable-lifecycle`:
+
+  ```bash
+  curl -fsS -X POST http://localhost:9090/-/reload
+  ```
+
+- Everything else needs its container recreated — a restart also re-reads an
+  unchanged mount, but recreating is the safe default and is required when the
+  mount itself changes:
+
+  ```bash
+  podman compose -f docker-compose.yml -f docker-compose.observability.yml \
+    up -d --force-recreate alertmanager
+  ```
+
+- The image-based deployment has its own entry point: `./deploy.sh recreate alertmanager`
+  re-applies the overlay with the absolute configuration paths the stack was
+  started with. See
+  [Image-based Compose § Applying configuration changes](../deployment/image-compose.md#applying-configuration-changes).
+
 ## Configuring Gmail notifications
 
 The default local receiver is the in-stack `alert-sink` webhook. To email
@@ -520,18 +546,33 @@ account; the ordinary account password is rejected.
    printf '%s\n' 'abcdefghijklmnop' > .observability/alertmanager_gmail_app_password
    ```
 
-4. Point the stack at the copy. Add this to `.env` (or export it for one run):
+4. Point the stack at the copy. Add this to the repository-root `.env` (or
+   export it for one run):
 
    ```bash
    ALERTMANAGER_CONFIG_FILE=./.observability/alertmanager.yml
    ```
 
-5. Recreate Alertmanager so it reads the new config and secret:
+   The path is relative to the repository root. `deploy.sh` resolves relative
+   values there, and a `podman compose` run started from the repository root does
+   too; use an absolute path when you start Compose from another directory.
+
+5. Recreate Alertmanager so it mounts the new config and secret:
 
    ```bash
+   # repository-root stack (source build)
    podman compose -f docker-compose.yml -f docker-compose.observability.yml \
      up -d --force-recreate alertmanager
+
+   # image-based deployment
+   cd deploy/compose && ./deploy.sh recreate alertmanager
    ```
+
+   Do not run the raw `podman compose` command from `deploy/compose`: the
+   overlay's configuration paths are absolute only while `deploy.sh` exports
+   them. A bare run resolves them under `deploy/compose`, where the files do not
+   exist, creates empty directories in their place and fails at mount time with
+   `not a directory`.
 
 6. Send a test alert and check the log:
 
