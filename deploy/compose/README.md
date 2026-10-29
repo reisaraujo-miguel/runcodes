@@ -15,10 +15,15 @@ Podman socket.
 
 ```bash
 cp .env.example .env
-# fill the required secrets and set the registry/namespace/tag
+# fill the required secrets, the public hostname and the registry/namespace/tag
 systemctl --user start podman.socket
 ./deploy.sh up
 ```
+
+`.env.example` publishes the frontend on 80/443 for a public hostname. Rootless
+Podman cannot bind those ports until the host allows it, and Caddy needs DNS and
+inbound 80/443 to issue the certificate. See
+[Public hostname and TLS](https://reisaraujo-miguel.github.io/runcodes/deployment/image-compose.html#public-hostname-and-tls).
 
 The script pulls the images, creates the host execution directory, checks the
 rootless Podman socket and starts the stack. It never builds from source.
@@ -37,10 +42,34 @@ CONTAINER_ENGINE=docker ./deploy.sh up   # use Docker Compose v2
 | `./deploy.sh status` | show container status |
 | `./deploy.sh logs` | follow the stack logs |
 | `./deploy.sh restart` | restart the containers |
-| `./deploy.sh down` | stop and remove the containers; volumes are kept |
+| `./deploy.sh down` | stop and remove the containers, including the observability stack when available; volumes are kept |
 | `./deploy.sh config` | render the final Compose configuration |
+| `./deploy.sh observability` | start the stack plus the telemetry stack |
+| `./deploy.sh observability-logs` | follow the telemetry stack logs |
 
 `ENV_FILE=/path/to/env ./deploy.sh up` reads a different file.
+
+## Observability
+
+The telemetry stack is opt-in and off by default:
+
+```bash
+./deploy.sh observability
+```
+
+It starts the application plus an OpenTelemetry collector, Prometheus,
+Alertmanager, Loki, Tempo, Pyroscope, Grafana and the infrastructure exporters.
+Every UI and API binds to `127.0.0.1`; Grafana is at
+<http://127.0.0.1:3000> and its admin password is generated into the
+repository's `.observability/grafana_admin_password` on the first run.
+
+The overlay and its configuration live at the repository root
+(`docker-compose.observability.yml`, `observability/`), so this command needs a
+repository checkout even though `up` only needs this directory. Point
+`RUNCODES_OBSERVABILITY_DIR` and `RUNCODES_OBSERVABILITY_STATE` elsewhere to use
+a copy.
+
+`down` removes the telemetry containers too; `up` never starts them.
 
 ## Compose engine
 

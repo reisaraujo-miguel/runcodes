@@ -107,7 +107,7 @@ Optional and commonly set:
 | --- | --- | --- |
 | `RUNCODES_PUBLIC_URL` | `http://localhost:8080` | origin used in verification and recovery links |
 | `RUNCODES_SMTP_FROM` | `RunCodes <no-reply@runcodes.local>` | sender address |
-| `RUNCODES_SMTP_HOST` / `_PORT` | Compose sets `smtp4dev:25` | real relay |
+| `RUNCODES_SMTP_HOST` / `_PORT` | Compose sets `smtp4dev:25` | real relay; bare hostname, STARTTLS on `587` |
 | `RUNCODES_SMTP_USERNAME` / `_PASSWORD` | empty | relay credentials |
 | `RUNCODES_DOMAIN` | `:80` | Caddy site: hostname enables automatic HTTPS |
 | `FRONTEND_HTTP_PORT` / `FRONTEND_HTTPS_PORT` | `8080` / `8444` | frontend host ports |
@@ -160,6 +160,12 @@ export FRONTEND_HTTP_PORT=80
 export FRONTEND_HTTPS_PORT=443
 podman compose up -d
 ```
+
+On a rootless Podman host, publishing below 1024 also needs
+`net.ipv4.ip_unprivileged_port_start=80`; without it the frontend fails with
+`rootlessport cannot expose privileged port 80`. The
+[image-based deployment](./image-compose.md#public-hostname-and-tls) has the
+sysctl, its trade-offs and the proxy alternative.
 
 Caddy obtains and renews a certificate into the `caddy_data` volume. DNS must
 point at the host and ports 80/443 must be reachable (ACME HTTP-01 uses 80).

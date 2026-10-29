@@ -358,9 +358,14 @@ leave the other.
 
 1. Check backend logs for SMTP errors.
 2. Check the relay host, port, sender and credentials.
-3. Check rate limits: repeated resends from one address can be throttled.
-4. Check spam filtering at the recipient.
-5. In Compose, confirm that smtp4dev is the intended target and not a real relay.
+3. Match the log message: `no such host` means a scheme or a port in
+   `RUNCODES_SMTP_HOST`, and a send that stalls for about ten seconds means port
+   `465` (implicit TLS). See [Mail](../deployment/image-compose.md#mail).
+4. A repeat inside the five-minute per-recipient cooldown is suppressed, not
+   failed: the backend logs `transactional email suppressed` with the flow and
+   reason, and the endpoint still answers success.
+5. Check spam filtering at the recipient.
+6. In Compose, confirm that smtp4dev is the intended target and not a real relay.
 
 ### The judge is slow or stuck
 

@@ -22,9 +22,15 @@ Podman is the default engine; Docker Compose v2 works the same way.
 | `8081` | `SMTP4DEV_WEB_PORT` | smtp4dev web UI | `127.0.0.1` |
 | `1025` | `SMTP4DEV_SMTP_PORT` | smtp4dev SMTP | `127.0.0.1` |
 
-The ports above are the defaults; every one can be changed with its variable
-(set it in `.env`) to run this stack next to another one on the same machine.
-Only the frontend is published on every interface.
+The table lists the Compose file's inline fallbacks. The deployment template
+(`deploy/compose/.env.example`) ships the public profile instead: the frontend on
+`80`/`443` and `RUNCODES_DOMAIN` set to a hostname. Ports below 1024 need
+`net.ipv4.ip_unprivileged_port_start=80` on a rootless Podman host; see
+[Image-based Compose § Public hostname and TLS](../deployment/image-compose.md#public-hostname-and-tls).
+
+Every port can be changed with its variable (set it in `.env`) to run this stack
+next to another one on the same machine. Only the frontend is published on every
+interface.
 
 Redis is not published; the backend reaches it as `redis:6379` on the Compose
 network.
