@@ -518,11 +518,61 @@ UI and API binds to `127.0.0.1`, so nothing becomes public:
 | Alertmanager | <http://127.0.0.1:9093> |
 | Collector health | <http://127.0.0.1:13133/health/status> |
 
+### Reaching the telemetry UIs over SSH
+
+Every port is bound to `127.0.0.1` on the host, so the UIs are not reachable
+from your workstation. Forward them through the SSH session you already use to
+administer the host:
+
+```bash
+ssh -N \
+  -L 3000:127.0.0.1:3000 \
+  -L 9090:127.0.0.1:9090 \
+  -L 9093:127.0.0.1:9093 \
+  -L 3100:127.0.0.1:3100 \
+  -L 3200:127.0.0.1:3200 \
+  -L 4040:127.0.0.1:4040 \
+  runcodes@runcodes.example.com
+```
+
+`-N` opens the forwards without a remote shell: keep that terminal open, or add
+`-f` to send the tunnel to the background. Each service is then at the URL from
+the table above with `localhost` in place of `127.0.0.1` — Grafana at
+<http://localhost:3000>. Drop the mappings you do not need; `12345` (Alloy),
+`13133` (collector health) and `8085` (alert sink) are useful when debugging
+those.
+
+Keep the **local** port equal to the remote one for Grafana. The overlay sets
+`GRAFANA_ROOT_URL` to `http://localhost:3000`, so a different local port makes
+Grafana redirect to the old one; if port 3000 is already taken on your machine,
+set `GRAFANA_ROOT_URL=http://localhost:<port>` in `.env` and run
+`./deploy.sh recreate grafana`.
+
+To avoid retyping the tunnel, keep it in `~/.ssh/config`:
+
+```text
+Host runcodesgo
+  HostName runcodes.example.com
+  User runcodes
+  LocalForward 3000 127.0.0.1:3000
+  LocalForward 9090 127.0.0.1:9090
+  ExitOnForwardFailure yes
+```
+
+Then `ssh -N runcodesgo` opens the same forwards, and a normal
+`ssh runcodesgo` opens them alongside the shell.
+
+::: warning Do not widen the bind address instead
+`OBSERVABILITY_BIND_ADDRESS=0.0.0.0` would put Prometheus, Alertmanager, Loki,
+Tempo and Pyroscope on the network; only Grafana has authentication. Keep the
+loopback binding and forward the ports. The four-machine deployment follows the
+same rule through its edge host
+([Access and dashboards](../observability/production.md#access-and-dashboards)).
+:::
+
 The first run generates the Grafana admin password into the repository's
 `.observability/grafana_admin_password`; the user is `GRAFANA_ADMIN_USER`
-(`admin` by default). Bridge it to a laptop with an SSH tunnel
-(`ssh -L 3000:127.0.0.1:3000 <host>`) rather than changing
-`OBSERVABILITY_BIND_ADDRESS`.
+(`admin` by default). Read it on the host, or through the tunnel above.
 
 The backend and the judge start exporting traces, metrics and logs to the
 collector as soon as the overlay applies, which recreates both containers. The

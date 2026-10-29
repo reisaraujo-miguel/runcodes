@@ -158,6 +158,13 @@ Versions are pinned in `docker-compose.observability.yml` and in
 - [Four-machine deployment](./production.md) — signal routing, alerts, retention.
 - [Runbook](./runbook.md) — validation, failure modes and queries.
 
+Both deployments keep the telemetry UIs on loopback or a private network. To
+open them from a workstation, forward the ports over SSH: the single-host page
+has a copy-pasteable tunnel
+([Reaching the telemetry UIs over SSH](../deployment/image-compose.md#reaching-the-telemetry-uis-over-ssh)),
+and the four-machine page shows the jump through the edge
+([Access and dashboards](./production.md#access-and-dashboards)).
+
 ## Known limitations
 
 - **Browser tracing is build-time.** A build without `VITE_OTEL_ENABLED=true`
