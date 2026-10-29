@@ -546,16 +546,18 @@ account; the ordinary account password is rejected.
    printf '%s\n' 'abcdefghijklmnop' > .observability/alertmanager_gmail_app_password
    ```
 
-4. Point the stack at the copy. Add this to the repository-root `.env` (or
-   export it for one run):
+4. Point the stack at the copy. Add the variable to the deployment's `.env` —
+   the repository-root one for the source-build stack, `deploy/compose/.env` for
+   the image-based deployment — or export it for one run:
 
    ```bash
    ALERTMANAGER_CONFIG_FILE=./.observability/alertmanager.yml
    ```
 
-   The path is relative to the repository root. `deploy.sh` resolves relative
-   values there, and a `podman compose` run started from the repository root does
-   too; use an absolute path when you start Compose from another directory.
+   The path is relative to the repository root. `deploy.sh` resolves it there for
+   both deployments, and a `podman compose` run started from the repository root
+   does too. A bare `podman compose` run from `deploy/compose` anchors it at
+   `deploy/compose` instead, so give it an absolute path.
 
 5. Recreate Alertmanager so it mounts the new config and secret:
 

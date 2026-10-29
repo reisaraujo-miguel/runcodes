@@ -574,6 +574,11 @@ overlay starts it with `--web.enable-lifecycle`:
 curl -fsS -X POST http://127.0.0.1:9090/-/reload
 ```
 
+`deploy.sh` resolves a relative `ALERTMANAGER_CONFIG_FILE` or
+`PYROSCOPE_CONFIG_FILE` from `.env` against the repository root, so the
+runbook's `./.observability/alertmanager.yml` works from `deploy/compose/.env`
+as well; an absolute path works everywhere.
+
 ::: danger Do not recreate by hand from this directory
 The overlay's configuration paths are absolute only while `deploy.sh` exports
 them. A bare `podman compose -f docker-compose.yml -f ../../docker-compose.observability.yml up -d --force-recreate alertmanager`
