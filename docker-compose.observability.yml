@@ -68,7 +68,7 @@ services:
   # OTLP entry point. Applications send traces, metrics and logs here; it is the
   # only process that talks to Tempo and Loki on the write path.
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.163.2
+    image: otel/opentelemetry-collector-contrib:0.163.2-386
     restart: unless-stopped
     command: ["--config=/etc/otelcol/config.yaml"]
     environment:
@@ -243,7 +243,7 @@ services:
       - runcodes-network
 
   alloy:
-    image: grafana/alloy:v1.21.1
+    image: grafana/alloy:v1.21.2
     restart: unless-stopped
     command:
       - "run"
@@ -359,7 +359,7 @@ services:
         condition: service_started
 
   redis-exporter:
-    image: oliver006/redis_exporter:v1.95.0
+    image: oliver006/redis_exporter:v1.96.0
     restart: unless-stopped
     environment:
       TZ: "America/Sao_Paulo"

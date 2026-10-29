@@ -276,7 +276,7 @@ services:
       - /init.sh
 
   seaweed:
-    image: chrislusf/seaweedfs:4.48
+    image: chrislusf/seaweedfs:4.50
     ports:
       # Loopback only: the S3 gateway holds every submission and expected output,
       # so reaching it directly must not be possible from the network.
