@@ -38,7 +38,9 @@ published image instead, and starts the same telemetry stack with
 [Image-based Compose § Observability](../deployment/image-compose.md#observability).
 
 The stack publishes every UI and API on **127.0.0.1** by default. Nothing is
-exposed publicly.
+exposed publicly. When it runs on a remote host, forward those ports over SSH
+rather than changing the bind address:
+[Reaching the telemetry UIs over SSH](../deployment/image-compose.md#reaching-the-telemetry-uis-over-ssh).
 
 ## Prerequisites
 
