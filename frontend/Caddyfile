@@ -24,6 +24,20 @@
 			flush_interval -1
 		}
 
+		# Browser traces. The published frontend image is built with
+		# VITE_OTEL_EXPORTER_OTLP_ENDPOINT=/otel, so the SPA posts to this same
+		# origin (no CORS) and the request lands here. Only the OTLP/HTTP traces
+		# path is proxied, with a body cap, so the unauthenticated route cannot
+		# be used as a large-payload proxy. Without a collector on the network
+		# the route answers 502; the browser SDK drops the batch.
+		handle /otel/v1/traces {
+			request_body {
+				max_size 4MB
+			}
+			uri strip_prefix /otel
+			reverse_proxy {$OTEL_UPSTREAM:otel-collector:4318}
+		}
+
 		# Everything else is the single-page app.
 		encode gzip
 		root * /usr/share/caddy
