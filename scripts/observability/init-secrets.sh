@@ -7,6 +7,9 @@
 # use your platform's secret manager and set GF_SECURITY_ADMIN_PASSWORD__FILE to
 # the mounted path instead; this script is for the local development stack.
 #
+# OBSERVABILITY_STATE_DIR moves the directory, which the image-based deployment
+# (deploy/compose/deploy.sh) uses to keep its state next to the deployment.
+#
 # The directory is world-traversable and the file world-readable on purpose: the
 # Grafana container runs as UID 472 (mapped to a subuid by rootless Podman), so a
 # 0600 file owned by the invoking user cannot be read inside the container. The
@@ -14,7 +17,7 @@
 set -euo pipefail
 
 root="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
-state_dir="$root/.observability"
+state_dir="${OBSERVABILITY_STATE_DIR:-$root/.observability}"
 password_file="$state_dir/grafana_admin_password"
 webhook_file="$state_dir/alertmanager_webhook_url"
 gmail_password_file="$state_dir/alertmanager_gmail_app_password"

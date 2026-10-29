@@ -69,6 +69,7 @@ runcodes_select_engine() {
     "$engine" compose
     -f "$ROOT/docker-compose.yml"
     -f "$ROOT/docker-compose.observability.yml"
+    -f "$ROOT/docker-compose.observability.build.yml"
   )
   printf 'observability: using %s compose\n' "$engine" >&2
 }

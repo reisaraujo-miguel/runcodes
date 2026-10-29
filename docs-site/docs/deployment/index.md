@@ -16,8 +16,9 @@ in where the images come from and how many hosts they use.
 | Images | built from source | pulled from GHCR | pulled from GHCR |
 | Process supervision | Compose restart policy | Compose restart policy | user systemd units, linger, boot start |
 | Secrets | environment / root `.env` | `deploy/compose/.env` | Ansible Vault, deployment-user-owned files |
-| Telemetry | opt-in overlay (`make observability-up`) | not included; use Ansible | full stack on the observability host |
-| TLS | Caddy, optional hostname | Caddy, optional hostname | Caddy + ACME on the public edge |
+| Telemetry | opt-in overlay (`make observability-up`) | opt-in overlay (`./deploy.sh observability`) | full stack on the observability host |
+| Public ports | `8080` / `8444` by default, `80` / `443` for a public site | `80` / `443` in the template | `80` / `443` on the edge |
+| TLS | Caddy, optional hostname | Caddy + ACME for the configured hostname | Caddy + ACME on the public edge |
 | Backups | manual `pg_dump` / volume archive | manual `pg_dump` / volume archive | documented backup boundary on `data` |
 
 The [source-build Compose stack](./compose.md) is the development and demo path:

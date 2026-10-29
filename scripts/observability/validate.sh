@@ -43,6 +43,8 @@ for script in scripts/observability/*.sh; do
   bash -n "$script" || fail "shell syntax error in $script"
   pass "$script"
 done
+bash -n deploy/compose/deploy.sh || fail "shell syntax error in deploy/compose/deploy.sh"
+pass "deploy/compose/deploy.sh"
 
 info "checking JSON files"
 while IFS= read -r file; do
@@ -70,6 +72,25 @@ runcodes_select_engine || exit 1
 info "resolving compose configuration"
 "${COMPOSE[@]}" config -q || fail "compose config failed"
 pass "compose configuration resolves"
+
+# The image-based deployment reuses the overlay from the repository root. Its
+# Compose file owns EXEC_DIR and PODMAN_SOCKET and resolves configuration paths
+# from the environment, so exercise the merge with the same overrides that
+# deploy/compose/deploy.sh exports.
+info "resolving the image-based deployment with the overlay"
+image_compose=(
+  "$CONTAINER_ENGINE" compose
+  -f "$ROOT/deploy/compose/docker-compose.yml"
+  -f "$ROOT/docker-compose.observability.yml"
+)
+RUNCODES_EXEC_DIR="$ROOT/exec" \
+PODMAN_SOCKET="/run/user/$(id -u)/podman/podman.sock" \
+RUNCODES_OBSERVABILITY_DIR="$ROOT/observability" \
+RUNCODES_OBSERVABILITY_STATE="$ROOT/.observability" \
+ALERTMANAGER_CONFIG_FILE="$ROOT/observability/alertmanager/alertmanager.yml" \
+PYROSCOPE_CONFIG_FILE="$ROOT/observability/pyroscope/config.yaml" \
+  "${image_compose[@]}" config -q || fail "image-based compose config failed"
+pass "image-based compose configuration resolves"
 
 "$CONTAINER_ENGINE" info >/dev/null 2>&1 || fail "container engine is not reachable; set SKIP_DOCKER=1 to skip container-based checks"
 

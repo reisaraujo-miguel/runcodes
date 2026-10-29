@@ -166,8 +166,11 @@ account, so an unconfirmed user still needs the verification link above.
 ::: info Using a real mail relay
 Set `RUNCODES_SMTP_HOST`, `RUNCODES_SMTP_PORT`, `RUNCODES_SMTP_FROM` and
 optionally `RUNCODES_SMTP_USERNAME` / `RUNCODES_SMTP_PASSWORD`. STARTTLS is used
-when the server advertises it. `RUNCODES_PUBLIC_URL` must be the browser-facing
-origin, because it is used to build the link.
+when the server advertises it. The host is a bare hostname (no `ssl://` or
+`smtps://`) and `465` is not supported, so use the relay's `587` port.
+`RUNCODES_PUBLIC_URL` must be the browser-facing origin, because it is used to
+build the link. [Mail](../deployment/image-compose.md#mail) has the relay
+settings and the Gmail/Workspace specifics.
 :::
 
 ## 5. Run a submission

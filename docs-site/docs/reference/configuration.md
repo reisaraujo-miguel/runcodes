@@ -93,8 +93,8 @@ judge's `JUDGE_MAX_RUN_DURATION` plus margin.
 
 | Variable | Default | Required | Meaning |
 | --- | --- | :-: | --- |
-| `RUNCODES_SMTP_HOST` | — | ✓ | SMTP server |
-| `RUNCODES_SMTP_PORT` | `587` | | SMTP port |
+| `RUNCODES_SMTP_HOST` | — | ✓ | SMTP server hostname, with no scheme |
+| `RUNCODES_SMTP_PORT` | `587` | | SMTP port; STARTTLS, `465` is not supported |
 | `RUNCODES_SMTP_FROM` | — | ✓ | valid `From` address |
 | `RUNCODES_SMTP_USERNAME` | empty | | relay username |
 | `RUNCODES_SMTP_PASSWORD` | empty | | relay password |
@@ -301,6 +301,13 @@ explicit message.
 Source: `deploy/compose/docker-compose.yml`, `deploy/compose/.env.example`. The
 stack runs on Podman Compose by default and on Docker Compose v2 when selected.
 
+The `Default` column lists the Compose file's inline fallbacks.
+`deploy/compose/.env.example` is a public-deployment profile on top of them: a
+placeholder hostname in `RUNCODES_DOMAIN`, an `https://` `RUNCODES_PUBLIC_URL`,
+and frontend host ports `80`/`443`. Ports below 1024 need
+`net.ipv4.ip_unprivileged_port_start=80` on a rootless Podman host; see
+[Image-based Compose § Public hostname and TLS](../deployment/image-compose.md#public-hostname-and-tls).
+
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `COMPOSE_PROJECT_NAME` | `runcodes` | Compose project and volume prefix |
@@ -319,7 +326,7 @@ stack runs on Podman Compose by default and on Docker Compose v2 when selected.
 | `BACKEND_PORT` / `JUDGE_PORT` | `8443` / `9000` | loopback host ports |
 | `DATABASE_PORT` / `SEAWEED_S3_PORT` | `5432` / `8333` | loopback host ports |
 | `SMTP4DEV_WEB_PORT` / `SMTP4DEV_SMTP_PORT` | `8081` / `1025` | loopback host ports |
-| `RUNCODES_SMTP_HOST` / `_PORT` | `smtp4dev` / `25` | relay or the bundled catcher |
+| `RUNCODES_SMTP_HOST` / `_PORT` | `smtp4dev` / `25` | relay or the bundled catcher; bare hostname, STARTTLS on `587` |
 | `RUNCODES_SMTP_FROM` | `RunCodes <no-reply@runcodes.local>` | sender |
 | `RUNCODES_SMTP_USERNAME` / `_PASSWORD` | empty | relay credentials |
 | `JUDGE_CONCURRENCY` | `4` | containers the judge runs at once |

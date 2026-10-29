@@ -24,8 +24,18 @@ make observability-smoke-test # generate traffic and validate every signal
 The equivalent explicit command (run the init first) is:
 
 ```bash
-podman compose -f docker-compose.yml -f docker-compose.observability.yml up -d --build
+podman compose \
+  -f docker-compose.yml \
+  -f docker-compose.observability.yml \
+  -f docker-compose.observability.build.yml \
+  up -d --build
 ```
+
+`docker-compose.observability.build.yml` compiles the browser telemetry endpoint
+into the frontend image. The image-based deployment builds that endpoint into the
+published image instead, and starts the same telemetry stack with
+`./deploy.sh observability`; see
+[Image-based Compose § Observability](../deployment/image-compose.md#observability).
 
 The stack publishes every UI and API on **127.0.0.1** by default. Nothing is
 exposed publicly.

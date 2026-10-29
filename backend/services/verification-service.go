@@ -115,9 +115,10 @@ pending change must keep its token addressed to the new address: sending an
 account-verification link to the old address would let that link complete the
 change without proving control of the new one.
 
-An unknown address and an already confirmed account with no pending change are
-both a silent success: the endpoint is public, and answering differently would
-turn it into a way to ask whether an email has an account here.
+An unknown address, an already confirmed account with no pending change and a
+request inside the recipient cooldown are all a silent success: the endpoint is
+public, and answering differently would turn it into a way to ask whether an
+email has an account here. Each suppression is logged.
 */
 func ResendVerification(ctx context.Context, email string) error {
 	email = validation.NormalizeEmail(email)
@@ -135,6 +136,9 @@ func ResendVerification(ctx context.Context, email string) error {
 	).Scan(&id, &name, &confirmed, &pendingMail)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			// The caller gets the same answer as a delivery; the log is the only
+			// place that tells an operator the address has no account.
+			slog.InfoContext(ctx, "verification resend requested for an unknown address")
 			return nil
 		}
 		slog.ErrorContext(ctx, "error looking up account for verification resend",
@@ -144,19 +148,20 @@ func ResendVerification(ctx context.Context, email string) error {
 	}
 
 	if pendingMail != "" {
-		if !allowTransactionalEmail(pendingMail) {
-			return nil
-		}
-		return SendEmailChangeEmail(ctx, id, name, pendingMail)
+		return sendWithinCooldown(ctx, flowEmailChange, id, pendingMail, func() error {
+			return SendEmailChangeEmail(ctx, id, name, pendingMail)
+		})
 	}
 	if confirmed {
+		slog.InfoContext(ctx, "verification resend skipped for a confirmed account",
+			slog.Int("user_id", id),
+		)
 		return nil
 	}
 
-	if !allowTransactionalEmail(email) {
-		return nil
-	}
-	return SendVerificationEmail(ctx, id, name, email)
+	return sendWithinCooldown(ctx, flowVerificationResend, id, email, func() error {
+		return SendVerificationEmail(ctx, id, name, email)
+	})
 }
 
 /*

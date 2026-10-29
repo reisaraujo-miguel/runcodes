@@ -38,17 +38,17 @@ jobs:
             context: ./backend
           - service: frontend
             context: ./frontend
-            # Browser telemetry is build-time. These values make the image
-            # work behind the deployment's same-origin Caddy route; the
-            # collector URL is relative, so no environment-specific host is
-            # baked into the SPA.
+            # Browser telemetry is compiled in. The endpoint is the relative
+            # /otel path: the SPA posts to its own origin, and frontend/Caddyfile
+            # proxies /otel/v1/traces to the collector, so no deployment host is
+            # baked into the image. VITE_OTEL_SERVICE_VERSION is appended by the
+            # build step from the release tag.
             build-args: |
               VITE_API_ENDPOINT=
               VITE_OTEL_ENABLED=true
               VITE_OTEL_EXPORTER_OTLP_ENDPOINT=/otel
               VITE_OTEL_SERVICE_NAME=runcodes-frontend
-              VITE_OTEL_SERVICE_VERSION=ci
-              VITE_DEPLOYMENT_ENVIRONMENT=production
+              VITE_DEPLOYMENT_ENVIRONMENT=${{ vars.DEPLOYMENT_ENVIRONMENT || 'production' }}
               VITE_OTEL_TRACES_SAMPLER_ARG=1.0
           - service: database
             context: ./database
@@ -92,7 +92,13 @@ jobs:
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: ${{ matrix.build-args || '' }}
+          # The service version is resource data for every trace and log the
+          # image emits. Take it from the release tag (metadata-action's
+          # version output) instead of a constant, so Tempo and Loki can tell
+          # releases apart. Other services ignore the argument.
+          build-args: |
+            ${{ matrix.build-args }}
+            VITE_OTEL_SERVICE_VERSION=${{ steps.meta.outputs.version }}
           pull: true
           cache-from: type=gha,scope=app-${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=app-${{ matrix.service }}

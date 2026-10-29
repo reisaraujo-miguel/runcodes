@@ -25,6 +25,13 @@ applies, and record the exceptions.
       [Security & scaling](./security.md#capacity-starting-points).
 - [ ] Point the public DNS name at the edge host.
 - [ ] Allow inbound 80 and 443 on the edge only.
+- [ ] On a rootless Podman host, allow the deployment user to bind 80/443
+      (`net.ipv4.ip_unprivileged_port_start=80`), or front the stack with a
+      proxy on loopback ports.
+- [ ] Confirm `https://<public name>/` serves a valid certificate and that
+      `http://` redirects to it.
+- [ ] Confirm sign-in works over the public origin; the session cookie is
+      `Secure` and is not sent over plain HTTP.
 - [ ] Restrict SSH to known addresses.
 - [ ] Restrict every private port to the deployment peers at the provider
       firewall.
