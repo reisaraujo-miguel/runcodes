@@ -74,7 +74,7 @@ jobs:
           cache-dir: /tmp/trivy-cache
 
       - name: Upload results to the Security tab
-        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370
         # Uploads are not allowed for PRs from forks, so skip them there.
         if: always() && (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork)
         with:
