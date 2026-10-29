@@ -323,6 +323,34 @@ podman-compose -p runcodes-<stack> -f compose.yml up -d
 A missing image is usually a GHCR tag/visibility/auth problem. Check
 `podman pull <image>` as `runcodes` and the rootless registry login.
 
+### Every container stops shortly after the last SSH session closes
+
+**Symptom.** About ten seconds after logging out, the whole stack stops at once.
+`podman ps -a` shows `Exited (0)` or `Exited (143)`; `podman inspect` reports
+`OOMKilled=false` and an empty `State.Error`; PostgreSQL logs
+`received fast shutdown request` and the backend logs `Shutdown requested`. The
+services shut down cleanly: nothing crashed.
+
+**Cause.** Rootless containers live in the systemd user manager
+(`user@<uid>.service`). With lingering off, logind stops that manager when the
+last session ends and SIGTERMs everything in it.
+
+```bash
+loginctl show-user runcodes -p Linger    # Linger=no is the bug
+```
+
+**Fix.** Once per host, as root:
+
+```bash
+loginctl enable-linger runcodes
+loginctl show-user runcodes -p Linger    # → Linger=yes
+systemctl --user restart runcodes-<stack>
+```
+
+`setup.yml` enables lingering and fails if the host does not report
+`Linger=yes`; `verify.yml` checks all four hosts. Without lingering the user
+units are also never started at boot, so a reboot leaves the stack down.
+
 ### Backend `/readyz` returns 503
 
 PostgreSQL is required:

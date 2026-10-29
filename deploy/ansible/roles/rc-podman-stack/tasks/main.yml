@@ -8,6 +8,32 @@
       - stack_dir | length > 0
     fail_msg: "rc-podman-stack requires stack_name and stack_dir."
 
+# The unit below is a *user* unit: it is only reachable, and only kept alive
+# without a login session, while user@UID.service runs. Lingering is what keeps
+# that manager up after the last SSH session closes and what starts default.target
+# at boot. A deploy that skips setup.yml (running deploy-edge.yml alone, say)
+# would otherwise install and enable a unit that never runs again -- or, worse,
+# one whose containers are killed at the next logout.
+- name: Read the stack user's lingering state
+  ansible.builtin.command:
+    argv: [loginctl, show-user, "{{ stack_user }}", -p, Linger]
+  register: rc_podman_stack_linger
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Require lingering, or the stack unit dies with the SSH session
+  ansible.builtin.assert:
+    that:
+      - rc_podman_stack_linger.stdout | trim == 'Linger=yes'
+    fail_msg: >-
+      {{ stack_user }} does not linger on {{ inventory_hostname }}, so
+      runcodes-{{ stack_name }} would be stopped as soon as the last SSH session
+      closes: every container exits 0/143 about ten seconds later, with no OOM
+      and no application error. Run setup.yml (it enables lingering), or
+      `loginctl enable-linger {{ stack_user }}` as root, then deploy again.
+  when: not ansible_check_mode
+
 - name: Ensure the user systemd unit directory exists
   ansible.builtin.file:
     path: "{{ stack_user_home }}/.config/systemd/user"

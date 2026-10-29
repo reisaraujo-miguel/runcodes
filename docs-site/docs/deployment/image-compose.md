@@ -64,7 +64,9 @@ cd deploy/compose
 cp .env.example .env
 # Fill the required secrets, the image settings and the public hostname.
 $EDITOR .env
-./deploy.sh up
+./deploy.sh linger           # once per host
+./deploy.sh up               # pull the images and start the stack
+./deploy.sh install-service  # once per host: the unit that starts it at boot
 ```
 
 `deploy.sh up`:
@@ -72,10 +74,14 @@ $EDITOR .env
 1. loads `.env` and resolves the host execution directory to an absolute path;
 2. selects the Compose engine: Podman by default, Docker when Podman is absent
    or `CONTAINER_ENGINE=docker`;
-3. checks the rootless Podman socket the judge needs;
+3. checks the rootless Podman socket the judge needs and that the user lingers;
 4. runs `<engine> compose pull` for the application and infrastructure images;
 5. starts the stack with `<engine> compose up -d --remove-orphans`;
 6. prints the container status.
+
+`linger` and `install-service` are not optional on a production host: a stack
+started from an SSH session stops when the session ends. See
+[Surviving logout and reboot](#surviving-logout-and-reboot).
 
 The template is a public-deployment profile: it publishes the frontend on 80 and
 443 for `runcodes.example.com`. Replace that placeholder, point DNS at the host
@@ -206,7 +212,11 @@ missing, Compose fails during `pull` with a `not found` or `unauthorized` error.
 | `./deploy.sh logs` | follow the stack logs |
 | `./deploy.sh restart` | restart the containers |
 | `./deploy.sh down` | stop and remove the containers, including the observability stack when available; volumes are kept |
+| `./deploy.sh stop` | stop the containers but keep them (used by the systemd unit) |
 | `./deploy.sh config` | render the final Compose configuration |
+| `./deploy.sh linger` | enable systemd lingering for this user |
+| `./deploy.sh install-service` | install and start the user unit that owns the stack |
+| `./deploy.sh uninstall-service` | stop the unit, remove it, keep the data |
 | `./deploy.sh observability` | start the stack plus the telemetry stack |
 | `./deploy.sh observability-logs` | follow the telemetry stack logs |
 
@@ -221,6 +231,57 @@ the environment or in `deploy/compose/.env`; an environment value wins.
 The Compose file itself is
 [`deploy/compose/docker-compose.yml`](https://github.com/reisaraujo-miguel/runcodes/blob/main/deploy/compose/docker-compose.yml).
 It has no `build:` sections and works with either engine.
+
+## Surviving logout and reboot
+
+Rootless containers run under the systemd **user manager**
+(`user@<uid>.service`), not under the SSH session that started them. With
+lingering disabled, logind stops that manager when the last session closes and
+SIGTERMs everything inside it. The whole stack stops within a few seconds,
+about ten seconds after the last logout, and looks like a crash:
+
+- `podman ps -a` shows `Exited (0)` or `Exited (143)` for every service;
+- `podman inspect` reports `OOMKilled=false` and an empty `State.Error`;
+- PostgreSQL logs `received fast shutdown request` and the backend logs
+  `Shutdown requested`: they caught SIGTERM and exited cleanly;
+- `loginctl show-user "$USER" -p Linger` prints `Linger=no`.
+
+Two commands fix it, once per host:
+
+```bash
+./deploy.sh linger            # sudo loginctl enable-linger $USER if polkit refuses
+./deploy.sh install-service   # user unit: supervised, starts at boot
+```
+
+`linger` keeps the user manager — and therefore the containers — alive with
+nobody logged in, and it is what makes user units start at boot. Without it,
+`systemctl --user enable` records a unit that will never run again after a
+reboot.
+
+`install-service` writes
+`~/.config/systemd/user/runcodes-compose.service` and enables it. The unit runs
+`deploy.sh up` when it starts and `deploy.sh stop` when it stops, so the stack is
+owned by systemd:
+
+```bash
+systemctl --user status runcodes-compose.service
+systemctl --user restart runcodes-compose.service
+journalctl --user -u runcodes-compose.service -n 50
+```
+
+The unit starts with `RUNCODES_SKIP_PULL=1`: a boot uses the images already on
+the host instead of waiting on (or failing because of) the registry.
+`install-service` pulls once while it installs, so the images are present.
+`./deploy.sh up` still pulls.
+
+`up`, `restart` and `observability` refuse to start a rootless stack without
+lingering. `RUNCODES_SKIP_LINGER_CHECK=1` overrides that; the stack then stops
+at the next logout.
+
+The unit holds the absolute path of this directory. If you move
+`deploy/compose`, run `./deploy.sh install-service` again. After a reboot, a
+correctly enabled unit comes back on its own; check with
+`./deploy.sh status` before assuming a problem.
 
 ## Public hostname and TLS
 
@@ -614,6 +675,8 @@ deploy/compose/
 | --- | --- |
 | `deploy.sh: .env not found` | copy `.env.example` to `.env` in `deploy/compose` |
 | `podman socket not found` | start `podman.socket` or set `PODMAN_SOCKET`; the judge needs it with Docker too |
+| every container stops ~10 s after the last logout, `Exited (0)`/`(143)`, no OOM | systemd lingering is off; run `./deploy.sh linger` and `./deploy.sh install-service`, then `./deploy.sh up`; see [Surviving logout and reboot](#surviving-logout-and-reboot) |
+| the stack does not come back after a reboot | lingering is off, so the enabled user unit never runs at boot; `./deploy.sh linger` and `./deploy.sh install-service` |
 | `unauthorized` during pull | run `podman login ghcr.io` for the runner images (and the application images with Podman); with Docker Compose, also run `docker login ghcr.io` for the application images |
 | `not found` during pull | the namespace/tag does not contain that image; check `RUNCODES_IMAGE_NAMESPACE`, `RUNCODES_IMAGE_TAG` and the runner settings |
 | judge says `podman unavailable` | the socket mount is stale; recreate the judge with `podman compose --env-file .env -f docker-compose.yml up -d --force-recreate judge` (use `docker compose` when Compose runs on Docker) |

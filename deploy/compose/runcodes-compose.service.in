@@ -1,0 +1,46 @@
+# RunCodes stack as a systemd *user* unit.
+#
+# Installed by `./deploy.sh install-service` into
+# ~/.config/systemd/user/runcodes-compose.service, with the deployment directory
+# substituted below.
+#
+# Why a unit at all: a `podman compose up -d` typed into an SSH session belongs
+# to that session. logind SIGTERMs the session's processes when the last
+# connection closes, and the containers go with it -- exit 0/143, no OOM, no
+# application error, about ten seconds after logout. Under the user manager the
+# stack is independent of any session, survives logout (with lingering), and
+# starts at boot.
+#
+# `deploy.sh` replaces this file when it is re-installed; edit the template, not
+# the copy in ~/.config/systemd/user.
+[Unit]
+Description=RunCodes stack (Compose)
+Documentation=file://@DEPLOY_DIR@/README.md
+After=network-online.target
+Wants=network-online.target
+# The judge drives the host's rootless Podman socket. Pulling the socket in
+# means a boot does not depend on it having been enabled separately.
+Wants=podman.socket
+After=podman.socket
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=@DEPLOY_DIR@
+# A user unit inherits nothing from the session that started it.
+Environment=HOME=%h
+Environment=XDG_RUNTIME_DIR=%t
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus
+# Start what the host already has: a boot must not depend on the registry being
+# reachable or on the pull credentials still being valid. `./deploy.sh up` from
+# a shell still pulls.
+Environment=RUNCODES_SKIP_PULL=1
+ExecStart=@DEPLOY_DIR@/deploy.sh up
+# Keep the containers on `systemctl --user stop`; `./deploy.sh down` is for
+# removal. A stop that finds nothing running is not a unit failure.
+ExecStop=-@DEPLOY_DIR@/deploy.sh stop
+TimeoutStartSec=0
+TimeoutStopSec=120
+
+[Install]
+WantedBy=default.target
