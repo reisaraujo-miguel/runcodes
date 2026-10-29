@@ -16,7 +16,6 @@ import (
 	"go.podman.io/podman/v6/pkg/bindings"
 	"go.podman.io/podman/v6/pkg/bindings/containers"
 	"go.podman.io/podman/v6/pkg/bindings/images"
-	"go.podman.io/podman/v6/pkg/bindings/system"
 	"go.podman.io/podman/v6/pkg/specgen"
 )
 
@@ -94,18 +93,20 @@ func socketAdvice(uri string) string {
 }
 
 // Ready reports whether the podman service responds (used by /readyz).
+//
+// The handshake inside Connect is the whole check: establishing the connection
+// issues GET /_ping, so a client that comes back without an error has already
+// proved the API server answers. That costs about a millisecond.
+//
+// It deliberately does not call system.Version. That endpoint is podman's
+// `podman info` path on the server: it execs conmon and the OCI runtime and
+// reads the image and container store. Measured at ~200ms on a warm dev host
+// and ~700ms in production, it dominated /readyz, so both the blackbox probe
+// and the backend's pre-submission check paid it on every call. Readiness needs
+// "can I talk to the runtime", not a full inventory of it.
 func (c *Client) Ready(ctx context.Context) error {
-	conn, err := c.Connect(ctx)
-	if err != nil {
-		return fmt.Errorf("connect to podman: %w", err)
-	}
-
-	// system.Version is a simple ping that returns the podman version.
-	if _, err := system.Version(conn, nil); err != nil {
-		return fmt.Errorf("podman version: %w", err)
-	}
-
-	return nil
+	_, err := c.Connect(ctx)
+	return err
 }
 
 /*
