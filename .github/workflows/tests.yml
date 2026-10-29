@@ -199,6 +199,11 @@ jobs:
                   ROLLBACK;"
           psql -v ON_ERROR_STOP=1 \
             -c "UPDATE commits SET status = status WHERE false"
+          # postgres-exporter runs as this role; its WAL collector fails with
+          # "permission denied for function pg_ls_waldir" without the grant in
+          # 05-app-role.sh, once per scrape, and the WAL panels go empty.
+          psql -v ON_ERROR_STOP=1 \
+            -c "SELECT count(*) FROM pg_ls_waldir()"
 
           denied=0
           deny() {
@@ -229,6 +234,13 @@ jobs:
           # No grant on users.
           if psql -v ON_ERROR_STOP=1 -tAc "SELECT count(*) FROM users" >/dev/null 2>&1; then
             echo "::error::runcodes_judge can read users"
+            exit 1
+          fi
+
+          # The monitoring grant belongs to the application role, not to the
+          # judge: the judge needs no visibility into the server's files.
+          if psql -v ON_ERROR_STOP=1 -tAc "SELECT count(*) FROM pg_ls_waldir()" >/dev/null 2>&1; then
+            echo "::error::runcodes_judge can read the WAL directory"
             exit 1
           fi
 

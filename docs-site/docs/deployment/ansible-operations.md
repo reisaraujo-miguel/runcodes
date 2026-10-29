@@ -122,7 +122,9 @@ enabled UFW. Run `ufw disable` deliberately to roll it back.
    ```
 
 The stack units pull the configured images and force-recreate their containers.
-The judge restarts with the rootless socket directory mounted.
+The judge restarts with the rootless socket directory mounted. The data role
+re-runs `05-app-role.sh` on every deploy, so service-role grants and passwords
+that a release changes are applied to an existing database volume too.
 
 This is **not zero-downtime**: each stack's containers are recreated, and
 in-flight judge runs are abandoned. The backend's stale sweeper marks those

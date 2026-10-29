@@ -56,6 +56,7 @@ CONTAINER_ENGINE=docker ./deploy.sh up   # use Docker Compose v2
 | `./deploy.sh linger` | enable systemd lingering for this user |
 | `./deploy.sh install-service` | install and start the user unit that owns the stack |
 | `./deploy.sh uninstall-service` | stop the unit, remove it, keep the data |
+| `./deploy.sh db-grants` | re-apply the service-role grants and passwords to an existing database volume |
 | `./deploy.sh observability` | start the stack plus the telemetry stack |
 | `./deploy.sh observability-logs` | follow the telemetry stack logs |
 | `./deploy.sh recreate <service...>` | recreate services in place after a config or `.env` change |

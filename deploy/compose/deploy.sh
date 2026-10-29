@@ -349,6 +349,15 @@ case "$action" in
       printf 'deploy.sh: warning: could not reload the user manager; the removed unit disappears at its next reload\n' >&2
     printf 'deploy.sh: removed the unit; start the stack in this session with ./deploy.sh up\n'
     ;;
+  db-grants)
+    # The database image runs 05-app-role.sh only while initializing an empty
+    # volume, so an existing volume keeps the grants it was created with. The
+    # script is idempotent: it re-applies the table/sequence grants and rotates
+    # both role passwords to the values in .env. The container already carries
+    # RUNCODES_DB_APP_PASSWORD and RUNCODES_DB_JUDGE_PASSWORD, and psql reaches
+    # the server over the local socket.
+    "${compose[@]}" exec -T database /docker-entrypoint-initdb.d/05-app-role.sh
+    ;;
   logs)
     "${compose[@]}" logs -f --tail=100
     ;;
@@ -386,6 +395,8 @@ Commands:
   install-service     Install and start the user unit that owns the stack, so it
                       survives logout and starts at boot (requires linger)
   uninstall-service   Disable and remove that unit, which also stops the stack
+  db-grants           Re-apply the service-role grants and passwords to an existing
+                      database volume (the image only runs them on an empty one)
 
 Environment:
   CONTAINER_ENGINE                Compose engine: auto (default; Podman first), podman, docker

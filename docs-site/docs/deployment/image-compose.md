@@ -217,6 +217,7 @@ missing, Compose fails during `pull` with a `not found` or `unauthorized` error.
 | `./deploy.sh linger` | enable systemd lingering for this user |
 | `./deploy.sh install-service` | install and start the user unit that owns the stack |
 | `./deploy.sh uninstall-service` | stop the unit, remove it, keep the data |
+| `./deploy.sh db-grants` | re-apply the service-role grants and passwords to an existing database volume |
 | `./deploy.sh observability` | start the stack plus the telemetry stack |
 | `./deploy.sh observability-logs` | follow the telemetry stack logs |
 
@@ -544,14 +545,23 @@ for the commands and the restore order.
    ./database/atlas.sh migrate apply --url "$DATABASE_URL"
    ```
 
-6. Start the stack. `up` pulls again to confirm the tags, then recreates the
+6. If the release notes mention a change to the service-role grants or
+   passwords, re-apply them to the existing volume before the new images start.
+   The database image only runs them on an empty one, and the running database
+   container is enough to apply them:
+
+   ```bash
+   ./deploy.sh db-grants
+   ```
+
+7. Start the stack. `up` pulls again to confirm the tags, then recreates the
    containers:
 
    ```bash
    ./deploy.sh up
    ```
 
-7. Run a real submission and check `/readyz` on the backend and judge.
+8. Run a real submission and check `/readyz` on the backend and judge.
 
 Migrations are forward-only. A code rollback that is incompatible with a
 migrated schema needs the database backup restored.
@@ -677,6 +687,7 @@ deploy/compose/
 | `podman socket not found` | start `podman.socket` or set `PODMAN_SOCKET`; the judge needs it with Docker too |
 | every container stops ~10 s after the last logout, `Exited (0)`/`(143)`, no OOM | systemd lingering is off; run `./deploy.sh linger` and `./deploy.sh install-service`, then `./deploy.sh up`; see [Surviving logout and reboot](#surviving-logout-and-reboot) |
 | the stack does not come back after a reboot | lingering is off, so the enabled user unit never runs at boot; `./deploy.sh linger` and `./deploy.sh install-service` |
+| postgres-exporter logs `permission denied for function pg_ls_waldir` | the volume predates the WAL grant; run `./deploy.sh db-grants` and the exporter recovers on its next scrape |
 | `unauthorized` during pull | run `podman login ghcr.io` for the runner images (and the application images with Podman); with Docker Compose, also run `docker login ghcr.io` for the application images |
 | `not found` during pull | the namespace/tag does not contain that image; check `RUNCODES_IMAGE_NAMESPACE`, `RUNCODES_IMAGE_TAG` and the runner settings |
 | judge says `podman unavailable` | the socket mount is stale; recreate the judge with `podman compose --env-file .env -f docker-compose.yml up -d --force-recreate judge` (use `docker compose` when Compose runs on Docker) |
