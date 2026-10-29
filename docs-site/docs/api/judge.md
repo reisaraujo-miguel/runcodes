@@ -59,6 +59,13 @@ Failure returns `503` with one of:
 { "status": "podman unavailable" }
 ```
 
+Both legs are deliberately cheap: PostgreSQL is a `Ping`, and Podman is the API
+handshake (`GET /_ping` over the socket), not `podman info`. Readiness runs every
+few seconds and also gates every submission, so it must not exec conmon or the
+OCI runtime. `system.Version` reads like a ping in the client bindings, but the
+podman server implements that endpoint as the full info path; it cost ~700ms per
+probe in production and was the slowest route on both services.
+
 The backend calls this before registering a submission. The judge's readiness is
 authoritative: the Ansible deployment does not declare success until it returns
 `200`.

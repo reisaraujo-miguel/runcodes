@@ -38,10 +38,48 @@
     mode: "0644"
   when: rc_podman_subgid.stdout | length == 0
 
-- name: Enable systemd linger for the deployment user
+# Rootless containers run under the user manager (user@UID.service). Without
+# lingering, logind stops that manager when the last SSH session closes and
+# SIGTERMs everything in it: the whole stack exits 0/143 about ten seconds after
+# a logout, with no OOM and no application error. Linger is also what makes the
+# user units start at boot, since default.target of a non-lingering user manager
+# is never reached.
+#
+# Read the state instead of trusting a marker file: a host where lingering was
+# turned off has to be repaired by a re-run, not skipped.
+- name: Read the deployment user's lingering state
+  ansible.builtin.command:
+    argv: [loginctl, show-user, "{{ runcodes_deploy_user }}", -p, Linger]
+  register: rc_podman_linger
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Enable systemd lingering for the deployment user
   ansible.builtin.command:
     argv: [loginctl, enable-linger, "{{ runcodes_deploy_user }}"]
-    creates: "/var/lib/systemd/linger/{{ runcodes_deploy_user }}"
+  when: rc_podman_linger.stdout | trim != 'Linger=yes'
+  changed_when: true
+
+- name: Read the lingering state back
+  ansible.builtin.command:
+    argv: [loginctl, show-user, "{{ runcodes_deploy_user }}", -p, Linger]
+  register: rc_podman_linger_after
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Require lingering, or the stack dies with the SSH session
+  ansible.builtin.assert:
+    that:
+      - rc_podman_linger_after.stdout | trim == 'Linger=yes'
+    fail_msg: >-
+      systemd lingering is off for {{ runcodes_deploy_user }} on
+      {{ inventory_hostname }}. logind then stops the user manager when the last
+      SSH session closes and SIGTERMs every rootless container about ten seconds
+      later; the stack exits 0/143 and looks like a crash. Enable it as root with
+      `loginctl enable-linger {{ runcodes_deploy_user }}` and re-run setup.yml.
+  when: not ansible_check_mode
 
 - name: Start the user systemd manager
   ansible.builtin.systemd:

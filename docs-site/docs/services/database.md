@@ -81,7 +81,7 @@ Three roles matter:
 | Role | Used by | Privileges |
 | --- | --- | --- |
 | `runcodes` | database container, migrations, bootstrap | owner/superuser; can change schema |
-| `runcodes_app` | backend | row read/write; cannot change schema, create roles or read `pg_authid` |
+| `runcodes_app` | backend, postgres-exporter | row read/write; cannot change schema, create roles or read `pg_authid`; may list the WAL directory |
 | `runcodes_judge` | judge | claim/update commits and read exercises/test cases only |
 
 `database/schema/05-app-role.sh` creates both service roles. `runcodes_app` gets
@@ -97,12 +97,32 @@ RUNCODES_DB_APP_PASSWORD='...' RUNCODES_DB_JUDGE_PASSWORD='...' \
   ./database/schema/05-app-role.sh
 ```
 
+`runcodes_app` also gets `EXECUTE` on `pg_ls_waldir()`, because the
+postgres-exporter's WAL collector reads it for the segment count and size.
+`pg_ls_waldir()` is guarded by a normal grant on the function — its default ACL
+names `pg_monitor`, which does nothing for a `NOINHERIT` role — so the grant is
+on the function and not the role: `pg_monitor` would also hand the application
+`pg_read_all_settings` and cross-database statistics it has no use for. The
+judge gets neither.
+
 The backend uses the application role and the judge uses the judge role.
 Migrations and the importer use the owner. In addition, the RLS migration
 enables row-level security on backend-only tables (users, tokens, enrollments,
 offerings, settings, messages) with a policy for `runcodes_app` only; the judge
 is denied those tables even if a grant is later broadened. This is a
 service-role boundary, not per-user row filtering.
+
+An **existing** volume keeps the grants it was created with: the database image
+runs `05-app-role.sh` only while initializing an empty one. After a release that
+changes a grant, re-apply the script in the running container — it is idempotent
+and also resets both role passwords to the values in the environment:
+
+```bash
+podman compose exec -T database /docker-entrypoint-initdb.d/05-app-role.sh
+```
+
+The image-based stack wraps that in `./deploy.sh db-grants`; the Ansible data
+role runs it on every deploy.
 
 CI asserts that `runcodes_app` cannot read the migration history or
 `pg_authid`.

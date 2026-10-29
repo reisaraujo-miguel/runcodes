@@ -24,7 +24,10 @@ Day-2 operations are covered in [Ansible operations](./ansible-operations.md).
 Each stack runs as the deployment user (`runcodes` by default) through a **user**
 systemd unit: `runcodes-edge`, `runcodes-data`, `runcodes-compute`,
 `runcodes-observability`. `loginctl enable-linger` starts the user manager at
-boot.
+boot — and keeps it, and the containers, alive when nobody is logged in. Without
+lingering, logind stops that manager when the last SSH session closes and the
+whole stack exits `0`/`143` about ten seconds later. `setup.yml` enables it and
+fails the deploy if the host does not report `Linger=yes`.
 
 ## Prerequisites
 

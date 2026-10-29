@@ -17,8 +17,16 @@ Podman socket.
 cp .env.example .env
 # fill the required secrets, the public hostname and the registry/namespace/tag
 systemctl --user start podman.socket
-./deploy.sh up
+./deploy.sh linger           # once per host
+./deploy.sh up               # pull the images and start the stack
+./deploy.sh install-service  # once per host: the unit that starts it at boot
 ```
+
+The last two commands exist because a stack started from an SSH session belongs
+to that session: when the connection closes, logind stops the user manager and
+SIGTERMs every rootless container. The stack then exits `0`/`143` with no OOM and
+no application error, about ten seconds after logout — see
+[Surviving logout and reboot](#surviving-logout-and-reboot).
 
 `.env.example` publishes the frontend on 80/443 for a public hostname. Rootless
 Podman cannot bind those ports until the host allows it, and Caddy needs DNS and
@@ -42,13 +50,58 @@ CONTAINER_ENGINE=docker ./deploy.sh up   # use Docker Compose v2
 | `./deploy.sh status` | show container status |
 | `./deploy.sh logs` | follow the stack logs |
 | `./deploy.sh restart` | restart the containers |
+| `./deploy.sh stop` | stop the containers but keep them (used by the systemd unit) |
 | `./deploy.sh down` | stop and remove the containers, including the observability stack when available; volumes are kept |
 | `./deploy.sh config` | render the final Compose configuration |
+| `./deploy.sh linger` | enable systemd lingering for this user |
+| `./deploy.sh install-service` | install and start the user unit that owns the stack |
+| `./deploy.sh uninstall-service` | stop the unit, remove it, keep the data |
+| `./deploy.sh db-grants` | re-apply the service-role grants and passwords to an existing database volume |
 | `./deploy.sh observability` | start the stack plus the telemetry stack |
 | `./deploy.sh observability-logs` | follow the telemetry stack logs |
 | `./deploy.sh recreate <service...>` | recreate services in place after a config or `.env` change |
 
 `ENV_FILE=/path/to/env ./deploy.sh up` reads a different file.
+
+## Surviving logout and reboot
+
+Rootless containers live in the systemd **user manager** (`user@<uid>.service`),
+not in the SSH session. Without lingering, logind stops that manager as soon as
+the last session closes and SIGTERMs everything inside it. The failure looks
+like a crash and is not one:
+
+- every container stops within a few seconds of each other, about ten seconds
+  after the last logout;
+- `podman ps -a` shows `Exited (0)` or `Exited (143)`;
+- `podman inspect` reports `OOMKilled=false`, `Error=""`;
+- PostgreSQL logs `received fast shutdown request` and the backend logs
+  `Shutdown requested` — they caught SIGTERM and exited cleanly.
+
+Two commands, once per host, make the stack independent of any login session:
+
+```bash
+./deploy.sh linger            # sudo loginctl enable-linger $USER if polkit refuses
+./deploy.sh install-service   # user unit: starts at boot, restarts on reboot
+```
+
+`linger` sets `Linger=yes`, which keeps the user manager (and its containers)
+running with nobody logged in. `install-service` writes
+`~/.config/systemd/user/runcodes-compose.service` and enables it, so the stack is
+supervised by systemd instead of by your terminal:
+
+```bash
+systemctl --user status runcodes-compose.service
+systemctl --user restart runcodes-compose.service
+journalctl --user -u runcodes-compose.service -n 50
+```
+
+Verify with `loginctl show-user "$USER" -p Linger` → `Linger=yes`, then log out
+completely, wait a minute and run `./deploy.sh status`.
+
+`up`, `restart` and `observability` refuse to start a rootless stack without
+lingering; `RUNCODES_SKIP_LINGER_CHECK=1` overrides that and the stack will stop
+at the next logout. `RUNCODES_SKIP_PULL=1` starts the images already on the host
+(the unit sets it, so a boot never depends on the registry).
 
 ## Observability
 

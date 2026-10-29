@@ -87,6 +87,15 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO runcodes_
 -- The identity columns the services insert into need their sequences.
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO runcodes_app;
 
+-- postgres-exporter logs in as this role and its WAL collector reads
+-- pg_ls_waldir() for the segment count and size. The function has no superuser
+-- check of its own -- the C code defers to the GRANT system -- and its default
+-- ACL names pg_monitor, which does nothing for this role: NOINHERIT means the
+-- privileges of a membership only apply after SET ROLE. Grant the one function
+-- instead of the role, which would also hand the application
+-- pg_read_all_settings and cross-database statistics it has no use for.
+GRANT EXECUTE ON FUNCTION pg_ls_waldir() TO runcodes_app;
+
 -- Migrations run as `runcodes`, the owner. These defaults make every table and
 -- sequence a migration creates carry the same grants, so a migration never has
 -- to remember them (see docs-site/docs/services/database.md#role-model).

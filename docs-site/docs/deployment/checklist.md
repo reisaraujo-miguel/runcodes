@@ -88,6 +88,15 @@ the trust boundary between them.
 ## 6. First boot
 
 - [ ] Start the stack and confirm every service is running.
+- [ ] Confirm `loginctl show-user <user> -p Linger` prints `Linger=yes` on every
+      host, and that the stack is running from its user unit
+      (`systemctl --user status runcodes-<stack>`). Without lingering, logind
+      stops the user manager when the last SSH session closes and the whole stack
+      exits `0`/`143` about ten seconds later — it looks like a crash and is not
+      one. Compose deployments use `./deploy.sh linger` and
+      `./deploy.sh install-service` instead.
+- [ ] Log out completely, wait a minute, log back in and confirm the stack is
+      still up. Repeat once after a reboot.
 - [ ] Bootstrap the seeded administrator.
 - [ ] Sign in and change the admin password.
 - [ ] Create a second administrator.

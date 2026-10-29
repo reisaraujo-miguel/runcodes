@@ -138,6 +138,16 @@ curl -s http://localhost:8080/api/v1/settings/public | jq
 curl -s http://localhost:9000/readyz | jq
 ```
 
+::: warning A stack started from SSH dies with the session
+Rootless containers belong to the systemd user manager, and logind stops that
+manager when the last SSH session closes: every container exits `0`/`143` about
+ten seconds after you log out, with no OOM and no application error. For
+anything beyond a laptop, enable lingering (`loginctl enable-linger "$USER"`) and
+run the stack from a user unit, so it also starts at boot. The image-based path
+does both for you with `./deploy.sh linger` and `./deploy.sh install-service`;
+see [Surviving logout and reboot](./image-compose.md#surviving-logout-and-reboot).
+:::
+
 Open <http://localhost:8080>. Bootstrap the admin password before logging in:
 
 ```bash

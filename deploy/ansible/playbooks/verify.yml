@@ -5,6 +5,35 @@
 #
 # Set -e runcodes_run_smoke_test=false to skip the slower upstream smoke test
 # (it generates traffic, injects a test alert and checks every signal).
+
+# A stack that is up but does not linger is a stack that disappears the next
+# time the operator logs out: logind stops the user manager and SIGTERMs every
+# rootless container (exit 0/143, no OOM, no crash). Check it explicitly so this
+# playbook catches a host that was deployed by hand or repaired out of band.
+- name: Verify the stacks survive the end of an SSH session
+  hosts: runcodes
+  become: false
+  gather_facts: false
+  tasks:
+    - name: Read systemd lingering for the deployment user
+      ansible.builtin.command:
+        argv: [loginctl, show-user, "{{ runcodes_deploy_user }}", -p, Linger]
+      register: rc_verify_linger
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Require lingering on every host
+      ansible.builtin.assert:
+        that:
+          - rc_verify_linger.stdout | trim == 'Linger=yes'
+        fail_msg: >-
+          {{ runcodes_deploy_user }} does not linger on {{ inventory_hostname }}.
+          The stack there is killed about ten seconds after the last SSH session
+          closes (containers exit 0/143 with no OOM). Fix it as root with
+          `loginctl enable-linger {{ runcodes_deploy_user }}`, then restart the
+          stack unit.
+
 - name: Verify the four-machine deployment
   hosts: observability
   become: false

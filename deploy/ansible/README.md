@@ -23,6 +23,13 @@ with **rootless Podman**.
 The addresses are RFC 5737 examples. The deployment treats them as the
 private/management network; only 80/443 on the edge should be public.
 
+Each stack runs as a **user** systemd unit (`runcodes-edge`, `runcodes-data`,
+`runcodes-compute`, `runcodes-observability`). `setup.yml` enables systemd
+lingering for the deployment user and fails if the host does not report
+`Linger=yes`: without it, logind stops the user manager when the last SSH session
+closes and the whole stack exits `0`/`143` about ten seconds later, and the units
+never start at boot.
+
 ## Prerequisites
 
 - Four Debian 12/13 or Ubuntu 22.04/24.04 hosts with systemd and x86_64.

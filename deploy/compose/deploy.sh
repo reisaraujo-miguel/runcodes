@@ -13,6 +13,12 @@
 # repository-root docker-compose.observability.yml overlay together with the
 # telemetry configuration in observability/. Those assets live in the checkout,
 # so the observability commands need more than this directory.
+#
+# Lifecycle: a stack started from an SSH session dies with that session, because
+# rootless containers live under the user manager and logind stops it when the
+# last session closes. `./deploy.sh linger` keeps that manager alive and
+# `./deploy.sh install-service` moves the stack into a user unit that starts at
+# boot; `up` refuses to run without lingering unless asked to.
 
 set -Eeuo pipefail
 
@@ -110,6 +116,35 @@ require_podman_socket() {
     "podman socket not found at $podman_socket; the judge needs it even when Compose runs on Docker. Run 'systemctl --user start podman.socket' or set PODMAN_SOCKET"
 }
 
+# Rootless containers live in the user manager's cgroup (user@UID.service), not
+# in the SSH session's. Keeping that manager up with nobody logged in is what
+# systemd calls lingering: with it off, logind stops the manager when the last
+# session closes and SIGTERMs everything inside. That is the whole stack exiting
+# 0/143 about ten seconds after a logout, with no OOM and no application error:
+# it looks like a crash and is not one. Lingering is also what starts the user
+# unit at boot, so it is a prerequisite for both halves of the fix.
+linger_state() {
+  loginctl show-user "$(id -un)" -p Linger 2>/dev/null | head -n 1
+}
+
+require_linger() {
+  [[ "${RUNCODES_SKIP_LINGER_CHECK:-0}" == "1" ]] && return 0
+  # A rootful engine has no user manager in the path.
+  [[ "$(id -u)" -ne 0 ]] || return 0
+
+  [[ "$(linger_state)" == "Linger=yes" ]] && return 0
+
+  die "systemd lingering is off for $(id -un): when this SSH session ends, logind
+stops the user manager and SIGTERMs every container (exit 0/143, no OOM, no crash
+log). Fix it once per host and let the stack start at boot:
+
+  ./deploy.sh linger            # or: sudo loginctl enable-linger $(id -un)
+  ./deploy.sh install-service
+
+Set RUNCODES_SKIP_LINGER_CHECK=1 to start the stack anyway; it will not survive
+the next logout."
+}
+
 compose=("$engine" compose --env-file "$env_file" -f "$script_dir/docker-compose.yml")
 action="${1:-up}"
 
@@ -201,12 +236,20 @@ print_observability_urls() {
 case "$action" in
   up)
     require_podman_socket
-    "${compose[@]}" pull
+    require_linger
+    # The installed unit starts the images the host already has: a boot must not
+    # depend on the registry or on the pull credentials still being valid.
+    if [[ "${RUNCODES_SKIP_PULL:-0}" == "1" ]]; then
+      printf 'deploy.sh: RUNCODES_SKIP_PULL=1, using the images already on the host\n' >&2
+    else
+      "${compose[@]}" pull
+    fi
     "${compose[@]}" up -d --remove-orphans
     "${compose[@]}" ps
     ;;
   observability | observability-up)
     require_podman_socket
+    require_linger
     resolve_observability
     init_observability_secrets
     "${observability_compose[@]}" pull
@@ -252,7 +295,68 @@ case "$action" in
     ;;
   restart)
     require_podman_socket
+    require_linger
     "${compose[@]}" restart
+    ;;
+  stop)
+    # Used by the installed unit's ExecStop: stop the containers but keep them,
+    # so `systemctl --user start` brings the same stack back.
+    if observability_available; then
+      resolve_observability
+      "${observability_compose[@]}" stop
+    else
+      "${compose[@]}" stop
+    fi
+    ;;
+  linger)
+    [[ "$(id -u)" -ne 0 ]] || die \
+      "run this as the deployment user, not root: it lingers the current user"
+    loginctl enable-linger "$(id -un)" || die \
+      "loginctl could not enable lingering for $(id -un); run 'sudo loginctl enable-linger $(id -un)' as root"
+    [[ "$(linger_state)" == "Linger=yes" ]] || die \
+      "loginctl accepted the request but $(id -un) is still '$(linger_state)'"
+    printf 'deploy.sh: %s now lingers; the stack survives logout and starts at boot\n' "$(id -un)"
+    ;;
+  install-service)
+    require_linger
+    # The unit starts with RUNCODES_SKIP_PULL=1 so a boot never waits on (or
+    # fails because of) the registry. Make sure the images exist now, while an
+    # operator is here to see a pull failure.
+    if [[ "${RUNCODES_SKIP_PULL:-0}" != "1" ]]; then
+      "${compose[@]}" pull
+    fi
+    template="$script_dir/runcodes-compose.service.in"
+    [[ -f "$template" ]] || die "unit template not found at $template"
+    unit_dir="$HOME/.config/systemd/user"
+    unit="$unit_dir/runcodes-compose.service"
+    mkdir -p "$unit_dir"
+    # Rewrite the placeholder with this deployment's absolute path.
+    sed "s|@DEPLOY_DIR@|${script_dir//&/\\&}|g" "$template" >"$unit"
+    systemctl --user daemon-reload
+    systemctl --user enable --now runcodes-compose.service
+    printf 'deploy.sh: installed %s\n' "$unit"
+    printf 'deploy.sh: the stack now runs under the user manager; verify with\n'
+    printf '  systemctl --user status runcodes-compose.service\n'
+    ;;
+  uninstall-service)
+    # Stopping the unit runs its ExecStop, so the stack goes down with the
+    # supervisor that owned it. A unit that was never installed is not an error.
+    if systemctl --user disable --now runcodes-compose.service 2>/dev/null; then
+      printf 'deploy.sh: stopped and disabled runcodes-compose.service\n'
+    fi
+    rm -f "$HOME/.config/systemd/user/runcodes-compose.service"
+    systemctl --user daemon-reload 2>/dev/null || \
+      printf 'deploy.sh: warning: could not reload the user manager; the removed unit disappears at its next reload\n' >&2
+    printf 'deploy.sh: removed the unit; start the stack in this session with ./deploy.sh up\n'
+    ;;
+  db-grants)
+    # The database image runs 05-app-role.sh only while initializing an empty
+    # volume, so an existing volume keeps the grants it was created with. The
+    # script is idempotent: it re-applies the table/sequence grants and rotates
+    # both role passwords to the values in .env. The container already carries
+    # RUNCODES_DB_APP_PASSWORD and RUNCODES_DB_JUDGE_PASSWORD, and psql reaches
+    # the server over the local socket.
+    "${compose[@]}" exec -T database /docker-entrypoint-initdb.d/05-app-role.sh
     ;;
   logs)
     "${compose[@]}" logs -f --tail=100
@@ -277,6 +381,7 @@ Commands:
   pull                Pull the configured images without starting anything
   down                Stop and remove the containers, including the observability
                       stack when it is available (volumes are kept)
+  stop                Stop the containers but keep them (used by the systemd unit)
   restart             Restart the existing containers
   logs                Follow the stack logs
   status              Show container status
@@ -286,17 +391,30 @@ Commands:
   observability-logs  Follow the observability stack logs
   recreate <service>  Recreate the named services in place, with the observability
                       overlay when available (no dependencies, no pull)
+  linger              Enable systemd lingering for this user (needs sudo if polkit refuses)
+  install-service     Install and start the user unit that owns the stack, so it
+                      survives logout and starts at boot (requires linger)
+  uninstall-service   Disable and remove that unit, which also stops the stack
+  db-grants           Re-apply the service-role grants and passwords to an existing
+                      database volume (the image only runs them on an empty one)
 
 Environment:
   CONTAINER_ENGINE                Compose engine: auto (default; Podman first), podman, docker
   ENV_FILE                        environment file to read (default: ./.env)
   PODMAN_SOCKET                   rootless Podman socket used by the judge
+  RUNCODES_SKIP_PULL              start the images already on the host (the unit sets it)
+  RUNCODES_SKIP_LINGER_CHECK      start without lingering; the stack stops at the next logout
   RUNCODES_OBSERVABILITY_DIR      configuration directory (default: <repo>/observability)
   RUNCODES_OBSERVABILITY_STATE    generated secrets (default: <repo>/.observability)
   RUNCODES_OBSERVABILITY_COMPOSE  overlay file (default: <repo>/docker-compose.observability.yml)
 
 The observability commands mount configuration from the repository, so they need
 a checkout. `up` never starts the telemetry stack; it is opt-in.
+
+`up`, `restart` and `observability` refuse to run without systemd lingering when
+this is a rootless deployment: logind kills every container about ten seconds
+after the last SSH session closes, which looks like a crash (exit 0/143) and is
+not one. Run `./deploy.sh linger` and `./deploy.sh install-service` once per host.
 EOF
     exit 2
     ;;
