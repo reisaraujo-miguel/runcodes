@@ -107,6 +107,7 @@ extension and image matrix.
 ├── deploy/ansible/   Four-machine rootless Podman deployment
 ├── docker-compose.yml
 ├── docker-compose.observability.yml
+├── docker-compose.observability.build.yml
 └── trivy.yaml
 ```
 
