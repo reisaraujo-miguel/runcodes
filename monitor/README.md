@@ -32,13 +32,18 @@ time=0.042
 cpu_time=0.031
 ```
 
-`time` is wall-clock elapsed time. `cpu_time` is aggregate CPU time charged to
-the container cgroup when cgroup accounting is available; otherwise it falls
-back to the direct child's rusage.
+`signal` is empty when the command exited on its own. A command killed by a
+signal always reports it, even if a core dump was requested; core dumps are
+disabled for every run. `time` is wall-clock elapsed time. `cpu_time` is
+aggregate CPU time charged to the container cgroup when cgroup accounting is
+available; otherwise it falls back to the direct child's rusage.
 
 The report is written after the command's process group is killed and, with
 `-r`, renamed into place so the program cannot forge it. The harness kills any
 process that escapes the process group.
+
+The binary is linked statically: the monitor image copies it into runner images
+built on other distributions, so it must not depend on the builder's libc.
 
 ## Build and test
 
@@ -46,6 +51,11 @@ process that escapes the process group.
 cd monitor
 ./test/monitor.test.sh
 ```
+
+The test build links the monitor statically, so it needs the static libc of your
+distribution (`glibc-static` on Fedora, included in `build-essential` on
+Debian/Ubuntu). A build failing with `cannot find -lc` is that missing package,
+not a source error.
 
 The image is published as `ghcr.io/runcodes-icmc/runcodes-monitor`; the base
 runner image copies the binary from `:latest`. The report format and options are

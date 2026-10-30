@@ -289,10 +289,15 @@ static void trace_child(pid_t child_pid, MonitorStats *stats) {
       clock_gettime(CLOCK_MONOTONIC, &ts_end);
       stats->time_sec = elapsed_secs(&ts_start, &ts_end);
       stats->child_cpu_sec = rusage_cpu_secs(&usage);
-      if (WIFSIGNALED(status) && !WCOREDUMP(status))
+      if (WIFSIGNALED(status)) {
+        /* Report the terminating signal whether or not a core dump was
+           produced. A core dump does not mean the process exited cleanly, and
+           leaving `signal` unset let a crash (SIGSEGV, for one) look like a
+           clean run to callers that only read `signal`. */
         stats->signal = WTERMSIG(status);
-      else if (WIFEXITED(status))
+      } else if (WIFEXITED(status)) {
         stats->exit_status = WEXITSTATUS(status);
+      }
       break;
     }
   }
