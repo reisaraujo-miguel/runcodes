@@ -33,6 +33,19 @@ type monitorInfo struct {
 	// child was terminated by a signal instead of exiting normally.
 	ExitStatus int
 	HasExit    bool
+	// HasSignal and HasTime record whether the corresponding key was present.
+	// An empty signal is a normal, meaningful value, so its presence has to be
+	// tracked separately from its contents.
+	HasSignal bool
+	HasTime   bool
+}
+
+// Valid reports whether the monitor wrote a report the judge can trust: one with
+// both `signal` and `time`. A missing, empty or truncated report means the
+// monitor itself failed, which is a sandbox failure rather than a clean run and
+// must not be graded by comparing the submission's output.
+func (m monitorInfo) Valid() bool {
+	return m.HasSignal && m.HasTime
 }
 
 // maxMonitorBytes bounds the monitor output the judge parses. The file is written
@@ -41,7 +54,9 @@ type monitorInfo struct {
 const maxMonitorBytes = 1 << 20
 
 // readMonitor parses the monitor's INI-ish output (`<id>.monitor_out`). Keys
-// live under an `[info]` section; the parser is deliberately lenient.
+// live under an `[info]` section; the parser is deliberately lenient about
+// unknown keys and comments, but the caller must check Valid before trusting the
+// result: a missing, empty or truncated report means the monitor failed.
 //
 // The report carries the exit status, the signal, wall time and (when the
 // monitor could measure it) CPU time. It carries no memory figure: the harness
@@ -79,13 +94,17 @@ func readMonitor(path string) monitorInfo {
 		switch key {
 		case "signal":
 			info.Signal = value
+			info.HasSignal = true
 		case "exit_status":
 			if n, err := strconv.Atoi(value); err == nil {
 				info.ExitStatus = n
 				info.HasExit = true
 			}
 		case "time":
-			info.Time, _ = strconv.ParseFloat(value, 64)
+			if v, err := strconv.ParseFloat(value, 64); err == nil {
+				info.Time = v
+				info.HasTime = true
+			}
 		case "cpu_time":
 			if v, err := strconv.ParseFloat(value, 64); err == nil && v >= 0 {
 				info.CPU = v
@@ -113,6 +132,14 @@ func exitFailureMessage(info monitorInfo) (string, bool) {
 		return "", false
 	}
 
+	// A negative status is the monitor's sentinel for "the child did not exit":
+	// it is killed by a signal instead, which `signal` (not the exit status)
+	// describes. Reporting "exit status -1" would hide the crash the student
+	// needs to see.
+	if info.ExitStatus < 0 {
+		return "", false
+	}
+
 	if info.ExitStatus == 124 {
 		return "timeout", true
 	}
@@ -121,6 +148,14 @@ func exitFailureMessage(info monitorInfo) (string, bool) {
 	}
 
 	return fmt.Sprintf("exit status %d", info.ExitStatus), true
+}
+
+// compilationFailed reports whether a compilation monitor report means the
+// compiler did not succeed. A missing or truncated report is a sandbox failure,
+// and it must not be read as a successful compile: the zero exit status of an
+// unparsed report would otherwise let a failed build run its test cases.
+func compilationFailed(info monitorInfo) bool {
+	return !info.Valid() || !info.HasExit || info.ExitStatus != 0
 }
 
 // gradeAll grades every test case, using inline text outputs or downloading file
@@ -197,6 +232,21 @@ func (e *Engine) gradeCase(ctx context.Context, tc model.TestCase, ws *workspace
 	exitMsg, exitFailed := exitFailureMessage(info)
 
 	switch {
+	case !info.Valid():
+		// The monitor never produced a report, or produced one without the keys
+		// the judge needs. That is a sandbox failure, not a verdict on the
+		// submission, and a submission must not be marked correct just because
+		// its output happens to match while the monitor was unable to report.
+		// Fail only this case: an error here would abort every other case in the
+		// batch (and mark the whole run a server error).
+		e.logger.Error("the monitor did not produce a usable report",
+			"test_case_id", tc.ID,
+			"monitor_path", monitorPath,
+		)
+		result.Status = model.CaseKilledBySignal
+		result.StatusMsg = "the monitor did not produce a report"
+		result.ErrorMessage = errContent
+
 	case outputErr != nil:
 		// A missing, oversized or non-regular output file cannot be a correct
 		// answer, so the case fails instead of being compared. The detail stays in
@@ -221,6 +271,14 @@ func (e *Engine) gradeCase(ctx context.Context, tc model.TestCase, ws *workspace
 		// warnings or debug output there and still produce the correct answer.
 		result.Status = model.CaseKilledBySignal
 		result.StatusMsg = info.Signal
+		result.ErrorMessage = errContent
+
+	case info.HasExit && info.ExitStatus < 0:
+		// The monitor's "did not exit" sentinel without a signal in the same
+		// report: there is no trustworthy cause to show, but a clean comparison
+		// would contradict the monitor.
+		result.Status = model.CaseKilledBySignal
+		result.StatusMsg = "the command did not exit normally"
 		result.ErrorMessage = errContent
 
 	default:

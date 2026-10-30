@@ -302,10 +302,7 @@ func (e *Engine) runContainer(ctx context.Context, commit *model.Commit, ws *wor
 		// On success, stderr is only diagnostics: warnings about otherwise valid
 		// code must not fail a submission.
 		compileInfo := readMonitor(filepath.Join(ws.BaseDir, "compilation.monitor_out"))
-		compileFailed := true
-		if compileInfo.HasExit {
-			compileFailed = compileInfo.ExitStatus != 0
-		}
+		compileFailed := compilationFailed(compileInfo)
 
 		if compileFailed {
 			// Let a quota kill that raced with compilation take precedence over
@@ -320,7 +317,9 @@ func (e *Engine) runContainer(ctx context.Context, commit *model.Commit, ws *wor
 			outcome.compilationError = compileDiagnostics
 			if outcome.compilationError == "" {
 				reason := "the compiler did not exit successfully"
-				if msg, failed := exitFailureMessage(compileInfo); failed {
+				if !compileInfo.Valid() {
+					reason = "the monitor did not produce a report"
+				} else if msg, failed := exitFailureMessage(compileInfo); failed {
 					reason = msg
 				}
 				outcome.compilationError = fmt.Sprintf("compilation failed: %s", reason)
