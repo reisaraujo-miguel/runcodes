@@ -154,7 +154,7 @@ monitor [options] 'command arg1 arg2'
 | `-r` | file to write the report to (default: stdout) |
 | `-c` | command to execute (a single string with its arguments) |
 
-The report is three lines:
+The report is four lines:
 
 ```text
 exit_status=0
@@ -163,12 +163,18 @@ time=0.042
 cpu_time=0.031
 ```
 
-`signal` is empty when the program exited on its own. `time` is wall-clock time
+`signal` is empty when the program exited on its own. A program killed by a
+signal always reports it, whether or not a core dump was produced; core dumps
+are disabled for the run regardless. `time` is wall-clock time
 from fork to exit; `cpu_time` is aggregate CPU charged to the container cgroup,
 falling back to the direct child's rusage when cgroup accounting is unavailable.
 Memory usage is **not** reported: the monitor is not the
 program's parent (the harness runs it through `timeout`), so the judge records
 `mem_usage = -1` instead of a number it cannot stand behind.
+
+The judge requires `signal` and `time` in the report. A missing, empty or
+truncated report is treated as a sandbox failure and fails that test case rather
+than being graded from the program's output alone.
 
 The report is written **after** the command's process group is killed, and with
 `-r` it is written to a temporary file first and renamed into place. Both matter:

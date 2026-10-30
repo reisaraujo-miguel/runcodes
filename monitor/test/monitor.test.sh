@@ -47,6 +47,14 @@ fi
 
 monitor="${work}/monitor"
 
+# The monitor image copies this binary into runner images that may be built on a
+# different distribution than the monitor builder. A dynamic binary would then
+# depend on the builder's libc and fail (or, worse, load a different one) at run
+# time. This is checked here because -static as a *compile* option silently
+# produced a dynamically linked binary for a long time.
+check "the monitor is linked statically" \
+    bash -c "file '${monitor}' | grep -Eq 'statically linked|static-pie linked'"
+
 # A helper the limit tests can run: it tries to allocate and touch 64 MiB.
 cat >"${work}/allocate.c" <<'EOF'
 #include <stdlib.h>
@@ -79,6 +87,23 @@ check "the CPU time line is reported" \
 "${monitor}" -o "${work}/out" -e "${work}/err" -r "${work}/report_fail" -c /bin/false
 check "a failing command is reported with its status" \
     grep -q '^exit_status=1$' "${work}/report_fail"
+
+echo "==> crash reporting"
+# A program that dies on a signal must report that signal. Core dumps are
+# disabled below, so this run normally has WCOREDUMP unset; the monitor must
+# report WTERMSIG whether or not a core was produced, because a report with an
+# empty `signal` reads as a clean run to the judge.
+cat >"${work}/crash.c" <<'EOF'
+int main(void) {
+    *(volatile int *)0 = 1;
+    return 0;
+}
+EOF
+gcc -O2 "${work}/crash.c" -o "${work}/crash"
+"${monitor}" -o "${work}/out" -e "${work}/err" -r "${work}/crash_report" \
+    -c "${work}/crash" >/dev/null 2>&1
+check "a crash is reported with its signal" \
+    grep -q '^signal=SIGSEGV$' "${work}/crash_report"
 
 echo "==> report file"
 "${monitor}" -o "${work}/out" -e "${work}/err" -r "${work}/report" -c /bin/true

@@ -111,7 +111,7 @@ applies.
 | --- | --- |
 | **Correto** | exact text match after normalisation, or byte-identical file |
 | **Saída incorreta** | the program produced output, but it is not an exact match |
-| **Interrompido** | non-zero exit, signal, timeout, resource limit or unreadable output |
+| **Interrompido** | non-zero exit, signal, timeout, resource limit, unreadable output or an unreadable monitor report |
 
 ## Score
 

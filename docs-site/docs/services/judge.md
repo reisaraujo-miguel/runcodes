@@ -281,15 +281,19 @@ the monitor report is the submission's own product, so the judge:
 - refuses to read anything from the workspace that is not a regular file (no
   symlinks);
 - only trusts the monitor report, which the monitor writes after killing the
-  command's process group and renames into place, so it cannot be pre-created or
-  written through;
+  command's process group and renames into place, replacing whatever file the
+  submission may have created at that path;
+- treats a missing or unparseable monitor report as a failure of that case, never
+  as a clean run: without both `signal` and `time` the judge cannot tell a crash
+  from a correct answer, so it does not fall back to comparing the output;
 - kills the container's remaining processes after each case and after
   compilation, so a daemonized program cannot rewrite results;
 - stops the container **before** grading;
 - reports a harness that exits non-zero after `run.done` as `server_error`
   instead of grading half-collected outputs.
 
-The monitor report carries `exit_status`, `signal` and `time`. It does **not**
+The monitor report carries `exit_status`, `signal` and `time` (plus the optional
+`cpu_time`). It does **not**
 carry memory usage, because the monitor is not the program's parent (the harness
 runs it through `timeout`). `mem_usage` is therefore recorded as `-1` (unknown)
 rather than as a number the judge cannot stand behind.

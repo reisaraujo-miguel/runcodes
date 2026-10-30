@@ -20,6 +20,9 @@ func TestReadMonitor(t *testing.T) {
 		t.Fatal(err)
 	}
 	info := readMonitor(path)
+	if !info.Valid() {
+		t.Error("a complete report is not valid")
+	}
 	if info.Signal != "" {
 		t.Errorf("signal = %q, want empty", info.Signal)
 	}
@@ -42,6 +45,39 @@ func TestReadMonitorMissing(t *testing.T) {
 	if info.Signal != "" || info.Time != 0 || info.HasCPU || info.HasMem || info.HasExit {
 		t.Fatalf("expected zero value, got %+v", info)
 	}
+	if info.Valid() {
+		t.Fatal("a missing report is valid")
+	}
+}
+
+// TestReadMonitorValidity mirrors the upstream engine fix: a missing, empty or
+// truncated report must be distinguishable from a clean run, while the normal
+// report keeps working.
+func TestReadMonitorValidity(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{"complete", "[info]\nexit_status=0\nsignal=\ntime=0.01\n", true},
+		{"signal only", "signal=SIGSEGV\n", false},
+		{"time only", "time=0.01\n", false},
+		{"empty", "", false},
+		{"missing time", "exit_status=0\nsignal=\n", false},
+		{"unparseable time", "signal=\ntime=nope\n", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "1.monitor_out")
+			if err := os.WriteFile(path, []byte(tt.content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if got := readMonitor(path).Valid(); got != tt.want {
+				t.Fatalf("Valid() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }
 
 func TestExitFailureMessage(t *testing.T) {
@@ -53,6 +89,9 @@ func TestExitFailureMessage(t *testing.T) {
 	}{
 		{"success", monitorInfo{ExitStatus: 0, HasExit: true}, "", false},
 		{"no report", monitorInfo{}, "", false},
+		// The monitor prints -1 when its child died from a signal; that is not
+		// an exit status and must not be shown as one.
+		{"killed by signal", monitorInfo{ExitStatus: -1, HasExit: true, Signal: "SIGSEGV", HasSignal: true}, "", false},
 		{"timeout", monitorInfo{ExitStatus: 124, HasExit: true}, "timeout", true},
 		{"sigkill", monitorInfo{ExitStatus: 137, HasExit: true}, "killed by signal 9", true},
 		{"non-zero", monitorInfo{ExitStatus: 3, HasExit: true}, "exit status 3", true},
@@ -64,6 +103,42 @@ func TestExitFailureMessage(t *testing.T) {
 			if msg != tc.wantMsg || failed != tc.wantFailed {
 				t.Fatalf("exitFailureMessage(%+v) = (%q, %v), want (%q, %v)",
 					tc.info, msg, failed, tc.wantMsg, tc.wantFailed)
+			}
+		})
+	}
+}
+
+func TestCompilationFailed(t *testing.T) {
+	valid := func(exit int, signal string) monitorInfo {
+		return monitorInfo{
+			ExitStatus: exit,
+			HasExit:    true,
+			Signal:     signal,
+			HasSignal:  true,
+			HasTime:    true,
+		}
+	}
+
+	tests := []struct {
+		name string
+		info monitorInfo
+		want bool
+	}{
+		// No report at all: the monitor failed, not the compiler.
+		{"missing report", monitorInfo{}, true},
+		// A report that lost its exit status must not default to success.
+		{"no exit status", monitorInfo{HasSignal: true, HasTime: true}, true},
+		// A report that lost a required key is truncated.
+		{"missing time", monitorInfo{ExitStatus: 0, HasExit: true, HasSignal: true}, true},
+		{"clean compile", valid(0, ""), false},
+		{"compiler error", valid(1, ""), true},
+		{"killed compiler", valid(-1, "SIGSEGV"), true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := compilationFailed(tt.info); got != tt.want {
+				t.Fatalf("compilationFailed(%+v) = %v, want %v", tt.info, got, tt.want)
 			}
 		})
 	}
@@ -181,5 +256,98 @@ func TestGradeCaseIgnoresStderrWhenAnswerIsCorrect(t *testing.T) {
 	}
 	if result.ErrorMessage != "" {
 		t.Fatalf("ErrorMessage = %q, want empty for a successful case", result.ErrorMessage)
+	}
+}
+
+// TestGradeCaseFailsWhenMonitorReportIsUnusable covers the engine-side half of
+// the monitor-report contract: a missing, empty or truncated report is a
+// sandbox failure, so the affected case fails instead of being compared (and
+// possibly marked correct). It must not error out, because that would abort
+// every other case in the batch.
+func TestGradeCaseFailsWhenMonitorReportIsUnusable(t *testing.T) {
+	tests := []struct {
+		name    string
+		monitor string
+		write   bool
+	}{
+		{"missing", "", false},
+		{"empty", "", true},
+		{"malformed", "exit_status=0\nsignal=\n", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			ws := &workspace{BaseDir: dir}
+
+			if err := os.WriteFile(filepath.Join(dir, "7.output"), []byte("42\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if tt.write {
+				if err := os.WriteFile(filepath.Join(dir, "7.monitor_out"), []byte(tt.monitor), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			e := &Engine{
+				cfg: &config.Config{
+					MaxOutputFileSize:   1024,
+					MaxCompareFileBytes: 1024,
+				},
+				logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+			}
+
+			result, err := e.gradeCase(context.Background(), model.TestCase{
+				ID:                 7,
+				ExpectedOutputType: "text",
+				ExpectedOutput:     "42\n",
+			}, ws)
+			if err != nil {
+				t.Fatalf("gradeCase: %v", err)
+			}
+			if result.Status != model.CaseKilledBySignal {
+				t.Fatalf("status = %s, want %s", result.Status, model.CaseKilledBySignal)
+			}
+			if result.StatusMsg != "the monitor did not produce a report" {
+				t.Fatalf("StatusMsg = %q, want the monitor-report failure message", result.StatusMsg)
+			}
+		})
+	}
+}
+
+// TestGradeCaseReportsSignalNotSentinelExitStatus: the monitor prints
+// exit_status=-1 for a child killed by a signal. The signal is the cause the
+// student needs to see, not "exit status -1".
+func TestGradeCaseReportsSignalNotSentinelExitStatus(t *testing.T) {
+	dir := t.TempDir()
+	ws := &workspace{BaseDir: dir}
+
+	if err := os.WriteFile(filepath.Join(dir, "7.output"), []byte("42\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	monitor := "[info]\nexit_status=-1\nsignal=SIGSEGV\ntime=0.01\n"
+	if err := os.WriteFile(filepath.Join(dir, "7.monitor_out"), []byte(monitor), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	e := &Engine{
+		cfg: &config.Config{
+			MaxOutputFileSize:   1024,
+			MaxCompareFileBytes: 1024,
+		},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	result, err := e.gradeCase(context.Background(), model.TestCase{
+		ID:                 7,
+		ExpectedOutputType: "text",
+		ExpectedOutput:     "42\n",
+	}, ws)
+	if err != nil {
+		t.Fatalf("gradeCase: %v", err)
+	}
+	if result.Status != model.CaseKilledBySignal || result.StatusMsg != "SIGSEGV" {
+		t.Fatalf("gradeCase = status %q msg %q, want %q %q",
+			result.Status, result.StatusMsg, model.CaseKilledBySignal, "SIGSEGV")
 	}
 }
