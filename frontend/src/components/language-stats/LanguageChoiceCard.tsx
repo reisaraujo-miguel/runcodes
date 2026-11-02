@@ -36,7 +36,7 @@ export function LanguageChoiceCard({
           description="Quando os alunos enviarem soluções, a distribuição por linguagem aparece aqui."
         />
       ) : (
-        <div className="space-y-5">
+        <div className="max-h-[45dvh] space-y-5 overflow-y-auto pr-1">
           {rows.map((language) => (
             <article
               key={language.file_type_id}

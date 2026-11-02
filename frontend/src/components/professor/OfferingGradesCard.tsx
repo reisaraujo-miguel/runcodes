@@ -151,71 +151,69 @@ export function OfferingGradesCard({ offeringId }: { offeringId: number }) {
               description="Crie um exercício para começar a acompanhar as notas."
             />
           ) : (
-            <div className="max-h-[32rem] overflow-auto rounded-lg border">
-              <Table>
-                <TableHeader className="bg-muted/80 sticky top-0 z-10">
-                  <TableRow>
-                    <TableHead className="bg-muted/80 sticky left-0 z-20 min-w-56">
-                      Aluno
+            <Table containerClassName="max-h-[32rem] rounded-lg border">
+              <TableHeader className="bg-muted/80 sticky top-0 z-10">
+                <TableRow>
+                  <TableHead className="bg-muted/80 sticky left-0 z-20 min-w-56">
+                    Aluno
+                  </TableHead>
+                  {data.exercises.map((exercise, index) => (
+                    <TableHead
+                      key={exercise.id}
+                      className="min-w-28 text-center"
+                      title={formatDateTime(exercise.deadline)}
+                    >
+                      <span className="block max-w-40 truncate">
+                        {index + 1}. {exercise.title}
+                      </span>
                     </TableHead>
-                    {data.exercises.map((exercise, index) => (
-                      <TableHead
-                        key={exercise.id}
-                        className="min-w-28 text-center"
-                        title={formatDateTime(exercise.deadline)}
-                      >
-                        <span className="block max-w-40 truncate">
-                          {index + 1}. {exercise.title}
-                        </span>
-                      </TableHead>
-                    ))}
-                    <TableHead className="bg-muted/80 sticky right-0 z-20 text-center">
-                      Média
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.students.map((student) => (
-                    <TableRow key={student.user_id}>
-                      <TableCell className="bg-background sticky left-0 z-10 min-w-56">
-                        <p className="font-medium">{student.name}</p>
-                        <p className="text-muted-foreground text-xs">
-                          {student.email}
-                        </p>
-                      </TableCell>
-                      {student.scores.map((cell) => (
-                        <TableCell
-                          key={cell.exercise_id}
-                          className="text-center tabular-nums"
-                        >
-                          {cell.score === null ? (
-                            <span className="text-muted-foreground">—</span>
-                          ) : (
-                            <span
-                              className={cn(
-                                cell.score >= 50
-                                  ? "text-success font-medium"
-                                  : "text-destructive font-medium",
-                              )}
-                            >
-                              {scoreLabel(cell.score)}
-                            </span>
-                          )}
-                          {cell.submission_count > 1 ? (
-                            <span className="text-muted-foreground block text-[10px]">
-                              {cell.submission_count} envios
-                            </span>
-                          ) : null}
-                        </TableCell>
-                      ))}
-                      <TableCell className="bg-muted/30 sticky right-0 z-10 text-center font-semibold tabular-nums">
-                        {scoreLabel(student.average)}
-                      </TableCell>
-                    </TableRow>
                   ))}
-                </TableBody>
-              </Table>
-            </div>
+                  <TableHead className="bg-muted/80 sticky right-0 z-20 text-center">
+                    Média
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.students.map((student) => (
+                  <TableRow key={student.user_id}>
+                    <TableCell className="bg-background sticky left-0 z-10 min-w-56">
+                      <p className="font-medium">{student.name}</p>
+                      <p className="text-muted-foreground text-xs">
+                        {student.email}
+                      </p>
+                    </TableCell>
+                    {student.scores.map((cell) => (
+                      <TableCell
+                        key={cell.exercise_id}
+                        className="text-center tabular-nums"
+                      >
+                        {cell.score === null ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : (
+                          <span
+                            className={cn(
+                              cell.score >= 50
+                                ? "text-success font-medium"
+                                : "text-destructive font-medium",
+                            )}
+                          >
+                            {scoreLabel(cell.score)}
+                          </span>
+                        )}
+                        {cell.submission_count > 1 ? (
+                          <span className="text-muted-foreground block text-[10px]">
+                            {cell.submission_count} envios
+                          </span>
+                        ) : null}
+                      </TableCell>
+                    ))}
+                    <TableCell className="bg-muted/30 sticky right-0 z-10 text-center font-semibold tabular-nums">
+                      {scoreLabel(student.average)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           )}
         </div>
 

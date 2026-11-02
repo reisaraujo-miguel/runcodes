@@ -75,10 +75,10 @@ export function LanguagePerformanceCard({
             aparecem com aviso de amostra pequena.
           </p>
           <p>
-            O monitor ainda não mede memória, então esta comparação usa apenas
-            tempo de CPU. Os alunos também não são distribuídos aleatoriamente
-            entre linguagens: leia o índice como uma pista, não como um
-            benchmark controlado.
+            Esta comparação usa apenas tempo de CPU; a memória tem uma tabela
+            própria. Os alunos também não são distribuídos aleatoriamente entre
+            linguagens: leia o índice como uma pista, não como um benchmark
+            controlado.
           </p>
         </AlertDescription>
       </Alert>
