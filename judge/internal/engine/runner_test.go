@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/runcodes-icmc/judge/internal/model"
 )
@@ -23,6 +24,8 @@ func TestClassifyMapsOnlyPhaseTimeoutsToTimeout(t *testing.T) {
 	}{
 		{"phase timeout", &timeoutError{msg: "timed out waiting for \"run.done\""}, model.RunTimeout},
 		{"wrapped phase timeout", fmt.Errorf("await: %w", &timeoutError{msg: "x"}), model.RunTimeout},
+		{"container never started", &startupError{Milestone: "run.start", Wait: time.Second}, model.RunServerError},
+		{"wrapped container never started", fmt.Errorf("run: %w", &startupError{Milestone: "run.start"}), model.RunServerError},
 		{"deadline exceeded", context.DeadlineExceeded, model.RunServerError},
 		{"cancelled", context.Canceled, model.RunServerError},
 		{"wrapped cancellation", fmt.Errorf("run container: %w", context.Canceled), model.RunServerError},

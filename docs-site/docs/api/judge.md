@@ -258,6 +258,36 @@ statistics report shows as missing coverage.
 }
 ```
 
+`alert`:
+
+```json
+{
+  "type": "alert",
+  "commit_id": 42,
+  "seq": 7,
+  "severity": "critical",
+  "code": "startup_timeout",
+  "message": "the Python container for commit 42 did not print \"run.start\" within 30s; the submission could not be graded",
+  "details": {
+    "language": "Python",
+    "image": "ghcr.io/runcodes-icmc/runcodes-runner-python:latest",
+    "filename": "main.py",
+    "milestone": "run.start",
+    "wait_seconds": 30,
+    "test_cases": 5
+  }
+}
+```
+
+An `alert` is an operational condition the administrators have to see; it is not
+terminal, and the run still ends with `finished`. The backend records it in
+`system_alerts` — once per `(commit_id, code)`, so a replayed event is harmless —
+shows it in the admin panel and emails every confirmed administrator. `severity`
+is `warning` or `critical`; `code` is the stable identifier a dashboard can group
+by. The judge sends one code today, `startup_timeout`, when the container does not
+print its first milestone (`compilation.start`, or `run.start` for an interpreted
+language) within `JUDGE_STARTUP_WAIT`; that run ends as `server_error`.
+
 The stream ends after an `error` event.
 
 ## `GET /v1/runs/{id}/output`

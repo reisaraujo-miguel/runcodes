@@ -107,12 +107,10 @@ func (e *Engine) Process(ctx context.Context, commit *model.Commit) {
 	logger := e.logger.With("commit_id", commit.ID)
 	timings := model.NewRunTimings()
 
-	// The store records when it took the row out of the queue; the difference to
-	// created_at is the time the submission waited for a worker.
-	if !commit.ClaimedAt.IsZero() && !commit.CreatedAt.IsZero() {
-		if wait := commit.ClaimedAt.Sub(commit.CreatedAt); wait > 0 {
-			timings.Record(model.PhaseQueue, wait)
-		}
+	// The store records how long the row waited in the queue, measured on the
+	// database clock in the claim transaction.
+	if commit.HasQueueWait {
+		timings.Record(model.PhaseQueue, commit.QueueWait)
 	}
 
 	var ws *workspace
@@ -198,6 +196,14 @@ func (e *Engine) Process(ctx context.Context, commit *model.Commit) {
 	if runErr != nil {
 		// Classify the error to determine the appropriate run status (e.g., timeout, server error).
 		status := classify(runErr)
+
+		// A container that never reached its first milestone is an
+		// infrastructure failure the administrators have to see: the student can
+		// retry, and every retry will fail the same way until somebody looks.
+		var startup *startupError
+		if errors.As(runErr, &startup) {
+			e.alertStartupFailure(commit, ws, startup, logger)
+		}
 
 		logger.Warn("run failed", "status", status, "error", runErr)
 		e.hub.Error(commit.ID, runErr.Error())
@@ -342,11 +348,12 @@ func (e *Engine) runContainer(
 
 	// Await milestones from the container's log stream to determine the progress of compilation and execution.
 	if ws.Compilable {
-		// If the language requires compilation, wait for the compilation start and done milestones.
-		// CompilationWait, not the container's compilation timeout: the judge has to
-		// outwait the container's own limit, or it abandons runs the image was still
-		// compiling (and reports a timeout instead of the compiler's error).
-		if err := e.awaitLine(stream, "compilation.start", ws.RunNonce, e.cfg.CompilationWait); err != nil {
+		// The first milestone is still startup: the container booting, the harness
+		// starting and the line reaching the judge. CompilationWait begins after
+		// it — and then it must outwait the container's own compilation limit, or
+		// the judge abandons runs the image was still compiling (and reports a
+		// timeout instead of the compiler's error).
+		if err := e.awaitStartup(stream, "compilation.start", ws.RunNonce); err != nil {
 			return outcome, workspaceAwareError(monitor, err)
 		}
 		recordStartup()
@@ -419,8 +426,10 @@ func (e *Engine) runContainer(
 	e.hub.Compilation(commit.ID, true, outcome.compilationMessage, "", time.Now())
 
 	// Await the run start milestone, which indicates that the execution phase has begun.
+	// For an interpreted language this is the first milestone, so it is still
+	// bounded by the startup budget; the execution timeout applies from here on.
 	timeout := e.executionTimeout(ws.TestCases)
-	if err := e.awaitLine(stream, "run.start", ws.RunNonce, timeout); err != nil {
+	if err := e.awaitStartup(stream, "run.start", ws.RunNonce); err != nil {
 		return outcome, workspaceAwareError(monitor, err)
 	}
 	// No-op for compilable languages, which recorded startup at compilation.start.
@@ -490,7 +499,18 @@ func (e *Engine) executionTimeout(cases []model.TestCase) time.Duration {
 
 // classify maps a run failure to a terminal status.
 func classify(err error) model.RunStatus {
-	var timedOut *timeoutError
+	var (
+		timedOut *timeoutError
+		startup  *startupError
+	)
+
+	// A container that never started is never the submission's fault: nothing it
+	// wrote has run yet, so a `timeout` here would blame the student for the
+	// runtime or the judge. It is checked first because the startup budget
+	// produces a timeout of its own.
+	if errors.As(err, &startup) {
+		return model.RunServerError
+	}
 
 	// Only the phase timeouts the runner imposed itself are the submission's own
 	// timeout. A cancelled or expired run context belongs to the judge's lifecycle
@@ -501,6 +521,46 @@ func classify(err error) model.RunStatus {
 	}
 
 	return model.RunServerError
+}
+
+/*
+alertStartupFailure publishes an `alert` event for a run the container never
+started, so the administrators learn about it from the platform itself.
+
+The event is published before the terminal `finished` (the hub closes the topic
+then), and the backend records it once per (commit, code) and emails every
+administrator. The message names the commit and the language because that is
+what an administrator needs to correlate it with the submission.
+*/
+func (e *Engine) alertStartupFailure(
+	commit *model.Commit, ws *workspace, startup *startupError, logger *slog.Logger,
+) {
+	image := ws.Language.Image(e.cfg.ImageFormat)
+	message := fmt.Sprintf(
+		"the %s container for commit %d did not print %q within %s; the submission could not be graded",
+		ws.Language.Name, commit.ID, startup.Milestone, startup.Wait,
+	)
+
+	logger.Error("container startup budget exceeded",
+		"milestone", startup.Milestone,
+		"wait", startup.Wait,
+		"image", image,
+	)
+
+	e.hub.Alert(
+		commit.ID,
+		model.AlertSeverityCritical,
+		model.AlertStartupTimeout,
+		message,
+		map[string]any{
+			"language":     ws.Language.Name,
+			"image":        image,
+			"filename":     commit.Filename(),
+			"milestone":    startup.Milestone,
+			"wait_seconds": startup.Wait.Seconds(),
+			"test_cases":   len(ws.TestCases),
+		},
+	)
 }
 
 /*

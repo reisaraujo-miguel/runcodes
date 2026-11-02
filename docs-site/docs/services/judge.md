@@ -16,8 +16,9 @@ artifacts; the backend owns all persistence.
 
 ## How a submission flows
 
-1. The backend registers a `queued` commit, uploads the source and test-case
-   files to SeaweedFS, and calls `POST /v1/runs/{id}` to wake the judge.
+1. The backend registers a `queued` commit — committed, so the claim can see it —
+   uploads the source and test-case files to SeaweedFS, and only then calls
+   `POST /v1/runs/{id}` to wake the judge.
 2. A worker claims the commit from PostgreSQL with
    `SELECT ... FOR UPDATE SKIP LOCKED`, writing only the claim
    (`status = compiling`, `compilation_started = now()`). At most
@@ -65,6 +66,13 @@ coordination.
 The poll loop wakes on `POST /v1/runs/{id}` (idempotent) and otherwise polls
 every `JUDGE_POLL_INTERVAL` (default 1s). The wake endpoint is an optimization;
 the durable queue does the real work.
+
+The ordering matters: the claim reads committed rows, so the backend wakes the
+judge **after** committing. A wake sent while the row is still in an open
+transaction is always a no-op — the judge drains an empty queue and the
+submission waits for the next poll tick, which is exactly the queue latency the
+statistics report used to show. A failed wake is not a failed submission either:
+the row stays `queued` and the next poll claims it.
 
 ## State machine
 
@@ -217,6 +225,7 @@ and `stack_` keys. `JUDGE_MONITOR_MAX_FILE_SIZE` and
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `JUDGE_COMPILATION_WAIT` | 2m | the judge's patience for compilation milestones |
+| `JUDGE_STARTUP_WAIT` | 30s | the container's first milestone; a wedged container fails here instead of consuming the compilation or execution budget |
 | `JUDGE_DEFAULT_COMPILATION_TIMEOUT` | 0 (image default) | container compilation timeout; 10s for most, 60s for Go/C#/Julia, 20s for Zig |
 | `JUDGE_DEFAULT_EXEC_TIMEOUT` | 5s | default execution timeout |
 | `JUDGE_DEFAULT_CASE_TIMEOUT` | 3s | default per-case timeout |
@@ -305,6 +314,7 @@ memory controller or the container image is older than the report key.
 | --- | --- |
 | Compiler error | `compilation_error` with the compiler's message |
 | Milestone timeout | `server_error` (the judge gave up waiting) |
+| Container never prints its first milestone | `server_error` plus an `alert` to the administrators |
 | Wall-clock budget exceeded | `timeout` |
 | Harness exits non-zero after `run.done` | `server_error` |
 | Podman unavailable | `/readyz` fails; the backend refuses new submissions |
@@ -314,6 +324,26 @@ memory controller or the container image is older than the report key.
 Finished runs remain replayable in memory for `JUDGE_EVENT_RETENTION` (default
 10 minutes) after they finish. After that, clients must read the terminal state
 from the backend's database.
+
+## Alerts
+
+Some failures are not the submission's fault and the student cannot fix them: a
+runner container that never starts, for example. The judge publishes an `alert`
+event before the terminal event, and the backend persists it in `system_alerts`,
+lists it under **Alertas** in the admin panel and emails every confirmed
+administrator.
+
+The insert is idempotent per `(commit_id, code)`, so an event replayed after a
+stream reconnect records — and notifies — once. The judge emits one code today:
+
+| Code | Severity | When |
+| --- | --- | --- |
+| `startup_timeout` | `critical` | the container did not print its first milestone within `JUDGE_STARTUP_WAIT` |
+
+The run ends as `server_error`, so the student sees an infrastructure error
+rather than a verdict, and retrying cannot help until an administrator acts on
+the alert. Acknowledging it in the panel marks it as seen; it does not retry the
+submission.
 
 ## Running the judge
 

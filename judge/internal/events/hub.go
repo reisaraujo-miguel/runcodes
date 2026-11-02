@@ -21,6 +21,7 @@ const (
 	NameArtifact    = "artifact"
 	NameFinished    = "finished"
 	NameError       = "error"
+	NameAlert       = "alert"
 )
 
 const (
@@ -359,6 +360,17 @@ type ErrorPayload struct {
 	Message string `json:"message"`
 }
 
+// AlertPayload is an `alert` event: an operational condition the administrators
+// have to see. It is not terminal — the run still ends with `finished` — and the
+// backend records it once per (commit, code) and emails the administrators.
+type AlertPayload struct {
+	basePayload
+	Severity string         `json:"severity"`
+	Code     string         `json:"code"`
+	Message  string         `json:"message"`
+	Details  map[string]any `json:"details,omitempty"`
+}
+
 // Status publishes a `status` event (compiling|running) for a commit.
 func (h *Hub) Status(id int64, status string, at time.Time) {
 	h.publish(id, NameStatus, &StatusPayload{
@@ -467,5 +479,19 @@ func (h *Hub) Error(id int64, message string) {
 	h.publish(id, NameError, &ErrorPayload{
 		basePayload: basePayload{Type: NameError, CommitID: id},
 		Message:     message,
+	})
+}
+
+// Alert publishes an `alert` event for a commit: a condition the administrators
+// must see (severity, a stable code, and structured details). It is published
+// before the terminal event, because the hub stops accepting frames once the
+// commit finishes.
+func (h *Hub) Alert(id int64, severity, code, message string, details map[string]any) {
+	h.publish(id, NameAlert, &AlertPayload{
+		basePayload: basePayload{Type: NameAlert, CommitID: id},
+		Severity:    severity,
+		Code:        code,
+		Message:     message,
+		Details:     details,
 	})
 }

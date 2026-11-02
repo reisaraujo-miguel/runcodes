@@ -10,10 +10,14 @@ type Commit struct {
 	ExerciseID     int64
 	RealExerciseID int64
 	S3Key          string
-	CreatedAt      time.Time
-	// ClaimedAt is when the judge took the row out of the queue. It is the end
-	// of the queue-wait phase; the store sets it in the claim transaction.
-	ClaimedAt time.Time
+	// QueueWait is how long the row sat in the queue before this claim,
+	// measured entirely on the database clock: the claim's now() minus the row's
+	// created_at. The judge's own clock is deliberately not part of it; the two
+	// hosts can disagree, and the queue phase would silently absorb the skew.
+	QueueWait time.Duration
+	// HasQueueWait reports whether the claim reported QueueWait. It is false only
+	// for a commit built without one (tests).
+	HasQueueWait bool
 }
 
 // Filename is the base name of the submitted source object.
@@ -92,4 +96,17 @@ const (
 	RunCompilationError RunStatus = "compilation_error"
 	RunServerError      RunStatus = "server_error"
 	RunTimeout          RunStatus = "timeout"
+)
+
+// Alert severities and codes carried by `alert` events. The backend stores them
+// in `system_alerts` and emails every administrator; keep the values in step
+// with backend/alerts/alerts.go and the table's CHECK constraints.
+const (
+	AlertSeverityWarning  = "warning"
+	AlertSeverityCritical = "critical"
+
+	// AlertStartupTimeout reports a container that did not print its first
+	// milestone within JUDGE_STARTUP_WAIT. Every retry of the same submission
+	// fails the same way until an administrator acts on it.
+	AlertStartupTimeout = "startup_timeout"
 )

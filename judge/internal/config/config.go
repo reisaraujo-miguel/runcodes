@@ -61,6 +61,18 @@ type Config struct {
 	BaseExecTimeout    time.Duration
 	DefaultCaseTimeout time.Duration
 
+	// StartupWait bounds how long the judge waits for a container's *first*
+	// milestone (`compilation.start`, or `run.start` for an interpreted
+	// language): the container booting, the harness starting and the milestone
+	// travelling back on the log stream.
+	//
+	// It is deliberately far above the normal cost (a few hundred milliseconds)
+	// and far below a user's patience: a container that has not reached its first
+	// milestone in this long is wedged, and making the student wait for the
+	// compilation or execution budget would only delay the error. When it fires,
+	// the run ends as server_error and an `alert` event tells the administrators.
+	StartupWait time.Duration
+
 	// MaxRunDuration bounds one claimed commit end to end, so a stalled image
 	// pull, container create or S3 read cannot pin a worker slot forever. It must
 	// stay above the longest legitimate run (the phase timeouts below) and be
@@ -198,6 +210,10 @@ func Load() (*Config, error) {
 		// its compiler needs better than a single deployment-wide number does.
 		CompilationTimeout: envDuration("JUDGE_DEFAULT_COMPILATION_TIMEOUT", 0),
 		CompilationWait:    envDuration("JUDGE_COMPILATION_WAIT", 2*time.Minute),
+		// A container prints its first milestone within a second on a healthy
+		// host. Thirty seconds is already a wedged run, and small enough that a
+		// student sees the failure instead of a spinner.
+		StartupWait:        envDuration("JUDGE_STARTUP_WAIT", 30*time.Second),
 		BaseExecTimeout:    envDuration("JUDGE_DEFAULT_EXEC_TIMEOUT", 5*time.Second),
 		DefaultCaseTimeout: envDuration("JUDGE_DEFAULT_CASE_TIMEOUT", 3*time.Second),
 		MaxRunDuration:     envDuration("JUDGE_MAX_RUN_DURATION", 30*time.Minute),
@@ -291,6 +307,21 @@ func (c *Config) validate() error {
 
 	if c.CompilationWait <= 0 {
 		return fmt.Errorf("JUDGE_COMPILATION_WAIT must be positive, got %s", c.CompilationWait)
+	}
+
+	if c.StartupWait <= 0 {
+		return fmt.Errorf("JUDGE_STARTUP_WAIT must be positive, got %s", c.StartupWait)
+	}
+
+	// The startup budget ends before the compilation budget begins: a container
+	// that has not printed `compilation.start` cannot be compiling yet, so waiting
+	// longer for the harness to start than for the whole compilation means one of
+	// the two numbers is wrong.
+	if c.StartupWait > c.CompilationWait {
+		return fmt.Errorf(
+			"JUDGE_STARTUP_WAIT (%s) must not exceed JUDGE_COMPILATION_WAIT (%s)",
+			c.StartupWait, c.CompilationWait,
+		)
 	}
 
 	// A judge that waits less than the container may compile gives up first, and the

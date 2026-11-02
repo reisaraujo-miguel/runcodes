@@ -233,6 +233,9 @@ type Container struct {
 	cfg RunConfig
 	// conn carries the podman connection; request contexts are derived from it.
 	conn context.Context
+	// createdAt is when this process created the container. It bounds the log
+	// replay (see Logs): the container cannot have logged anything before it.
+	createdAt time.Time
 }
 
 // Create creates (but does not start) a container running the image's default
@@ -249,7 +252,7 @@ func (c *Client) Create(ctx context.Context, rc RunConfig) (*Container, error) {
 		return nil, fmt.Errorf("create container: %w", err)
 	}
 
-	return &Container{ID: resp.ID, cfg: rc, conn: conn}, nil
+	return &Container{ID: resp.ID, cfg: rc, conn: conn, createdAt: time.Now()}, nil
 }
 
 // containerUmask is the umask every graded run starts with.
@@ -383,7 +386,16 @@ type LogStream struct {
 	cancel context.CancelFunc
 }
 
-// Logs follows the container's logs from the beginning, line-buffered.
+// Logs follows the container's logs, line-buffered.
+//
+// The request is bounded by `since` for a reason that is not obvious: without
+// it, podman's journald reader seeks the journal's oldest entry and walks
+// forward to the live end before it delivers anything
+// (libpod/container_log_linux.go, readFromJournal). That walk costs a few
+// hundred milliseconds on a warm journal and seconds on a long-lived one, and it
+// happens on every run — it used to show up as the `startup` phase, delivering a
+// fast container's whole output in one burst. A timestamp the container cannot
+// have logged before makes podman seek by time instead.
 func (ct *Container) Logs(ctx context.Context) *LogStream {
 	// derive a cancellable context from the container's connection context
 	streamCtx, cancel := context.WithCancel(ct.conn)
@@ -393,20 +405,13 @@ func (ct *Container) Logs(ctx context.Context) *LogStream {
 	lines := make(chan string, 256)
 	logErr := make(chan error, 1)
 
+	options := ct.logOptions()
+
 	go func() {
 		defer close(stdout)
 		defer close(stderr)
 
-		// follow the logs with a 5-minute timeout; it should be fast
-		logErr <- containers.Logs(
-			streamCtx, ct.ID,
-			new(containers.LogOptions).
-				WithFollow(true).
-				WithStdout(true).
-				WithStderr(true).
-				WithTail("all"),
-			stdout, stderr,
-		)
+		logErr <- containers.Logs(streamCtx, ct.ID, options, stdout, stderr)
 
 		close(logErr)
 	}()
@@ -418,6 +423,31 @@ func (ct *Container) Logs(ctx context.Context) *LogStream {
 	go func() { wg.Wait(); close(lines) }()
 
 	return &LogStream{Lines: lines, Err: logErr, cancel: cancel}
+}
+
+// logReplayMargin widens the `since` bound of the log request. The request is
+// made a moment after the container is created, so a couple of seconds is a
+// generous margin for the judge's clock and journald's.")
+const logReplayMargin = 2 * time.Second
+
+/*
+logOptions is the log-follow request for this container, separate from Logs so
+the bounds can be asserted without a podman daemon.
+*/
+func (ct *Container) logOptions() *containers.LogOptions {
+	since := ct.createdAt
+	if since.IsZero() {
+		// A Container built without Create (tests): fall back to now, which is
+		// still safe because the request is made after the container started.
+		since = time.Now()
+	}
+
+	return new(containers.LogOptions).
+		WithFollow(true).
+		WithStdout(true).
+		WithStderr(true).
+		WithTail("all").
+		WithSince(since.Add(-logReplayMargin).UTC().Format(time.RFC3339Nano))
 }
 
 // Close stops following the logs.

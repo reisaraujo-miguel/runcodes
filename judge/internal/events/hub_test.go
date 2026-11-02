@@ -224,3 +224,48 @@ func TestCaseResultPayload(t *testing.T) {
 		}
 	}
 }
+
+// An alert is not terminal: it is published before the terminal event and must
+// reach the backend with its severity, code and details intact.
+func TestAlertPayload(t *testing.T) {
+	h := New(time.Minute)
+	sub := h.Subscribe(9, 0)
+	defer sub.Cancel()
+
+	h.Alert(9, model.AlertSeverityCritical, model.AlertStartupTimeout,
+		"the container did not start",
+		map[string]any{"language": "Python", "wait_seconds": 30},
+	)
+
+	select {
+	case frame := <-sub.Ch:
+		if frame.Name != NameAlert {
+			t.Fatalf("frame name = %q, want alert", frame.Name)
+		}
+		for _, want := range []string{
+			`"type":"alert"`, `"commit_id":9`, `"severity":"critical"`,
+			`"code":"startup_timeout"`, `"language":"Python"`, `"wait_seconds":30`,
+		} {
+			if !strings.Contains(string(frame.Data), want) {
+				t.Fatalf("payload is missing %s: %s", want, frame.Data)
+			}
+		}
+		// The alert must not close the topic: the run still ends with finished,
+		// which is the event that closes the subscription.
+		h.Finished(9, "server_error", 0, 0, "", "", time.Now(), time.Now())
+
+		deadline := time.After(time.Second)
+		for {
+			select {
+			case _, ok := <-sub.Ch:
+				if !ok {
+					return
+				}
+			case <-deadline:
+				t.Fatal("the finished event did not close the subscription")
+			}
+		}
+	case <-time.After(time.Second):
+		t.Fatal("no alert frame received")
+	}
+}
