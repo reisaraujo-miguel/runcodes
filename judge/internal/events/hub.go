@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"sync"
 	"time"
+
+	"github.com/runcodes-icmc/judge/internal/model"
 )
 
 // Event names, used as the SSE `event:` field.
@@ -15,6 +17,7 @@ const (
 	NameStatus      = "status"
 	NameCompilation = "compilation"
 	NameCaseResult  = "case_result"
+	NameTimings     = "timings"
 	NameArtifact    = "artifact"
 	NameFinished    = "finished"
 	NameError       = "error"
@@ -304,12 +307,31 @@ type CaseResultPayload struct {
 	basePayload
 	TestCaseID     int64   `json:"test_case_id"`
 	CPUTime        float64 `json:"cpu_time"`
+	WallTime       float64 `json:"wall_time"`
 	MemUsage       int64   `json:"mem_usage"`
 	Status         string  `json:"status"`
 	StatusMessage  string  `json:"status_message"`
 	UserOutput     string  `json:"user_output"`
 	UserOutputType string  `json:"user_output_type"`
 	ErrorMessage   string  `json:"error_message"`
+}
+
+// PhaseTimingPayload is one measured phase in a `timings` event.
+type PhaseTimingPayload struct {
+	Phase        string         `json:"phase"`
+	DurationMS   int64          `json:"duration_ms"`
+	CPUMS        *int64         `json:"cpu_ms,omitempty"`
+	MemPeakBytes *int64         `json:"mem_peak_bytes,omitempty"`
+	StartedAt    *time.Time     `json:"started_at,omitempty"`
+	FinishedAt   *time.Time     `json:"finished_at,omitempty"`
+	Source       string         `json:"source,omitempty"`
+	Detail       map[string]any `json:"detail,omitempty"`
+}
+
+// TimingsPayload is a `timings` event: where a run spent its time.
+type TimingsPayload struct {
+	basePayload
+	Phases []PhaseTimingPayload `json:"phases"`
 }
 
 // ArtifactPayload is an `artifact` event.
@@ -360,17 +382,59 @@ func (h *Hub) Compilation(id int64, compiled bool, message, errMsg string, at ti
 
 // CaseResult publishes a `case_result` event for a specific test case of a commit,
 // including performance metrics and output details.
-func (h *Hub) CaseResult(id, testCaseID int64, cpuTime float64, memUsage int64, status, statusMsg, userOutput, outputType, errMsg string) {
+func (h *Hub) CaseResult(id, testCaseID int64, cpuTime, wallTime float64, memUsage int64, status, statusMsg, userOutput, outputType, errMsg string) {
 	h.publish(id, NameCaseResult, &CaseResultPayload{
 		basePayload:    basePayload{Type: NameCaseResult, CommitID: id},
 		TestCaseID:     testCaseID,
 		CPUTime:        cpuTime,
+		WallTime:       wallTime,
 		MemUsage:       memUsage,
 		Status:         status,
 		StatusMessage:  statusMsg,
 		UserOutput:     userOutput,
 		UserOutputType: outputType,
 		ErrorMessage:   errMsg,
+	})
+}
+
+// Timings publishes a `timings` event with the measured phases of a run. It is
+// not terminal: the judge sends it immediately before `finished` (or before a
+// failure's terminal event), and the backend persists the rows idempotently.
+func (h *Hub) Timings(id int64, phases []model.PhaseTiming) {
+	if len(phases) == 0 {
+		return
+	}
+
+	payload := make([]PhaseTimingPayload, 0, len(phases))
+	for _, phase := range phases {
+		item := PhaseTimingPayload{
+			Phase:      phase.Phase,
+			DurationMS: phase.Duration.Milliseconds(),
+			Source:     phase.Source,
+			Detail:     phase.Detail,
+		}
+		if phase.HasCPU {
+			cpu := phase.CPU.Milliseconds()
+			item.CPUMS = &cpu
+		}
+		if phase.HasMemPeak {
+			mem := phase.MemPeak
+			item.MemPeakBytes = &mem
+		}
+		if !phase.StartedAt.IsZero() {
+			at := phase.StartedAt
+			item.StartedAt = &at
+		}
+		if !phase.FinishedAt.IsZero() {
+			at := phase.FinishedAt
+			item.FinishedAt = &at
+		}
+		payload = append(payload, item)
+	}
+
+	h.publish(id, NameTimings, &TimingsPayload{
+		basePayload: basePayload{Type: NameTimings, CommitID: id},
+		Phases:      payload,
 	})
 }
 

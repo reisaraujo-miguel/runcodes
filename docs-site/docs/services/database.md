@@ -47,8 +47,9 @@ runcodes`. The main tables:
 | `exercises_attached_files` | statements and datasets visible to students |
 | `exercises_allowed_file_types` | extension allowlist per exercise |
 | `allowed_file_types` | extension catalogue and compilable flag |
-| `commits` | submissions, status, score, compilation timestamps, S3 key |
-| `commits_exercise_test_cases_results` | per-case verdict, CPU time, output, diagnostics |
+| `commits` | submissions, status, score, compilation timestamps, S3 key, matched file type |
+| `commits_exercise_test_cases_results` | per-case verdict, CPU and wall time, peak memory, output, diagnostics |
+| `commit_phase_timings` | one row per measured phase (queue, workspace, image, startup, compile, run, grade) |
 | `platform_settings` | contact email and disclaimer edited by admins |
 | `email_verification_tokens` | SHA-256 of the verification token and expiry |
 | `password_reset_tokens` | SHA-256 of the password recovery token and expiry |

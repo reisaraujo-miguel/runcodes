@@ -114,6 +114,7 @@ data: {"type":"snapshot","commit":{...},"results":[...],"artifacts":[...]}
 {
   "exercise_test_case_id": 91,
   "cpu_time": 0.12,
+  "wall_time": 0.14,
   "mem_usage": -1,
   "user_output": "42\n",
   "user_output_type": "text",
@@ -131,20 +132,23 @@ data: {"type":"snapshot","commit":{...},"results":[...],"artifacts":[...]}
 | --- | --- |
 | `status` | `type`, `commit_id`, `seq`, `status` (`compiling`/`running`), `at` |
 | `compilation` | `type`, `commit_id`, `seq`, `compiled`, `message`, `error`, `at` |
-| `case_result` | `type`, `commit_id`, `seq`, `test_case_id`, `cpu_time`, `mem_usage`, `status`, `status_message`, `user_output`, `user_output_type`, `error_message` |
+| `case_result` | `type`, `commit_id`, `seq`, `test_case_id`, `cpu_time`, `wall_time`, `mem_usage`, `status`, `status_message`, `user_output`, `user_output_type`, `error_message` |
+| `timings` | `type`, `commit_id`, `seq`, `phases[]`; phase names, durations and optional CPU/memory, persisted by the backend |
 | `artifact` | `type`, `commit_id`, `seq`, `kind`, `url` |
 | `finished` | `type`, `commit_id`, `seq`, `status`, `num_correct_cases`, `score`, `compilation_message`, `compilation_error`, `started_at`, `finished_at` |
 | `error` | `type`, `commit_id`, `seq`, `message`; the stream ends |
 
 `cpu_time` is measured CPU time (container cgroup, with a direct-child rusage
-fallback); the exercise's `cpu_time_limit_seconds` is a wall-clock timeout.
+fallback); `wall_time` is the command's wall clock. The exercise's
+`cpu_time_limit_seconds` is a wall-clock timeout. `timings` is informational for
+live clients; the product statistics read the persisted rows.
 
 Example:
 
 ```text
 event: case_result
 id: 3
-data: {"type":"case_result","commit_id":42,"seq":3,"test_case_id":91,"cpu_time":0.12,"mem_usage":-1,"status":"correct","status_message":"","user_output":"42\n","user_output_type":"text","error_message":""}
+data: {"type":"case_result","commit_id":42,"seq":3,"test_case_id":91,"cpu_time":0.12,"wall_time":0.14,"mem_usage":-1,"status":"correct","status_message":"","user_output":"42\n","user_output_type":"text","error_message":""}
 
 event: finished
 id: 5

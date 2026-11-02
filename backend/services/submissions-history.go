@@ -188,7 +188,7 @@ func GetCommitSnapshot(ctx context.Context, commitID int64) (*models.Snapshot, e
 	}
 
 	rows, err := database.DB.QueryContext(ctx,
-		`SELECT exercise_test_case_id, cpu_time, mem_usage, user_output,
+		`SELECT exercise_test_case_id, cpu_time, wall_time, mem_usage, user_output,
 		        user_output_type, status, status_message, error_message
 		 FROM commits_exercise_test_cases_results
 		 WHERE commit_id = $1
@@ -206,17 +206,23 @@ func GetCommitSnapshot(ctx context.Context, commitID int64) (*models.Snapshot, e
 
 	results := make([]models.CaseResult, 0, 8)
 	for rows.Next() {
-		var result models.CaseResult
+		var (
+			result   models.CaseResult
+			wallTime sql.NullFloat64
+		)
 		if err := rows.Scan(
-			&result.ExerciseTestCaseID, &result.CPUTime, &result.MemUsage,
-			&result.UserOutput, &result.UserOutputType, &result.Status,
-			&result.StatusMessage, &result.ErrorMessage,
+			&result.ExerciseTestCaseID, &result.CPUTime, &wallTime,
+			&result.MemUsage, &result.UserOutput, &result.UserOutputType,
+			&result.Status, &result.StatusMessage, &result.ErrorMessage,
 		); err != nil {
 			slog.ErrorContext(ctx, "error scanning commit result",
 				slog.Int64("commit_id", commitID),
 				slog.String("error", err.Error()),
 			)
 			return nil, ErrServer
+		}
+		if wallTime.Valid {
+			result.WallTime = &wallTime.Float64
 		}
 		results = append(results, result)
 	}

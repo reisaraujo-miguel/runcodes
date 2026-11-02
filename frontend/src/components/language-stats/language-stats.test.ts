@@ -43,6 +43,7 @@ function language(overrides: Partial<LanguageStat> = {}): LanguageStat {
     relative_cpu: null,
     relative_cpu_p25: null,
     relative_cpu_p75: null,
+    timings: {},
     ...overrides,
   };
 }

@@ -32,7 +32,10 @@ import (
 // ContainerRuntime is the slice of podman the engine drives. It exists so the run
 // phase can be exercised without a container engine.
 type ContainerRuntime interface {
-	EnsureImage(ctx context.Context, image string) error
+	// EnsureImage makes the image available locally. It reports whether this
+	// call had to pull it, so the run can distinguish a cold image from a warm
+	// one in its phase timings.
+	EnsureImage(ctx context.Context, image string) (pulled bool, err error)
 	RemoveByName(ctx context.Context, name string) error
 	Create(ctx context.Context, rc podman.RunConfig) (RuntimeContainer, error)
 }
@@ -55,7 +58,7 @@ func PodmanRuntime(client *podman.Client) ContainerRuntime {
 
 type podmanAdapter struct{ client *podman.Client }
 
-func (a podmanAdapter) EnsureImage(ctx context.Context, image string) error {
+func (a podmanAdapter) EnsureImage(ctx context.Context, image string) (bool, error) {
 	return a.client.EnsureImage(ctx, image)
 }
 
@@ -102,6 +105,15 @@ type runOutcome struct {
 func (e *Engine) Process(ctx context.Context, commit *model.Commit) {
 	startedAt := time.Now()
 	logger := e.logger.With("commit_id", commit.ID)
+	timings := model.NewRunTimings()
+
+	// The store records when it took the row out of the queue; the difference to
+	// created_at is the time the submission waited for a worker.
+	if !commit.ClaimedAt.IsZero() && !commit.CreatedAt.IsZero() {
+		if wait := commit.ClaimedAt.Sub(commit.CreatedAt); wait > 0 {
+			timings.Record(model.PhaseQueue, wait)
+		}
+	}
 
 	var ws *workspace
 
@@ -112,7 +124,7 @@ func (e *Engine) Process(ctx context.Context, commit *model.Commit) {
 
 			// Report the panic as an internal error to the event hub.
 			e.hub.Error(commit.ID, fmt.Sprintf("internal error: %v", r))
-			e.hub.Finished(commit.ID, string(model.RunServerError), 0, 0, "", "", startedAt, time.Now())
+			e.finish(commit.ID, timings, model.RunServerError, 0, 0, "", "", startedAt)
 		}
 
 		// Clean up the workspace and the private expected-output directory if they
@@ -138,7 +150,7 @@ func (e *Engine) Process(ctx context.Context, commit *model.Commit) {
 			attribute.Int64("runcodes.exercise.id", commit.ExerciseID),
 		),
 	)
-	ws, err = e.prepareWorkspace(prepareCtx, commit)
+	ws, err = e.prepareWorkspace(prepareCtx, commit, timings)
 	if err != nil {
 		prepareSpan.RecordError(err)
 		prepareSpan.SetStatus(codes.Error, "workspace preparation failed")
@@ -147,7 +159,7 @@ func (e *Engine) Process(ctx context.Context, commit *model.Commit) {
 	if err != nil {
 		logger.Error("workspace preparation failed", "error", err)
 		e.hub.Error(commit.ID, err.Error())
-		e.hub.Finished(commit.ID, string(model.RunServerError), 0, 0, "", "", startedAt, time.Now())
+		e.finish(commit.ID, timings, model.RunServerError, 0, 0, "", "", startedAt)
 		return
 	}
 
@@ -156,7 +168,7 @@ func (e *Engine) Process(ctx context.Context, commit *model.Commit) {
 		msg := fmt.Sprintf("could not determine language for %q", commit.Filename())
 		logger.Error(msg)
 		e.hub.Error(commit.ID, msg)
-		e.hub.Finished(commit.ID, string(model.RunServerError), 0, 0, "", "", startedAt, time.Now())
+		e.finish(commit.ID, timings, model.RunServerError, 0, 0, "", "", startedAt)
 		return
 	}
 
@@ -170,7 +182,7 @@ func (e *Engine) Process(ctx context.Context, commit *model.Commit) {
 			attribute.Int("runcodes.test_case.count", len(ws.TestCases)),
 		),
 	)
-	outcome, runErr := e.runContainer(runCtx, commit, ws, logger)
+	outcome, runErr := e.runContainer(runCtx, commit, ws, timings, logger)
 	if runErr != nil {
 		runSpan.RecordError(runErr)
 		runSpan.SetStatus(codes.Error, "container run failed")
@@ -189,50 +201,83 @@ func (e *Engine) Process(ctx context.Context, commit *model.Commit) {
 
 		logger.Warn("run failed", "status", status, "error", runErr)
 		e.hub.Error(commit.ID, runErr.Error())
-		e.hub.Finished(commit.ID, string(status), 0, 0,
-			outcome.compilationMessage, outcome.compilationError, startedAt, time.Now())
+		e.finish(commit.ID, timings, status, 0, 0,
+			outcome.compilationMessage, outcome.compilationError, startedAt)
 		return
 	}
 
 	// Report the results of each test case to the event hub.
 	for _, r := range outcome.caseResults {
-		e.hub.CaseResult(commit.ID, r.TestCaseID, r.CPUTime, r.MemUsage,
+		e.hub.CaseResult(commit.ID, r.TestCaseID, r.CPUTime, r.WallTime, r.MemUsage,
 			string(r.Status), r.StatusMsg, r.UserOutput, r.OutputType, r.ErrorMessage)
 	}
 
-	// Build an artifact (zip archive) of the output files, if any, and report its availability to the event hub.
-	if zipPath, err := e.buildArtifact(commit.ID, ws); err != nil {
-		logger.Warn("could not build output archive", "error", err)
+	// Build an artifact (zip archive) of the output files, if any, and report its
+	// availability to the event hub. Measure it even when there is nothing to zip:
+	// the phase still tells us the build was attempted.
+	artifactDone := timings.Measure(model.PhaseArtifact)
+	zipPath, artifactErr := e.buildArtifact(commit.ID, ws)
+	artifactDone()
+	if artifactErr != nil {
+		logger.Warn("could not build output archive", "error", artifactErr)
 	} else if zipPath != "" {
 		e.hub.Artifact(commit.ID, "output", fmt.Sprintf("/v1/runs/%d/output", commit.ID))
 	}
 
 	if outcome.status == model.RunCompilationError {
-		e.hub.Finished(commit.ID, string(model.RunCompilationError), 0, 0,
-			outcome.compilationMessage, outcome.compilationError, startedAt, time.Now())
+		e.finish(commit.ID, timings, model.RunCompilationError, 0, 0,
+			outcome.compilationMessage, outcome.compilationError, startedAt)
 		return
 	}
 
 	correct, score, status := scoreRun(ws.TestCases, outcome.caseResults)
 
-	e.hub.Finished(commit.ID, string(status), correct, score,
-		outcome.compilationMessage, outcome.compilationError, startedAt, time.Now())
+	e.finish(commit.ID, timings, status, correct, score,
+		outcome.compilationMessage, outcome.compilationError, startedAt)
 
 	logger.Info("commit processed", "status", status, "correct", correct, "score", score)
 }
 
+// finish publishes the run's phase timings and then the terminal event. Keeping
+// both in one call is what makes the phase data survive every terminal path,
+// including compilation errors and panics.
+func (e *Engine) finish(
+	id int64, timings *model.RunTimings, status model.RunStatus,
+	correct int, score float64, message, errMsg string, startedAt time.Time,
+) {
+	e.hub.Timings(id, timings.Phases())
+	e.hub.Finished(id, string(status), correct, score, message, errMsg,
+		startedAt, time.Now())
+}
+
+// secondsDuration converts the monitor's float seconds to a time.Duration.
+func secondsDuration(seconds float64) time.Duration {
+	if seconds < 0 {
+		return 0
+	}
+	return time.Duration(seconds * float64(time.Second))
+}
+
 // runContainer creates, starts and drives one container to completion.
-func (e *Engine) runContainer(ctx context.Context, commit *model.Commit, ws *workspace, logger *slog.Logger) (runOutcome, error) {
+func (e *Engine) runContainer(
+	ctx context.Context, commit *model.Commit, ws *workspace,
+	timings *model.RunTimings, logger *slog.Logger,
+) (runOutcome, error) {
 	var outcome runOutcome
 
 	image := ws.Language.Image(e.cfg.ImageFormat)
-	if err := e.podman.EnsureImage(ctx, image); err != nil {
-		return outcome, fmt.Errorf("ensure image: %w", err)
+	imageStartedAt := time.Now()
+	pulled, imageErr := e.podman.EnsureImage(ctx, image)
+	timings.RecordDetail(model.PhaseImageEnsure, time.Since(imageStartedAt),
+		map[string]any{"image": image, "pulled": pulled})
+	if imageErr != nil {
+		return outcome, fmt.Errorf("ensure image: %w", imageErr)
 	}
 
 	// The container name is derived from the commit ID to ensure uniqueness.
 	// If a container with the same name exists (e.g., due to a previous crash), it is removed before creating a new one.
 	name := fmt.Sprintf("runcodes-%d", commit.ID)
+	createDone := timings.Measure(model.PhaseContainerCreate)
 	_ = e.podman.RemoveByName(ctx, name)
 
 	ct, err := e.podman.Create(ctx, podman.RunConfig{
@@ -241,16 +286,34 @@ func (e *Engine) runContainer(ctx context.Context, commit *model.Commit, ws *wor
 		MountSource: ws.RemoteDir,
 		Labels:      map[string]string{podman.CommitLabel: fmt.Sprintf("%d", commit.ID)},
 	})
+	createDone()
 	if err != nil {
 		return outcome, err
 	}
 
-	if err := ct.Start(ctx); err != nil {
+	startDone := timings.Measure(model.PhaseContainerStart)
+	startErr := ct.Start(ctx)
+	startDone()
+	if startErr != nil {
 		_ = ct.Remove(context.Background())
-		return outcome, err
+		return outcome, startErr
 	}
 
+	startupStartedAt := time.Now()
 	stream := ct.Logs(ctx)
+
+	// startupStart measures container boot plus harness initialization up to the
+	// first phase milestone. For compilable languages that is
+	// `compilation.start`; for interpreted ones it is `run.start`, because the
+	// image script skips the compile function entirely.
+	startupRecorded := false
+	recordStartup := func() {
+		if startupRecorded {
+			return
+		}
+		startupRecorded = true
+		timings.Record(model.PhaseStartup, time.Since(startupStartedAt))
+	}
 
 	// The container must be stopped before grading, not after: it runs the
 	// untrusted submission, so while it is alive it can still rewrite the output
@@ -286,6 +349,7 @@ func (e *Engine) runContainer(ctx context.Context, commit *model.Commit, ws *wor
 		if err := e.awaitLine(stream, "compilation.start", ws.RunNonce, e.cfg.CompilationWait); err != nil {
 			return outcome, workspaceAwareError(monitor, err)
 		}
+		recordStartup()
 
 		// Await the compilation done milestone, which indicates that the compilation phase has completed.
 		if err := e.awaitLine(stream, "compilation.done", ws.RunNonce, e.cfg.CompilationWait); err != nil {
@@ -302,6 +366,15 @@ func (e *Engine) runContainer(ctx context.Context, commit *model.Commit, ws *wor
 		// On success, stderr is only diagnostics: warnings about otherwise valid
 		// code must not fail a submission.
 		compileInfo := readMonitor(filepath.Join(ws.BaseDir, "compilation.monitor_out"))
+		if compileInfo.HasTime {
+			wall := secondsDuration(compileInfo.Time)
+			if compileInfo.HasCPU {
+				timings.RecordCPU(model.PhaseCompile, wall,
+					secondsDuration(compileInfo.CPU))
+			} else {
+				timings.Record(model.PhaseCompile, wall)
+			}
+		}
 		compileFailed := compilationFailed(compileInfo)
 
 		if compileFailed {
@@ -352,6 +425,9 @@ func (e *Engine) runContainer(ctx context.Context, commit *model.Commit, ws *wor
 	if err := e.awaitLine(stream, "run.start", ws.RunNonce, timeout); err != nil {
 		return outcome, workspaceAwareError(monitor, err)
 	}
+	// No-op for compilable languages, which recorded startup at compilation.start.
+	recordStartup()
+	runStartedAt := time.Now()
 
 	// Report to the event hub that the run phase is now running.
 	e.hub.Status(commit.ID, "running", time.Now())
@@ -359,6 +435,7 @@ func (e *Engine) runContainer(ctx context.Context, commit *model.Commit, ws *wor
 	if err := e.awaitLine(stream, "run.done", ws.RunNonce, timeout); err != nil {
 		return outcome, workspaceAwareError(monitor, err)
 	}
+	timings.Record(model.PhaseRun, time.Since(runStartedAt))
 
 	// Execution is over: kill and remove the container before reading anything it
 	// produced, so no process of the submission's can still be running while the
@@ -382,7 +459,9 @@ func (e *Engine) runContainer(ctx context.Context, commit *model.Commit, ws *wor
 		return outcome, fmt.Errorf("the container's run harness exited with status %d", exitCode)
 	}
 
+	gradeDone := timings.Measure(model.PhaseGrade)
 	results, err := e.gradeAll(ctx, commit, ws)
+	gradeDone()
 	if err != nil {
 		return outcome, err
 	}

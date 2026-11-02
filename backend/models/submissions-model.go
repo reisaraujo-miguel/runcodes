@@ -44,14 +44,15 @@ type Commit struct {
 
 // CaseResult is a persisted per-test-case result, as sent in the snapshot.
 type CaseResult struct {
-	ExerciseTestCaseID int64   `json:"exercise_test_case_id"`
-	CPUTime            float64 `json:"cpu_time"`
-	MemUsage           int64   `json:"mem_usage"`
-	UserOutput         *string `json:"user_output"`
-	UserOutputType     string  `json:"user_output_type"`
-	Status             string  `json:"status"`
-	StatusMessage      *string `json:"status_message"`
-	ErrorMessage       *string `json:"error_message"`
+	ExerciseTestCaseID int64    `json:"exercise_test_case_id"`
+	CPUTime            float64  `json:"cpu_time"`
+	WallTime           *float64 `json:"wall_time"`
+	MemUsage           int64    `json:"mem_usage"`
+	UserOutput         *string  `json:"user_output"`
+	UserOutputType     string   `json:"user_output_type"`
+	Status             string   `json:"status"`
+	StatusMessage      *string  `json:"status_message"`
+	ErrorMessage       *string  `json:"error_message"`
 }
 
 // SubmissionArtifact identifies a generated file the download endpoint can

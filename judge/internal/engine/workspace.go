@@ -96,7 +96,12 @@ func workspaceName(commitID int64) string {
 // failure after the directories exist removes them: Process only cleans up a
 // workspace it received, so returning nil without this defer would leak the
 // world-writable tree and the private expected-output directory.
-func (e *Engine) prepareWorkspace(ctx context.Context, commit *model.Commit) (ws *workspace, err error) {
+func (e *Engine) prepareWorkspace(
+	ctx context.Context, commit *model.Commit, timings *model.RunTimings,
+) (ws *workspace, err error) {
+	workspaceDone := timings.Measure(model.PhaseWorkspacePrepare)
+	defer workspaceDone()
+
 	name := workspaceName(commit.ID)
 	baseDir := filepath.Join(e.cfg.ExecDir, name)
 	remoteDir := filepath.Join(e.cfg.ExecDirRemote, name)
@@ -152,29 +157,43 @@ func (e *Engine) prepareWorkspace(ctx context.Context, commit *model.Commit) (ws
 
 	// Download the source file from S3 to the source directory.
 	sourcePath := filepath.Join(srcDir, filepath.Base(fname))
-	if err := e.s3.FetchCommitSource(ctx, commit.S3Key, sourcePath); err != nil {
+	if err := timings.MeasureFunc(model.PhaseSourceDownload, func() error {
+		return e.s3.FetchCommitSource(ctx, commit.S3Key, sourcePath)
+	}); err != nil {
 		return nil, fmt.Errorf("download source: %w", err)
 	}
 
-	if err := e.resolveLanguage(ws, sourcePath); err != nil {
+	if err := timings.MeasureFunc(model.PhaseSourceResolve, func() error {
+		return e.resolveLanguage(ws, sourcePath)
+	}); err != nil {
 		return nil, err
 	}
 
-	if err := e.fetchCompilationFiles(ctx, commit, ws); err != nil {
+	if err := timings.MeasureFunc(model.PhaseCompilationFiles, func() error {
+		return e.fetchCompilationFiles(ctx, commit, ws)
+	}); err != nil {
 		return nil, err
 	}
 
-	testCases, err := e.store.FetchTestCases(ctx, commit.RealExerciseID)
-	if err != nil {
+	var testCases []model.TestCase
+	if err := timings.MeasureFunc(model.PhaseTestCases, func() error {
+		var fetchErr error
+		testCases, fetchErr = e.store.FetchTestCases(ctx, commit.RealExerciseID)
+		return fetchErr
+	}); err != nil {
 		return nil, fmt.Errorf("fetch test cases: %w", err)
 	}
 
 	ws.TestCases = testCases
-	if err := e.fetchTestCases(ctx, ws); err != nil {
+	if err := timings.MeasureFunc(model.PhaseTestCaseFiles, func() error {
+		return e.fetchTestCases(ctx, ws)
+	}); err != nil {
 		return nil, err
 	}
 
-	if err := e.writeContainerConfig(commit, ws); err != nil {
+	if err := timings.MeasureFunc(model.PhaseContainerConfig, func() error {
+		return e.writeContainerConfig(commit, ws)
+	}); err != nil {
 		return nil, err
 	}
 

@@ -101,7 +101,7 @@ func readMonitor(path string) monitorInfo {
 				info.HasExit = true
 			}
 		case "time":
-			if v, err := strconv.ParseFloat(value, 64); err == nil {
+			if v, err := strconv.ParseFloat(value, 64); err == nil && v >= 0 {
 				info.Time = v
 				info.HasTime = true
 			}
@@ -217,6 +217,9 @@ func (e *Engine) gradeCase(ctx context.Context, tc model.TestCase, ws *workspace
 	// Read the monitor output to get resource usage and signal information.
 	info := readMonitor(monitorPath)
 	result.CPUTime = info.Time
+	if info.HasTime {
+		result.WallTime = info.Time
+	}
 	if info.HasCPU {
 		result.CPUTime = info.CPU
 	}
