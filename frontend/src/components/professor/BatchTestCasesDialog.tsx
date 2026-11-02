@@ -37,7 +37,8 @@ const TYPE_OPTIONS = [
 /**
  * Bulk test-case import. The professor uploads one zip and sets the shared
  * configuration once; the backend validates the whole archive before writing
- * anything and reports every folder that does not follow the convention.
+ * anything, reports every case that does not follow the convention and lists the
+ * root files it ignored.
  */
 export function BatchTestCasesDialog({
   exerciseId,
@@ -46,7 +47,7 @@ export function BatchTestCasesDialog({
 }: {
   exerciseId: number;
   onClose: () => void;
-  onImported: (created: number) => void;
+  onImported: (created: number, ignored: string[]) => void;
 }) {
   const [archive, setArchive] = useState<File | null>(null);
   const [inputType, setInputType] = useState(TEXT);
@@ -60,6 +61,7 @@ export function BatchTestCasesDialog({
   const [fileSizeLimit, setFileSizeLimit] = useState("");
   const [issues, setIssues] = useState<BatchTestCaseIssue[]>([]);
   const [created, setCreated] = useState<number | null>(null);
+  const [ignored, setIgnored] = useState<string[]>([]);
 
   const { pending, error, setError, run } = useSubmit(
     "Não foi possível importar os casos de teste.",
@@ -77,6 +79,7 @@ export function BatchTestCasesDialog({
 
     setIssues([]);
     setCreated(null);
+    setIgnored([]);
 
     void run(async () => {
       try {
@@ -92,7 +95,8 @@ export function BatchTestCasesDialog({
           file_size_limit_bytes: parseLimit(fileSizeLimit),
         });
         setCreated(result.created);
-        onImported(result.created);
+        setIgnored(result.ignored ?? []);
+        onImported(result.created, result.ignored ?? []);
       } catch (caught) {
         if (caught instanceof ApiRequestError) {
           const body = caught.body as BatchTestCaseErrorBody | undefined;
@@ -116,10 +120,12 @@ export function BatchTestCasesDialog({
         <DialogHeader>
           <DialogTitle>Importar casos de teste em lote</DialogTitle>
           <DialogDescription>
-            Envie um .zip com uma pasta por caso. Cada pasta deve conter
-            exatamente um arquivo <code>.in</code> e um <code>.out</code>; os
-            demais arquivos são anexos do caso. A configuração abaixo vale para
-            todos os casos do lote.
+            Envie um .zip com os casos. Cada caso é um par <code>.in</code> e{" "}
+            <code>.out</code> com o mesmo nome na raiz do arquivo; se o caso
+            tiver arquivos extras, coloque o par e os extras em uma pasta com o
+            nome do caso. Arquivos da raiz que não terminam em <code>.in</code>{" "}
+            ou <code>.out</code> são ignorados e listados depois da importação.
+            A configuração abaixo vale para todos os casos do lote.
           </DialogDescription>
         </DialogHeader>
 
@@ -140,12 +146,14 @@ export function BatchTestCasesDialog({
                 setArchive(event.target.files?.item(0) ?? null);
                 setIssues([]);
                 setCreated(null);
+                setIgnored([]);
               }}
               required
             />
             <p className="text-muted-foreground text-xs">
-              Exemplo: <code>caso1/entrada.in</code>,{" "}
-              <code>caso1/saida.out</code>, <code>caso1/ajuda.txt</code>.
+              Exemplo: <code>caso1.in</code>, <code>caso1.out</code>,{" "}
+              <code>caso2/caso2.in</code>, <code>caso2/caso2.out</code>,{" "}
+              <code>caso2/ajuda.txt</code>.
             </p>
           </div>
 
@@ -269,7 +277,25 @@ export function BatchTestCasesDialog({
           {created !== null ? (
             <Alert variant="success">
               <AlertDescription>
-                {created} caso(s) de teste importado(s).
+                <p>{created} caso(s) de teste importado(s).</p>
+                {ignored.length > 0 ? (
+                  <div className="mt-2">
+                    <p>
+                      {ignored.length === 1
+                        ? "1 arquivo da raiz foi ignorado"
+                        : `${String(ignored.length)} arquivos da raiz foram ignorados`}{" "}
+                      porque não terminam em <code>.in</code> nem{" "}
+                      <code>.out</code>:
+                    </p>
+                    <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm">
+                      {ignored.map((name) => (
+                        <li key={name}>
+                          <code>{name}</code>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
               </AlertDescription>
             </Alert>
           ) : null}

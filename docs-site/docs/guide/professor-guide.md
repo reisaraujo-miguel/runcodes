@@ -324,30 +324,44 @@ unsubmittable.
 
 ### Import cases in bulk
 
-Select **Importar em lote** (Batch import) to upload a zip with one folder per
-case. The archive must follow this layout:
+Select **Importar em lote** (Batch import) to upload a zip with the cases. A
+case is an `.in` and an `.out` file with the same base name:
 
 ```text
-caso1/
-  entrada.in
-  saida.out
-  ajuda.txt
-caso2/
-  entrada.in
-  saida.out
+1.in
+1.out
+2.in
+2.out
 ```
 
-Every folder must contain exactly one `.in` file and exactly one `.out` file.
-Every other file in the folder becomes an extra case file. Put an extra file
-whose name ends in `.in` or `.out` in a `files/` subfolder, so the importer does
-not mistake it for the case input or output.
+The pair may sit at the root of the archive; a folder is only needed when the
+case carries extra files, and then every other file in that folder becomes an
+extra case file:
+
+```text
+caso3/
+  caso3.in
+  caso3.out
+  ajuda.txt
+```
+
+Put an extra file whose name ends in `.in` or `.out` in a `files/` subfolder, so
+the importer does not mistake it for the case input or output.
+
+Files at the root that are neither `.in` nor `.out` — a README, a notes file —
+are ignored, and the result tells you which ones were left out. Inside a case
+folder nothing is ignored: every other file is an extra case file.
+
+A case with only one of the two files, two `.in` files or two `.out` files for
+the same case, a folder without a pair, or a folder nested inside a case folder
+is reported by name, and the whole import is refused.
 
 The form applies one configuration to every case in the batch: input and output
 type, visibility flags and limits. Check the values before importing.
 
-The archive is validated completely before anything is written. A broken folder
-is reported by name and the whole import is refused. Limits: 500 cases, 64 MiB
-compressed, 256 MiB expanded, 32 MiB per file and 4000 zip entries.
+The archive is validated completely before anything is written. Limits: 500
+cases, 64 MiB compressed, 256 MiB expanded, 32 MiB per file and 4000 zip
+entries.
 
 ### Export cases
 
@@ -554,7 +568,7 @@ the test cases themselves.
 | A submission is refused with `422` | the deadline passed for a student, or the exercise has no test cases |
 | A recompilation fails with `503` | the judge is not ready; check with the administrator, then retry |
 | An imported class fails on a file type | the extension is not in the platform catalog; ask an administrator to register it |
-| A batch import fails | a folder has no `.in`, no `.out`, more than one of either, a nested folder, or the archive exceeds a limit |
+| A batch import fails | a case has no `.in`, no `.out`, more than one of either, a nested folder, or the archive exceeds a limit |
 | A CSV grade looks different from the table | missing cells are empty in the CSV but count as zero in the class grade; the table shows the best score, while **Baixar submissões** reports the latest |
 | The class email did not arrive | SMTP is misconfigured, or recipients are on a blocked relay; check with the administrator and the server logs |
 | Students cannot see the expected output | **Mostrar saída esperada** is off for the case |
