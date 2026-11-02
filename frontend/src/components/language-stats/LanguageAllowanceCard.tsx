@@ -1,6 +1,5 @@
 import { BookOpenIcon } from "lucide-react";
 
-import { SectionCard } from "@/components/app/SectionCard";
 import { EmptyState } from "@/components/app/states";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -39,10 +38,7 @@ export function LanguageAllowanceCard({
   const rows = allowanceLanguages(languages);
 
   return (
-    <SectionCard
-      title="Oferta dos professores"
-      description="Em quantos exercícios cada linguagem é permitida. Os professores são contados uma vez, mesmo que tenham vários exercícios com a mesma linguagem."
-    >
+    <div className="space-y-3">
       {rows.length === 0 ? (
         <EmptyState
           icon={BookOpenIcon}
@@ -115,11 +111,11 @@ export function LanguageAllowanceCard({
         </Table>
       )}
 
-      <p className="text-muted-foreground mt-3 text-xs leading-relaxed">
+      <p className="text-muted-foreground text-xs leading-relaxed">
         Exercícios removidos ficam fora da contagem. Uma linguagem oculta
         continua aparecendo se algum exercício já a usa, mas não pode ser
         escolhida em novos exercícios nem em novas submissões.
       </p>
-    </SectionCard>
+    </div>
   );
 }

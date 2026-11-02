@@ -197,6 +197,11 @@ within the class.
 
 ## Reading the page
 
+The detail views are tabs: **Escolha**, **Oferta**, **CPU**, **Memória** and
+**Fases**. Only the selected view is visible, and each table scrolls inside its
+panel with the header pinned, so switching views does not require scrolling
+past every metric.
+
 | Section | Shows |
 | --- | --- |
 | Summary cards | classified submissions, languages chosen, exercises, professor authors |

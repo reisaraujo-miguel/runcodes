@@ -14,6 +14,7 @@ import type {
   SubmissionArtifact,
   SubmissionStatusEvent,
 } from "@/lib/api/submissions";
+import { formatBytes, formatCpuTime } from "@/lib/format";
 import {
   commitStatus,
   finishedStatus,
@@ -208,6 +209,13 @@ export function ResultsPanel({
     final?.numCorrectCases ??
     results.filter((result) => result.status === "correct").length;
   const hasSubmission = commitId !== null;
+  const totalCpuTime = results.reduce((sum, result) => sum + result.cpuTime, 0);
+  const peakMemory = results.reduce(
+    (peak, result) =>
+      result.memUsage >= 0 && result.memUsage > peak ? result.memUsage : peak,
+    -1,
+  );
+  const showResources = hasSubmission && results.length > 0;
 
   const liveMessage =
     commitId === null
@@ -404,6 +412,15 @@ export function ResultsPanel({
                 <span className="text-foreground text-xs font-semibold tabular-nums">
                   {final.score.toFixed(2)}
                 </span>
+              </span>
+            ) : null}
+            {showResources ? (
+              <span
+                className="text-muted-foreground hidden items-center gap-2 text-[11px] tabular-nums sm:flex"
+                title={`CPU total ${formatCpuTime(totalCpuTime)}; maior memória entre os casos ${formatBytes(peakMemory)}`}
+              >
+                <span>CPU {formatCpuTime(totalCpuTime)}</span>
+                <span>Memória pico {formatBytes(peakMemory)}</span>
               </span>
             ) : null}
           </div>

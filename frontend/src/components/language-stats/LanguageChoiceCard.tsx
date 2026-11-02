@@ -1,6 +1,5 @@
 import { UsersIcon } from "lucide-react";
 
-import { SectionCard } from "@/components/app/SectionCard";
 import { EmptyState } from "@/components/app/states";
 import { Badge } from "@/components/ui/badge";
 import type { LanguageStat } from "@/lib/api";
@@ -25,10 +24,7 @@ export function LanguageChoiceCard({
   const rows = choiceLanguages(languages);
 
   return (
-    <SectionCard
-      title="Escolha dos alunos"
-      description="Submissões de alunos por linguagem. O total e a porcentagem usam todas as submissões classificadas; a taxa “quando ofertada”, no detalhe, usa apenas os exercícios que permitiram a linguagem."
-    >
+    <div className="space-y-3">
       {rows.length === 0 ? (
         <EmptyState
           icon={UsersIcon}
@@ -36,7 +32,7 @@ export function LanguageChoiceCard({
           description="Quando os alunos enviarem soluções, a distribuição por linguagem aparece aqui."
         />
       ) : (
-        <div className="space-y-5">
+        <div className="max-h-[45dvh] space-y-5 overflow-y-auto pr-1">
           {rows.map((language) => (
             <article
               key={language.file_type_id}
@@ -99,7 +95,7 @@ export function LanguageChoiceCard({
       )}
 
       {unclassifiedSubmissions > 0 ? (
-        <p className="text-muted-foreground mt-4 text-xs leading-relaxed">
+        <p className="text-muted-foreground text-xs leading-relaxed">
           {formatCount(unclassifiedSubmissions)}{" "}
           {unclassifiedSubmissions === 1
             ? "submissão não pôde ser classificada"
@@ -110,10 +106,10 @@ export function LanguageChoiceCard({
         </p>
       ) : null}
 
-      <p className="text-muted-foreground mt-2 text-xs">
+      <p className="text-muted-foreground text-xs">
         Total classificado: {formatCount(classifiedSubmissions)}{" "}
         {classifiedSubmissions === 1 ? "submissão" : "submissões"}.
       </p>
-    </SectionCard>
+    </div>
   );
 }

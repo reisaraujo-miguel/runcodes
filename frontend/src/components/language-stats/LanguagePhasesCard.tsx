@@ -1,4 +1,3 @@
-import { SectionCard } from "@/components/app/SectionCard";
 import {
   Table,
   TableBody,
@@ -28,10 +27,7 @@ export function LanguagePhasesCard({
   );
 
   return (
-    <SectionCard
-      title="Onde o tempo vai"
-      description="Medianas por fase, medidas em execuções reais. As fases não somam necessariamente o tempo total; a compilação só se aplica a linguagens compiladas e pulls frios ficam fora da mediana da imagem."
-    >
+    <div className="space-y-3">
       <Table aria-label="Medianas de tempo por fase e linguagem">
         <TableHeader>
           <TableRow>
@@ -140,13 +136,13 @@ export function LanguagePhasesCard({
         </TableBody>
       </Table>
 
-      <p className="text-muted-foreground mt-3 text-xs leading-relaxed">
+      <p className="text-muted-foreground text-xs leading-relaxed">
         A porcentagem é a cobertura: execuções com a fase medida sobre as
         execuções classificadas no escopo. Submissões antigas não têm fases e
         aparecem como “sem dados”. O tempo de compilação vem do monitor, não da
         diferença entre eventos.
       </p>
-    </SectionCard>
+    </div>
   );
 }
 
