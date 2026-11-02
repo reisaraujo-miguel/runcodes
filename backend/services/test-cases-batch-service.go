@@ -49,8 +49,8 @@ type BatchTestCaseConfig struct {
 }
 
 /*
-BatchImportError carries every folder of the archive that could not be parsed,
-so one upload lists all structural problems instead of one per attempt.
+BatchImportError carries every case of the archive that could not be parsed, so
+one upload lists all structural problems instead of one per attempt.
 */
 type BatchImportError struct {
 	Issues []models.BatchTestCaseIssue
@@ -61,7 +61,7 @@ func (e *BatchImportError) Error() string {
 		return ErrInvalidTestCase.Error()
 	}
 	return fmt.Sprintf(
-		"%s: %d folder(s) do arquivo não seguem o formato esperado",
+		"%s: %d caso(s) do arquivo não seguem o formato esperado",
 		ErrInvalidTestCase.Error(), len(e.Issues),
 	)
 }
@@ -176,24 +176,63 @@ func hasExtension(name, extension string) bool {
 
 /*
 ParseBatchTestCaseArchive validates the whole archive and returns the cases it
-contains. Nothing is written before every folder passes, so a malformed folder
+contains. Nothing is written before every case passes, so a malformed archive
 does not leave a half-imported exercise behind.
 
-The accepted layout is one folder per test case:
+A case is a pair of `.in` and `.out` files. The pair may sit directly at the root
+of the archive, named after the case, or inside a folder of that name:
 
-	1/input.in
-	1/output.out
-	1/extra.txt
-	2/input.in
-	2/output.out
-	2/files/notes.in   (an extra file that would otherwise look like the input)
+	1.in
+	1.out
+	2/
+	  2.in
+	  2.out
+	  ajuda.txt
 
-Each case folder must contain exactly one `.in` and exactly one `.out` file. Any
-other file is an extra test-case file, materialised next to the case input by the
-judge. The `files/` subfolder is accepted so an exported archive can carry an
-extra file whose name ends in `.in` or `.out` without ambiguity.
+At the root the pair is matched by base name (`1.in` with `1.out`), so a folder
+is only needed when the case carries extra files. Any other file at the root is
+ignored and returned in the second value, so the caller can tell the professor
+what the import skipped. Inside a case folder every other file is an extra case
+file, and a `files/` subfolder holds extras whose names end in `.in` or `.out`.
+
+The second return value is the sorted list of ignored root files; it is empty
+when every root file was used.
 */
-func ParseBatchTestCaseArchive(data []byte) ([]batchTestCase, error) {
+func ParseBatchTestCaseArchive(data []byte) ([]batchTestCase, []string, error) {
+	entries, err := readBatchArchive(data)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	cases, err := entries.testCases()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	ignored := append([]string(nil), entries.ignored...)
+	sort.Strings(ignored)
+	return cases, ignored, nil
+}
+
+// batchArchiveEntries is the raw content of an archive, grouped before it is
+// turned into test cases.
+type batchArchiveEntries struct {
+	// folders holds each case folder's own files.
+	folders map[string]map[string][]byte
+	// extraFolders holds the files of a case's files/ subfolder.
+	extraFolders map[string]map[string][]byte
+	// rootFiles holds the root entries, keyed by their full name.
+	rootFiles map[string][]byte
+	// ignored holds the root entries that are neither .in nor .out.
+	ignored []string
+	issues  *issueCollector
+}
+
+/*
+readBatchArchive validates the zip container and groups its entries. Only the
+structure is checked here; pairing the files is testCases' job.
+*/
+func readBatchArchive(data []byte) (*batchArchiveEntries, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("%w: the archive is empty", ErrInvalidArchive)
 	}
@@ -209,9 +248,12 @@ func ParseBatchTestCaseArchive(data []byte) ([]batchTestCase, error) {
 		return nil, fmt.Errorf("%w: too many entries", ErrArchiveTooLarge)
 	}
 
-	folders := make(map[string]map[string][]byte)
-	extraFolders := make(map[string]map[string][]byte)
-	issues := newIssueCollector()
+	entries := &batchArchiveEntries{
+		folders:      make(map[string]map[string][]byte),
+		extraFolders: make(map[string]map[string][]byte),
+		rootFiles:    make(map[string][]byte),
+		issues:       newIssueCollector(),
+	}
 
 	var expanded int64
 	for _, file := range reader.File {
@@ -221,7 +263,7 @@ func ParseBatchTestCaseArchive(data []byte) ([]batchTestCase, error) {
 
 		segments, ok := normalizeArchivePath(file.Name)
 		if !ok {
-			issues.add("", fmt.Sprintf(
+			entries.issues.add("", fmt.Sprintf(
 				"caminho inválido no arquivo: %q", file.Name,
 			))
 			continue
@@ -230,152 +272,315 @@ func ParseBatchTestCaseArchive(data []byte) ([]batchTestCase, error) {
 			continue
 		}
 
+		// Count every entry, including the ignored ones, so the expanded size
+		// stays a real bound on what the archive could unpack to.
+		expanded += int64(file.UncompressedSize64)
+		if expanded > MaxBatchExpandedBytes {
+			return nil, ErrArchiveTooLarge
+		}
+
 		switch {
 		case len(segments) == 1:
-			issues.add(segments[0],
-				"arquivo solto na raiz; cada caso deve ficar em uma pasta própria",
-			)
-			continue
+			if err := entries.addRootEntry(file, segments[0]); err != nil {
+				return nil, err
+			}
 		case len(segments) == 2:
-			name := segments[1]
-			expanded += int64(file.UncompressedSize64)
-			if expanded > MaxBatchExpandedBytes {
-				return nil, ErrArchiveTooLarge
-			}
 			content, err := readZipEntry(file)
 			if err != nil {
 				return nil, err
 			}
-			addArchiveFile(folders, segments[0], name, content)
-			continue
+			addArchiveFile(entries.folders, segments[0], segments[1], content)
 		case len(segments) == 3 && segments[1] == "files":
-			name := segments[2]
-			expanded += int64(file.UncompressedSize64)
-			if expanded > MaxBatchExpandedBytes {
-				return nil, ErrArchiveTooLarge
-			}
 			content, err := readZipEntry(file)
 			if err != nil {
 				return nil, err
 			}
-			addArchiveFile(extraFolders, segments[0], name, content)
-			continue
+			addArchiveFile(entries.extraFolders, segments[0], segments[2], content)
 		default:
-			issues.add(segments[0], fmt.Sprintf(
+			entries.issues.add(segments[0], fmt.Sprintf(
 				"estrutura de pastas não suportada em %q; os arquivos do caso devem ficar diretamente dentro da pasta do caso",
 				file.Name,
 			))
-			continue
 		}
 	}
 
-	if err := issues.err(); err != nil {
+	return entries, nil
+}
+
+/*
+addRootEntry records one file at the root of the archive: a `.in` or `.out` file
+belongs to a case, and anything else is ignored and reported to the professor.
+*/
+func (e *batchArchiveEntries) addRootEntry(file *zip.File, name string) error {
+	if caseFileExtension(name) == "" {
+		e.ignored = append(e.ignored, name)
+		return nil
+	}
+	if caseBaseName(name) == "" {
+		e.issues.add(name, "arquivo de caso sem nome antes da extensão")
+		return nil
+	}
+
+	content, err := readZipEntry(file)
+	if err != nil {
+		return err
+	}
+	e.rootFiles[name] = content
+	return nil
+}
+
+/*
+testCases turns the grouped entries into cases, one per name. A case name comes
+from the folder name or, for a root pair, from the file base name. All problems
+are collected so the caller can show every offending case at once.
+*/
+func (e *batchArchiveEntries) testCases() ([]batchTestCase, error) {
+	rootInputs, rootOutputs := e.rootPairNames()
+
+	// A files/ subfolder only makes sense inside a case folder; when the pair is
+	// at the root there is no folder to hold its extras, and dropping them
+	// silently would hide files the professor meant to attach.
+	for name := range e.extraFolders {
+		if _, isFolder := e.folders[name]; !isFolder {
+			e.issues.add(name,
+				"os arquivos de files/ precisam ficar dentro da pasta do caso",
+			)
+		}
+	}
+
+	names := make([]string, 0, len(e.folders)+len(rootInputs)+len(rootOutputs))
+	for name := range e.folders {
+		names = append(names, name)
+	}
+	for name := range rootInputs {
+		names = append(names, name)
+	}
+	for name := range rootOutputs {
+		names = append(names, name)
+	}
+	names = uniqueSorted(names)
+
+	// Structure problems found while walking the archive come first: they explain
+	// why the archive has no usable case.
+	if err := e.issues.err(); err != nil {
 		return nil, err
 	}
-	if len(folders) == 0 {
+
+	if len(names) == 0 {
+		reason := "nenhum caso de teste encontrado (nem par .in/.out na raiz, nem pasta de caso)"
+		if len(e.ignored) > 0 {
+			sort.Strings(e.ignored)
+			reason += fmt.Sprintf(
+				"; arquivos ignorados na raiz: %s", limitedList(e.ignored, 10),
+			)
+		}
 		return nil, &BatchImportError{Issues: []models.BatchTestCaseIssue{{
 			Folder: "(raiz do arquivo)",
-			Reason: "nenhuma pasta de caso de teste foi encontrada",
+			Reason: reason,
 		}}}
 	}
-	if len(folders) > MaxBatchTestCases {
+	if len(names) > MaxBatchTestCases {
 		return nil, fmt.Errorf("%w: at most %d test cases per archive",
 			ErrArchiveTooLarge, MaxBatchTestCases)
 	}
 
-	names := make([]string, 0, len(folders))
-	for folder := range folders {
-		names = append(names, folder)
+	cases := make([]batchTestCase, 0, len(names))
+	for _, name := range names {
+		folder, isFolder := e.folders[name]
+		inputName, hasInput := rootInputs[name]
+		outputName, hasOutput := rootOutputs[name]
+
+		switch {
+		case isFolder && (hasInput || hasOutput):
+			e.issues.add(name,
+				"o caso aparece duas vezes: como pasta e como par .in/.out na raiz",
+			)
+		case isFolder:
+			if testCase, ok := e.folderCase(name, folder); ok {
+				cases = append(cases, testCase)
+			}
+		default:
+			if !hasInput {
+				e.issues.add(name, fmt.Sprintf(
+					"falta o arquivo %q (entrada do caso)", name+".in",
+				))
+			}
+			if !hasOutput {
+				e.issues.add(name, fmt.Sprintf(
+					"falta o arquivo %q (saída esperada do caso)", name+".out",
+				))
+			}
+			if hasInput && hasOutput {
+				cases = append(cases, batchTestCase{
+					Folder:     name,
+					InputName:  inputName,
+					InputData:  e.rootFiles[inputName],
+					OutputName: outputName,
+					OutputData: e.rootFiles[outputName],
+				})
+			}
+		}
+	}
+
+	return cases, e.issues.err()
+}
+
+// rootPairNames matches the root `.in` files with the `.out` files of the same
+// base name, reporting a base that declares two inputs or two outputs.
+func (e *batchArchiveEntries) rootPairNames() (map[string]string, map[string]string) {
+	names := make([]string, 0, len(e.rootFiles))
+	for name := range e.rootFiles {
+		names = append(names, name)
 	}
 	sort.Strings(names)
 
-	cases := make([]batchTestCase, 0, len(names))
-	for _, folder := range names {
-		files := folders[folder]
-
-		var inputNames, outputNames []string
-		for name := range files {
-			switch {
-			case hasExtension(name, ".in"):
-				inputNames = append(inputNames, name)
-			case hasExtension(name, ".out"):
-				outputNames = append(outputNames, name)
-			}
+	inputs := make(map[string]string, len(names))
+	outputs := make(map[string]string, len(names))
+	for _, name := range names {
+		base := caseBaseName(name)
+		extension := caseFileExtension(name)
+		target := inputs
+		if extension == ".out" {
+			target = outputs
 		}
-		sort.Strings(inputNames)
-		sort.Strings(outputNames)
-
-		switch len(inputNames) {
-		case 0:
-			issues.add(folder, "falta um arquivo com extensão .in (entrada do caso)")
-		case 1:
-			// ok
-		default:
-			issues.add(folder, fmt.Sprintf(
-				"mais de um arquivo .in na pasta: %s",
-				strings.Join(inputNames, ", "),
+		if existing, duplicate := target[base]; duplicate {
+			e.issues.add(base, fmt.Sprintf(
+				"mais de um arquivo %s para o mesmo caso: %s, %s",
+				extension, existing, name,
 			))
-		}
-		switch len(outputNames) {
-		case 0:
-			issues.add(folder, "falta um arquivo com extensão .out (saída esperada do caso)")
-		case 1:
-			// ok
-		default:
-			issues.add(folder, fmt.Sprintf(
-				"mais de um arquivo .out na pasta: %s",
-				strings.Join(outputNames, ", "),
-			))
-		}
-		if err := issues.err(); err != nil {
 			continue
 		}
+		target[base] = name
+	}
+	return inputs, outputs
+}
 
-		inputName := inputNames[0]
-		outputName := outputNames[0]
-
-		extras := make([]batchExtraFile, 0, len(files)-2)
-		seen := make(map[string]struct{}, len(files))
-		for name, content := range files {
-			if _, duplicate := seen[name]; duplicate {
-				issues.add(folder, fmt.Sprintf("arquivo duplicado na pasta: %s", name))
-				continue
-			}
-			seen[name] = struct{}{}
-			if name == inputName || name == outputName {
-				continue
-			}
-			extras = append(extras, batchExtraFile{Name: name, Data: content})
+// folderCase builds one case from a folder, checking that it declares exactly
+// one input and one output.
+func (e *batchArchiveEntries) folderCase(
+	name string, files map[string][]byte,
+) (batchTestCase, bool) {
+	var inputNames, outputNames []string
+	for fileName := range files {
+		switch {
+		case hasExtension(fileName, ".in"):
+			inputNames = append(inputNames, fileName)
+		case hasExtension(fileName, ".out"):
+			outputNames = append(outputNames, fileName)
 		}
-		for name, content := range extraFolders[folder] {
-			if _, duplicate := seen[name]; duplicate {
-				issues.add(folder, fmt.Sprintf(
-					"arquivo extra duplicado entre a pasta do caso e files/: %s", name,
-				))
-				continue
-			}
-			seen[name] = struct{}{}
-			extras = append(extras, batchExtraFile{Name: name, Data: content})
-		}
-		sort.Slice(extras, func(i, j int) bool {
-			return extras[i].Name < extras[j].Name
-		})
+	}
+	sort.Strings(inputNames)
+	sort.Strings(outputNames)
 
-		cases = append(cases, batchTestCase{
-			Folder:     folder,
-			InputName:  inputName,
-			InputData:  files[inputName],
-			OutputName: outputName,
-			OutputData: files[outputName],
-			ExtraFiles: extras,
-		})
+	broken := false
+	switch len(inputNames) {
+	case 0:
+		e.issues.add(name, "falta um arquivo com extensão .in (entrada do caso)")
+		broken = true
+	case 1:
+		// ok
+	default:
+		e.issues.add(name, fmt.Sprintf(
+			"mais de um arquivo .in na pasta: %s",
+			strings.Join(inputNames, ", "),
+		))
+		broken = true
+	}
+	switch len(outputNames) {
+	case 0:
+		e.issues.add(name, "falta um arquivo com extensão .out (saída esperada do caso)")
+		broken = true
+	case 1:
+		// ok
+	default:
+		e.issues.add(name, fmt.Sprintf(
+			"mais de um arquivo .out na pasta: %s",
+			strings.Join(outputNames, ", "),
+		))
+		broken = true
+	}
+	if broken {
+		return batchTestCase{}, false
 	}
 
-	if err := issues.err(); err != nil {
-		return nil, err
-	}
+	inputName := inputNames[0]
+	outputName := outputNames[0]
 
-	return cases, nil
+	extras := make([]batchExtraFile, 0, len(files)-2)
+	seen := make(map[string]struct{}, len(files))
+	for fileName, content := range files {
+		seen[fileName] = struct{}{}
+		if fileName == inputName || fileName == outputName {
+			continue
+		}
+		extras = append(extras, batchExtraFile{Name: fileName, Data: content})
+	}
+	for fileName, content := range e.extraFolders[name] {
+		if _, duplicate := seen[fileName]; duplicate {
+			e.issues.add(name, fmt.Sprintf(
+				"arquivo extra duplicado entre a pasta do caso e files/: %s", fileName,
+			))
+			continue
+		}
+		seen[fileName] = struct{}{}
+		extras = append(extras, batchExtraFile{Name: fileName, Data: content})
+	}
+	sort.Slice(extras, func(i, j int) bool {
+		return extras[i].Name < extras[j].Name
+	})
+
+	return batchTestCase{
+		Folder:     name,
+		InputName:  inputName,
+		InputData:  files[inputName],
+		OutputName: outputName,
+		OutputData: files[outputName],
+		ExtraFiles: extras,
+	}, true
+}
+
+// caseFileExtension is ".in" or ".out" for a case file, ignoring the case of the
+// extension, and "" for anything else.
+func caseFileExtension(name string) string {
+	switch {
+	case hasExtension(name, ".in"):
+		return ".in"
+	case hasExtension(name, ".out"):
+		return ".out"
+	default:
+		return ""
+	}
+}
+
+// caseBaseName is the case name encoded by a root file: its name without the
+// .in/.out extension.
+func caseBaseName(name string) string {
+	extension := caseFileExtension(name)
+	if extension == "" {
+		return ""
+	}
+	return strings.TrimSpace(name[:len(name)-len(extension)])
+}
+
+// uniqueSorted returns the names without duplicates, in order.
+func uniqueSorted(names []string) []string {
+	sort.Strings(names)
+	out := names[:0]
+	for _, name := range names {
+		if len(out) > 0 && out[len(out)-1] == name {
+			continue
+		}
+		out = append(out, name)
+	}
+	return out
+}
+
+// limitedList joins names for a message, capping how many it spells out.
+func limitedList(names []string, max int) string {
+	if len(names) <= max {
+		return strings.Join(names, ", ")
+	}
+	return fmt.Sprintf("%s, … (+%d)", strings.Join(names[:max], ", "), len(names)-max)
 }
 
 func addArchiveFile(
@@ -427,7 +632,7 @@ func CreateTestCasesBatch(
 		return nil, err
 	}
 
-	cases, err := ParseBatchTestCaseArchive(archive)
+	cases, ignored, err := ParseBatchTestCaseArchive(archive)
 	if err != nil {
 		return nil, err
 	}
@@ -605,6 +810,7 @@ func CreateTestCasesBatch(
 
 	return &models.BatchTestCaseImportResponse{
 		Created:   len(created),
+		Ignored:   ignored,
 		TestCases: created,
 	}, nil
 }

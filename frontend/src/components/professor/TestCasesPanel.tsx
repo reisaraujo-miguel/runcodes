@@ -42,6 +42,14 @@ import { errorMessage } from "@/lib/errors";
 import { formatBytes, formatCpuTime, formatLimit } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
+/** Spells out the ignored root files, counting the ones that do not fit. */
+function ignoredSummary(names: readonly string[]): string {
+  const shown = names.slice(0, 6).join(", ");
+  return names.length > 6
+    ? `${shown}, … (+${String(names.length - 6)})`
+    : shown;
+}
+
 const FILE_INPUT = "file";
 
 /** A compact on/off indicator for a test case's visibility flag. */
@@ -176,8 +184,13 @@ export function TestCasesPanel({ exerciseId }: { exerciseId: number }) {
           onClose={() => {
             setShowBatch(false);
           }}
-          onImported={(created) => {
-            setNotice(`${String(created)} caso(s) importado(s).`);
+          onImported={(created, ignored) => {
+            const base = `${String(created)} caso(s) importado(s).`;
+            setNotice(
+              ignored.length === 0
+                ? base
+                : `${base} Arquivo(s) ignorado(s) na raiz: ${ignoredSummary(ignored)}.`,
+            );
             testCases.reload();
           }}
         />

@@ -311,12 +311,19 @@ export interface BatchTestCaseErrorBody {
 
 export interface BatchTestCaseImportResult {
   created: number;
+  /**
+   * Files at the archive root that were skipped because they are neither `.in`
+   * nor `.out`. The import still succeeds; the professor is told what was left
+   * out.
+   */
+  ignored?: string[];
   test_cases: TestCase[];
 }
 
 /**
- * Upload a zip with one folder per test case. Each folder must contain exactly
- * one `.in` and one `.out`; the configuration applies to every case.
+ * Upload a zip with one test case per `.in`/`.out` pair. The pair may sit at the
+ * archive root, named after the case, or inside a folder of that name when the
+ * case carries extra files. The configuration applies to every case.
  */
 export function importTestCasesBatch(
   exerciseId: number,

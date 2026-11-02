@@ -603,38 +603,56 @@ Creates many cases from one zip. The body is `multipart/form-data`:
 | `stack_limit_bytes` | int64 | `0` | 0 = platform default |
 | `file_size_limit_bytes` | int64 | `0` | 0 = platform default |
 
-The archive layout is one folder per case:
+A case is an `.in` and an `.out` file with the same base name. The pair may sit
+at the root of the archive:
 
 ```text
-caso1/
-  entrada.in
-  saida.out
+1.in
+1.out
+2.in
+2.out
+README.md      # ignored
+```
+
+A folder is only needed when the case carries extra files; inside a case folder
+every other file is an extra case file, and a `files/` subfolder holds extras
+whose names end in `.in` or `.out`:
+
+```text
+caso3/
+  caso3.in
+  caso3.out
   ajuda.txt
-caso2/
+caso4/
   entrada.in
   saida.out
   files/notas.in
 ```
 
-Each folder must contain exactly one `.in` and one `.out` file. Other files are
-extra case files. An extra file whose name ends in `.in` or `.out` belongs in a
-`files/` subfolder. The whole archive is validated before anything is written.
+Root files that are neither `.in` nor `.out` are ignored and listed back in the
+response. A pair with one file missing, two inputs or two outputs for the same
+case, a folder without a pair or a nested folder makes the whole import fail; the
+archive is validated before anything is written.
 
 Limits: 500 cases, 4000 zip entries, 256 MiB expanded and 32 MiB per file.
 
 Returns `201`:
 
 ```json
-{ "created": 12 }
+{
+  "created": 12,
+  "ignored": ["README.md"],
+  "test_cases": []
+}
 ```
 
-The response also contains the created cases in `test_cases`.
+`ignored` is omitted when every root file belonged to a case.
 
 A structural failure returns `422` with every bad folder:
 
 ```json
 {
-  "error_msg": "invalid test case: 2 folder(s) do not follow the expected format",
+  "error_msg": "invalid test case: 2 caso(s) do arquivo não seguem o formato esperado",
   "invalid_folders": [
     {
       "folder": "caso2",
