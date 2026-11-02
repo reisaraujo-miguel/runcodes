@@ -367,13 +367,11 @@ func (e *Engine) runContainer(
 		// code must not fail a submission.
 		compileInfo := readMonitor(filepath.Join(ws.BaseDir, "compilation.monitor_out"))
 		if compileInfo.HasTime {
-			wall := secondsDuration(compileInfo.Time)
-			if compileInfo.HasCPU {
-				timings.RecordCPU(model.PhaseCompile, wall,
-					secondsDuration(compileInfo.CPU))
-			} else {
-				timings.Record(model.PhaseCompile, wall)
-			}
+			timings.RecordMonitor(model.PhaseCompile,
+				secondsDuration(compileInfo.Time),
+				secondsDuration(compileInfo.CPU),
+				compileInfo.HasCPU,
+				compileInfo.Mem, compileInfo.HasMem)
 		}
 		compileFailed := compilationFailed(compileInfo)
 

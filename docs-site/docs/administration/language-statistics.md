@@ -119,8 +119,9 @@ The comparison is **observational**, not a controlled benchmark:
 - Test cases are written by professors and may not stress every language's
   weak spots equally.
 - The CPU index covers execution CPU. Compile time is measured separately by the
-  compile monitor; memory is still not measured (`mem_usage` is recorded as
-  `-1`), so there is no memory comparison yet.
+  compile monitor. Memory has its own paired index, but only for results with a
+  known memory figure; coverage is reported because old runs and hosts without a
+  readable memory controller record `-1`.
 - A language with fewer than five comparable cases is marked as a small sample.
   The table lists reliable samples first; small samples and unmeasured
   languages come after them, so a one-case outlier does not lead the ranking.
@@ -131,6 +132,24 @@ The comparison is **observational**, not a controlled benchmark:
 Use the index to find languages worth a closer look, not to declare a winner.
 When a number matters for a decision, reproduce it with a controlled run of the
 same programs on the same test cases.
+
+## Memory
+
+The **Memória** table applies the same paired method to peak memory: per test
+case, each language is reduced to its median peak, the case's baseline is the
+median across the languages that ran it, and the language index is the median of
+those ratios.
+
+Only results with a known memory figure enter. The monitor samples the
+container cgroup's `memory.current` every 10 ms; `-1` means the host exposed no
+readable controller or the image predates the measurement. The coverage column
+shows known results over every classified result, so a comparison built on a
+small slice is visible.
+
+The number is a cgroup peak, not pure RSS: it includes the harness, the runtime
+and page cache, and a peak shorter than 10 ms can be missed. Read it as a
+comparison between languages on the same test case, not as an absolute memory
+profile.
 
 ## Where the time goes
 
@@ -184,6 +203,7 @@ within the class.
 | **Escolha dos alunos** | submissions, share, students and the choice rate when offered |
 | **Oferta dos professores** | exercises, professors and classes per language |
 | **Tempo de CPU** | relative index, p25–p75, compared cases, median CPU per case, executions |
+| **Memória** | relative peak-memory index, range, compared cases, median bytes and coverage |
 | **Onde o tempo vai** | queue, preparation, image, startup, compilation, execution and grading medians |
 
 A dash (`—`) in the CPU table means the language has no comparable test case

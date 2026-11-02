@@ -228,10 +228,17 @@ func buildLanguageStatistics(
 	if err != nil {
 		return nil, err
 	}
+	memory, err := loadLanguageMemory(ctx, offeringID)
+	if err != nil {
+		return nil, err
+	}
 	for i := range statistics.Languages {
 		entry := &statistics.Languages[i]
 		if measured, ok := timings[entry.FileTypeID]; ok {
 			entry.Timings = measured
+		}
+		if measured, ok := memory[entry.FileTypeID]; ok {
+			entry.Memory = measured
 		}
 	}
 

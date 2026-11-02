@@ -15,7 +15,7 @@ import (
 func TestReadMonitor(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "1.monitor_out")
-	content := "[info]\nexit_status=0\nsignal=\ntime=0.042\ncpu_time=0.031\nmem=123456\n"
+	content := "[info]\nexit_status=0\nsignal=\ntime=0.042\ncpu_time=0.031\nmem_peak_bytes=123456\n"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestReadMonitor(t *testing.T) {
 		t.Errorf("cpu_time = %v (has=%v), want 0.031", info.CPU, info.HasCPU)
 	}
 	if !info.HasMem || info.Mem != 123456 {
-		t.Errorf("mem = %d (has=%v), want 123456", info.Mem, info.HasMem)
+		t.Errorf("mem_peak_bytes = %d (has=%v), want 123456", info.Mem, info.HasMem)
 	}
 }
 

@@ -11,9 +11,14 @@ import (
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 )
 
+var languageMemoryColumns = []string{
+	"file_type_id", "compared_test_cases", "compared_exercises",
+	"median_bytes", "relative", "p25", "p75", "known_results", "total_results",
+}
+
 var languageTimingsColumns = []string{
 	"file_type_id", "phase", "samples", "cold_samples", "warm_samples",
-	"median_ms", "p25_ms", "p75_ms", "median_cpu_ms", "commits",
+	"median_ms", "p25_ms", "p75_ms", "median_cpu_ms", "median_mem_bytes", "commits",
 }
 
 var languageStatisticsColumns = []string{
@@ -58,6 +63,9 @@ func TestBuildLanguageStatistics(t *testing.T) {
 	mock.ExpectQuery(`commit_phase_timings`).
 		WithArgs(nil).
 		WillReturnRows(sqlmock.NewRows(languageTimingsColumns))
+	mock.ExpectQuery(`mem_usage`).
+		WithArgs(minComparisonLanguages, nil).
+		WillReturnRows(sqlmock.NewRows(languageMemoryColumns))
 
 	statistics, err := buildLanguageStatistics(context.Background(), nil)
 	if err != nil {
@@ -151,6 +159,9 @@ func TestBuildLanguageStatisticsWithOfferingScope(t *testing.T) {
 	mock.ExpectQuery(`commit_phase_timings`).
 		WithArgs(int64(3)).
 		WillReturnRows(sqlmock.NewRows(languageTimingsColumns))
+	mock.ExpectQuery(`mem_usage`).
+		WithArgs(minComparisonLanguages, int64(3)).
+		WillReturnRows(sqlmock.NewRows(languageMemoryColumns))
 
 	offeringID := int64(3)
 	statistics, err := buildLanguageStatistics(context.Background(), &offeringID)

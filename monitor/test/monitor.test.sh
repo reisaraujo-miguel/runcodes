@@ -58,15 +58,19 @@ check "the monitor is linked statically" \
 # A helper the limit tests can run: it tries to allocate and touch 64 MiB.
 cat >"${work}/allocate.c" <<'EOF'
 #include <stdlib.h>
-#include <string.h>
+#include <unistd.h>
 
 int main(void) {
     size_t n = 64u << 20;
     char *p = malloc(n);
     if (!p)
         return 3;
-    memset(p, 1, n);
-    return 0;
+    /* Touch every page and hold it long enough for the 10 ms sampler to see
+       it. A plain memset() without a later use is optimized away by -O2. */
+    for (size_t i = 0; i < n; i += 4096)
+        p[i] = 1;
+    usleep(200000);
+    return p[0] == 0;
 }
 EOF
 gcc -O2 "${work}/allocate.c" -o "${work}/allocate"
@@ -82,6 +86,8 @@ check "the wall time is reported" \
     grep -q '^time=' <<<"${stdout_report}"
 check "the CPU time line is reported" \
     grep -q '^cpu_time=' <<<"${stdout_report}"
+check "the memory peak line is reported" \
+    grep -q '^mem_peak_bytes=' <<<"${stdout_report}"
 
 # A non-zero exit status is reported as such.
 "${monitor}" -o "${work}/out" -e "${work}/err" -r "${work}/report_fail" -c /bin/false
@@ -204,6 +210,16 @@ check "an allocation over the memory limit fails" \
     -c "${work}/allocate"
 check "the same allocation succeeds without a memory limit" \
     grep -q '^exit_status=0$' "${work}/mem_report_free"
+
+# The memory sampler reports the container cgroup, so the exact number depends
+# on the host. When the controller is readable, assert that the 64 MiB
+# allocation is visible; when it is unavailable (-1), the report line above is
+# all we can check.
+mem_peak="$(sed -n 's/^mem_peak_bytes=//p' "${work}/mem_report_free" | tail -n 1)"
+if [ "${mem_peak:-}" -ge 0 ] 2>/dev/null; then
+    check "the sampled memory peak reflects the allocation" \
+        test "${mem_peak}" -gt 33554432
+fi
 
 # -f: the file size limit bounds what the command can write.
 "${monitor}" -o "${work}/big_out" -e "${work}/err" -r "${work}/fs_report" \

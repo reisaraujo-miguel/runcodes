@@ -54,6 +54,9 @@ type LanguageStat struct {
 	// Timings and resources. A nil phase means the report has no measurements
 	// for it yet (older runs, or a phase the language does not have).
 	Timings LanguageTimings `json:"timings"`
+	// Memory is the paired peak-memory comparison. It is nil when no result has
+	// a known memory figure.
+	Memory *MemoryStat `json:"memory,omitempty"`
 
 	// CPU performance. RelativeCPU is the median, across comparable test cases,
 	// of this language's median CPU time divided by the median of the languages
@@ -76,7 +79,10 @@ type PhaseStat struct {
 	P25Seconds           *float64 `json:"p25_seconds"`
 	P75Seconds           *float64 `json:"p75_seconds"`
 	CPUTimeMedianSeconds *float64 `json:"cpu_time_median_seconds,omitempty"`
-	Samples              int64    `json:"samples"`
+	// MemPeakBytes is the compile phase's median peak memory. It is populated
+	// only for phases whose monitor report carried a memory figure.
+	MemPeakBytes *int64 `json:"mem_peak_bytes,omitempty"`
+	Samples      int64  `json:"samples"`
 	// WarmSamples and ColdSamples are populated for image_ensure; a cold pull
 	// is excluded from the median so image-cache state does not dominate it.
 	WarmSamples int64   `json:"warm_samples,omitempty"`
@@ -94,4 +100,20 @@ type LanguageTimings struct {
 	Run       *PhaseStat `json:"run,omitempty"`
 	Grade     *PhaseStat `json:"grade,omitempty"`
 	Artifact  *PhaseStat `json:"artifact,omitempty"`
+}
+
+// MemoryStat is the paired peak-memory comparison. Relative is the median,
+// across comparable test cases, of the language's median peak divided by the
+// median of the languages on that case. Coverage is the share of executed case
+// results with a known memory figure.
+type MemoryStat struct {
+	Relative          *float64 `json:"relative"`
+	P25               *float64 `json:"p25"`
+	P75               *float64 `json:"p75"`
+	MedianBytes       *int64   `json:"median_bytes"`
+	ComparedTestCases int64    `json:"compared_test_cases"`
+	ComparedExercises int64    `json:"compared_exercises"`
+	KnownResults      int64    `json:"known_results"`
+	TotalResults      int64    `json:"total_results"`
+	Coverage          float64  `json:"coverage"`
 }

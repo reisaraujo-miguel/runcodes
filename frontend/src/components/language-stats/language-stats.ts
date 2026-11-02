@@ -1,4 +1,4 @@
-import type { LanguageStat } from "@/lib/api";
+import type { LanguageStat, MemoryStat } from "@/lib/api";
 
 const countFormatter = new Intl.NumberFormat("pt-BR");
 const percentFormatter = new Intl.NumberFormat("pt-BR", {
@@ -138,4 +138,38 @@ function sampleRank(language: LanguageStat): number {
   if (language.compared_test_cases >= SMALL_SAMPLE) return 0;
   if (language.compared_test_cases > 0) return 1;
   return 2;
+}
+
+/**
+ * Languages with a memory comparison, reliable samples first and the cheapest
+ * relative index first within each group. Languages without a known memory
+ * figure are omitted; the card states how many were left out.
+ */
+export function memoryLanguages(
+  languages: readonly LanguageStat[],
+): LanguageStat[] {
+  return languages
+    .filter(
+      (language): language is LanguageStat & { memory: MemoryStat } =>
+        language.memory != null,
+    )
+    .toSorted((a, b) => {
+      const rank = memoryRank(a.memory) - memoryRank(b.memory);
+      if (rank !== 0) return rank;
+
+      const aRelative = a.memory.relative;
+      const bRelative = b.memory.relative;
+      if (aRelative === null && bRelative === null) {
+        return a.name.localeCompare(b.name, "pt-BR");
+      }
+      if (aRelative === null) return 1;
+      if (bRelative === null) return -1;
+      return aRelative - bRelative || a.name.localeCompare(b.name, "pt-BR");
+    });
+}
+
+/** 0 = enough comparable cases, 1 = small sample, 2 = no index. */
+function memoryRank(memory: MemoryStat): number {
+  if (memory.relative === null) return 2;
+  return memory.compared_test_cases >= SMALL_SAMPLE ? 0 : 1;
 }

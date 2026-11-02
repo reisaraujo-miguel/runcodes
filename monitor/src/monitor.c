@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include "monitor.h"
 
 #include <errno.h>
@@ -211,6 +213,62 @@ static long long read_cpu_v2_file(const char *path) {
  * cgroup root: a container whose cgroup namespace was not made private still
  * lives below the host hierarchy.
  */
+static long long read_first_long_long(const char *path) {
+  FILE *f = fopen(path, "r");
+  if (f == NULL)
+    return -1;
+
+  long long value;
+  int read = fscanf(f, "%lld", &value);
+  fclose(f);
+  return read == 1 ? value : -1;
+}
+
+/*
+ * cgroup_v2_file_path builds the path of one file in this process's cgroup v2
+ * directory. It reports 0 when /proc/self/cgroup has no v2 entry.
+ */
+static int cgroup_v2_file_path(const char *file, char *path, size_t len) {
+  FILE *cg = fopen("/proc/self/cgroup", "r");
+  if (cg == NULL)
+    return 0;
+
+  char line[PATH_MAX + 64];
+  char rel[PATH_MAX];
+  int found = 0;
+
+  while (fgets(line, sizeof(line), cg) != NULL) {
+    if (sscanf(line, "0::%4095s", rel) == 1) {
+      int n;
+      if (strcmp(rel, "/") == 0)
+        n = snprintf(path, len, "/sys/fs/cgroup/%s", file);
+      else
+        n = snprintf(path, len, "/sys/fs/cgroup%s/%s", rel, file);
+      found = n > 0 && (size_t)n < len;
+      break;
+    }
+  }
+
+  fclose(cg);
+  return found;
+}
+
+/*
+ * read_memory_current returns the current memory charge of this process's
+ * cgroup, in bytes. The monitor samples this while the command runs; unlike
+ * memory.peak, memory.current is readable without write access to the cgroup,
+ * which rootless containers commonly do not grant. It returns -1 when the host
+ * exposes neither cgroup v2 nor the v1 memory controller path.
+ */
+static long long read_memory_current(void) {
+  char path[PATH_MAX];
+  if (cgroup_v2_file_path("memory.current", path, sizeof(path)))
+    return read_first_long_long(path);
+
+  /* Some containers mount only the v1 memory controller. */
+  return read_first_long_long("/sys/fs/cgroup/memory/memory.usage_in_bytes");
+}
+
 static long long read_cpu_usage_ns(void) {
   FILE *cg = fopen("/proc/self/cgroup", "r");
   if (cg != NULL) {
@@ -269,14 +327,51 @@ static void kill_group(pid_t pgid) {
   }
 }
 
+static void sample_memory(MonitorStats *stats) {
+  long long current = read_memory_current();
+  if (current > stats->mem_peak_bytes)
+    stats->mem_peak_bytes = current;
+}
+
+/*
+ * block_sigchld blocks SIGCHLD so the monitor can wait for it with a timeout
+ * and sample memory between waits. The child restores the default mask before
+ * exec, so the graded program sees the normal signal mask.
+ */
+static void block_sigchld(sigset_t *previous) {
+  sigset_t set;
+  sigemptyset(&set);
+  sigaddset(&set, SIGCHLD);
+  sigprocmask(SIG_BLOCK, &set, previous);
+}
+
+static void restore_sigmask(const sigset_t *previous) {
+  sigprocmask(SIG_SETMASK, previous, NULL);
+}
+
+static void unblock_sigchld(void) {
+  sigset_t set;
+  sigemptyset(&set);
+  sigaddset(&set, SIGCHLD);
+  sigprocmask(SIG_UNBLOCK, &set, NULL);
+}
+
 static void trace_child(pid_t child_pid, MonitorStats *stats) {
   int status;
   struct rusage usage = {0};
 
+  /* Wait for SIGCHLD with a short timeout, sampling the cgroup's current memory
+     between waits. The child's exit wakes sigtimedwait immediately, so this
+     loop does not inflate the reported wall time. */
+  sigset_t waitset;
+  sigemptyset(&waitset);
+  sigaddset(&waitset, SIGCHLD);
+  const struct timespec interval = {0, 10 * 1000 * 1000};
+
   struct timespec ts_start, ts_end;
   clock_gettime(CLOCK_MONOTONIC, &ts_start);
   for (;;) {
-    pid_t pid = wait4(child_pid, &status, 0, &usage);
+    pid_t pid = wait4(child_pid, &status, WNOHANG, &usage);
     if (pid == -1) {
       if (errno == EINTR)
         continue;
@@ -285,7 +380,7 @@ static void trace_child(pid_t child_pid, MonitorStats *stats) {
       fprintf(stderr, "monitor: error: wait4()\n");
       break;
     }
-    if (WIFEXITED(status) || WIFSIGNALED(status)) {
+    if (pid == child_pid && (WIFEXITED(status) || WIFSIGNALED(status))) {
       clock_gettime(CLOCK_MONOTONIC, &ts_end);
       stats->time_sec = elapsed_secs(&ts_start, &ts_end);
       stats->child_cpu_sec = rusage_cpu_secs(&usage);
@@ -300,6 +395,18 @@ static void trace_child(pid_t child_pid, MonitorStats *stats) {
       }
       break;
     }
+
+    /* pid == 0: still running. pid == -1 handled above. A pid returned for the
+       child without an exit status cannot happen for a real child, but loop
+       defensively rather than spin. */
+    sample_memory(stats);
+
+    struct timespec timeout = interval;
+    int signal = sigtimedwait(&waitset, NULL, &timeout);
+    if (signal == -1 && errno != EAGAIN && errno != EINTR) {
+      /* sigtimedwait is unavailable in an unusual libc; do not spin. */
+      nanosleep(&interval, NULL);
+    }
   }
 }
 
@@ -309,20 +416,25 @@ static void init_stats(MonitorStats *stats) {
   stats->time_sec = -1.0f;
   stats->cpu_sec = -1.0f;
   stats->child_cpu_sec = -1.0f;
+  stats->mem_peak_bytes = -1;
 }
 
 int run_monitor(const MonitorParams *params, MonitorStats *stats) {
   init_stats(stats);
   long long cpu_before = read_cpu_usage_ns();
 
+  sigset_t previous_mask;
+  block_sigchld(&previous_mask);
+
   pid_t pid = fork();
   switch (pid) {
   case -1:
-    // failure
+    restore_sigmask(&previous_mask);
     return -1;
   case 0:
     // child: lead its own process group so the monitor can clean up
     // everything it starts without signalling itself
+    unblock_sigchld();
     setpgid(0, 0);
     exec_cmd(params);
     break;
@@ -331,6 +443,7 @@ int run_monitor(const MonitorParams *params, MonitorStats *stats) {
     setpgid(pid, pid);
     trace_child(pid, stats);
     kill_group(pid);
+    restore_sigmask(&previous_mask);
 
     long long cpu_after = read_cpu_usage_ns();
     if (cpu_before >= 0 && cpu_after >= cpu_before) {
@@ -350,9 +463,10 @@ int format_report(const MonitorStats *stats, char *buf, size_t buflen) {
                "exit_status=%d\n"
                "signal=%s\n"
                "time=%f\n"
-               "cpu_time=%f\n",
+               "cpu_time=%f\n"
+               "mem_peak_bytes=%lld\n",
                stats->exit_status, signal_name(stats->signal), stats->time_sec,
-               stats->cpu_sec);
+               stats->cpu_sec, stats->mem_peak_bytes);
 
   if (written < 0 || (size_t)written >= buflen)
     return -1;

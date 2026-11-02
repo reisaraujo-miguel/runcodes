@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { LanguageStat } from "@/lib/api";
+import type { LanguageStat, MemoryStat } from "@/lib/api";
 
 import {
   allowanceLanguages,
@@ -12,10 +12,26 @@ import {
   formatRatio,
   formatRatioRange,
   isSmallSample,
+  memoryLanguages,
   performanceLanguages,
   relativeBarWidth,
   relativeTone,
 } from "./language-stats";
+
+function memoryStat(overrides: Partial<MemoryStat> = {}): MemoryStat {
+  return {
+    relative: 1,
+    p25: 0.9,
+    p75: 1.1,
+    median_bytes: 1024,
+    compared_test_cases: 10,
+    compared_exercises: 2,
+    known_results: 10,
+    total_results: 10,
+    coverage: 100,
+    ...overrides,
+  };
+}
 
 function language(overrides: Partial<LanguageStat> = {}): LanguageStat {
   return {
@@ -128,6 +144,23 @@ describe("ordering the three views", () => {
       language({ file_type_id: 3, name: "R", relative_cpu: null }),
     ]);
     expect(rows.map((row) => row.name)).toEqual(["C", "Rust", "R"]);
+  });
+
+  test("memory keeps measured languages, reliable samples first", () => {
+    const rows = memoryLanguages([
+      language({
+        file_type_id: 1,
+        name: "Outlier",
+        memory: memoryStat({ relative: 0.5, compared_test_cases: 1 }),
+      }),
+      language({
+        file_type_id: 2,
+        name: "Solid",
+        memory: memoryStat({ relative: 1.2, compared_test_cases: 10 }),
+      }),
+      language({ file_type_id: 3, name: "None", memory: null }),
+    ]);
+    expect(rows.map((row) => row.name)).toEqual(["Solid", "Outlier"]);
   });
 
   test("performance keeps small samples below reliable ones", () => {

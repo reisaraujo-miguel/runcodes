@@ -110,6 +110,7 @@ export type {
   LanguageStatistics,
   LanguageStatisticsSummary,
   LanguageTimings,
+  MemoryStat,
   PhaseStat,
 } from "./language-stats";
 

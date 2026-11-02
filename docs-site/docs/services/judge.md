@@ -292,11 +292,12 @@ the monitor report is the submission's own product, so the judge:
 - reports a harness that exits non-zero after `run.done` as `server_error`
   instead of grading half-collected outputs.
 
-The monitor report carries `exit_status`, `signal` and `time` (plus the optional
-`cpu_time`). It does **not**
-carry memory usage, because the monitor is not the program's parent (the harness
-runs it through `timeout`). `mem_usage` is therefore recorded as `-1` (unknown)
-rather than as a number the judge cannot stand behind.
+The monitor report carries `exit_status`, `signal`, `time` and `cpu_time`, plus
+the optional `mem_peak_bytes`. Memory is a sampled peak of the container cgroup,
+not the program's RSS: the monitor is not the program's parent (the harness runs
+it through `timeout`), so it samples `memory.current` while the command runs.
+`mem_usage` stores that peak in bytes, or `-1` when the host exposes no readable
+memory controller or the container image is older than the report key.
 
 ## Failure handling
 

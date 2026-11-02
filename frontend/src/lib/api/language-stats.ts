@@ -33,6 +33,8 @@ export interface LanguageStat {
   relative_cpu_p25: number | null;
   relative_cpu_p75: number | null;
   timings?: LanguageTimings;
+  /** Peak-memory comparison; null/absent when no result has a known value. */
+  memory?: MemoryStat | null;
 }
 
 export interface PhaseStat {
@@ -40,12 +42,29 @@ export interface PhaseStat {
   p25_seconds: number | null;
   p75_seconds: number | null;
   cpu_time_median_seconds?: number | null;
+  /** Compile phase only: median peak memory from the monitor. */
+  mem_peak_bytes?: number | null;
   samples: number;
   /** Image phase only: runs that used an image already in the local store. */
   warm_samples?: number;
   /** Image phase only: runs that had to pull the image. */
   cold_samples?: number;
   /** Percentage of the scope's classified commits with this phase measured. */
+  coverage: number;
+}
+
+export interface MemoryStat {
+  /** Median ratio against the other languages on the same test cases. */
+  relative: number | null;
+  p25: number | null;
+  p75: number | null;
+  /** Median peak memory in bytes across the compared test cases. */
+  median_bytes: number | null;
+  compared_test_cases: number;
+  compared_exercises: number;
+  known_results: number;
+  total_results: number;
+  /** Percentage of executed case results with a known memory figure. */
   coverage: number;
 }
 

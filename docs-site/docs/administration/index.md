@@ -194,19 +194,23 @@ See [Platform settings & file types](./platform.md#file-types) and
 
 ## Read the language report
 
-**Linguagens** aggregates every class into three views of the same catalog:
+**Linguagens** aggregates every class into several views of the same catalog:
 
 - **Escolha dos alunos** (Student choice): submissions, students and the share
   each language gets inside the exercises that offered it;
 - **Oferta dos professores** (Professor allowance): exercises, classes and
   distinct professors that allow each type;
 - **Tempo de CPU** (CPU time): a paired comparison that uses each test case as
-  its own baseline, with a sample-size warning for languages with little data.
+  its own baseline, with a sample-size warning for languages with little data;
+- **Memória** (Memory): the same paired method for sampled peak memory, with
+  coverage because unknown values are excluded;
+- **Onde o tempo vai** (Where the time goes): queue, preparation, image,
+  startup, compilation, execution and grading medians.
 
 The page is not a ranking. A language can lead in adoption because it is offered
 everywhere, and the CPU index is observational: students are not assigned to
-languages at random and the monitor does not measure memory. The methodology,
-the denominators and the limitations are in
+languages at random, and memory is a sampled cgroup peak rather than pure RSS.
+The methodology, the denominators and the limitations are in
 [Language statistics](./language-statistics.md).
 
 Owners and co-professors see the same report scoped to their class in the
