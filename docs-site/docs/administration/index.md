@@ -17,7 +17,7 @@ used.
 
 ## What an administrator can do
 
-The **Administração** (Administration) section of the sidebar has six pages:
+The **Administração** (Administration) section of the sidebar has seven pages:
 
 | Page | Purpose |
 | --- | --- |
@@ -26,6 +26,7 @@ The **Administração** (Administration) section of the sidebar has six pages:
 | **Todas as Turmas** (All classes) | edit any class, transfer ownership, inspect members, delete |
 | **Tipos de Arquivo** (File types) | maintain the extension catalog used by exercises |
 | **Linguagens** (Languages) | adoption, professor allowance and CPU cost per language |
+| **Alertas** (Alerts) | infrastructure failures the judge recorded, with acknowledge |
 | **Configurações** (Settings) | contact email and login-page disclaimer |
 
 An administrator also has the teaching area, but only for classes they own or

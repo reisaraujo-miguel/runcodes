@@ -43,9 +43,14 @@ var (
 	ErrTestCaseNotFound        = errors.New("test case not found")
 	ErrCompilationFileNotFound = errors.New("compilation file not found")
 	ErrAttachedFileNotFound    = errors.New("attached file not found")
-	ErrInvalidTestCase         = errors.New("invalid test case")
-	ErrInvalidExercise         = errors.New("invalid exercise")
-	ErrInvalidEmail            = errors.New("invalid email message")
+	ErrBulletinPostNotFound    = errors.New("bulletin post not found")
+	ErrBulletinCommentNotFound = errors.New("bulletin comment not found")
+	// ErrBulletinPostForbidden refuses a post from someone who can read the class
+	// board but is not on its staff. Students comment; they do not announce.
+	ErrBulletinPostForbidden = errors.New("only professors and monitors can post to the class board")
+
+	ErrInvalidTestCase = errors.New("invalid test case")
+	ErrInvalidExercise = errors.New("invalid exercise")
 
 	ErrInvalidEnrollmentCode  = errors.New("invalid enrollment code")
 	ErrEnrollmentClosed       = errors.New("enrollment is closed for this offering")

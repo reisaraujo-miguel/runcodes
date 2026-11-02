@@ -95,11 +95,17 @@ type LanguageTimings struct {
 	Queue     *PhaseStat `json:"queue,omitempty"`
 	Workspace *PhaseStat `json:"workspace,omitempty"`
 	Image     *PhaseStat `json:"image,omitempty"`
-	Startup   *PhaseStat `json:"startup,omitempty"`
-	Compile   *PhaseStat `json:"compile,omitempty"`
-	Run       *PhaseStat `json:"run,omitempty"`
-	Grade     *PhaseStat `json:"grade,omitempty"`
-	Artifact  *PhaseStat `json:"artifact,omitempty"`
+	// ContainerCreate and ContainerStart are the runtime's own calls (podman
+	// create and start), measured before the harness gets control. They are
+	// reported separately because a slow runtime is an operational problem, not
+	// a property of the language or of the submission.
+	ContainerCreate *PhaseStat `json:"container_create,omitempty"`
+	ContainerStart  *PhaseStat `json:"container_start,omitempty"`
+	Startup         *PhaseStat `json:"startup,omitempty"`
+	Compile         *PhaseStat `json:"compile,omitempty"`
+	Run             *PhaseStat `json:"run,omitempty"`
+	Grade           *PhaseStat `json:"grade,omitempty"`
+	Artifact        *PhaseStat `json:"artifact,omitempty"`
 }
 
 // MemoryStat is the paired peak-memory comparison. Relative is the median,

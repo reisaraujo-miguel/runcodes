@@ -157,3 +157,51 @@ func TestPersistTimings(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// alertInput is the pure half of persistAlert: the shape of a judge alert event
+// as the alerts package records it, including the defaults.
+func TestAlertInput(t *testing.T) {
+	severity := "critical"
+	input, err := alertInput(&Event{
+		Type:     "alert",
+		CommitID: 12,
+		Code:     "startup_timeout",
+		Severity: severity,
+		Message:  "the container did not start",
+		Details:  []byte(`{"language":"Python"}`),
+	})
+	if err != nil {
+		t.Fatalf("alertInput: %v", err)
+	}
+	if input.Code != "startup_timeout" || input.Severity != "critical" {
+		t.Fatalf("unexpected input: %+v", input)
+	}
+	if input.Source != "judge" {
+		t.Fatalf("source = %q, want judge", input.Source)
+	}
+	if input.CommitID == nil || *input.CommitID != 12 {
+		t.Fatalf("commit id = %v, want 12", input.CommitID)
+	}
+	if string(input.Details) != `{"language":"Python"}` {
+		t.Fatalf("details = %s", input.Details)
+	}
+
+	// A missing severity is a warning, and a missing commit id is not recorded
+	// as commit 0 (which would point at nothing).
+	input, err = alertInput(&Event{Code: "disk_full", Message: "the disk is full"})
+	if err != nil {
+		t.Fatalf("alertInput: %v", err)
+	}
+	if input.Severity != "warning" || input.CommitID != nil {
+		t.Fatalf("defaults not applied: %+v", input)
+	}
+
+	for _, ev := range []*Event{
+		{Message: "no code"},
+		{Code: "no_message"},
+	} {
+		if _, err := alertInput(ev); err == nil {
+			t.Fatalf("alertInput(%+v) accepted an incomplete alert", ev)
+		}
+	}
+}

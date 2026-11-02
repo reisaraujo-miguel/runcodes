@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -223,43 +222,6 @@ func RecompileOfferingSubmissions(w http.ResponseWriter, r *http.Request) {
 	result, err := services.RecompileOfferingSubmissions(
 		ctx, offeringID, claims,
 	)
-	if err != nil {
-		writeServiceError(ctx, w, err)
-		return
-	}
-
-	WriteResponse(w, http.StatusAccepted, result)
-}
-
-/*
-NotifyOfferingMembers handles POST /api/v1/offerings/{id}/notify: an email to
-every member of the class.
-*/
-func NotifyOfferingMembers(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	claims, ok := tokenClaims(w, r)
-	if !ok {
-		return
-	}
-
-	offeringID, err := pathID(r, "id")
-	if err != nil || offeringID <= 0 {
-		WriteResponse(w, http.StatusBadRequest,
-			models.Error{Message: "invalid offering id"},
-		)
-		return
-	}
-
-	var req models.OfferingEmailRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		WriteResponse(w, http.StatusBadRequest,
-			models.Error{Message: "invalid email request"},
-		)
-		return
-	}
-
-	result, err := services.SendOfferingEmail(ctx, offeringID, &req, claims)
 	if err != nil {
 		writeServiceError(ctx, w, err)
 		return

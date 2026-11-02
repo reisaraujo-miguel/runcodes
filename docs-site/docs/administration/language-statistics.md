@@ -159,10 +159,12 @@ runs where it exists, and a median of phases is not the median of their sum.
 
 | Phase | Source | What it includes |
 | --- | --- | --- |
-| Queue | judge claim time minus submission time | waiting for a worker |
+| Queue | claim time minus `created_at`, both on the database clock | waiting for a worker |
 | Preparation | judge, around `prepareWorkspace` | source download, ZIP extraction, compilation files, test-case fetch, config |
 | Image | judge, around `EnsureImage` | local image check or pull; cold pulls are counted separately and excluded from the median |
-| Startup | judge, container start to first phase milestone | container boot and harness initialization up to `compilation.start` or `run.start` |
+| Container create | judge, around the runtime's `create` call | the podman container being created; a high value is an operational problem, not a property of the language |
+| Container start | judge, around the runtime's `start` call | the podman container starting, before the harness gets control |
+| Startup | judge, container start to first phase milestone | the harness booting and its first line travelling back on the log stream, up to `compilation.start` or `run.start` |
 | Compilation | compile monitor report | the compiler command's wall and CPU time; not available for interpreted languages |
 | Execution | judge, `run.start` to `run.done` | all test cases, including per-case pre/post commands |
 | Correction | judge, around grading | reading outputs and comparing them |
@@ -176,6 +178,15 @@ The compile time is the monitor's own measurement of the compiler command, so it
 does not include workspace preparation or container startup. That is why the
 table is more precise than subtracting the old `compilation_started` and
 `compilation_finished` columns, which bracket the whole claim-to-event path.
+
+The queue and startup rows are only as good as the judge's own boundaries. The
+queue uses the database clock at both ends (the claim's `now()` and the row's
+`created_at`), so two hosts disagreeing about the time cannot move it. The
+startup row follows the container's log stream, and the judge bounds that stream
+with a `since` taken from the container's creation: without it, podman's journald
+reader walks the journal from its oldest entry on every run and a fast run's
+whole output arrives in one late burst — which used to make `startup` look like
+seconds and `run` look like zero.
 
 ## The class view
 

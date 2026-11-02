@@ -374,6 +374,56 @@ includes runtime and page cache and can miss very short peaks.
 controlled benchmarks; see the
 [methodology](../administration/language-statistics.md#what-the-numbers-can-and-cannot-say).
 
+## Alerts
+
+Operational alerts are written by the judge (through its event stream) and, in the
+future, by the backend itself. There is no endpoint to create one: the platform
+is the only producer. Every new alert is also emailed to every confirmed
+administrator.
+
+### `GET /admin/alerts`
+
+Lists the alerts, newest first, with the number still open.
+
+| Query | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `limit` | int | `50` | page size, capped at 200 |
+| `offset` | int | `0` | page offset |
+| `open` | `1` | unset | only alerts nobody acknowledged yet |
+
+```json
+{
+  "open_count": 1,
+  "alerts": [
+    {
+      "id": 3,
+      "created_at": "2026-11-02T12:37:01Z",
+      "severity": "critical",
+      "code": "startup_timeout",
+      "source": "judge",
+      "commit_id": 6,
+      "message": "the Python container for commit 6 did not print \"run.start\" within 30s; the submission could not be graded",
+      "details": { "language": "Python", "milestone": "run.start", "wait_seconds": 30 },
+      "acknowledged_at": null,
+      "acknowledged_by": null
+    }
+  ]
+}
+```
+
+`severity` is `warning` or `critical`. `source` is `judge` or `backend`.
+`commit_id` is `null` for an alert that is not about one run, and `details` is the
+producer's structured context (absent when it sent none).
+
+### `POST /admin/alerts/{id}/acknowledge`
+
+Marks one alert as seen by the calling administrator and returns it with
+`acknowledged_at`, `acknowledged_by` and `acknowledged_by_name` filled in.
+
+Acknowledging an already acknowledged alert is not an error: it returns the alert
+with its original acknowledgement, so a double click (or a retry after a lost
+response) is harmless. An unknown id answers `404`.
+
 ## Role preview
 
 An administrator can replace the role claim of their own session with `student`

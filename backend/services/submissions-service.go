@@ -44,9 +44,17 @@ type SubmissionInput struct {
 
 /*
 CreateSubmission validates the submission, checks the judge is healthy, uploads
-the source to S3, inserts the commit row and wakes the judge. If the judge
-cannot be woken, the row is removed and the uploaded object deleted so no
-submission is silently lost.
+the source to S3, inserts the commit row and then wakes the judge.
+
+The row is committed before the wake on purpose. The judge claims from Postgres,
+so it cannot see an uncommitted row: waking inside the transaction (as this used
+to) made every wake a no-op and pushed each submission to the judge's next poll
+tick, which is where the queue time in the statistics came from.
+
+The wake is an optimization over that poll loop, so a failed wake does not fail
+the submission: the row stays `queued` and is claimed as soon as the judge is
+reachable again. Only a failure *before* the row exists (the upload, the insert)
+cleans up the uploaded object.
 */
 func CreateSubmission(ctx context.Context, in SubmissionInput) (int64, error) {
 	if err := validateExercise(ctx, in.ExerciseID, in.UserID); err != nil {
@@ -100,10 +108,9 @@ func CreateSubmission(ctx context.Context, in SubmissionInput) (int64, error) {
 		return 0, ErrServer
 	}
 
-	// Register the commit and wake the judge inside one transaction, waking
-	// BEFORE committing. The judge's poller must not see the row until the wake
-	// has succeeded; otherwise a failed wake could delete a commit the judge had
-	// already claimed (orphaning a running container and losing the row).
+	// Register the commit. It becomes visible to the judge's claim only here, so
+	// the wake below must happen after this commit, never inside the
+	// transaction.
 	tx, err := database.DB.BeginTx(ctx, nil)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to begin submission transaction",
@@ -131,20 +138,6 @@ func CreateSubmission(ctx context.Context, in SubmissionInput) (int64, error) {
 		return 0, ErrServer
 	}
 
-	wakeCtx, cancel := context.WithTimeout(ctx, wakeTimeout)
-	defer cancel()
-
-	if err := judge.Wake(wakeCtx, commitID); err != nil {
-		slog.ErrorContext(ctx, "failed to wake judge for commit",
-			slog.Int64("commit_id", commitID),
-			slog.String("error", err.Error()),
-		)
-		// The deferred rollback removes the (never committed) row; drop the
-		// uploaded object so no submission is silently left behind.
-		deleteSourceBestEffort(ctx, key)
-		return 0, ErrJudgeUnavailable
-	}
-
 	if err := tx.Commit(); err != nil {
 		slog.ErrorContext(ctx, "failed to commit submission",
 			slog.Int64("commit_id", commitID),
@@ -153,6 +146,19 @@ func CreateSubmission(ctx context.Context, in SubmissionInput) (int64, error) {
 		deleteSourceBestEffort(ctx, key)
 		return 0, ErrServer
 	}
+
+	// Nudge the judge now that the row is visible. A failure is logged, not
+	// returned: the commit is durable and the poll loop will claim it, so the
+	// submission is accepted either way. Rejecting it here would delete a row the
+	// judge may already have claimed.
+	wakeCtx, cancel := context.WithTimeout(ctx, wakeTimeout)
+	if err := judge.Wake(wakeCtx, commitID); err != nil {
+		slog.WarnContext(ctx, "could not wake the judge; the commit stays queued",
+			slog.Int64("commit_id", commitID),
+			slog.String("error", err.Error()),
+		)
+	}
+	cancel()
 
 	// Consume the judge stream immediately, even if nobody is watching yet:
 	// results must be persisted for a user who reloads or comes back later.

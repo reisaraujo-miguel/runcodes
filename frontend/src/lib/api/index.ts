@@ -101,6 +101,13 @@ export type {
 } from "./admin";
 
 export {
+  ALERT_PAGE_LIMIT,
+  adminAcknowledgeAlert,
+  adminListAlerts,
+} from "./alerts";
+export type { AlertPage, AlertSeverity, SystemAlert } from "./alerts";
+
+export {
   adminGetLanguageStatistics,
   getOfferingLanguageStatistics,
 } from "./language-stats";

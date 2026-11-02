@@ -183,6 +183,20 @@ func (rel *offeringRelation) CanAuthor() bool {
 }
 
 /*
+CanPost reports whether the caller may write on the class bulletin board: the
+owner, the admin panel, or a professor or monitor assigned to the class. Students
+follow the board and comment; they do not start posts.
+*/
+func (rel *offeringRelation) CanPost() bool {
+	if rel.Owner || rel.AdminOverride {
+		return true
+	}
+
+	return rel.IsMember() &&
+		(rel.Role == EnrollmentRoleProfessor || rel.Role == EnrollmentRoleMonitor)
+}
+
+/*
 loadOffering fetches an offering by id, with its owner. The cache entry is user
 independent: ownership is checked by the callers on top of it.
 */

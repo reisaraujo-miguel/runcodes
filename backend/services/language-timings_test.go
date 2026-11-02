@@ -25,6 +25,14 @@ func TestLoadLanguageTimings(t *testing.T) {
 				40.0, 30.0, 50.0, nil, nil, int64(5),
 			).
 			AddRow(
+				int64(1), "container_create", int64(5), int64(0), int64(0),
+				45.0, 40.0, 50.0, nil, nil, int64(5),
+			).
+			AddRow(
+				int64(1), "container_start", int64(5), int64(0), int64(0),
+				120.0, 100.0, 140.0, nil, nil, int64(5),
+			).
+			AddRow(
 				int64(1), "source_download", int64(5), int64(0), int64(0),
 				100.0, 90.0, 110.0, nil, nil, int64(5),
 			).
@@ -69,6 +77,17 @@ func TestLoadLanguageTimings(t *testing.T) {
 	}
 	if entry.Image.WarmSamples != 3 || entry.Image.ColdSamples != 2 {
 		t.Errorf("image samples = %+v, want 3 warm and 2 cold", entry.Image)
+	}
+
+	// The runtime's own calls are part of the report: a slow create/start is an
+	// operational problem, and it was previously invisible.
+	if entry.ContainerCreate == nil || entry.ContainerCreate.MedianSeconds == nil ||
+		*entry.ContainerCreate.MedianSeconds != 0.045 {
+		t.Errorf("container_create timing = %+v, want 0.045s", entry.ContainerCreate)
+	}
+	if entry.ContainerStart == nil || entry.ContainerStart.MedianSeconds == nil ||
+		*entry.ContainerStart.MedianSeconds != 0.12 {
+		t.Errorf("container_start timing = %+v, want 0.12s", entry.ContainerStart)
 	}
 
 	if timings[2].Startup == nil || timings[2].Startup.MedianSeconds == nil ||

@@ -100,6 +100,14 @@ func createRoutes(router *chi.Mux) {
 				Post("/api/v1/offerings/enroll", handlers.Enroll)
 			r.Delete("/api/v1/offerings/{id}/enrollment", handlers.Unenroll)
 
+			// A class's bulletin board. Every participant reads it and comments;
+			// posting is reserved for the class staff, which the service checks.
+			r.Get("/api/v1/offerings/{id}/bulletin", handlers.GetOfferingBulletin)
+			r.Post("/api/v1/offerings/{id}/bulletin/posts",
+				handlers.CreateOfferingPost)
+			r.Post("/api/v1/offerings/{id}/bulletin/posts/{postId}/comments",
+				handlers.CreateBulletinComment)
+
 			r.Post("/api/v1/submissions", handlers.CreateSubmission)
 			r.Get("/api/v1/submissions/{id}/events", handlers.StreamSubmissionEvents)
 			r.Get("/api/v1/submissions/{id}/source", handlers.GetSubmissionSource)
@@ -168,7 +176,6 @@ func createRoutes(router *chi.Mux) {
 					handlers.ExportOfferingSubmissions)
 				r.Post("/api/v1/offerings/{id}/submissions/recompile",
 					handlers.RecompileOfferingSubmissions)
-				r.Post("/api/v1/offerings/{id}/notify", handlers.NotifyOfferingMembers)
 			})
 
 			// admin panel
@@ -202,6 +209,13 @@ func createRoutes(router *chi.Mux) {
 				// Platform-wide adoption, allowance and CPU statistics for the
 				// file type catalog.
 				r.Get("/api/v1/admin/language-stats", handlers.GetLanguageStatistics)
+
+				// Operational alerts raised by the judge (and, in the future, by
+				// the backend itself). Administrators acknowledge them; each new
+				// alert is also emailed to every administrator.
+				r.Get("/api/v1/admin/alerts", handlers.AdminListAlerts)
+				r.Post("/api/v1/admin/alerts/{id}/acknowledge",
+					handlers.AdminAcknowledgeAlert)
 			})
 		})
 	})

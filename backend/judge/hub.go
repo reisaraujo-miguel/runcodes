@@ -264,12 +264,15 @@ func (h *Hub) handleEvent(ctx context.Context, ev *Event, raw []byte) error {
 		// persisted before broadcast and must not be lost: return the failure
 		// so the cursor is not advanced past an unpersisted event.
 		if err := PersistEvent(ctx, ev); err != nil {
-			// Phase timings are supplemental: a failure to store them must not
-			// stall the run or turn a graded submission into a server error. The
-			// report exposes the missing coverage instead.
-			if ev.Type == "timings" {
-				slog.ErrorContext(ctx, "failed to persist timing event; continuing",
+			// Phase timings and alerts are supplemental: a failure to store
+			// either must not stall the run or turn a graded submission into a
+			// server error. The statistics report exposes the missing timings as
+			// reduced coverage, and the alert is an operational notification that
+			// is logged here instead.
+			if ev.Type == "timings" || ev.Type == "alert" {
+				slog.ErrorContext(ctx, "failed to persist a supplemental event; continuing",
 					slog.Int64("commit_id", ev.CommitID),
+					slog.String("type", ev.Type),
 					slog.String("error", err.Error()),
 				)
 				h.broadcast(FormatSSEFrame(ev.Type, ev.Seq, raw))

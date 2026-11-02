@@ -30,6 +30,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/runcodes-icmc/runcodes/alerts"
 	"github.com/runcodes-icmc/runcodes/cache"
 	"github.com/runcodes-icmc/runcodes/config"
 	"github.com/runcodes-icmc/runcodes/database"
@@ -132,6 +133,11 @@ func run() error {
 	// deadline email reminders run inside the API process; they are disabled by
 	// configuration when a deployment does not want outgoing mail.
 	services.StartDeadlineNotifier(ctx)
+
+	// Acknowledged operational alerts are pruned after their retention window;
+	// an append-only alert table would otherwise grow for the life of the
+	// platform.
+	alerts.StartRetention(ctx)
 
 	r := chi.NewRouter()
 	configureMiddleware(r, cfg)
