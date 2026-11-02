@@ -5,9 +5,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/runcodes-icmc/runcodes/database"
 )
+
+// EventPhase is one measured phase in a `timings` event.
+type EventPhase struct {
+	Phase        string          `json:"phase"`
+	DurationMS   int64           `json:"duration_ms"`
+	CPUMS        *int64          `json:"cpu_ms,omitempty"`
+	MemPeakBytes *int64          `json:"mem_peak_bytes,omitempty"`
+	StartedAt    *time.Time      `json:"started_at,omitempty"`
+	FinishedAt   *time.Time      `json:"finished_at,omitempty"`
+	Source       string          `json:"source,omitempty"`
+	Detail       json.RawMessage `json:"detail,omitempty"`
+}
 
 /*
 Event is the union of every event payload streamed by the judge. Only the
@@ -31,11 +44,15 @@ type Event struct {
 	// case_result
 	TestCaseID     int64       `json:"test_case_id,omitempty"`
 	CPUTime        json.Number `json:"cpu_time,omitempty"`
+	WallTime       json.Number `json:"wall_time,omitempty"`
 	MemUsage       *int64      `json:"mem_usage,omitempty"`
 	StatusMessage  string      `json:"status_message,omitempty"`
 	UserOutput     string      `json:"user_output,omitempty"`
 	UserOutputType string      `json:"user_output_type,omitempty"`
 	ErrorMessage   string      `json:"error_message,omitempty"`
+
+	// timings
+	Phases []EventPhase `json:"phases,omitempty"`
 
 	// artifact
 	Kind string `json:"kind,omitempty"`
@@ -87,6 +104,8 @@ func PersistEvent(ctx context.Context, ev *Event) error {
 		return persistCompilation(ctx, ev)
 	case "case_result":
 		return persistCaseResult(ctx, ev)
+	case "timings":
+		return persistTimings(ctx, ev)
 	case "finished":
 		return persistFinished(ctx, ev)
 	case "artifact":
@@ -169,6 +188,11 @@ func persistCaseResult(ctx context.Context, ev *Event) error {
 		memUsage = *ev.MemUsage
 	}
 
+	var wallTime any
+	if ev.WallTime != "" {
+		wallTime = ev.WallTime.String()
+	}
+
 	userOutputType := ev.UserOutputType
 	if userOutputType == "" {
 		userOutputType = "text"
@@ -176,25 +200,92 @@ func persistCaseResult(ctx context.Context, ev *Event) error {
 
 	if _, err := database.DB.ExecContext(ctx,
 		`INSERT INTO commits_exercise_test_cases_results
-		     (commit_id, exercise_test_case_id, cpu_time, mem_usage,
+		     (commit_id, exercise_test_case_id, cpu_time, wall_time, mem_usage,
 		      user_output, user_output_type, status, status_message, error_message)
-		 SELECT $1, $2, $3, $4, $5, $6::input_output_type_t,
-		        $7::commit_exercise_test_case_status_t, $8, $9
+		 SELECT $1, $2, $3, $4, $5, $6, $7::input_output_type_t,
+		        $8::commit_exercise_test_case_status_t, $9, $10
 		 WHERE EXISTS (
 		     SELECT 1 FROM commits WHERE id = $1 AND `+nonTerminalGuard+`
 		 )
 		 ON CONFLICT (commit_id, exercise_test_case_id) DO UPDATE SET
 		     cpu_time = EXCLUDED.cpu_time,
+		     wall_time = EXCLUDED.wall_time,
 		     mem_usage = EXCLUDED.mem_usage,
 		     user_output = EXCLUDED.user_output,
 		     user_output_type = EXCLUDED.user_output_type,
 		     status = EXCLUDED.status,
 		     status_message = EXCLUDED.status_message,
 		     error_message = EXCLUDED.error_message`,
-		ev.CommitID, ev.TestCaseID, cpuTime, memUsage, ev.UserOutput,
+		ev.CommitID, ev.TestCaseID, cpuTime, wallTime, memUsage, ev.UserOutput,
 		userOutputType, ev.Status, ev.StatusMessage, ev.ErrorMessage,
 	); err != nil {
 		return fmt.Errorf("persisting case_result event: %w", err)
+	}
+
+	return nil
+}
+
+/*
+persistTimings writes the judge's phase timings. The rows are idempotent: a
+replayed event updates the same (commit, phase) keys. The event arrives before
+`finished`, so a run's timings are durable even when grading later fails.
+*/
+func persistTimings(ctx context.Context, ev *Event) error {
+	if len(ev.Phases) == 0 {
+		return nil
+	}
+
+	// Validate before opening a transaction, so a malformed event cannot leave
+	// a half-written timing set or need a database round trip to be rejected.
+	for _, phase := range ev.Phases {
+		if phase.Phase == "" {
+			return fmt.Errorf("malformed timings event: empty phase")
+		}
+		if phase.DurationMS < 0 {
+			return fmt.Errorf("malformed timings event: negative duration for %q", phase.Phase)
+		}
+	}
+
+	tx, err := database.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin timings transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	for _, phase := range ev.Phases {
+		source := phase.Source
+		if source == "" {
+			source = "judge"
+		}
+
+		var detail any
+		if len(phase.Detail) > 0 {
+			detail = string(phase.Detail)
+		}
+
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO commit_phase_timings
+			     (commit_id, phase, duration_ms, cpu_ms, mem_peak_bytes,
+			      started_at, finished_at, source, detail)
+			 VALUES ($1, $2::commit_phase_t, $3, $4, $5, $6, $7, $8, $9::jsonb)
+			 ON CONFLICT (commit_id, phase) DO UPDATE SET
+			     duration_ms = EXCLUDED.duration_ms,
+			     cpu_ms = EXCLUDED.cpu_ms,
+			     mem_peak_bytes = EXCLUDED.mem_peak_bytes,
+			     started_at = EXCLUDED.started_at,
+			     finished_at = EXCLUDED.finished_at,
+			     source = EXCLUDED.source,
+			     detail = EXCLUDED.detail`,
+			ev.CommitID, phase.Phase, phase.DurationMS, phase.CPUMS,
+			phase.MemPeakBytes, phase.StartedAt, phase.FinishedAt, source,
+			detail,
+		); err != nil {
+			return fmt.Errorf("persisting timing %q: %w", phase.Phase, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit timings transaction: %w", err)
 	}
 
 	return nil

@@ -22,12 +22,13 @@ import (
 
 // monitorInfo is the subset of the monitor output the judge cares about.
 type monitorInfo struct {
-	Signal string
-	Time   float64
-	CPU    float64
-	HasCPU bool
-	Mem    int64
-	HasMem bool
+	Signal  string
+	Time    float64
+	HasTime bool
+	CPU     float64
+	HasCPU  bool
+	Mem     int64
+	HasMem  bool
 	// ExitStatus is the status the monitored command exited with. It is only
 	// meaningful when HasExit is true: the monitor initializes it to -1 when its
 	// child was terminated by a signal instead of exiting normally.
@@ -85,7 +86,10 @@ func readMonitor(path string) monitorInfo {
 				info.HasExit = true
 			}
 		case "time":
-			info.Time, _ = strconv.ParseFloat(value, 64)
+			if v, err := strconv.ParseFloat(value, 64); err == nil && v >= 0 {
+				info.Time = v
+				info.HasTime = true
+			}
 		case "cpu_time":
 			if v, err := strconv.ParseFloat(value, 64); err == nil && v >= 0 {
 				info.CPU = v
@@ -182,6 +186,9 @@ func (e *Engine) gradeCase(ctx context.Context, tc model.TestCase, ws *workspace
 	// Read the monitor output to get resource usage and signal information.
 	info := readMonitor(monitorPath)
 	result.CPUTime = info.Time
+	if info.HasTime {
+		result.WallTime = info.Time
+	}
 	if info.HasCPU {
 		result.CPUTime = info.CPU
 	}

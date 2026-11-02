@@ -11,6 +11,11 @@ import (
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 )
 
+var languageTimingsColumns = []string{
+	"file_type_id", "phase", "samples", "cold_samples", "warm_samples",
+	"median_ms", "p25_ms", "p75_ms", "median_cpu_ms", "commits",
+}
+
 var languageStatisticsColumns = []string{
 	"id", "name", "extension", "is_compilable", "is_available",
 	"exercises_offered", "offerings_offered", "professors_offering",
@@ -50,6 +55,9 @@ func TestBuildLanguageStatistics(t *testing.T) {
 				int64(10), int64(5),
 				int64(20), int64(7), int64(2),
 			))
+	mock.ExpectQuery(`commit_phase_timings`).
+		WithArgs(nil).
+		WillReturnRows(sqlmock.NewRows(languageTimingsColumns))
 
 	statistics, err := buildLanguageStatistics(context.Background(), nil)
 	if err != nil {
@@ -140,6 +148,9 @@ func TestBuildLanguageStatisticsWithOfferingScope(t *testing.T) {
 				int64(2), int64(1),
 				int64(4), int64(3), int64(0),
 			))
+	mock.ExpectQuery(`commit_phase_timings`).
+		WithArgs(int64(3)).
+		WillReturnRows(sqlmock.NewRows(languageTimingsColumns))
 
 	offeringID := int64(3)
 	statistics, err := buildLanguageStatistics(context.Background(), &offeringID)

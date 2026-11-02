@@ -109,6 +109,8 @@ export type {
   LanguageStat,
   LanguageStatistics,
   LanguageStatisticsSummary,
+  LanguageTimings,
+  PhaseStat,
 } from "./language-stats";
 
 export { FALLBACK_SETTINGS, getPublicSettings } from "./settings";

@@ -241,9 +241,9 @@ which returns the same shape with class-scoped denominators.
   "languages": [
     {
       "file_type_id": 1,
-      "name": "Python 3",
-      "extension": "py",
-      "is_compilable": false,
+      "name": "C",
+      "extension": "c",
+      "is_compilable": true,
       "is_available": true,
       "submissions": 120,
       "submission_share": 42.11,
@@ -263,7 +263,61 @@ which returns the same shape with class-scoped denominators.
       "cpu_time_median_seconds": 0.0423,
       "relative_cpu": 0.87,
       "relative_cpu_p25": 0.72,
-      "relative_cpu_p75": 1.04
+      "relative_cpu_p75": 1.04,
+      "timings": {
+        "queue": {
+          "median_seconds": 0.4,
+          "p25_seconds": 0.2,
+          "p75_seconds": 1.1,
+          "samples": 40,
+          "coverage": 80
+        },
+        "workspace": {
+          "median_seconds": 0.9,
+          "p25_seconds": 0.7,
+          "p75_seconds": 1.4,
+          "samples": 40,
+          "coverage": 80
+        },
+        "image": {
+          "median_seconds": 0.04,
+          "p25_seconds": 0.03,
+          "p75_seconds": 0.06,
+          "samples": 40,
+          "warm_samples": 38,
+          "cold_samples": 2,
+          "coverage": 80
+        },
+        "startup": {
+          "median_seconds": 0.3,
+          "p25_seconds": 0.25,
+          "p75_seconds": 0.4,
+          "samples": 40,
+          "coverage": 80
+        },
+        "compile": {
+          "median_seconds": 1.2,
+          "p25_seconds": 1.0,
+          "p75_seconds": 1.5,
+          "cpu_time_median_seconds": 1.0,
+          "samples": 36,
+          "coverage": 72
+        },
+        "run": {
+          "median_seconds": 0.8,
+          "p25_seconds": 0.5,
+          "p75_seconds": 1.2,
+          "samples": 40,
+          "coverage": 80
+        },
+        "grade": {
+          "median_seconds": 0.1,
+          "p25_seconds": 0.08,
+          "p75_seconds": 0.15,
+          "samples": 40,
+          "coverage": 80
+        }
+      }
     }
   ]
 }
@@ -289,10 +343,16 @@ which returns the same shape with class-scoped denominators.
 | `cpu_time_median_seconds` | median CPU seconds across the compared test cases |
 | `relative_cpu` | median, across compared test cases, of the language's median CPU divided by the median of the languages on that case; `null` without a comparison |
 | `relative_cpu_p25`, `relative_cpu_p75` | quartiles of the same ratios |
+| `timings.<phase>` | median duration, quartiles, sample count and coverage for one measured phase |
+| `timings.compile.cpu_time_median_seconds` | CPU time of the compiler command, from the compile monitor |
+| `timings.image.warm_samples`, `cold_samples` | image runs already local vs pulls; the median excludes cold pulls |
 
-`mem_usage` is not part of the report: the monitor records `-1` (unknown) and the
-platform does not collect peak memory today. `relative_cpu` is an observational
-comparison, not a controlled benchmark; see the
+A `timings` phase is omitted when the report has no measurements for it. Old
+runs predate the phase timings and produce no rows. `timings.compile` does not
+apply to interpreted languages. `mem_usage` is still not part of the report: the
+monitor records `-1` (unknown), so there is no memory comparison yet.
+`relative_cpu` is an observational comparison, not a controlled benchmark; see
+the
 [methodology](../administration/language-statistics.md#what-the-numbers-can-and-cannot-say).
 
 ## Role preview

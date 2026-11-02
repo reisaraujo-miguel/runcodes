@@ -3,6 +3,11 @@ package judge
 import (
 	"context"
 	"testing"
+	"time"
+
+	"github.com/runcodes-icmc/runcodes/database"
+
+	sqlmock "github.com/DATA-DOG/go-sqlmock"
 )
 
 func TestIsTerminalStatus(t *testing.T) {
@@ -70,6 +75,26 @@ func TestPersistEventGuards(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:  "timings without phases are ignored",
+			event: Event{Type: "timings", CommitID: 1},
+		},
+		{
+			name: "timings with an empty phase fail",
+			event: Event{
+				Type: "timings", CommitID: 1,
+				Phases: []EventPhase{{Phase: "", DurationMS: 1}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "timings with a negative duration fail",
+			event: Event{
+				Type: "timings", CommitID: 1,
+				Phases: []EventPhase{{Phase: "run", DurationMS: -1}},
+			},
+			wantErr: true,
+		},
+		{
 			name:    "finished without a status fails",
 			event:   Event{Type: "finished", CommitID: 1},
 			wantErr: true,
@@ -86,5 +111,49 @@ func TestPersistEventGuards(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+func TestPersistTimings(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	previous := database.DB
+	database.DB = db
+	t.Cleanup(func() {
+		database.DB = previous
+		db.Close()
+	})
+
+	cpu := int64(1000)
+	started := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	mock.ExpectBegin()
+	mock.ExpectExec(`INSERT INTO commit_phase_timings`).
+		WithArgs(
+			int64(7), "compile", int64(1200), sqlmock.AnyArg(),
+			sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
+			"monitor", sqlmock.AnyArg(),
+		).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	err = PersistEvent(context.Background(), &Event{
+		Type:     "timings",
+		CommitID: 7,
+		Phases: []EventPhase{{
+			Phase:      "compile",
+			DurationMS: 1200,
+			CPUMS:      &cpu,
+			StartedAt:  &started,
+			Source:     "monitor",
+			Detail:     []byte(`{"pulled":false}`),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("PersistEvent: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }

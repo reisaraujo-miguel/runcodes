@@ -118,9 +118,9 @@ The comparison is **observational**, not a controlled benchmark:
   experienced, or more hurried, can make a language look better or worse.
 - Test cases are written by professors and may not stress every language's
   weak spots equally.
-- The index covers execution CPU only. The monitor does not measure peak memory
-  today (`mem_usage` is recorded as `-1`), and compile time is not isolated from
-  workspace preparation and image startup.
+- The CPU index covers execution CPU. Compile time is measured separately by the
+  compile monitor; memory is still not measured (`mem_usage` is recorded as
+  `-1`), so there is no memory comparison yet.
 - A language with fewer than five comparable cases is marked as a small sample.
   The table lists reliable samples first; small samples and unmeasured
   languages come after them, so a one-case outlier does not lead the ranking.
@@ -131,6 +131,32 @@ The comparison is **observational**, not a controlled benchmark:
 Use the index to find languages worth a closer look, not to declare a winner.
 When a number matters for a decision, reproduce it with a controlled run of the
 same programs on the same test cases.
+
+## Where the time goes
+
+The **Onde o tempo vai** table breaks a run into measured phases. These are
+medians, not a budget that adds up to the total: each phase is measured on the
+runs where it exists, and a median of phases is not the median of their sum.
+
+| Phase | Source | What it includes |
+| --- | --- | --- |
+| Queue | judge claim time minus submission time | waiting for a worker |
+| Preparation | judge, around `prepareWorkspace` | source download, ZIP extraction, compilation files, test-case fetch, config |
+| Image | judge, around `EnsureImage` | local image check or pull; cold pulls are counted separately and excluded from the median |
+| Startup | judge, container start to first phase milestone | container boot and harness initialization up to `compilation.start` or `run.start` |
+| Compilation | compile monitor report | the compiler command's wall and CPU time; not available for interpreted languages |
+| Execution | judge, `run.start` to `run.done` | all test cases, including per-case pre/post commands |
+| Correction | judge, around grading | reading outputs and comparing them |
+
+Every row also shows the sample count and coverage: measured runs over classified
+runs in the scope. Historical submissions have no phase rows and appear as “sem
+dados”. The image median deliberately excludes cold pulls, because a first pull
+is an operational event, not the language image's warm startup.
+
+The compile time is the monitor's own measurement of the compiler command, so it
+does not include workspace preparation or container startup. That is why the
+table is more precise than subtracting the old `compilation_started` and
+`compilation_finished` columns, which bracket the whole claim-to-event path.
 
 ## The class view
 
@@ -158,6 +184,7 @@ within the class.
 | **Escolha dos alunos** | submissions, share, students and the choice rate when offered |
 | **Oferta dos professores** | exercises, professors and classes per language |
 | **Tempo de CPU** | relative index, p25–p75, compared cases, median CPU per case, executions |
+| **Onde o tempo vai** | queue, preparation, image, startup, compilation, execution and grading medians |
 
 A dash (`—`) in the CPU table means the language has no comparable test case
 yet. On the platform report, a language with zero submissions is still listed
