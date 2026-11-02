@@ -58,11 +58,10 @@ const maxMonitorBytes = 1 << 20
 // unknown keys and comments, but the caller must check Valid before trusting the
 // result: a missing, empty or truncated report means the monitor failed.
 //
-// The report carries the exit status, the signal, wall time and (when the
-// monitor could measure it) CPU time. It carries no memory figure: the harness
-// runs the program through `timeout`, so the
-// monitor is not its parent and cannot read its peak RSS — it is never measured
-// rather than guessed, which is why MemUsage stays -1 (unknown).
+// The report carries the exit status, the signal, wall time, CPU time and (when
+// the cgroup exposes memory.current) a sampled peak memory. The memory figure is
+// an approximation: the monitor is not the program's parent, and it samples the
+// container cgroup rather than reading the child's peak RSS.
 func readMonitor(path string) monitorInfo {
 	var info monitorInfo
 
@@ -110,8 +109,10 @@ func readMonitor(path string) monitorInfo {
 				info.CPU = v
 				info.HasCPU = true
 			}
-		case "mem", "memory", "mem_usage", "memused":
-			// Parse memory usage as an integer. If parsing fails, we ignore it.
+		case "mem_peak_bytes", "mem", "memory", "mem_usage", "memused":
+			// Parse peak memory as an integer. If parsing fails, we ignore it.
+			// The older keys are kept for reports from images that predate the
+			// phase-timing contract.
 			if n, err := strconv.ParseInt(value, 10, 64); err == nil {
 				info.Mem = n
 				info.HasMem = true

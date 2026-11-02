@@ -300,6 +300,7 @@ which returns the same shape with class-scoped denominators.
           "p25_seconds": 1.0,
           "p75_seconds": 1.5,
           "cpu_time_median_seconds": 1.0,
+          "mem_peak_bytes": 12000000,
           "samples": 36,
           "coverage": 72
         },
@@ -317,6 +318,17 @@ which returns the same shape with class-scoped denominators.
           "samples": 40,
           "coverage": 80
         }
+      },
+      "memory": {
+        "relative": 0.94,
+        "p25": 0.82,
+        "p75": 1.08,
+        "median_bytes": 12582912,
+        "compared_test_cases": 34,
+        "compared_exercises": 8,
+        "known_results": 460,
+        "total_results": 480,
+        "coverage": 95.83
       }
     }
   ]
@@ -345,14 +357,21 @@ which returns the same shape with class-scoped denominators.
 | `relative_cpu_p25`, `relative_cpu_p75` | quartiles of the same ratios |
 | `timings.<phase>` | median duration, quartiles, sample count and coverage for one measured phase |
 | `timings.compile.cpu_time_median_seconds` | CPU time of the compiler command, from the compile monitor |
+| `timings.compile.mem_peak_bytes` | compile phase's median peak memory, when the monitor measured it |
 | `timings.image.warm_samples`, `cold_samples` | image runs already local vs pulls; the median excludes cold pulls |
+| `memory.relative`, `memory.p25`, `memory.p75` | paired peak-memory index and quartiles against the languages on the same test cases |
+| `memory.median_bytes` | median peak bytes across the compared test cases |
+| `memory.compared_test_cases`, `compared_exercises` | cases and exercises behind the index |
+| `memory.known_results`, `total_results`, `coverage` | results with a known memory figure over every classified result |
 
 A `timings` phase is omitted when the report has no measurements for it. Old
 runs predate the phase timings and produce no rows. `timings.compile` does not
-apply to interpreted languages. `mem_usage` is still not part of the report: the
-monitor records `-1` (unknown), so there is no memory comparison yet.
-`relative_cpu` is an observational comparison, not a controlled benchmark; see
-the
+apply to interpreted languages. `memory` is omitted when no result has a known
+memory figure; only values >= 0 enter the index, so `coverage` is part of the
+comparison. The monitor samples the container cgroup every 10 ms; the value
+includes runtime and page cache and can miss very short peaks.
+`relative_cpu` and `memory.relative` are observational comparisons, not
+controlled benchmarks; see the
 [methodology](../administration/language-statistics.md#what-the-numbers-can-and-cannot-say).
 
 ## Role preview

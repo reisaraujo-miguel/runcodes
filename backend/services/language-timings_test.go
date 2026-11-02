@@ -14,23 +14,23 @@ func TestLoadLanguageTimings(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows(languageTimingsColumns).
 			AddRow(
 				int64(1), "compile", int64(4), int64(0), int64(0),
-				1200.0, 1000.0, 1500.0, 900.0, int64(5),
+				1200.0, 1000.0, 1500.0, 900.0, 12000000.0, int64(5),
 			).
 			AddRow(
 				int64(1), "workspace_prepare", int64(5), int64(0), int64(0),
-				800.0, 700.0, 900.0, nil, int64(5),
+				800.0, 700.0, 900.0, nil, nil, int64(5),
 			).
 			AddRow(
 				int64(1), "image_ensure", int64(5), int64(2), int64(3),
-				40.0, 30.0, 50.0, nil, int64(5),
+				40.0, 30.0, 50.0, nil, nil, int64(5),
 			).
 			AddRow(
 				int64(1), "source_download", int64(5), int64(0), int64(0),
-				100.0, 90.0, 110.0, nil, int64(5),
+				100.0, 90.0, 110.0, nil, nil, int64(5),
 			).
 			AddRow(
 				int64(2), "startup", int64(1), int64(0), int64(0),
-				300.0, 300.0, 300.0, nil, int64(2),
+				300.0, 300.0, 300.0, nil, nil, int64(2),
 			))
 
 	timings, err := loadLanguageTimings(context.Background(), nil)
@@ -50,6 +50,9 @@ func TestLoadLanguageTimings(t *testing.T) {
 	}
 	if entry.Compile.CPUTimeMedianSeconds == nil || *entry.Compile.CPUTimeMedianSeconds != 0.9 {
 		t.Errorf("compile cpu = %v, want 0.9s", entry.Compile.CPUTimeMedianSeconds)
+	}
+	if entry.Compile.MemPeakBytes == nil || *entry.Compile.MemPeakBytes != 12000000 {
+		t.Errorf("compile memory = %v, want 12000000", entry.Compile.MemPeakBytes)
 	}
 	if entry.Compile.Coverage != 80 {
 		t.Errorf("compile coverage = %v, want 80", entry.Compile.Coverage)

@@ -115,7 +115,7 @@ data: {"type":"snapshot","commit":{...},"results":[...],"artifacts":[...]}
   "exercise_test_case_id": 91,
   "cpu_time": 0.12,
   "wall_time": 0.14,
-  "mem_usage": -1,
+  "mem_usage": 12582912,
   "user_output": "42\n",
   "user_output_type": "text",
   "status": "correct",
@@ -148,15 +148,16 @@ Example:
 ```text
 event: case_result
 id: 3
-data: {"type":"case_result","commit_id":42,"seq":3,"test_case_id":91,"cpu_time":0.12,"wall_time":0.14,"mem_usage":-1,"status":"correct","status_message":"","user_output":"42\n","user_output_type":"text","error_message":""}
+data: {"type":"case_result","commit_id":42,"seq":3,"test_case_id":91,"cpu_time":0.12,"wall_time":0.14,"mem_usage":12582912,"status":"correct","status_message":"","user_output":"42\n","user_output_type":"text","error_message":""}
 
 event: finished
 id: 5
 data: {"type":"finished","commit_id":42,"seq":5,"status":"completed","num_correct_cases":5,"score":100.00,"compilation_message":"","compilation_error":"","started_at":"…","finished_at":"…"}
 ```
 
-`mem_usage` is `-1` (unknown) because the monitor is not the submission's parent
-and cannot measure it reliably.
+`mem_usage` is the peak memory sampled from the container cgroup, in bytes, or
+`-1` when the host exposes no readable memory controller. The monitor samples
+every 10 ms; it is a comparison signal, not pure RSS.
 
 ### Event ordering
 

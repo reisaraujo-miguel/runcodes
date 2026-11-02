@@ -148,7 +148,7 @@ must use its persisted state.
   "test_case_id": 91,
   "cpu_time": 0.12,
   "wall_time": 0.14,
-  "mem_usage": -1,
+  "mem_usage": 12582912,
   "status": "correct",
   "status_message": "",
   "user_output": "42\n",
@@ -161,7 +161,9 @@ must use its persisted state.
 `killed_with_signal`. `cpu_time` is measured CPU time (container cgroup, with a
 direct-child rusage fallback); `wall_time` is the monitored command's wall clock.
 The exercise's `cpu_time_limit_seconds` remains a wall-clock timeout.
-`mem_usage` is `-1` because the monitor cannot measure it reliably.
+`mem_usage` is the sampled peak memory in bytes, or `-1` when the host does not
+expose a readable memory controller. The monitor samples the container cgroup
+`memory.current` every 10 ms; it is a comparison signal, not pure RSS.
 
 `artifact` (optional):
 
@@ -200,6 +202,7 @@ The exercise's `cpu_time_limit_seconds` remains a wall-clock timeout.
       "phase": "compile",
       "duration_ms": 1200,
       "cpu_ms": 1000,
+      "mem_peak_bytes": 12000000,
       "source": "monitor"
     },
     {
@@ -216,9 +219,9 @@ The exercise's `cpu_time_limit_seconds` remains a wall-clock timeout.
 `source_download`, `source_resolve`, `compilation_files`, `test_cases`,
 `test_case_files`, `container_config`, `image_ensure`, `container_create`,
 `container_start`, `startup`, `compile`, `run`, `grade`, `artifact`).
-`duration_ms` is wall time; `cpu_ms` is present for the compile phase, from the
-compile monitor; `mem_peak_bytes` is reserved for the memory measurement and is
-absent until the monitor supports it. `source` is `judge`, `monitor` or
+`duration_ms` is wall time; `cpu_ms` and `mem_peak_bytes` are present for the
+compile phase, from the compile monitor. Case-level memory arrives in the
+`case_result` event instead. `source` is `judge`, `monitor` or
 `harness`. `detail` is optional metadata; the image phase carries `pulled` so
 the product statistics can separate cold pulls from warm starts. A judge that
 crashes before publishing timings leaves the run without them, which the

@@ -20,7 +20,7 @@ func TestRunTimingsMeasureAndRecord(t *testing.T) {
 		t.Fatalf("MeasureFunc error = %v, want %v", err, wantErr)
 	}
 
-	timings.RecordCPU(PhaseCompile, 1200*time.Millisecond, 900*time.Millisecond)
+	timings.RecordMonitor(PhaseCompile, 1200*time.Millisecond, 900*time.Millisecond, true, 123456, true)
 
 	phases := timings.Phases()
 	if len(phases) != 3 {
@@ -37,5 +37,8 @@ func TestRunTimingsMeasureAndRecord(t *testing.T) {
 	}
 	if !phases[2].HasCPU || phases[2].CPU != 900*time.Millisecond {
 		t.Errorf("compile CPU = %+v, want 900ms", phases[2])
+	}
+	if !phases[2].HasMemPeak || phases[2].MemPeak != 123456 {
+		t.Errorf("compile memory = %+v, want 123456 bytes", phases[2])
 	}
 }

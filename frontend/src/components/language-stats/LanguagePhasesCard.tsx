@@ -8,6 +8,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { LanguageStat, PhaseStat } from "@/lib/api";
+import { formatBytes } from "@/lib/format";
 
 import { formatCount, formatDuration, formatPercent } from "./language-stats";
 
@@ -85,6 +86,15 @@ export function LanguagePhasesCard({
             const image = timings?.image;
             const compile = timings?.compile;
             const compileCPU = compile?.cpu_time_median_seconds;
+            const compileMemory = compile?.mem_peak_bytes;
+            const compileDetail = [
+              compileCPU != null ? `CPU ${formatDuration(compileCPU)}` : null,
+              compileMemory != null
+                ? `RAM ${formatBytes(compileMemory)}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ");
 
             return (
               <TableRow key={language.file_type_id}>
@@ -115,11 +125,7 @@ export function LanguagePhasesCard({
                   <PhaseCell
                     stat={compile}
                     applies={language.is_compilable}
-                    detail={
-                      compileCPU != null
-                        ? `CPU ${formatDuration(compileCPU)}`
-                        : undefined
-                    }
+                    detail={compileDetail || undefined}
                   />
                 </TableCell>
                 <TableCell className="text-center">
@@ -186,7 +192,7 @@ function imageDetail(stat: PhaseStat): string | undefined {
   const cold = stat.cold_samples ?? 0;
   if (cold === 0) return undefined;
 
-  const warm = stat.warm_samples ?? (stat.samples - cold);
+  const warm = stat.warm_samples ?? stat.samples - cold;
   return `${formatCount(warm)} quentes · ${formatCount(cold)} ${
     cold === 1 ? "frio" : "frios"
   }`;

@@ -40,6 +40,7 @@ phases AS (
          t.phase::text AS phase,
          t.duration_ms,
          t.cpu_ms,
+         t.mem_peak_bytes,
          coalesce((t.detail->>'pulled')::boolean, false) AS pulled
   FROM commit_phase_timings t
   JOIN commits_scope cs ON cs.id = t.commit_id
@@ -57,12 +58,15 @@ agg AS (
          percentile_cont(0.75) WITHIN GROUP (ORDER BY duration_ms)
            FILTER (WHERE phase <> 'image_ensure' OR NOT pulled) AS p75_ms,
          percentile_cont(0.5) WITHIN GROUP (ORDER BY cpu_ms)
-           FILTER (WHERE cpu_ms IS NOT NULL) AS median_cpu_ms
+           FILTER (WHERE cpu_ms IS NOT NULL) AS median_cpu_ms,
+         percentile_cont(0.5) WITHIN GROUP (ORDER BY mem_peak_bytes)
+           FILTER (WHERE mem_peak_bytes IS NOT NULL) AS median_mem_bytes
   FROM phases
   GROUP BY file_type_id, phase
 )
 SELECT a.file_type_id, a.phase, a.samples, a.cold_samples, a.warm_samples,
-       a.median_ms, a.p25_ms, a.p75_ms, a.median_cpu_ms, t.commits
+       a.median_ms, a.p25_ms, a.p75_ms, a.median_cpu_ms, a.median_mem_bytes,
+       t.commits
 FROM agg a
 JOIN totals t ON t.file_type_id = a.file_type_id
 ORDER BY a.file_type_id, a.phase
@@ -102,11 +106,12 @@ func loadLanguageTimings(
 			p25MS       sql.NullFloat64
 			p75MS       sql.NullFloat64
 			cpuMS       sql.NullFloat64
+			memBytes    sql.NullFloat64
 		)
 
 		if err := rows.Scan(
 			&fileTypeID, &phase, &samples, &coldSamples, &warmSamples,
-			&medianMS, &p25MS, &p75MS, &cpuMS, &commits,
+			&medianMS, &p25MS, &p75MS, &cpuMS, &memBytes, &commits,
 		); err != nil {
 			slog.ErrorContext(ctx, "error scanning language timings",
 				slog.String("error", err.Error()),
@@ -124,6 +129,10 @@ func loadLanguageTimings(
 		stat.P25Seconds = millisecondsOrNil(p25MS)
 		stat.P75Seconds = millisecondsOrNil(p75MS)
 		stat.CPUTimeMedianSeconds = millisecondsOrNil(cpuMS)
+		if memBytes.Valid {
+			value := int64(memBytes.Float64)
+			stat.MemPeakBytes = &value
+		}
 
 		entry := timings[fileTypeID]
 		switch phase {

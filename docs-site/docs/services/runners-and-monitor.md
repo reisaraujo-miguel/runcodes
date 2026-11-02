@@ -154,13 +154,14 @@ monitor [options] 'command arg1 arg2'
 | `-r` | file to write the report to (default: stdout) |
 | `-c` | command to execute (a single string with its arguments) |
 
-The report is four lines:
+The report is five lines:
 
 ```text
 exit_status=0
 signal=
 time=0.042
 cpu_time=0.031
+mem_peak_bytes=12582912
 ```
 
 `signal` is empty when the program exited on its own. A program killed by a
@@ -168,9 +169,18 @@ signal always reports it, whether or not a core dump was produced; core dumps
 are disabled for the run regardless. `time` is wall-clock time
 from fork to exit; `cpu_time` is aggregate CPU charged to the container cgroup,
 falling back to the direct child's rusage when cgroup accounting is unavailable.
-Memory usage is **not** reported: the monitor is not the
-program's parent (the harness runs it through `timeout`), so the judge records
-`mem_usage = -1` instead of a number it cannot stand behind.
+
+`mem_peak_bytes` is a sampled peak of the cgroup's `memory.current`, in bytes,
+or `-1` when the host exposes no readable memory controller. The monitor samples
+every 10 ms while the command runs and is woken immediately by `SIGCHLD`, so a
+normal exit does not wait for the interval. The value includes the harness, the
+monitor and page cache, and a peak shorter than the interval can be missed. It
+is a comparison signal, not a pure RSS measurement. Sampling `memory.current`
+instead of resetting `memory.peak` is deliberate: rootless containers commonly
+mount the cgroup filesystem read-only.
+
+An older report without `mem_peak_bytes` is still accepted; the judge stores
+`mem_usage = -1` (unknown) for those cases.
 
 The judge requires `signal` and `time` in the report. A missing, empty or
 truncated report is treated as a sandbox failure and fails that test case rather

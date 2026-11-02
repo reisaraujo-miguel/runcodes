@@ -14,6 +14,7 @@ import { formatDateTime } from "@/lib/format";
 
 import { LanguageAllowanceCard } from "./LanguageAllowanceCard";
 import { LanguageChoiceCard } from "./LanguageChoiceCard";
+import { LanguageMemoryCard } from "./LanguageMemoryCard";
 import { LanguagePerformanceCard } from "./LanguagePerformanceCard";
 import { LanguagePhasesCard } from "./LanguagePhasesCard";
 import { formatCount } from "./language-stats";
@@ -127,6 +128,8 @@ export function LanguageStatsReport({
       />
 
       <LanguagePerformanceCard languages={languages} />
+
+      <LanguageMemoryCard languages={languages} />
 
       <LanguagePhasesCard languages={languages} />
 

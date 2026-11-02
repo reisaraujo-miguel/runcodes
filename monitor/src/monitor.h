@@ -27,6 +27,12 @@ typedef struct {
   float time_sec;   /* wall-clock elapsed time */
   float cpu_sec;    /* aggregate CPU time, -1 when unavailable */
   float child_cpu_sec; /* direct child fallback, -1 when unavailable */
+  /*
+   * Peak memory observed in the container's cgroup, in bytes, or -1 when the
+   * host does not expose memory.current. It is sampled while the command runs,
+   * so a peak shorter than the sampling interval can be missed.
+   */
+  long long mem_peak_bytes;
 } MonitorStats;
 
 /*

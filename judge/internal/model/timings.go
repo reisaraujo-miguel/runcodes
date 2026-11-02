@@ -67,16 +67,31 @@ func (t *RunTimings) Record(phase string, duration time.Duration) {
 // RecordCPU adds a phase whose wall and CPU durations are known (the compile
 // phase's monitor report is the main case).
 func (t *RunTimings) RecordCPU(phase string, duration, cpu time.Duration) {
+	t.RecordMonitor(phase, duration, cpu, true, -1, false)
+}
+
+// RecordMonitor adds a monitor-sourced phase with optional CPU and peak memory.
+// Memory is only recorded when it is known and non-negative.
+func (t *RunTimings) RecordMonitor(
+	phase string, duration, cpu time.Duration, hasCPU bool, mem int64, hasMem bool,
+) {
 	if t == nil {
 		return
 	}
-	t.append(PhaseTiming{
+	timing := PhaseTiming{
 		Phase:    phase,
 		Duration: duration,
-		CPU:      cpu,
-		HasCPU:   true,
 		Source:   "monitor",
-	})
+	}
+	if hasCPU {
+		timing.CPU = cpu
+		timing.HasCPU = true
+	}
+	if hasMem && mem >= 0 {
+		timing.MemPeak = mem
+		timing.HasMemPeak = true
+	}
+	t.append(timing)
 }
 
 // RecordDetail adds a phase with small metadata (for example the image name and
