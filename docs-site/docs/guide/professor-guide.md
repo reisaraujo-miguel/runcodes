@@ -260,8 +260,10 @@ the statement panel.
 
 ## Write test cases
 
-Open the exercise and select **Testes**. The **Novo caso** (New case) form
-creates one case.
+Open the exercise and select **Testes**. **Novo caso** (New case) opens a dialog
+that creates one case at a time. Adding a case keeps the dialog open and clears
+the form, so several cases can be filled in sequence; select **Fechar** (Close)
+when you are done.
 
 ### Input and expected output
 

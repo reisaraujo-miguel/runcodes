@@ -14,7 +14,7 @@ import { Section } from "@/components/app/Section";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
 import { BatchTestCasesDialog } from "@/components/professor/BatchTestCasesDialog";
 import { EditTestCaseForm } from "@/components/professor/EditTestCaseForm";
-import { NewTestCaseForm } from "@/components/professor/NewTestCaseForm";
+import { NewTestCaseDialog } from "@/components/professor/NewTestCaseDialog";
 import {
   testCaseFileKey,
   testCaseFileName,
@@ -156,13 +156,12 @@ export function TestCasesPanel({ exerciseId }: { exerciseId: number }) {
       </Button>
       <Button
         size="sm"
-        variant={showNew ? "outline" : "default"}
         onClick={() => {
-          setShowNew((previous) => !previous);
+          setShowNew(true);
         }}
       >
-        {showNew ? null : <PlusIcon />}
-        {showNew ? "Fechar" : "Novo caso"}
+        <PlusIcon />
+        Novo caso
       </Button>
     </div>
   );
@@ -170,8 +169,11 @@ export function TestCasesPanel({ exerciseId }: { exerciseId: number }) {
   const content = (
     <div className="space-y-4">
       {showNew ? (
-        <NewTestCaseForm
+        <NewTestCaseDialog
           exerciseId={exerciseId}
+          onClose={() => {
+            setShowNew(false);
+          }}
           onCreated={() => {
             testCases.reload();
           }}
