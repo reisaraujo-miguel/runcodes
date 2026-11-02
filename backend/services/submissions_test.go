@@ -61,6 +61,53 @@ func TestFilenameMatchesExtension(t *testing.T) {
 	}
 }
 
+func TestBestFileTypeMatch(t *testing.T) {
+	allowed := []allowedFileType{
+		{id: 1, extension: "c"},
+		{id: 2, extension: "omp.c"},
+		{id: 3, extension: "py"},
+		{id: 4, extension: "cc"},
+		{id: 5, extension: "c++"},
+	}
+
+	tests := []struct {
+		name     string
+		filename string
+		wantID   int64
+		wantOK   bool
+	}{
+		{"plain extension", "main.c", 1, true},
+		{"compound extension beats plain", "main.omp.c", 2, true},
+		{"case insensitive", "MAIN.OMP.C", 2, true},
+		{"suffix without separator", "main.notomp.c", 1, true},
+		{"different type", "solver.py", 3, true},
+		{"prefix collision", "main.omp.cc", 4, true},
+		{"symbol in extension", "main.c++", 5, true},
+		{"unknown", "main.go", 0, false},
+		{"no extension", "README", 0, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			id, ok := bestFileTypeMatch(tt.filename, allowed)
+			if ok != tt.wantOK || id != tt.wantID {
+				t.Errorf("bestFileTypeMatch(%q) = (%d, %v), want (%d, %v)",
+					tt.filename, id, ok, tt.wantID, tt.wantOK)
+			}
+		})
+	}
+}
+
+func TestBestFileTypeMatchIsDeterministicOnTies(t *testing.T) {
+	// The catalog is unique, but a future join could surface duplicate
+	// extensions; the lower id keeps the choice deterministic.
+	allowed := []allowedFileType{{id: 9, extension: "c"}, {id: 4, extension: "c"}}
+	id, ok := bestFileTypeMatch("main.c", allowed)
+	if !ok || id != 4 {
+		t.Fatalf("bestFileTypeMatch = (%d, %v), want (4, true)", id, ok)
+	}
+}
+
 func TestParseClientIP(t *testing.T) {
 	tests := []struct {
 		name       string

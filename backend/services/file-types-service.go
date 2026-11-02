@@ -149,7 +149,7 @@ func CreateAllowedFileType(
 		return nil, ErrServer
 	}
 
-	cache.Delete(ctx, cache.KeyAllowedFileTypes)
+	cache.Delete(ctx, cache.KeyAllowedFileTypes, cache.KeyLanguageStatistics)
 
 	slog.InfoContext(ctx, "file type registered",
 		slog.Int64("file_type_id", fileType.ID),
@@ -213,7 +213,7 @@ func UpdateAllowedFileType(
 		return nil, ErrServer
 	}
 
-	cache.Delete(ctx, cache.KeyAllowedFileTypes)
+	cache.Delete(ctx, cache.KeyAllowedFileTypes, cache.KeyLanguageStatistics)
 
 	return fileType, nil
 }
@@ -263,7 +263,7 @@ func DeleteAllowedFileType(ctx context.Context, id int64) error {
 		return ErrFileTypeNotFound
 	}
 
-	cache.Delete(ctx, cache.KeyAllowedFileTypes)
+	cache.Delete(ctx, cache.KeyAllowedFileTypes, cache.KeyLanguageStatistics)
 
 	return nil
 }

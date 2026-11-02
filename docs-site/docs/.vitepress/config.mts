@@ -46,6 +46,7 @@ const administrationSidebar = [
       { text: 'Users & role administration', link: '/administration/users' },
       { text: 'Classes & ownership', link: '/administration/classes' },
       { text: 'Settings & file types', link: '/administration/platform' },
+      { text: 'Language statistics', link: '/administration/language-statistics' },
       { text: 'Platform operations', link: '/administration/operations' }
     ]
   }

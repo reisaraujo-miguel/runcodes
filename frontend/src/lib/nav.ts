@@ -1,4 +1,5 @@
 import {
+  BarChart3Icon,
   BookOpenIcon,
   FileCode2Icon,
   GraduationCapIcon,
@@ -77,6 +78,11 @@ export function navSectionsFor(role: UserRole): NavSection[] {
           to: "/admin/file-types",
           label: "Tipos de Arquivo",
           icon: FileCode2Icon,
+        },
+        {
+          to: "/admin/languages",
+          label: "Linguagens",
+          icon: BarChart3Icon,
         },
         {
           to: "/admin/settings",

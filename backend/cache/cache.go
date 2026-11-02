@@ -35,6 +35,10 @@ const (
 	ExercisesTTL = 30 * time.Second
 	// AllowedFileTypesTTL is how long the allowed file type catalog is cached.
 	AllowedFileTypesTTL = 5 * time.Minute
+	// LanguageStatisticsTTL is how long the platform-wide language report is
+	// cached. The query aggregates every executed test case; a minute of
+	// staleness is invisible in an admin overview and keeps the page cheap.
+	LanguageStatisticsTTL = 1 * time.Minute
 
 	// SettingsTTL is how long the platform settings are cached. They are read on
 	// the public login page, so the entry is dropped on every admin write.
@@ -215,6 +219,9 @@ const KeyAllowedFileTypes = "allowed_file_types"
 // KeyPlatformSettings caches the platform settings shown on the login page.
 const KeyPlatformSettings = "platform_settings"
 
+// KeyLanguageStatistics caches the platform-wide language report.
+const KeyLanguageStatistics = "language_statistics"
+
 // OfferingKey caches a single offering.
 func OfferingKey(id int64) string {
 	return "offering:" + strconv.FormatInt(id, 10)
@@ -223,4 +230,9 @@ func OfferingKey(id int64) string {
 // OfferingExercisesKey caches an offering's exercise list.
 func OfferingExercisesKey(id int64) string {
 	return "offering_exercises:" + strconv.FormatInt(id, 10)
+}
+
+// OfferingLanguageStatisticsKey caches one class's language report.
+func OfferingLanguageStatisticsKey(id int64) string {
+	return "offering_language_statistics:" + strconv.FormatInt(id, 10)
 }

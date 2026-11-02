@@ -310,6 +310,19 @@ Columns: `Aluno`, `Email`, one column per exercise, `Média`, `Submissões`,
 `Última submissão`. A missing exercise score is an empty cell. Names and titles
 that start with a spreadsheet formula character are prefixed with an apostrophe.
 
+### `GET /offerings/{id}/language-stats`
+
+Returns the language report for one class. The response shape and field
+definitions are the same as
+[`GET /admin/language-stats`](./admin.md#language-statistics); every denominator
+is scoped to this class's non-removed exercises and its student submissions.
+`offerings_offered` is therefore `0` or `1`, and the class panel hides that
+column. Only the owner and co-professors may read it; students and monitors
+receive `404`.
+
+The report is cached for up to one minute per class. The UI reads it from the
+**Linguagens** tab of the class page.
+
 ## Class tools
 
 Owner and co-professors only. These routes act on the whole class.

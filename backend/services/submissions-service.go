@@ -57,8 +57,19 @@ func CreateSubmission(ctx context.Context, in SubmissionInput) (int64, error) {
 		return 0, err
 	}
 
-	if err := validateFileType(ctx, in.ExerciseID, in.Filename); err != nil {
+	fileTypeID, fileTypeMatched, err := resolveFileType(
+		ctx, in.ExerciseID, in.Filename,
+	)
+	if err != nil {
 		return 0, err
+	}
+
+	// Keep the catalog entry nullable: an exercise without allowed types accepts
+	// any file, and the commit then has no language to attribute. database/sql
+	// writes the untyped nil as SQL NULL.
+	var fileType any
+	if fileTypeMatched {
+		fileType = fileTypeID
 	}
 
 	// Refuse work before uploading anything when the caller already has runs in
@@ -105,10 +116,11 @@ func CreateSubmission(ctx context.Context, in SubmissionInput) (int64, error) {
 
 	var commitID int64
 	if err := tx.QueryRowContext(ctx,
-		`INSERT INTO commits (user_id, exercise_id, status, ip, s3_key)
-		 VALUES ($1, $2, 'queued', $3, $4)
+		`INSERT INTO commits
+		     (user_id, exercise_id, status, ip, s3_key, allowed_file_type_id)
+		 VALUES ($1, $2, 'queued', $3, $4, $5)
 		 RETURNING id`,
-		in.UserID, in.ExerciseID, in.IP, key,
+		in.UserID, in.ExerciseID, in.IP, key, fileType,
 	).Scan(&commitID); err != nil {
 		slog.ErrorContext(ctx, "failed to insert commit",
 			slog.Int64("user_id", in.UserID),

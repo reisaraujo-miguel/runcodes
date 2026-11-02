@@ -101,6 +101,16 @@ export type {
   UpdateUserPayload,
 } from "./admin";
 
+export {
+  adminGetLanguageStatistics,
+  getOfferingLanguageStatistics,
+} from "./language-stats";
+export type {
+  LanguageStat,
+  LanguageStatistics,
+  LanguageStatisticsSummary,
+} from "./language-stats";
+
 export { FALLBACK_SETTINGS, getPublicSettings } from "./settings";
 export type { PlatformSettings } from "./settings";
 

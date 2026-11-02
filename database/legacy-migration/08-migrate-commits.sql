@@ -49,6 +49,27 @@ SELECT
 FROM old.commits c
 LEFT JOIN _migration.users_map um ON um.old_email = c.user_email;
 
+-- Recover the language choice of each imported commit from the exercise's
+-- allowed file types and the stored object key. This mirrors the submit path
+-- and the Atlas backfill: the longest matching extension wins, so `main.omp.c`
+-- maps to C (OpenMP) rather than plain C. Commits whose exercise had no allowed
+-- types remain unclassified and are reported as such by the statistics page.
+UPDATE public.commits c
+SET allowed_file_type_id = (
+  SELECT eaft.allowed_file_type_id
+  FROM public.exercises_allowed_file_types eaft
+  JOIN public.allowed_file_types aft ON aft.id = eaft.allowed_file_type_id
+  WHERE eaft.exercise_id = c.exercise_id
+    AND (
+      lower(regexp_replace(c.s3_key, '^.*/', '')) = lower(aft.extension)
+      OR lower(regexp_replace(c.s3_key, '^.*/', '')) LIKE '%.' || lower(aft.extension)
+    )
+  ORDER BY length(aft.extension) DESC, aft.id
+  LIMIT 1
+)
+WHERE c.allowed_file_type_id IS NULL
+  AND c.s3_key IS NOT NULL;
+
 -- Per-case results. output -> user_output, error -> error_message.
 --
 -- Legacy semantics: any status other than 1 (correct) or 2

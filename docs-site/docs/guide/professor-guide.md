@@ -55,15 +55,22 @@ class).
 
 ### Class tabs
 
-A class has five tabs:
+A class has six tabs:
 
 | Tab | Purpose |
 | --- | --- |
 | **Detalhes** (Details) | code, end date, enrollment status, edit and delete |
 | **Exercícios** (Exercises) | create, open and manage exercises |
 | **Notas** (Grades) | gradebook, statistics and CSV export |
+| **Linguagens** (Languages) | language adoption, allowance and CPU cost within this class |
 | **Ferramentas** (Tools) | export the class, download submissions, recompile, email |
 | **Participantes** (Participants) | members, roles, bans and invitations |
+
+The **Linguagens** tab uses the same metrics as the admin report, but every
+denominator covers only this class. It is available to the owner and
+co-professors. The fairness caveats are in
+[Language statistics](../administration/language-statistics.md): the CPU index
+is paired by test case and is observational, not a controlled benchmark.
 
 ### Exercise tabs
 
@@ -85,6 +92,7 @@ An exercise has four tabs:
 | Create and edit exercises | ✓ | ✓ | — |
 | Manage test cases and files | ✓ | ✓ | — |
 | View the gradebook | ✓ | ✓ | — |
+| View the language report | ✓ | ✓ | — |
 | Export the class, recompile, email | ✓ | ✓ | — |
 | Edit or delete the class | ✓ | — | — |
 | Rotate the enrollment code | ✓ | — | — |
