@@ -1,6 +1,5 @@
 import { InfoIcon } from "lucide-react";
 
-import { SectionCard } from "@/components/app/SectionCard";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -54,10 +53,7 @@ export function LanguagePerformanceCard({
   const rows = performanceLanguages(languages);
 
   return (
-    <SectionCard
-      title="Tempo de CPU"
-      description="Índice relativo ao mesmo caso de teste. 1,00× é a mediana das linguagens que rodaram aquele caso; abaixo disso, a linguagem usou menos CPU."
-    >
+    <div className="space-y-3">
       <Alert variant="info">
         <InfoIcon />
         <AlertTitle>Como a comparação controla as diferenças</AlertTitle>
@@ -200,13 +196,13 @@ export function LanguagePerformanceCard({
         </TableBody>
       </Table>
 
-      <p className="text-muted-foreground mt-3 text-xs leading-relaxed">
+      <p className="text-muted-foreground text-xs leading-relaxed">
         “Execuções” conta todos os resultados de casos de teste da linguagem;
         “casos comparados” conta só os que entraram no índice. A mediana por
         caso usa os casos comparados, não os exercícios mais pesados
         isoladamente. A tabela coloca primeiro as linguagens com pelo menos
         cinco casos comparados; amostras pequenas e sem dados vêm depois.
       </p>
-    </SectionCard>
+    </div>
   );
 }

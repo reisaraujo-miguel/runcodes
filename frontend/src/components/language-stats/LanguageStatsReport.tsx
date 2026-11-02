@@ -11,6 +11,7 @@ import { useState } from "react";
 
 import { StatCard } from "@/components/app/StatCard";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Card } from "@/components/ui/card";
 import { TabBar, type TabBarItem } from "@/components/ui/tab-bar";
 import type { LanguageStatistics } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
@@ -32,6 +33,37 @@ const REPORT_TABS: readonly TabBarItem<ReportTab>[] = [
   { value: "phases", label: "Fases" },
 ];
 
+const REPORT_SECTIONS: Record<
+  ReportTab,
+  { title: string; description: string }
+> = {
+  choice: {
+    title: "Escolha dos alunos",
+    description:
+      "Submissões de alunos por linguagem. O total e a porcentagem usam todas as submissões classificadas; a taxa “quando ofertada”, no detalhe, usa apenas os exercícios que permitiram a linguagem.",
+  },
+  allowance: {
+    title: "Oferta dos professores",
+    description:
+      "Em quantos exercícios cada linguagem é permitida. Os professores são contados uma vez, mesmo que tenham vários exercícios com a mesma linguagem.",
+  },
+  cpu: {
+    title: "Tempo de CPU",
+    description:
+      "Índice relativo ao mesmo caso de teste. 1,00× é a mediana das linguagens que rodaram aquele caso; abaixo disso, a linguagem usou menos CPU.",
+  },
+  memory: {
+    title: "Memória",
+    description:
+      "Pico de memória relativo ao mesmo caso de teste. 1,00× é a mediana das linguagens que rodaram aquele caso; abaixo disso, a linguagem usou menos memória.",
+  },
+  phases: {
+    title: "Onde o tempo vai",
+    description:
+      "Medianas por fase, medidas em execuções reais. As fases não somam necessariamente o tempo total; a compilação só se aplica a linguagens compiladas e pulls frios ficam fora da mediana da imagem.",
+  },
+};
+
 /**
  * The shared report behind the platform-wide admin page and the class-scoped
  * professor tab. The metrics are the same; only the scope of the denominators
@@ -39,8 +71,8 @@ const REPORT_TABS: readonly TabBarItem<ReportTab>[] = [
  * nor used, so the tables stay about that class.
  *
  * The detailed views live behind tabs rather than in a vertical stack: each
- * card has its own table with an internal scroll, and only the selected view is
- * mounted, so the page does not grow with every metric.
+ * panel has its own table with an internal scroll, and only the selected view is
+ * visible, so the page does not grow with every metric.
  */
 export function LanguageStatsReport({
   data,
@@ -50,6 +82,7 @@ export function LanguageStatsReport({
   scope: "platform" | "offering";
 }) {
   const [section, setSection] = useState<ReportTab>("choice");
+  const active = REPORT_SECTIONS[section];
   const offering = scope === "offering";
   const languages = offering
     ? data.languages.filter(
@@ -138,68 +171,77 @@ export function LanguageStatsReport({
         </Alert>
       ) : null}
 
-      <TabBar
-        items={REPORT_TABS}
-        value={section}
-        onChange={setSection}
-        label="Seções do relatório de linguagens"
-        idPrefix="language-stats"
-        className="bg-card rounded-lg border px-2"
-      />
-
-      <div
-        role="tabpanel"
-        id="language-stats-panel-choice"
-        aria-labelledby="language-stats-tab-choice"
-        hidden={section !== "choice"}
-      >
-        <LanguageChoiceCard
-          languages={languages}
-          classifiedSubmissions={data.summary.classified_submissions}
-          unclassifiedSubmissions={data.summary.unclassified_submissions}
+      <Card className="gap-0 overflow-hidden py-0">
+        <TabBar
+          items={REPORT_TABS}
+          value={section}
+          onChange={setSection}
+          label="Seções do relatório de linguagens"
+          idPrefix="language-stats"
+          className="bg-muted/20 px-2"
         />
-      </div>
 
-      <div
-        role="tabpanel"
-        id="language-stats-panel-allowance"
-        aria-labelledby="language-stats-tab-allowance"
-        hidden={section !== "allowance"}
-      >
-        <LanguageAllowanceCard
-          languages={languages}
-          totalExercises={data.summary.exercises}
-          totalProfessors={data.summary.professors}
-          showOfferings={!offering}
-        />
-      </div>
+        <div className="space-y-1 border-b px-4 py-3">
+          <h2 className="text-base font-medium">{active.title}</h2>
+          <p className="text-muted-foreground text-sm">{active.description}</p>
+        </div>
 
-      <div
-        role="tabpanel"
-        id="language-stats-panel-cpu"
-        aria-labelledby="language-stats-tab-cpu"
-        hidden={section !== "cpu"}
-      >
-        <LanguagePerformanceCard languages={languages} />
-      </div>
+        <div className="p-4">
+          <div
+            role="tabpanel"
+            id="language-stats-panel-choice"
+            aria-labelledby="language-stats-tab-choice"
+            hidden={section !== "choice"}
+          >
+            <LanguageChoiceCard
+              languages={languages}
+              classifiedSubmissions={data.summary.classified_submissions}
+              unclassifiedSubmissions={data.summary.unclassified_submissions}
+            />
+          </div>
 
-      <div
-        role="tabpanel"
-        id="language-stats-panel-memory"
-        aria-labelledby="language-stats-tab-memory"
-        hidden={section !== "memory"}
-      >
-        <LanguageMemoryCard languages={languages} />
-      </div>
+          <div
+            role="tabpanel"
+            id="language-stats-panel-allowance"
+            aria-labelledby="language-stats-tab-allowance"
+            hidden={section !== "allowance"}
+          >
+            <LanguageAllowanceCard
+              languages={languages}
+              totalExercises={data.summary.exercises}
+              totalProfessors={data.summary.professors}
+              showOfferings={!offering}
+            />
+          </div>
 
-      <div
-        role="tabpanel"
-        id="language-stats-panel-phases"
-        aria-labelledby="language-stats-tab-phases"
-        hidden={section !== "phases"}
-      >
-        <LanguagePhasesCard languages={languages} />
-      </div>
+          <div
+            role="tabpanel"
+            id="language-stats-panel-cpu"
+            aria-labelledby="language-stats-tab-cpu"
+            hidden={section !== "cpu"}
+          >
+            <LanguagePerformanceCard languages={languages} />
+          </div>
+
+          <div
+            role="tabpanel"
+            id="language-stats-panel-memory"
+            aria-labelledby="language-stats-tab-memory"
+            hidden={section !== "memory"}
+          >
+            <LanguageMemoryCard languages={languages} />
+          </div>
+
+          <div
+            role="tabpanel"
+            id="language-stats-panel-phases"
+            aria-labelledby="language-stats-tab-phases"
+            hidden={section !== "phases"}
+          >
+            <LanguagePhasesCard languages={languages} />
+          </div>
+        </div>
+      </Card>
 
       <p className="text-muted-foreground text-xs">
         Relatório calculado em {formatDateTime(data.generated_at)}. O resultado

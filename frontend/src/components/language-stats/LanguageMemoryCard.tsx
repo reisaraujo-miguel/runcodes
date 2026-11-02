@@ -1,6 +1,5 @@
 import { BarChart3Icon, InfoIcon } from "lucide-react";
 
-import { SectionCard } from "@/components/app/SectionCard";
 import { EmptyState } from "@/components/app/states";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -54,10 +53,7 @@ export function LanguageMemoryCard({
   const omitted = languages.length - rows.length;
 
   return (
-    <SectionCard
-      title="Memória"
-      description="Pico de memória relativo ao mesmo caso de teste. 1,00× é a mediana das linguagens que rodaram aquele caso; abaixo disso, a linguagem usou menos memória."
-    >
+    <div className="space-y-3">
       <Alert variant="info">
         <InfoIcon />
         <AlertTitle>Como a comparação controla as diferenças</AlertTitle>
@@ -203,18 +199,18 @@ export function LanguageMemoryCard({
       )}
 
       {omitted > 0 ? (
-        <p className="text-muted-foreground mt-3 text-xs">
+        <p className="text-muted-foreground text-xs">
           {formatCount(omitted)}{" "}
           {omitted === 1 ? "linguagem ficou" : "linguagens ficaram"} de fora por
           não ter nenhuma execução com memória conhecida.
         </p>
       ) : null}
 
-      <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
+      <p className="text-muted-foreground text-xs leading-relaxed">
         Cobertura = resultados de casos de teste com memória medida sobre todos
         os resultados classificados no escopo. Resultados antigos com{" "}
         <code>mem_usage = -1</code> são desconhecidos e não entram no índice.
       </p>
-    </SectionCard>
+    </div>
   );
 }

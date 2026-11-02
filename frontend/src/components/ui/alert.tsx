@@ -1,4 +1,5 @@
 import { cva, type VariantProps } from "class-variance-authority";
+import { XIcon } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
@@ -27,15 +28,45 @@ const alertVariants = cva(
 function Alert({
   className,
   variant,
+  dismissible,
+  children,
   ...props
-}: React.ComponentProps<"div"> & VariantProps<typeof alertVariants>) {
+}: React.ComponentProps<"div"> &
+  VariantProps<typeof alertVariants> & {
+    /** Info alerts can be hidden by default; pass false for a permanent one. */
+    dismissible?: boolean;
+  }) {
+  const [visible, setVisible] = React.useState(true);
+  const canDismiss = dismissible ?? variant === "info";
+
+  if (!visible) return null;
+
   return (
     <div
       role="alert"
       data-slot="alert"
-      className={cn(alertVariants({ variant }), className)}
+      className={cn(
+        alertVariants({ variant }),
+        canDismiss && "pr-10",
+        className,
+      )}
       {...props}
-    />
+    >
+      {children}
+      {canDismiss ? (
+        <button
+          type="button"
+          aria-label="Ocultar informação"
+          title="Ocultar informação"
+          onClick={() => {
+            setVisible(false);
+          }}
+          className="text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 absolute top-2 right-2 rounded p-1 transition-colors outline-none focus-visible:ring-2"
+        >
+          <XIcon className="size-3.5" aria-hidden />
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -52,7 +83,10 @@ function AlertTitle({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-function AlertDescription({ className, ...props }: React.ComponentProps<"div">) {
+function AlertDescription({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="alert-description"
