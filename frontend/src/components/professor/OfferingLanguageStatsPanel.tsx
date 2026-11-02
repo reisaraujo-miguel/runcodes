@@ -1,5 +1,6 @@
 import { RefreshCwIcon } from "lucide-react";
 
+import { Section } from "@/components/app/Section";
 import { ErrorState, LoadingState } from "@/components/app/states";
 import { LanguageStatsReport } from "@/components/language-stats/LanguageStatsReport";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,7 @@ import { getOfferingLanguageStatistics } from "@/lib/api";
  * this class, and the report hides catalog entries the class never offered or
  * used.
  */
-export function OfferingLanguageStatsCard({
+export function OfferingLanguageStatsPanel({
   offeringId,
 }: {
   offeringId: number;
@@ -26,15 +27,10 @@ export function OfferingLanguageStatsCard({
   const data = report.data;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-base font-medium">Linguagens da turma</h2>
-          <p className="text-muted-foreground text-sm">
-            Adoção, oferta e custo de CPU dentro desta turma. As taxas usam
-            apenas as submissões e os exercícios daqui.
-          </p>
-        </div>
+    <Section
+      title="Linguagens da turma"
+      description="Adoção, oferta e custo de CPU dentro desta turma. As taxas usam apenas as submissões e os exercícios daqui."
+      action={
         <Button
           variant="outline"
           size="sm"
@@ -46,8 +42,8 @@ export function OfferingLanguageStatsCard({
           />
           Atualizar
         </Button>
-      </div>
-
+      }
+    >
       {report.loading && !data ? (
         <LoadingState label="Calculando o relatório da turma…" />
       ) : report.error ? (
@@ -60,6 +56,6 @@ export function OfferingLanguageStatsCard({
       ) : (
         <LanguageStatsReport data={data} scope="offering" />
       )}
-    </div>
+    </Section>
   );
 }

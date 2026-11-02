@@ -56,10 +56,7 @@ export function OfferingMembersDialog({
         {members.loading ? (
           <LoadingState />
         ) : members.error ? (
-          <ErrorState
-            description={members.error}
-            onRetry={members.reload}
-          />
+          <ErrorState description={members.error} onRetry={members.reload} />
         ) : rows.length === 0 ? (
           <EmptyState
             icon={UsersIcon}
@@ -68,7 +65,7 @@ export function OfferingMembersDialog({
             className="py-8"
           />
         ) : (
-          <Table>
+          <Table variant="plain">
             <TableHeader>
               <TableRow>
                 <TableHead scope="col">Nome</TableHead>

@@ -1,6 +1,7 @@
 import { BookOpenIcon } from "lucide-react";
 
 import { PageHeader } from "@/components/app/PageHeader";
+import { Section } from "@/components/app/Section";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
 import { ExerciseCard } from "@/components/exercises/ExerciseCard";
 import { useAsync } from "@/hooks/use-async";
@@ -37,14 +38,15 @@ export function ExercisesPage() {
       ) : (
         <div className="space-y-8">
           {[...groups.entries()].map(([offeringName, items]) => (
-            <section key={offeringName} className="space-y-3">
-              <h2 className="text-muted-foreground text-sm font-semibold tracking-wide uppercase">
-                {offeringName}
-              </h2>
+            <Section
+              key={offeringName}
+              title={offeringName}
+              contentClassName="space-y-3"
+            >
               {items.map((exercise) => (
                 <ExerciseCard key={exercise.id} exercise={exercise} />
               ))}
-            </section>
+            </Section>
           ))}
         </div>
       )}

@@ -5,7 +5,7 @@ import { FileCode2Icon, PencilIcon, PlusIcon, PowerIcon } from "lucide-react";
 import { FileTypeFormDialog } from "@/components/admin/FileTypeFormDialog";
 import { ConfirmButton } from "@/components/app/ConfirmDialog";
 import { PageHeader } from "@/components/app/PageHeader";
-import { SectionCard } from "@/components/app/SectionCard";
+import { Section } from "@/components/app/Section";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -116,7 +116,7 @@ export function AdminFileTypesPage() {
         }
       />
 
-      <SectionCard
+      <Section
         title="Catálogo da plataforma"
         description="Tipos indisponíveis ficam ocultos no formulário de exercícios, mas continuam válidos para os exercícios que já os usam."
       >
@@ -227,7 +227,7 @@ export function AdminFileTypesPage() {
             </Table>
           )}
         </div>
-      </SectionCard>
+      </Section>
 
       {creating ? (
         <FileTypeFormDialog

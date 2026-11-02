@@ -11,8 +11,12 @@ export function ProfilePage() {
         description="Gerencie os seus dados de conta, preferências e senha."
       />
       <ProfileForm />
-      <EditorPreferenceCard />
-      <PasswordForm />
+      <div className="border-border border-t pt-8">
+        <EditorPreferenceCard />
+      </div>
+      <div className="border-border border-t pt-8">
+        <PasswordForm />
+      </div>
     </div>
   );
 }

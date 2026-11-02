@@ -261,15 +261,3 @@ export function recompileOfferingSubmissions(
     {},
   );
 }
-
-/** Send an email to every member of the class. */
-export function notifyOfferingMembers(
-  id: number,
-  subject: string,
-  message: string,
-): Promise<{ recipients: number }> {
-  return apiPost<{ recipients: number }>(
-    `/api/v1/offerings/${String(id)}/notify`,
-    { subject, message },
-  );
-}

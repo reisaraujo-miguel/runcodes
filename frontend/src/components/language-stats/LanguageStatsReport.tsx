@@ -2,16 +2,15 @@ import {
   AlertTriangleIcon,
   BarChart3Icon,
   BookOpenIcon,
-  ChevronDownIcon,
   FileCode2Icon,
   GraduationCapIcon,
-  InfoIcon,
 } from "lucide-react";
 import { useState } from "react";
 
-import { StatCard } from "@/components/app/StatCard";
+import { Hint } from "@/components/app/Hint";
+import { Section } from "@/components/app/Section";
+import { StatStrip } from "@/components/app/StatStrip";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Card } from "@/components/ui/card";
 import { TabBar, type TabBarItem } from "@/components/ui/tab-bar";
 import type { LanguageStatistics } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
@@ -95,65 +94,57 @@ export function LanguageStatsReport({
 
   return (
     <div className="space-y-6">
-      <details className="bg-card group rounded-lg border px-4 py-3 text-sm">
-        <summary className="flex cursor-pointer list-none items-center gap-2 font-medium select-none [&::-webkit-details-marker]:hidden">
-          <InfoIcon className="text-info size-4" aria-hidden />
-          Como ler estes números
-          <ChevronDownIcon
-            className="text-muted-foreground ml-auto size-4 transition-transform group-open:rotate-180"
-            aria-hidden
-          />
-        </summary>
-        <div className="text-muted-foreground mt-2 space-y-2 text-sm leading-relaxed">
-          <p>
-            A escolha conta apenas submissões de alunos
-            {offering ? " desta turma" : ""}; a oferta conta exercícios não
-            removidos e professores distintos
-            {offering ? " desta turma" : ""}; o tempo de CPU compara cada
-            linguagem com as outras que rodaram o mesmo caso de teste
-            {offering ? " nesta turma" : ""}. Nenhum número usa o total de outro
-            para parecer maior. Exercícios removidos ficam fora de todas as
-            visões.
-          </p>
-          <p>
-            O relatório segue o catálogo de tipos de arquivo: ZIP aparece como
-            Makefile e formatos não executáveis, como PDF, aparecem se algum
-            exercício os permitir.
-          </p>
-        </div>
-      </details>
+      <Hint>
+        <p>
+          A escolha conta apenas submissões de alunos
+          {offering ? " desta turma" : ""}; a oferta conta exercícios não
+          removidos e professores distintos
+          {offering ? " desta turma" : ""}; o tempo de CPU compara cada
+          linguagem com as outras que rodaram o mesmo caso de teste
+          {offering ? " nesta turma" : ""}. Nenhum número usa o total de outro
+          para parecer maior. Exercícios removidos ficam fora de todas as
+          visões.
+        </p>
+        <p>
+          O relatório segue o catálogo de tipos de arquivo: ZIP aparece como
+          Makefile e formatos não executáveis, como PDF, aparecem se algum
+          exercício os permitir.
+        </p>
+      </Hint>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          icon={FileCode2Icon}
-          label="Submissões classificadas"
-          value={formatCount(data.summary.classified_submissions)}
-          hint={`${formatCount(data.summary.students)} ${
-            data.summary.students === 1 ? "aluno" : "alunos"
-          }`}
-        />
-        <StatCard
-          icon={BarChart3Icon}
-          label="Linguagens escolhidas"
-          value={data.summary.languages_used}
-          hint={`de ${formatCount(data.summary.catalog_languages)} no catálogo`}
-          tone="info"
-        />
-        <StatCard
-          icon={BookOpenIcon}
-          label="Exercícios"
-          value={formatCount(data.summary.exercises)}
-          hint={`${formatCount(data.summary.languages_offered)} linguagens ofertadas`}
-          tone="success"
-        />
-        <StatCard
-          icon={GraduationCapIcon}
-          label="Professores"
-          value={formatCount(data.summary.professors)}
-          hint="autores de exercícios"
-          tone="warning"
-        />
-      </div>
+      <StatStrip
+        items={[
+          {
+            icon: FileCode2Icon,
+            label: "Submissões classificadas",
+            value: formatCount(data.summary.classified_submissions),
+            hint: `${formatCount(data.summary.students)} ${
+              data.summary.students === 1 ? "aluno" : "alunos"
+            }`,
+          },
+          {
+            icon: BarChart3Icon,
+            label: "Linguagens escolhidas",
+            value: data.summary.languages_used,
+            hint: `de ${formatCount(data.summary.catalog_languages)} no catálogo`,
+            tone: "info",
+          },
+          {
+            icon: BookOpenIcon,
+            label: "Exercícios",
+            value: formatCount(data.summary.exercises),
+            hint: `${formatCount(data.summary.languages_offered)} linguagens ofertadas`,
+            tone: "success",
+          },
+          {
+            icon: GraduationCapIcon,
+            label: "Professores",
+            value: formatCount(data.summary.professors),
+            hint: "autores de exercícios",
+            tone: "warning",
+          },
+        ]}
+      />
 
       {data.summary.unclassified_submissions > 0 ? (
         <Alert variant="warning">
@@ -171,22 +162,16 @@ export function LanguageStatsReport({
         </Alert>
       ) : null}
 
-      <Card className="gap-0 overflow-hidden py-0">
+      <div className="space-y-4">
         <TabBar
           items={REPORT_TABS}
           value={section}
           onChange={setSection}
           label="Seções do relatório de linguagens"
           idPrefix="language-stats"
-          className="bg-muted/20 px-2"
         />
 
-        <div className="space-y-1 border-b px-4 py-3">
-          <h2 className="text-base font-medium">{active.title}</h2>
-          <p className="text-muted-foreground text-sm">{active.description}</p>
-        </div>
-
-        <div className="p-4">
+        <Section description={active.description}>
           <div
             role="tabpanel"
             id="language-stats-panel-choice"
@@ -240,8 +225,8 @@ export function LanguageStatsReport({
           >
             <LanguagePhasesCard languages={languages} />
           </div>
-        </div>
-      </Card>
+        </Section>
+      </div>
 
       <p className="text-muted-foreground text-xs">
         Relatório calculado em {formatDateTime(data.generated_at)}. O resultado

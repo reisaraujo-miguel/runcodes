@@ -89,8 +89,8 @@ export function ClassExerciseCard({
         </div>
 
         <div className="flex shrink-0 items-center gap-3 sm:flex-col sm:items-end">
-          <div className="bg-muted/50 rounded-lg px-3 py-2 text-right">
-            <p className="text-muted-foreground text-[10px] font-medium tracking-wide uppercase">
+          <div className="text-right">
+            <p className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
               Melhor nota
             </p>
             <p className="text-xl leading-tight font-semibold tabular-nums">

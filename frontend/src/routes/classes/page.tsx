@@ -3,7 +3,7 @@ import { useState } from "react";
 import { GraduationCapIcon } from "lucide-react";
 
 import { PageHeader } from "@/components/app/PageHeader";
-import { SectionCard } from "@/components/app/SectionCard";
+import { Section } from "@/components/app/Section";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
 import { ClassList } from "@/components/classes/ClassList";
 import { EnrollForm } from "@/components/classes/EnrollForm";
@@ -61,7 +61,7 @@ export function ClassesPage() {
         </div>
 
         <aside>
-          <SectionCard
+          <Section
             title="Nova matrícula"
             description="Entre em uma turma com o código do professor."
           >
@@ -70,7 +70,7 @@ export function ClassesPage() {
                 offerings.reload();
               }}
             />
-          </SectionCard>
+          </Section>
         </aside>
       </div>
     </div>

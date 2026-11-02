@@ -1,7 +1,8 @@
 import { useState, type SubmitEvent } from "react";
 
+import { Field } from "@/components/app/Field";
 import { PlatformRoleBadge } from "@/components/app/RoleBadge";
-import { SectionCard } from "@/components/app/SectionCard";
+import { Section } from "@/components/app/Section";
 import { ErrorState, LoadingState } from "@/components/app/states";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -186,25 +187,18 @@ function ProfileFields({
         </Button>
       </form>
 
-      <dl className="grid gap-4 border-t pt-4 sm:grid-cols-3">
-        <div>
-          <dt className="text-muted-foreground text-sm">Perfil</dt>
-          <dd className="mt-1">
-            <PlatformRoleBadge role={profile.role} />
-          </dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground text-sm">Conta criada em</dt>
-          <dd className="mt-1 text-sm">{formatDateTime(profile.created_at)}</dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground text-sm">Confirmação</dt>
-          <dd className="mt-1">
-            <Badge variant={profile.confirmed ? "success" : "warning"}>
-              {profile.confirmed ? "Confirmada" : "Pendente"}
-            </Badge>
-          </dd>
-        </div>
+      <dl className="grid gap-x-6 gap-y-5 border-t pt-5 sm:grid-cols-3">
+        <Field label="Perfil">
+          <PlatformRoleBadge role={profile.role} />
+        </Field>
+        <Field label="Conta criada em">
+          {formatDateTime(profile.created_at)}
+        </Field>
+        <Field label="Confirmação">
+          <Badge variant={profile.confirmed ? "success" : "warning"}>
+            {profile.confirmed ? "Confirmada" : "Pendente"}
+          </Badge>
+        </Field>
       </dl>
     </div>
   );
@@ -229,7 +223,7 @@ export function ProfileForm() {
   }
 
   return (
-    <SectionCard
+    <Section
       title="Dados da conta"
       description="Atualize o seu nome, email e identificação institucional."
     >
@@ -238,6 +232,6 @@ export function ProfileForm() {
         profile={profile.data}
         onSaved={profile.reload}
       />
-    </SectionCard>
+    </Section>
   );
 }

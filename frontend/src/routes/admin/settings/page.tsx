@@ -2,7 +2,7 @@ import { SettingsIcon } from "lucide-react";
 
 import { SettingsForm } from "@/components/admin/SettingsForm";
 import { PageHeader } from "@/components/app/PageHeader";
-import { SectionCard } from "@/components/app/SectionCard";
+import { Section } from "@/components/app/Section";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
 import { useAsync } from "@/hooks/use-async";
 import { adminGetSettings } from "@/lib/api";
@@ -26,7 +26,7 @@ export function AdminSettingsPage() {
         description="Dados de contato usados na página de login e nas orientações de reporte de erros."
       />
 
-      <SectionCard
+      <Section
         title="Contato"
         description="O email é usado nos termos de uso e nas instruções de reporte de erros; o aviso é exibido na página de login."
       >
@@ -43,7 +43,7 @@ export function AdminSettingsPage() {
             description="Não há configurações para exibir."
           />
         )}
-      </SectionCard>
+      </Section>
     </div>
   );
 }

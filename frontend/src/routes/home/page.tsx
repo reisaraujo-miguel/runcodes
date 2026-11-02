@@ -7,8 +7,8 @@ import {
 import { NavLink } from "react-router";
 
 import { PageHeader } from "@/components/app/PageHeader";
-import { SectionCard } from "@/components/app/SectionCard";
-import { StatCard } from "@/components/app/StatCard";
+import { Section } from "@/components/app/Section";
+import { StatStrip } from "@/components/app/StatStrip";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
 import { ClassList } from "@/components/classes/ClassList";
 import { EnrollForm } from "@/components/classes/EnrollForm";
@@ -56,21 +56,25 @@ export function Dashboard() {
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <StatCard
-          icon={BookOpenIcon}
-          label="Entregas abertas"
-          value={exercises.loading ? "…" : (exercises.data?.length ?? 0)}
-          hint="Exercícios disponíveis agora"
-        />
-        <StatCard
-          icon={GraduationCapIcon}
-          label="Minhas turmas"
-          value={offerings.loading ? "…" : classes.length}
-          hint="Disciplinas em que você está matriculado"
-          tone="info"
-        />
-      </div>
+      <StatStrip
+        className="xl:grid-cols-2"
+        items={[
+          {
+            icon: BookOpenIcon,
+            label: "Entregas abertas",
+            value: exercises.loading ? "…" : (exercises.data?.length ?? 0),
+            hint: "Exercícios disponíveis agora",
+            tone: "primary",
+          },
+          {
+            icon: GraduationCapIcon,
+            label: "Minhas turmas",
+            value: offerings.loading ? "…" : classes.length,
+            hint: "Disciplinas em que você está matriculado",
+            tone: "info",
+          },
+        ]}
+      />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
@@ -108,16 +112,16 @@ export function Dashboard() {
         </div>
 
         <aside className="space-y-6">
-          <SectionCard title="Nova matrícula" description="Entre em uma turma.">
+          <Section title="Nova matrícula" description="Entre em uma turma.">
             <EnrollForm
               onEnrolled={() => {
                 offerings.reload();
                 exercises.reload();
               }}
             />
-          </SectionCard>
+          </Section>
 
-          <SectionCard
+          <Section
             title="Minhas turmas"
             action={
               <Button
@@ -146,7 +150,7 @@ export function Dashboard() {
             ) : (
               <ClassList classes={classes} onLeave={handleLeave} />
             )}
-          </SectionCard>
+          </Section>
         </aside>
       </div>
     </div>

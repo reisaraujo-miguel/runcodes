@@ -1,6 +1,4 @@
-import { InfoIcon } from "lucide-react";
-
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Hint } from "@/components/app/Hint";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -54,30 +52,26 @@ export function LanguagePerformanceCard({
 
   return (
     <div className="space-y-3">
-      <Alert variant="info">
-        <InfoIcon />
-        <AlertTitle>Como a comparação controla as diferenças</AlertTitle>
-        <AlertDescription>
-          <p>
-            Cada caso de teste serve de régua para si mesmo. Para cada caso,
-            calculamos a mediana de cada linguagem e a mediana entre as
-            linguagens; o índice de uma linguagem é a mediana das razões ao
-            longo dos casos. Assim, exercícios mais pesados e limites diferentes
-            afetam todas as linguagens por igual.
-          </p>
-          <p>
-            Casos em que só uma linguagem foi usada ficam de fora: não há com o
-            que comparar. Linguagens com menos de cinco casos comparados
-            aparecem com aviso de amostra pequena.
-          </p>
-          <p>
-            Esta comparação usa apenas tempo de CPU; a memória tem uma tabela
-            própria. Os alunos também não são distribuídos aleatoriamente entre
-            linguagens: leia o índice como uma pista, não como um benchmark
-            controlado.
-          </p>
-        </AlertDescription>
-      </Alert>
+      <Hint summary="Como a comparação controla as diferenças">
+        <p>
+          Cada caso de teste serve de régua para si mesmo. Para cada caso,
+          calculamos a mediana de cada linguagem e a mediana entre as
+          linguagens; o índice de uma linguagem é a mediana das razões ao longo
+          dos casos. Assim, exercícios mais pesados e limites diferentes afetam
+          todas as linguagens por igual.
+        </p>
+        <p>
+          Casos em que só uma linguagem foi usada ficam de fora: não há com o
+          que comparar. Linguagens com menos de cinco casos comparados aparecem
+          com aviso de amostra pequena.
+        </p>
+        <p>
+          Esta comparação usa apenas tempo de CPU; a memória tem uma tabela
+          própria. Os alunos também não são distribuídos aleatoriamente entre
+          linguagens: leia o índice como uma pista, não como um benchmark
+          controlado.
+        </p>
+      </Hint>
 
       <div className="text-muted-foreground mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
         <span className="flex items-center gap-1.5">

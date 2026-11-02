@@ -20,12 +20,12 @@ import { BackLink } from "@/components/app/BackLink";
 import { ConfirmButton } from "@/components/app/ConfirmDialog";
 import { PageHeader } from "@/components/app/PageHeader";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
-import { ClassMembersCard } from "@/components/professor/ClassMembersCard";
+import { ClassMembersPanel } from "@/components/professor/ClassMembersPanel";
 import { EditClassForm } from "@/components/professor/EditClassForm";
 import { NewExerciseForm } from "@/components/professor/NewExerciseForm";
-import { OfferingGradesCard } from "@/components/professor/OfferingGradesCard";
-import { OfferingLanguageStatsCard } from "@/components/professor/OfferingLanguageStatsCard";
-import { OfferingToolsCard } from "@/components/professor/OfferingToolsCard";
+import { OfferingGradesPanel } from "@/components/professor/OfferingGradesPanel";
+import { OfferingLanguageStatsPanel } from "@/components/professor/OfferingLanguageStatsPanel";
+import { OfferingToolsPanel } from "@/components/professor/OfferingToolsPanel";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -521,7 +521,7 @@ export function ClassPage() {
             aria-labelledby="class-overview-tab-grades"
             hidden={tab !== "grades"}
           >
-            <OfferingGradesCard offeringId={offering.id} />
+            <OfferingGradesPanel offeringId={offering.id} />
           </div>
 
           <div
@@ -530,7 +530,7 @@ export function ClassPage() {
             aria-labelledby="class-overview-tab-languages"
             hidden={tab !== "languages"}
           >
-            <OfferingLanguageStatsCard offeringId={offering.id} />
+            <OfferingLanguageStatsPanel offeringId={offering.id} />
           </div>
 
           <div
@@ -539,10 +539,7 @@ export function ClassPage() {
             aria-labelledby="class-overview-tab-tools"
             hidden={tab !== "tools"}
           >
-            <OfferingToolsCard
-              offeringId={offering.id}
-              offeringName={offering.name}
-            />
+            <OfferingToolsPanel offeringId={offering.id} />
           </div>
 
           <div
@@ -551,11 +548,10 @@ export function ClassPage() {
             aria-labelledby="class-overview-tab-participants"
             hidden={tab !== "participants"}
           >
-            <ClassMembersCard
+            <ClassMembersPanel
               offeringId={offering.id}
               isOwner={isOwner}
               ownerId={ownerId}
-              embedded
               onChanged={data.reload}
             />
           </div>

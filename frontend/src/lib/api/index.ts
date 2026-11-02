@@ -50,7 +50,6 @@ export {
   importOffering,
   listOfferingMembers,
   listOfferings,
-  notifyOfferingMembers,
   recompileOfferingSubmissions,
   removeOfferingMember,
   rotateEnrollmentCode,

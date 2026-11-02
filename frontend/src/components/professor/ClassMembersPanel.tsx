@@ -4,7 +4,7 @@ import { UsersIcon } from "lucide-react";
 
 import { ConfirmButton } from "@/components/app/ConfirmDialog";
 import { EnrollmentRoleBadge } from "@/components/app/RoleBadge";
-import { SectionCard } from "@/components/app/SectionCard";
+import { Section } from "@/components/app/Section";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -74,18 +74,15 @@ function memberErrorMessage(error: unknown, fallback: string): string {
  * Manages who takes part in a class: enrolled students, monitors and invited
  * professors. Every endpoint is owner-only, so a co-professor sees a note.
  */
-export function ClassMembersCard({
+export function ClassMembersPanel({
   offeringId,
   isOwner,
   ownerId,
-  embedded = false,
   onChanged,
 }: {
   offeringId: number;
   isOwner: boolean;
   ownerId: number | null;
-  /** Render the content without its own card, for a tab panel. */
-  embedded?: boolean;
   /** Called after a member is added, changed or removed. */
   onChanged?: () => void;
 }) {
@@ -107,26 +104,13 @@ export function ClassMembersCard({
     "Alunos matriculados, monitores e professores convidados.";
 
   if (!isOwner) {
-    const note = (
-      <p className="text-muted-foreground text-sm">
-        Apenas o professor responsável pela turma pode gerenciar os
-        participantes.
-      </p>
-    );
-
-    if (embedded) {
-      return (
-        <div className="space-y-3">
-          <p className="text-muted-foreground text-sm">{description}</p>
-          {note}
-        </div>
-      );
-    }
-
     return (
-      <SectionCard title="Participantes" description={description}>
-        {note}
-      </SectionCard>
+      <Section title="Participantes" description={description}>
+        <p className="text-muted-foreground text-sm">
+          Apenas o professor responsável pela turma pode gerenciar os
+          participantes.
+        </p>
+      </Section>
     );
   }
 
@@ -405,18 +389,9 @@ export function ClassMembersCard({
     </>
   );
 
-  if (embedded) {
-    return (
-      <div className="space-y-4">
-        <p className="text-muted-foreground text-sm">{description}</p>
-        {content}
-      </div>
-    );
-  }
-
   return (
-    <SectionCard title="Participantes" description={description}>
+    <Section title="Participantes" description={description}>
       {content}
-    </SectionCard>
+    </Section>
   );
 }

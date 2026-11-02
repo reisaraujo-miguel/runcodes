@@ -13,7 +13,7 @@ import { OfferingMembersDialog } from "@/components/admin/OfferingMembersDialog"
 import { useAdminList } from "@/components/admin/use-admin-list";
 import { ConfirmButton } from "@/components/app/ConfirmDialog";
 import { PageHeader } from "@/components/app/PageHeader";
-import { SectionCard } from "@/components/app/SectionCard";
+import { Section } from "@/components/app/Section";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -83,7 +83,7 @@ export function AdminCoursesPage() {
         description="Busque por nome da turma ou pelo responsável para editar, transferir a responsabilidade ou excluir."
       />
 
-      <SectionCard
+      <Section
         title="Todas as turmas"
         description="Cada turma reúne os exercícios e as matrículas dos alunos."
       >
@@ -273,7 +273,7 @@ export function AdminCoursesPage() {
             </div>
           )}
         </div>
-      </SectionCard>
+      </Section>
 
       {editing ? (
         <OfferingEditDialog

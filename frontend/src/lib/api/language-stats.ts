@@ -72,6 +72,10 @@ export interface LanguageTimings {
   queue?: PhaseStat;
   workspace?: PhaseStat;
   image?: PhaseStat;
+  /** The runtime's `podman create` call. */
+  container_create?: PhaseStat;
+  /** The runtime's `podman start` call, before the harness gets control. */
+  container_start?: PhaseStat;
   startup?: PhaseStat;
   compile?: PhaseStat;
   run?: PhaseStat;

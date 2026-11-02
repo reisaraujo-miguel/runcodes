@@ -67,23 +67,58 @@ documentation site is in English.
   live SSE stream drives per-case results as they arrive.
 - **Submission history** — the last 50 submissions for an exercise, with score
   and status, source download and output archive when available.
-- **Class pages** — exercises, deadlines, staff, member list for owners, and
-  progress for students.
+- **Class pages** — exercises, deadlines, staff, member list for owners,
+  progress for students, and the class bulletin board.
 - **Professor authoring** — create and edit exercises, test cases, attached
   files and compilation files, assign monitors and co-professors, batch-import
   test cases and reuse a class archive.
 - **Gradebook** — best score per student and exercise, class statistics and a
   CSV export.
-- **Class tools** — export the class, download the latest submissions,
-  recompile, and email every member.
+- **Class tools** — export the class, download the latest submissions and
+  recompile.
 - **Admin panel** — account search and role management, class management,
   ownership transfer, file type catalog, platform settings and role preview.
+- **Bulletin board** — staff publish announcements; students comment and reply,
+  and the recipients of each notification are described in the
+  [professor guide](professor-guide.md#bulletin-board-mural).
 - **Theming** — light/dark mode preference.
 - **Verification flow** — when login fails because the email is unconfirmed,
   resend the verification link directly from the login card and land on a
   dedicated `/verify-email` page.
 - **Password recovery** — request a recovery link from `/forgot-password` and
   choose a new password on `/reset-password`.
+
+## Design language
+
+The interface is deliberately quiet: content sits on the page instead of a stack
+of framed boxes. Cards are useful, but only for the objects that stand on their
+own.
+
+- A page or a tab is a `Section` — a heading, an optional description and action,
+  then the content, with no border or background.
+- A `Card` is for a discrete object: an exercise in a list, a class card, a
+  dialog, a callout. Never put a card inside another card.
+- A page never wraps its whole body in a card, and a tab panel never adds one on
+  top of the tab strip.
+- Metrics are a `StatStrip`: one band with a rule and plain columns, not a card
+  per number.
+- A set of equally weighted actions is a `List` of `ListRow`s — title,
+  description and the control on the right — not a grid of tiles.
+- A table is its own card: the `Table` primitive renders the scroll region on a
+  card surface (a dialog passes `variant="plain"`). Lists and forms sit directly
+  under their section heading; empty states are placeholders, not cards.
+- A section spaces its content (`Section` defaults to `space-y-4`).
+- Labels are micro-labels: small, uppercase and muted (`Field`, `FieldRow`,
+  table headers and the stat strip share that voice), so a field list never
+  reads as a stack of headings.
+- Type scale: page title 24px, section 18px, sub-section 16px, body 14px.
+- Long methodological explanations are a `Hint` disclosure, closed by default,
+  not a banner above the content.
+
+The primitives live in `src/components/app/` (`Section`, `StatStrip`, `List`,
+`Field`, `Hint`),
+and the rules are repeated in
+[`frontend/README.md`](https://github.com/reisaraujo-miguel/runcodes/blob/main/frontend/README.md).
 
 ## Development
 

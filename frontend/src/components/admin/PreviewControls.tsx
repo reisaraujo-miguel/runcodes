@@ -1,6 +1,6 @@
 import { BookOpenIcon, GraduationCapIcon } from "lucide-react";
 
-import { SectionCard } from "@/components/app/SectionCard";
+import { Section } from "@/components/app/Section";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -19,7 +19,7 @@ export function PreviewControls() {
   if (user?.role !== "admin" || user.previewing_role) return null;
 
   return (
-    <SectionCard
+    <Section
       title="Visualizar como"
       description="Navegue pela plataforma com as permissões de estudante ou professor. Sua conta e seus dados continuam os mesmos; o painel administrativo fica oculto até você voltar."
     >
@@ -60,6 +60,6 @@ export function PreviewControls() {
           </Button>
         </div>
       </div>
-    </SectionCard>
+    </Section>
   );
 }

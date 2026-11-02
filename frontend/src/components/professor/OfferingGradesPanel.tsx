@@ -8,8 +8,8 @@ import {
   UsersIcon,
 } from "lucide-react";
 
-import { SectionCard } from "@/components/app/SectionCard";
-import { StatCard } from "@/components/app/StatCard";
+import { Section } from "@/components/app/Section";
+import { StatStrip } from "@/components/app/StatStrip";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -34,13 +34,13 @@ function scoreLabel(value: number | null): string {
 }
 
 /**
- * The professor's grade view of one class: the table of every student against
- * every exercise, the class statistics, per-exercise statistics and the CSV
+ * The professor's grade view of one class: the class metrics, the table of every
+ * student against every exercise, the per-exercise statistics and the CSV
  * export. The grade on an exercise is the best score among the student's
  * submissions; the class grade averages those best scores over every exercise,
  * counting a missing submission as zero.
  */
-export function OfferingGradesCard({ offeringId }: { offeringId: number }) {
+export function OfferingGradesPanel({ offeringId }: { offeringId: number }) {
   const gradebook = useAsync(
     () => getOfferingGradebook(offeringId),
     `offering-grades-${String(offeringId)}`,
@@ -99,47 +99,44 @@ export function OfferingGradesCard({ offeringId }: { offeringId: number }) {
           </Alert>
         ) : null}
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard
-            icon={UsersIcon}
-            label="Alunos"
-            value={data.summary.student_count}
-            hint={`${String(data.summary.students_with_submission)} com entrega`}
-          />
-          <StatCard
-            icon={GraduationCapIcon}
-            label="Média da turma"
-            value={data.summary.global_average.toFixed(2)}
-            hint="Média das notas finais"
-            tone="info"
-          />
-          <StatCard
-            icon={TrendingUpIcon}
-            label="Acima de 50"
-            value={data.summary.students_above_50}
-            hint="Alunos com média maior que 50"
-            tone="success"
-          />
-          <StatCard
-            icon={BarChart3Icon}
-            label="Submissões"
-            value={data.summary.total_submissions}
-            hint={`${String(data.exercises.length)} exercício(s)`}
-            tone="warning"
-          />
-        </div>
+        <StatStrip
+          items={[
+            {
+              icon: UsersIcon,
+              label: "Alunos",
+              value: data.summary.student_count,
+              hint: `${String(data.summary.students_with_submission)} com entrega`,
+            },
+            {
+              icon: GraduationCapIcon,
+              label: "Média da turma",
+              value: data.summary.global_average.toFixed(2),
+              hint: "Média das notas finais",
+              tone: "info",
+            },
+            {
+              icon: TrendingUpIcon,
+              label: "Acima de 50",
+              value: data.summary.students_above_50,
+              hint: "Alunos com média maior que 50",
+              tone: "success",
+            },
+            {
+              icon: BarChart3Icon,
+              label: "Submissões",
+              value: data.summary.total_submissions,
+              hint: `${String(data.exercises.length)} exercício(s)`,
+              tone: "warning",
+            },
+          ]}
+        />
 
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-end justify-between gap-2">
-            <div>
-              <h3 className="text-base font-medium">Tabela de notas</h3>
-              <p className="text-muted-foreground text-sm">
-                Melhor nota de cada aluno por exercício. A média final considera
-                todos os exercícios, inclusive os sem entrega.
-              </p>
-            </div>
-          </div>
-
+        <Section
+          title="Tabela de notas"
+          description="Melhor nota de cada aluno por exercício. A média final considera todos os exercícios, inclusive os sem entrega."
+          headingLevel={3}
+          className="space-y-3"
+        >
           {data.students.length === 0 ? (
             <EmptyState
               title="Nenhum aluno matriculado"
@@ -151,10 +148,10 @@ export function OfferingGradesCard({ offeringId }: { offeringId: number }) {
               description="Crie um exercício para começar a acompanhar as notas."
             />
           ) : (
-            <Table containerClassName="max-h-[32rem] rounded-lg border">
-              <TableHeader className="bg-muted/80 sticky top-0 z-10">
+            <Table containerClassName="max-h-[32rem]">
+              <TableHeader className="sticky top-0 z-10">
                 <TableRow>
-                  <TableHead className="bg-muted/80 sticky left-0 z-20 min-w-56">
+                  <TableHead className="sticky left-0 z-20 min-w-56">
                     Aluno
                   </TableHead>
                   {data.exercises.map((exercise, index) => (
@@ -168,7 +165,7 @@ export function OfferingGradesCard({ offeringId }: { offeringId: number }) {
                       </span>
                     </TableHead>
                   ))}
-                  <TableHead className="bg-muted/80 sticky right-0 z-20 text-center">
+                  <TableHead className="sticky right-0 z-20 text-center">
                     Média
                   </TableHead>
                 </TableRow>
@@ -176,7 +173,7 @@ export function OfferingGradesCard({ offeringId }: { offeringId: number }) {
               <TableBody>
                 {data.students.map((student) => (
                   <TableRow key={student.user_id}>
-                    <TableCell className="bg-background sticky left-0 z-10 min-w-56">
+                    <TableCell className="bg-card sticky left-0 z-10 min-w-56">
                       <p className="font-medium">{student.name}</p>
                       <p className="text-muted-foreground text-xs">
                         {student.email}
@@ -207,7 +204,7 @@ export function OfferingGradesCard({ offeringId }: { offeringId: number }) {
                         ) : null}
                       </TableCell>
                     ))}
-                    <TableCell className="bg-muted/30 sticky right-0 z-10 text-center font-semibold tabular-nums">
+                    <TableCell className="bg-muted sticky right-0 z-10 text-center font-semibold tabular-nums">
                       {scoreLabel(student.average)}
                     </TableCell>
                   </TableRow>
@@ -215,19 +212,14 @@ export function OfferingGradesCard({ offeringId }: { offeringId: number }) {
               </TableBody>
             </Table>
           )}
-        </div>
+        </Section>
 
-        <div className="space-y-3">
-          <div>
-            <h3 className="text-base font-medium">
-              Estatísticas por exercício
-            </h3>
-            <p className="text-muted-foreground text-sm">
-              A média considera todos os alunos; a coluna “entre os que
-              entregaram” ignora quem não submeteu.
-            </p>
-          </div>
-
+        <Section
+          title="Estatísticas por exercício"
+          description="A média considera todos os alunos; a coluna “entre os que entregaram” ignora quem não submeteu."
+          headingLevel={3}
+          className="space-y-3"
+        >
           {data.exercise_statistics.length === 0 ? (
             <p className="text-muted-foreground text-sm">
               Nenhum exercício para calcular estatísticas.
@@ -288,17 +280,17 @@ export function OfferingGradesCard({ offeringId }: { offeringId: number }) {
               </TableBody>
             </Table>
           )}
-        </div>
+        </Section>
       </div>
     );
 
   return (
-    <SectionCard
+    <Section
       title="Notas e estatísticas"
       description="Acompanhe o desempenho da turma e exporte a tabela em CSV."
       action={csvButton}
     >
       {content}
-    </SectionCard>
+    </Section>
   );
 }

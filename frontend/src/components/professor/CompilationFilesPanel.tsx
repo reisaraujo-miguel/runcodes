@@ -3,7 +3,7 @@ import { useState } from "react";
 import { FileCode2Icon } from "lucide-react";
 
 import { ConfirmButton } from "@/components/app/ConfirmDialog";
-import { SectionCard } from "@/components/app/SectionCard";
+import { Section } from "@/components/app/Section";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -41,14 +41,7 @@ function filePath(file: CompilationFile): string | null {
  * basename already exists replaces the stored one, so no duplicate cleanup is
  * needed.
  */
-export function CompilationFilesCard({
-  exerciseId,
-  embedded = false,
-}: {
-  exerciseId: number;
-  /** Render the content without its own card, for a tab panel. */
-  embedded?: boolean;
-}) {
+export function CompilationFilesPanel({ exerciseId }: { exerciseId: number }) {
   const files = useAsync(
     () => getCompilationFiles(exerciseId),
     `compilation-${String(exerciseId)}`,
@@ -169,18 +162,9 @@ export function CompilationFilesCard({
     </div>
   );
 
-  if (embedded) {
-    return (
-      <div className="space-y-4">
-        <p className="text-muted-foreground text-sm">{description}</p>
-        {content}
-      </div>
-    );
-  }
-
   return (
-    <SectionCard title="Arquivos de compilação" description={description}>
+    <Section title="Arquivos de compilação" description={description}>
       {content}
-    </SectionCard>
+    </Section>
   );
 }
