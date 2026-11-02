@@ -51,6 +51,10 @@ type LanguageStat struct {
 	ProfessorsOffering int64   `json:"professors_offering"`
 	ProfessorOfferRate float64 `json:"professor_offer_rate"`
 
+	// Timings and resources. A nil phase means the report has no measurements
+	// for it yet (older runs, or a phase the language does not have).
+	Timings LanguageTimings `json:"timings"`
+
 	// CPU performance. RelativeCPU is the median, across comparable test cases,
 	// of this language's median CPU time divided by the median of the languages
 	// that ran the same test case. 1.0 is the typical language on that case.
@@ -62,4 +66,32 @@ type LanguageStat struct {
 	RelativeCPU          *float64 `json:"relative_cpu"`
 	RelativeCPUP25       *float64 `json:"relative_cpu_p25"`
 	RelativeCPUP75       *float64 `json:"relative_cpu_p75"`
+}
+
+// PhaseStat is the median and spread of one measured phase. The median is null
+// when the phase has samples but none of the usable kind (for example an image
+// that was only ever cold-pulled); the counts and coverage are still useful.
+type PhaseStat struct {
+	MedianSeconds        *float64 `json:"median_seconds"`
+	P25Seconds           *float64 `json:"p25_seconds"`
+	P75Seconds           *float64 `json:"p75_seconds"`
+	CPUTimeMedianSeconds *float64 `json:"cpu_time_median_seconds,omitempty"`
+	Samples              int64    `json:"samples"`
+	// WarmSamples and ColdSamples are populated for image_ensure; a cold pull
+	// is excluded from the median so image-cache state does not dominate it.
+	WarmSamples int64   `json:"warm_samples,omitempty"`
+	ColdSamples int64   `json:"cold_samples,omitempty"`
+	Coverage    float64 `json:"coverage"`
+}
+
+// LanguageTimings is the time breakdown of one language's runs.
+type LanguageTimings struct {
+	Queue     *PhaseStat `json:"queue,omitempty"`
+	Workspace *PhaseStat `json:"workspace,omitempty"`
+	Image     *PhaseStat `json:"image,omitempty"`
+	Startup   *PhaseStat `json:"startup,omitempty"`
+	Compile   *PhaseStat `json:"compile,omitempty"`
+	Run       *PhaseStat `json:"run,omitempty"`
+	Grade     *PhaseStat `json:"grade,omitempty"`
+	Artifact  *PhaseStat `json:"artifact,omitempty"`
 }

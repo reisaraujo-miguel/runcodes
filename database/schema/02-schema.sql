@@ -190,13 +190,54 @@ CREATE TABLE commits_exercise_test_cases_results (
   commit_id int NOT NULL REFERENCES commits (id) ON DELETE CASCADE,
   exercise_test_case_id int NOT NULL REFERENCES exercises_test_cases (id) ON DELETE CASCADE,
   cpu_time numeric(15, 4) NOT NULL,
-  mem_usage int NOT NULL,
+  -- Peak memory in bytes, or -1 when the monitor could not measure it. The
+  -- column is bigint so a run without an address-space limit can report a peak
+  -- above 2 GiB.
+  mem_usage bigint NOT NULL,
+  -- Wall-clock time of the monitored command, in seconds. NULL on rows written
+  -- before the judge started storing it.
+  wall_time numeric(15, 4),
   user_output text,
   user_output_type input_output_type_t NOT NULL,
   status commit_exercise_test_case_status_t NOT NULL,
   status_message text,
   error_message text,
   PRIMARY KEY (commit_id, exercise_test_case_id)
+);
+
+-- One row per measured phase of a run. A row-per-phase table keeps the schema
+-- stable as new phases are added; the product statistics pivot the rows by
+-- phase, and operations can use them for latency breakdowns.
+CREATE TYPE commit_phase_t AS ENUM (
+  'queue',
+  'workspace_prepare',
+  'source_download',
+  'source_resolve',
+  'compilation_files',
+  'test_cases',
+  'test_case_files',
+  'container_config',
+  'image_ensure',
+  'container_create',
+  'container_start',
+  'startup',
+  'compile',
+  'run',
+  'grade',
+  'artifact'
+);
+
+CREATE TABLE commit_phase_timings (
+  commit_id int NOT NULL REFERENCES commits (id) ON DELETE CASCADE,
+  phase commit_phase_t NOT NULL,
+  duration_ms int NOT NULL CHECK (duration_ms >= 0),
+  cpu_ms int CHECK (cpu_ms IS NULL OR cpu_ms >= 0),
+  mem_peak_bytes bigint CHECK (mem_peak_bytes IS NULL OR mem_peak_bytes >= 0),
+  started_at TIMESTAMP WITH TIME ZONE,
+  finished_at TIMESTAMP WITH TIME ZONE,
+  source text DEFAULT 'judge' NOT NULL CHECK (source IN ('judge', 'monitor', 'harness')),
+  detail jsonb,
+  PRIMARY KEY (commit_id, phase)
 );
 
 CREATE TABLE system_disk_reports (
@@ -287,6 +328,9 @@ CREATE INDEX idx_commits_allowed_file_type_id ON commits (allowed_file_type_id);
 -- The results PK is (commit_id, exercise_test_case_id): commit_id is covered, the
 -- case id is not.
 CREATE INDEX idx_results_exercise_test_case_id ON commits_exercise_test_cases_results (exercise_test_case_id);
+-- The statistics pivot filters by phase and joins by commit; the PK covers the
+-- commit lookup, so only the phase needs its own index.
+CREATE INDEX idx_commit_phase_timings_phase ON commit_phase_timings (phase);
 CREATE INDEX idx_system_logs_user_id ON system_logs (user_id);
 CREATE INDEX idx_user_messages_user_id ON user_messages (user_id);
 -- The notifier looks a student up when an exercise enters a reminder window, and
@@ -394,5 +438,10 @@ CREATE POLICY "runcodes_app_only" ON "user_messages" TO PUBLIC
 
 ALTER TABLE "exercise_deadline_notifications" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "runcodes_app_only" ON "exercise_deadline_notifications" TO PUBLIC
+  USING (current_user = 'runcodes_app')
+  WITH CHECK (current_user = 'runcodes_app');
+
+ALTER TABLE "commit_phase_timings" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "runcodes_app_only" ON "commit_phase_timings" TO PUBLIC
   USING (current_user = 'runcodes_app')
   WITH CHECK (current_user = 'runcodes_app');

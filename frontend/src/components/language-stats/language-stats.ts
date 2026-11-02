@@ -33,13 +33,16 @@ export function formatRatio(value: number): string {
   return `${ratioFormatter.format(value)}×`;
 }
 
-/** A compact, human-readable median CPU time. */
-export function formatMedianCpu(seconds: number | null): string {
+/** A compact, human-readable duration in seconds. */
+export function formatDuration(seconds: number | null): string {
   if (seconds === null || !Number.isFinite(seconds) || seconds < 0) return "—";
   if (seconds < 0.001) return "< 1 ms";
   if (seconds < 1) return `${millisecondFormatter.format(seconds * 1000)} ms`;
   return `${secondFormatter.format(seconds)} s`;
 }
+
+/** The CPU table's name for the same duration formatter. */
+export const formatMedianCpu = formatDuration;
 
 /** The p25–p75 spread of the relative CPU ratio. */
 export function formatRatioRange(

@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/runcodes-icmc/judge/internal/model"
 )
 
 func TestPublishAndSubscribe(t *testing.T) {
@@ -109,7 +111,7 @@ func TestReplayBufferIsBoundedByBytes(t *testing.T) {
 	// maxFrames, so only the byte bound can evict anything.
 	payload := strings.Repeat("x", maxTopicBytes/4)
 	for i := 0; i < 8; i++ {
-		h.CaseResult(1, int64(i), 0, 0, "correct", "", payload, "text", "")
+		h.CaseResult(1, int64(i), 0, 0, 0, "correct", "", payload, "text", "")
 	}
 
 	sub := h.Subscribe(1, 0)
@@ -173,12 +175,40 @@ func TestTerminalFrameWaitsForASlowSubscriber(t *testing.T) {
 	}
 }
 
+func TestTimingsPayload(t *testing.T) {
+	h := New(time.Minute)
+	sub := h.Subscribe(9, 0)
+	defer sub.Cancel()
+
+	h.Timings(9, []model.PhaseTiming{{
+		Phase:    model.PhaseCompile,
+		Duration: 1200 * time.Millisecond,
+		CPU:      900 * time.Millisecond,
+		HasCPU:   true,
+		Source:   "monitor",
+	}})
+
+	frame := <-sub.Ch
+	data := string(frame.Data)
+	for _, want := range []string{
+		`"type":"timings"`,
+		`"phase":"compile"`,
+		`"duration_ms":1200`,
+		`"cpu_ms":900`,
+		`"source":"monitor"`,
+	} {
+		if !strings.Contains(data, want) {
+			t.Errorf("payload %s does not contain %s", data, want)
+		}
+	}
+}
+
 func TestCaseResultPayload(t *testing.T) {
 	h := New(time.Minute)
 	sub := h.Subscribe(5, 0)
 	defer sub.Cancel()
 
-	h.CaseResult(5, 11, 0.25, 1024, "correct", "", "ok", "text", "")
+	h.CaseResult(5, 11, 0.25, 0.5, 1024, "correct", "", "ok", "text", "")
 
 	frame := <-sub.Ch
 	data := string(frame.Data)

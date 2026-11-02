@@ -153,7 +153,9 @@ func (c *Client) PruneLeftovers(ctx context.Context, olderThan time.Duration) (i
 }
 
 // EnsureImage makes sure the image is present locally, pulling it if needed.
-func (c *Client) EnsureImage(ctx context.Context, image string) error {
+// It reports whether this call performed the pull, so callers can distinguish a
+// cold image from an image already in the local store.
+func (c *Client) EnsureImage(ctx context.Context, image string) (bool, error) {
 	// avoid pulling the same image multiple times in parallel
 	c.mu.Lock()
 	// check again after acquiring the lock, in case another goroutine pulled it
@@ -161,32 +163,34 @@ func (c *Client) EnsureImage(ctx context.Context, image string) error {
 	c.mu.Unlock()
 
 	if already {
-		return nil
+		return false, nil
 	}
 
 	conn, err := c.Connect(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	// check if the image exists locally
 	exists, err := images.Exists(conn, image, nil)
 	if err != nil {
-		return fmt.Errorf("check image %s: %w", image, err)
+		return false, fmt.Errorf("check image %s: %w", image, err)
 	}
 
 	// pull the image if it does not exist
+	pulled := false
 	if !exists {
 		if _, err := images.Pull(conn, image, nil); err != nil {
-			return fmt.Errorf("pull image %s: %w", image, err)
+			return false, fmt.Errorf("pull image %s: %w", image, err)
 		}
+		pulled = true
 	}
 
 	c.mu.Lock()
 	c.ensured[image] = true
 	c.mu.Unlock()
 
-	return nil
+	return pulled, nil
 }
 
 // RemoveByName force-removes a container by name if it exists. Used before

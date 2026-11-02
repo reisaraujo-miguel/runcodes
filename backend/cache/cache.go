@@ -220,7 +220,7 @@ const KeyAllowedFileTypes = "allowed_file_types"
 const KeyPlatformSettings = "platform_settings"
 
 // KeyLanguageStatistics caches the platform-wide language report.
-const KeyLanguageStatistics = "language_statistics"
+const KeyLanguageStatistics = "language_statistics:v2"
 
 // OfferingKey caches a single offering.
 func OfferingKey(id int64) string {
@@ -234,5 +234,5 @@ func OfferingExercisesKey(id int64) string {
 
 // OfferingLanguageStatisticsKey caches one class's language report.
 func OfferingLanguageStatisticsKey(id int64) string {
-	return "offering_language_statistics:" + strconv.FormatInt(id, 10)
+	return "offering_language_statistics:v2:" + strconv.FormatInt(id, 10)
 }

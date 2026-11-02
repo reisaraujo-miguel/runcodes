@@ -220,6 +220,21 @@ func buildLanguageStatistics(
 		}
 	}
 
+	if len(statistics.Languages) == 0 {
+		return statistics, nil
+	}
+
+	timings, err := loadLanguageTimings(ctx, offeringID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range statistics.Languages {
+		entry := &statistics.Languages[i]
+		if measured, ok := timings[entry.FileTypeID]; ok {
+			entry.Timings = measured
+		}
+	}
+
 	return statistics, nil
 }
 

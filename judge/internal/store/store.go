@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/XSAM/otelsql"
 	"github.com/lib/pq"
@@ -131,12 +132,16 @@ func (s *Store) Claim(ctx context.Context) (*model.Commit, error) {
 		commit.CreatedAt = created.Time
 	}
 
-	// Mark the commit as `compiling` so other workers skip it.
+	// Mark the commit as `compiling` so other workers skip it. The same instant
+	// ends the queue-wait phase; the database timestamp is authoritative but the
+	// wall-clock value keeps the timing event independent of a second round trip.
+	claimedAt := time.Now()
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE commits SET status = 'compiling', compilation_started = now()
 		WHERE id = $1`, commit.ID); err != nil {
 		return nil, fmt.Errorf("claim commit %d: %w", commit.ID, err)
 	}
+	commit.ClaimedAt = claimedAt
 
 	// `ghost` exercises re-use the real exercise's test cases/files.
 	err = tx.QueryRowContext(ctx, `

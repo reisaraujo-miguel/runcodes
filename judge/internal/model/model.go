@@ -11,6 +11,9 @@ type Commit struct {
 	RealExerciseID int64
 	S3Key          string
 	CreatedAt      time.Time
+	// ClaimedAt is when the judge took the row out of the queue. It is the end
+	// of the queue-wait phase; the store sets it in the claim transaction.
+	ClaimedAt time.Time
 }
 
 // Filename is the base name of the submitted source object.
@@ -62,6 +65,7 @@ const (
 type CaseResult struct {
 	TestCaseID   int64
 	CPUTime      float64
+	WallTime     float64
 	MemUsage     int64
 	Status       CaseStatus
 	StatusMsg    string
