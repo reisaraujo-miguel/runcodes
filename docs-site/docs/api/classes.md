@@ -363,28 +363,95 @@ be ready: if it is not, the request returns `503` and nothing is queued.
 Wake-up calls run in the background, so the response returns before the runs
 finish.
 
-### `POST /offerings/{id}/notify`
+## Bulletin board
 
-Sends one email to every non-banned member of the class, including students,
-monitors, co-professors and the owner.
+The class **Mural**: posts written by the staff and a comment thread under each
+one. Any participant may read it and comment; only the owner, a co-professor or a
+monitor may publish a post.
+
+Notifications are decided by the action, not by the caller:
+
+| Action | Who is emailed |
+| --- | --- |
+| New post | every enrolled, non-banned student, with the post's full text |
+| Comment on a post, or a reply to a staff comment | the class staff (owner, professors, monitors) |
+| Reply to a student's comment | only the student who wrote that comment |
+
+Nobody is notified about their own comment. Emails are sent in the background,
+so the request returns before the deliveries finish.
+
+### `GET /offerings/{id}/bulletin`
+
+Returns the newest posts (`20`) with their comments, ordered newest post first
+and oldest comment first.
 
 ```json
 {
-  "subject": "Schedule change for exercise 3",
-  "message": "The deadline moved to Friday."
+  "offering_id": 4,
+  "can_post": true,
+  "post_count": 12,
+  "posts": [
+    {
+      "id": 11,
+      "author_id": 7,
+      "author_name": "Ada",
+      "author_role": "professor",
+      "title": "Prova na sexta",
+      "body": "A prova cobre grafos e ordenação.",
+      "created_at": "2026-11-02T12:37:01Z",
+      "comments": [
+        {
+          "id": 21,
+          "parent_comment_id": null,
+          "author_id": 8,
+          "author_name": "Grace",
+          "author_role": "student",
+          "body": "Vai ter monitoria?",
+          "created_at": "2026-11-02T13:00:00Z"
+        }
+      ]
+    }
+  ]
 }
 ```
 
-- `subject` is required, at most 200 characters and cannot contain a line break.
-- `message` is required and at most 20,000 characters.
-- The message is sent as plain text with an HTML version. Attachments are not
-  supported.
-- Delivery runs in the background. Returns `202` with the number of recipients
-  queued:
+- `can_post` is true for the class staff; it is what the page uses to show the
+  composer.
+- `post_count` is the board's total, so the client can say which slice the
+  payload carries.
+- `author_role` is the author's role *in this class*: `professor` (the owner
+  included), `monitor` or `student`.
+- A non-participant gets `404`.
 
-  ```json
-  { "recipients": 41 }
-  ```
+### `POST /offerings/{id}/bulletin/posts`
+
+```json
+{
+  "title": "Prova na sexta",
+  "body": "A prova cobre grafos e ordenação."
+}
+```
+
+- `title` required, at most 160 characters.
+- `body` required, at most 8,000 characters.
+- Only the class staff may post; a student gets `403`.
+- Returns `201` with the created post (an empty `comments` list).
+
+### `POST /offerings/{id}/bulletin/posts/{postId}/comments`
+
+```json
+{
+  "body": "Sim, sexta às 18h.",
+  "parent_comment_id": 21
+}
+```
+
+- `body` required, at most 4,000 characters.
+- `parent_comment_id` is optional. When present it must be a comment of the same
+  post, otherwise the request returns `404`.
+- Any participant may comment. A banned enrollment cannot see the class at all,
+  so it gets `404` like any non-member.
+- Returns `201` with the created comment.
 
 ## Exercises
 

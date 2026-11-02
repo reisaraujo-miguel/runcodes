@@ -173,7 +173,9 @@ origin. A wildcard origin is rejected at startup.
 | GET | `/api/v1/offerings/{id}/export` | owner / co-professor |
 | GET | `/api/v1/offerings/{id}/submissions/export` | owner / co-professor |
 | POST | `/api/v1/offerings/{id}/submissions/recompile` | owner / co-professor |
-| POST | `/api/v1/offerings/{id}/notify` | owner / co-professor |
+| GET | `/api/v1/offerings/{id}/bulletin` | member/staff |
+| POST | `/api/v1/offerings/{id}/bulletin/posts` | owner / co-professor / monitor |
+| POST | `/api/v1/offerings/{id}/bulletin/posts/{postId}/comments` | member/staff |
 | POST | `/api/v1/offerings/{offeringId}/exercises` | staff |
 | GET | `/api/v1/offerings/{offeringId}/exercises` | member/staff |
 | GET | `/api/v1/exercises/{id}` | member/staff |

@@ -54,7 +54,6 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, err error) {
 	case errors.Is(err, services.ErrInvalidFileType),
 		errors.Is(err, services.ErrInvalidTestCase),
 		errors.Is(err, services.ErrInvalidExercise),
-		errors.Is(err, services.ErrInvalidEmail),
 		errors.Is(err, services.ErrInvalidMemberRole),
 		errors.Is(err, services.ErrInvalidRole),
 		errors.Is(err, services.ErrInvalidArchive),
@@ -67,6 +66,11 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, err error) {
 		errors.Is(err, validation.ErrInputTooLong),
 		errors.Is(err, validation.ErrParsingField):
 		WriteResponse(w, http.StatusBadRequest, models.Error{Message: err.Error()})
+	case errors.Is(err, services.ErrBulletinPostNotFound),
+		errors.Is(err, services.ErrBulletinCommentNotFound):
+		WriteResponse(w, http.StatusNotFound, models.Error{Message: err.Error()})
+	case errors.Is(err, services.ErrBulletinPostForbidden):
+		WriteResponse(w, http.StatusForbidden, models.Error{Message: err.Error()})
 	case errors.Is(err, services.ErrArchiveTooLarge):
 		WriteResponse(w, http.StatusRequestEntityTooLarge,
 			models.Error{Message: err.Error()},

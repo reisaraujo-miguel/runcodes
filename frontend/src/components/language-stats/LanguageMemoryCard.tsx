@@ -1,7 +1,7 @@
-import { BarChart3Icon, InfoIcon } from "lucide-react";
+import { BarChart3Icon } from "lucide-react";
 
+import { Hint } from "@/components/app/Hint";
 import { EmptyState } from "@/components/app/states";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Table,
   TableBody,
@@ -54,25 +54,21 @@ export function LanguageMemoryCard({
 
   return (
     <div className="space-y-3">
-      <Alert variant="info">
-        <InfoIcon />
-        <AlertTitle>Como a comparação controla as diferenças</AlertTitle>
-        <AlertDescription>
-          <p>
-            Cada caso de teste é comparado com ele mesmo, como no índice de CPU:
-            mediana de cada linguagem no caso, mediana entre as linguagens, e a
-            mediana dessas razões ao longo dos casos. Só entram execuções com
-            memória conhecida; a cobertura ao lado mostra quanto do total isso
-            representa.
-          </p>
-          <p>
-            O monitor amostra o cgroup a cada 10 ms. O valor inclui o runtime e
-            o cache de páginas do contêiner, e um pico mais curto que o
-            intervalo de amostragem pode passar despercebido. Leia como uma
-            comparação entre linguagens, não como RSS puro do programa.
-          </p>
-        </AlertDescription>
-      </Alert>
+      <Hint summary="Como a comparação controla as diferenças">
+        <p>
+          Cada caso de teste é comparado com ele mesmo, como no índice de CPU:
+          mediana de cada linguagem no caso, mediana entre as linguagens, e a
+          mediana dessas razões ao longo dos casos. Só entram execuções com
+          memória conhecida; a cobertura ao lado mostra quanto do total isso
+          representa.
+        </p>
+        <p>
+          O monitor amostra o cgroup a cada 10 ms. O valor inclui o runtime e o
+          cache de páginas do contêiner, e um pico mais curto que o intervalo de
+          amostragem pode passar despercebido. Leia como uma comparação entre
+          linguagens, não como RSS puro do programa.
+        </p>
+      </Hint>
 
       <div className="text-muted-foreground mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
         <span className="flex items-center gap-1.5">

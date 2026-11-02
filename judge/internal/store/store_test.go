@@ -17,7 +17,7 @@ func TestClaimEmptyQueue(t *testing.T) {
 	defer db.Close()
 
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT id, user_id, exercise_id, created_at, s3_key").
+	mock.ExpectQuery("SELECT id, user_id, exercise_id, s3_key").
 		WillReturnError(sql.ErrNoRows)
 	mock.ExpectRollback()
 
@@ -40,11 +40,13 @@ func TestClaimCommit(t *testing.T) {
 	}
 	defer db.Close()
 
-	rows := sqlmock.NewRows([]string{"id", "user_id", "exercise_id", "created_at", "s3_key"}).
-		AddRow(int64(42), int64(7), int64(3), time.Now(), "bucket/main.c")
+	rows := sqlmock.NewRows([]string{"id", "user_id", "exercise_id", "s3_key"}).
+		AddRow(int64(42), int64(7), int64(3), "bucket/main.c")
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT id, user_id, exercise_id, created_at, s3_key").WillReturnRows(rows)
-	mock.ExpectExec("UPDATE commits SET status").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT id, user_id, exercise_id, s3_key").WillReturnRows(rows)
+	// The claim returns the queue wait measured on the database clock.
+	mock.ExpectQuery("UPDATE commits SET status").
+		WillReturnRows(sqlmock.NewRows([]string{"wait_seconds"}).AddRow(0.25))
 	mock.ExpectQuery("SELECT CASE WHEN ghost").
 		WillReturnRows(sqlmock.NewRows([]string{"real_id"}).AddRow(int64(5)))
 	mock.ExpectCommit()
@@ -58,6 +60,10 @@ func TestClaimCommit(t *testing.T) {
 	}
 	if commit.S3Key != "bucket/main.c" || commit.Filename() != "main.c" {
 		t.Fatalf("unexpected key/filename: %q / %q", commit.S3Key, commit.Filename())
+	}
+	if !commit.HasQueueWait || commit.QueueWait != 250*time.Millisecond {
+		t.Fatalf("queue wait = %s (measured %v), want 250ms (measured true)",
+			commit.QueueWait, commit.HasQueueWait)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
@@ -81,10 +87,10 @@ func TestClaimMissingS3KeyIsMarkedTerminal(t *testing.T) {
 			}
 			defer db.Close()
 
-			rows := sqlmock.NewRows([]string{"id", "user_id", "exercise_id", "created_at", "s3_key"}).
-				AddRow(int64(1), nil, int64(3), time.Now(), tt.key)
+			rows := sqlmock.NewRows([]string{"id", "user_id", "exercise_id", "s3_key"}).
+				AddRow(int64(1), nil, int64(3), tt.key)
 			mock.ExpectBegin()
-			mock.ExpectQuery("SELECT id, user_id, exercise_id, created_at, s3_key").WillReturnRows(rows)
+			mock.ExpectQuery("SELECT id, user_id, exercise_id, s3_key").WillReturnRows(rows)
 			// The malformed row must be marked terminal and committed, not rolled
 			// back, so it is not re-selected forever and later submissions are not
 			// starved.
@@ -118,12 +124,12 @@ func TestClaimMissingExerciseIsMarkedTerminal(t *testing.T) {
 	}
 	defer db.Close()
 
-	rows := sqlmock.NewRows([]string{"id", "user_id", "exercise_id", "created_at", "s3_key"}).
-		AddRow(int64(9), nil, int64(404), time.Now(), "bucket/main.c")
+	rows := sqlmock.NewRows([]string{"id", "user_id", "exercise_id", "s3_key"}).
+		AddRow(int64(9), nil, int64(404), "bucket/main.c")
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT id, user_id, exercise_id, created_at, s3_key").WillReturnRows(rows)
-	mock.ExpectExec("UPDATE commits SET status = 'compiling'").
-		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT id, user_id, exercise_id, s3_key").WillReturnRows(rows)
+	mock.ExpectQuery("UPDATE commits SET status = 'compiling'").
+		WillReturnRows(sqlmock.NewRows([]string{"wait_seconds"}).AddRow(0.0))
 	mock.ExpectQuery("SELECT CASE WHEN ghost").WillReturnError(sql.ErrNoRows)
 	mock.ExpectExec("UPDATE commits SET status = 'server_error'").
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -149,7 +155,7 @@ func TestClaimDatabaseError(t *testing.T) {
 	defer db.Close()
 
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT id, user_id, exercise_id, created_at, s3_key").
+	mock.ExpectQuery("SELECT id, user_id, exercise_id, s3_key").
 		WillReturnError(sql.ErrConnDone)
 	mock.ExpectRollback()
 

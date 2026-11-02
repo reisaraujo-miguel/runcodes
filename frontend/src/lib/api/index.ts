@@ -50,7 +50,6 @@ export {
   importOffering,
   listOfferingMembers,
   listOfferings,
-  notifyOfferingMembers,
   recompileOfferingSubmissions,
   removeOfferingMember,
   rotateEnrollmentCode,
@@ -100,6 +99,20 @@ export type {
   UpdateFileTypePayload,
   UpdateUserPayload,
 } from "./admin";
+
+export {
+  createBulletinComment,
+  createBulletinPost,
+  getOfferingBulletin,
+} from "./bulletin";
+export type { BulletinBoard, BulletinComment, BulletinPost } from "./bulletin";
+
+export {
+  ALERT_PAGE_LIMIT,
+  adminAcknowledgeAlert,
+  adminListAlerts,
+} from "./alerts";
+export type { AlertPage, AlertSeverity, SystemAlert } from "./alerts";
 
 export {
   adminGetLanguageStatistics,

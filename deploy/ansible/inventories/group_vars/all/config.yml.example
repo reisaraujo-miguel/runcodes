@@ -109,6 +109,8 @@ config_runcodes_judge_exec_dir: "/opt/runcodes/exec"
 config_runcodes_judge_stale_timeout: "20m"
 config_runcodes_judge_max_run_duration: "15m"
 config_runcodes_judge_compilation_wait: "2m"
+# Container's first milestone; must not exceed the compilation wait.
+config_runcodes_judge_startup_wait: "30s"
 config_runcodes_judge_poll_interval: "1s"
 config_runcodes_judge_container_memory_bytes: 1610612736
 config_runcodes_judge_container_pids_limit: 256

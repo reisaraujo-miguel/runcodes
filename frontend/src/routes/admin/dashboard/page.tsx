@@ -8,7 +8,7 @@ import {
 
 import { PreviewControls } from "@/components/admin/PreviewControls";
 import { PageHeader } from "@/components/app/PageHeader";
-import { StatCard } from "@/components/app/StatCard";
+import { StatStrip } from "@/components/app/StatStrip";
 import { ErrorState, LoadingState } from "@/components/app/states";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAsync } from "@/hooks/use-async";
@@ -67,35 +67,38 @@ export function AdminDashboard() {
         <ErrorState description={overview.error} onRetry={overview.reload} />
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard
-              icon={UsersIcon}
-              label="Usuários"
-              value={users.length}
-              hint="Contas carregadas"
-            />
-            <StatCard
-              icon={GraduationCapIcon}
-              label="Turmas"
-              value={offerings.length}
-              hint="Turmas carregadas"
-              tone="info"
-            />
-            <StatCard
-              icon={BookOpenIcon}
-              label="Turmas abertas"
-              value={openClasses}
-              hint="Matrícula aberta e prazo futuro"
-              tone="success"
-            />
-            <StatCard
-              icon={TicketIcon}
-              label="Matrículas"
-              value={members}
-              hint="Somadas nas turmas carregadas"
-              tone="warning"
-            />
-          </div>
+          <StatStrip
+            items={[
+              {
+                icon: UsersIcon,
+                label: "Usuários",
+                value: users.length,
+                hint: "Contas carregadas",
+                tone: "primary",
+              },
+              {
+                icon: GraduationCapIcon,
+                label: "Turmas",
+                value: offerings.length,
+                hint: "Turmas carregadas",
+                tone: "info",
+              },
+              {
+                icon: BookOpenIcon,
+                label: "Turmas abertas",
+                value: openClasses,
+                hint: "Matrícula aberta e prazo futuro",
+                tone: "success",
+              },
+              {
+                icon: TicketIcon,
+                label: "Matrículas",
+                value: members,
+                hint: "Somadas nas turmas carregadas",
+                tone: "warning",
+              },
+            ]}
+          />
 
           <Alert variant="info">
             <InfoIcon />

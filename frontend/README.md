@@ -38,6 +38,34 @@ git config core.hooksPath .githooks
 The pre-commit hook runs `bun run check-svg`; fix a failure with
 `bun run optimize-svg`.
 
+## Design language
+
+The interface is deliberately quiet: content sits on the page instead of a stack
+of framed boxes.
+
+- A page or a tab is a `Section` — heading, optional description and action, then
+  the content, with no border or background.
+- A `Card` is for a discrete object that stands on its own (an exercise in a
+  list, a class card, a dialog, a callout). Never put a card inside another card.
+- Metrics are a `StatStrip` (one band, rules, plain columns), not one card per
+  number.
+- Equally weighted actions are a `List` of `ListRow`s (title, description,
+  control on the right), not a grid of tiles.
+- A table is its own card: `Table` already renders the scroll region on a card
+  surface. Lists and forms sit directly under their section heading; empty
+  states are placeholders, not cards.
+- A section spaces its content (`Section` defaults to `space-y-4`; override it
+  with `contentClassName` when the rhythm needs to be tighter or looser).
+- Labels are micro-labels: small, uppercase, muted (`Field`, `FieldRow`, table
+  headers and the stat strip share that voice). A field list must never read as
+  a stack of headings — the section title is the only strong element.
+- Type scale: page title 24px, section 18px, sub-section 16px, body 14px.
+- Long methodological explanations are a `Hint` disclosure, closed by default,
+  not a banner above the content.
+
+The primitives are in `src/components/app/` (`Section`, `StatStrip`, `List`,
+`Field`, `Hint`).
+
 ## Structure
 
 Routes are in [`src/routes.ts`](src/routes.ts). Components, hooks, API client and

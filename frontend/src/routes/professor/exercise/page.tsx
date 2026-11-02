@@ -10,17 +10,18 @@ import {
 
 import { BackLink } from "@/components/app/BackLink";
 import { ConfirmButton } from "@/components/app/ConfirmDialog";
+import { Field } from "@/components/app/Field";
 import { PageHeader } from "@/components/app/PageHeader";
+import { Section } from "@/components/app/Section";
 import { ErrorState, LoadingState } from "@/components/app/states";
-import { AttachedFilesCard } from "@/components/professor/AttachedFilesCard";
-import { CompilationFilesCard } from "@/components/professor/CompilationFilesCard";
+import { AttachedFilesPanel } from "@/components/professor/AttachedFilesPanel";
+import { CompilationFilesPanel } from "@/components/professor/CompilationFilesPanel";
 import { EditExerciseForm } from "@/components/professor/EditExerciseForm";
 import { ExerciseInstructions } from "@/components/professor/ExerciseInstructions";
-import { TestCasesCard } from "@/components/professor/TestCasesCard";
+import { TestCasesPanel } from "@/components/professor/TestCasesPanel";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { TabBar, type TabBarItem } from "@/components/ui/tab-bar";
 import { useAsync } from "@/hooks/use-async";
 import { deleteExercise, getExercise } from "@/lib/api";
@@ -143,33 +144,27 @@ export function ExercisePage() {
         }
       />
 
-      <Card className="gap-0 py-0">
-        <TabBar
-          items={tabs}
-          value={tab}
-          onChange={selectTab}
-          label="Seções do exercício"
-          idPrefix="exercise"
-          className="px-2"
-        />
+      <TabBar
+        items={tabs}
+        value={tab}
+        onChange={selectTab}
+        label="Seções do exercício"
+        idPrefix="exercise"
+      />
 
-        <div className="p-4 sm:p-5">
-          <div
-            role="tabpanel"
-            id="exercise-panel-details"
-            aria-labelledby="exercise-tab-details"
-            hidden={tab !== "details"}
-            className="space-y-6"
-          >
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h2 className="text-base font-medium">
-                  Informações do exercício
-                </h2>
-                <p className="text-muted-foreground text-sm">
-                  Prazos, visibilidade e tipos de arquivo aceitos.
-                </p>
-              </div>
+      <div>
+        <div
+          role="tabpanel"
+          id="exercise-panel-details"
+          aria-labelledby="exercise-tab-details"
+          hidden={tab !== "details"}
+          className="space-y-6"
+        >
+          <Section
+            title="Informações do exercício"
+            description="Prazos, visibilidade e tipos de arquivo aceitos."
+            contentClassName="space-y-6"
+            action={
               <Button
                 size="sm"
                 variant="outline"
@@ -180,37 +175,25 @@ export function ExercisePage() {
                 <PencilIcon />
                 Editar informações
               </Button>
-            </div>
-
-            <dl className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <dt className="text-muted-foreground text-sm">Abertura</dt>
-                <dd className="mt-1">{formatDateTime(current.open_date)}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground text-sm">Prazo</dt>
-                <dd className="mt-1">{formatDateTime(current.deadline)}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground text-sm">
-                  Antes da abertura
-                </dt>
-                <dd className="mt-1">
-                  <Badge
-                    variant={
-                      current.show_before_open_date ? "success" : "secondary"
-                    }
-                  >
-                    {current.show_before_open_date ? "Visível" : "Oculto"}
-                  </Badge>
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground text-sm">
-                  Tipos de arquivo permitidos
-                </dt>
-                <dd className="mt-1 text-sm">{allowedSummary}</dd>
-              </div>
+            }
+          >
+            <dl className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+              <Field label="Abertura">
+                {formatDateTime(current.open_date)}
+              </Field>
+              <Field label="Prazo">{formatDateTime(current.deadline)}</Field>
+              <Field label="Antes da abertura">
+                <Badge
+                  variant={
+                    current.show_before_open_date ? "success" : "secondary"
+                  }
+                >
+                  {current.show_before_open_date ? "Visível" : "Oculto"}
+                </Badge>
+              </Field>
+              <Field label="Tipos de arquivo permitidos">
+                {allowedSummary}
+              </Field>
             </dl>
 
             <ExerciseInstructions
@@ -249,36 +232,36 @@ export function ExercisePage() {
                 </Alert>
               ) : null}
             </div>
-          </div>
-
-          <div
-            role="tabpanel"
-            id="exercise-panel-tests"
-            aria-labelledby="exercise-tab-tests"
-            hidden={tab !== "tests"}
-          >
-            <TestCasesCard exerciseId={current.id} embedded />
-          </div>
-
-          <div
-            role="tabpanel"
-            id="exercise-panel-compilation"
-            aria-labelledby="exercise-tab-compilation"
-            hidden={tab !== "compilation"}
-          >
-            <CompilationFilesCard exerciseId={current.id} embedded />
-          </div>
-
-          <div
-            role="tabpanel"
-            id="exercise-panel-materials"
-            aria-labelledby="exercise-tab-materials"
-            hidden={tab !== "materials"}
-          >
-            <AttachedFilesCard exerciseId={current.id} embedded />
-          </div>
+          </Section>
         </div>
-      </Card>
+
+        <div
+          role="tabpanel"
+          id="exercise-panel-tests"
+          aria-labelledby="exercise-tab-tests"
+          hidden={tab !== "tests"}
+        >
+          <TestCasesPanel exerciseId={current.id} />
+        </div>
+
+        <div
+          role="tabpanel"
+          id="exercise-panel-compilation"
+          aria-labelledby="exercise-tab-compilation"
+          hidden={tab !== "compilation"}
+        >
+          <CompilationFilesPanel exerciseId={current.id} />
+        </div>
+
+        <div
+          role="tabpanel"
+          id="exercise-panel-materials"
+          aria-labelledby="exercise-tab-materials"
+          hidden={tab !== "materials"}
+        >
+          <AttachedFilesPanel exerciseId={current.id} />
+        </div>
+      </div>
 
       {editing ? (
         <EditExerciseForm

@@ -7,7 +7,7 @@ import { useAdminList } from "@/components/admin/use-admin-list";
 import { ConfirmButton } from "@/components/app/ConfirmDialog";
 import { PageHeader } from "@/components/app/PageHeader";
 import { PlatformRoleBadge } from "@/components/app/RoleBadge";
-import { SectionCard } from "@/components/app/SectionCard";
+import { Section } from "@/components/app/Section";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -74,7 +74,7 @@ export function AdminUsersPage() {
         description="Busque por nome, email ou identificação institucional para editar ou excluir contas."
       />
 
-      <SectionCard
+      <Section
         title="Contas da plataforma"
         description="Edite os dados de uma conta ou remova-a; a exclusão apaga as turmas que ela possui."
       >
@@ -236,7 +236,7 @@ export function AdminUsersPage() {
             </div>
           )}
         </div>
-      </SectionCard>
+      </Section>
 
       {editing ? (
         <UserEditDialog

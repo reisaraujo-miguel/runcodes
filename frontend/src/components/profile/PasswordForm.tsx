@@ -1,6 +1,6 @@
 import { useState, type SubmitEvent } from "react";
 
-import { SectionCard } from "@/components/app/SectionCard";
+import { Section } from "@/components/app/Section";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -68,7 +68,7 @@ export function PasswordForm() {
   }
 
   return (
-    <SectionCard
+    <Section
       title="Alterar senha"
       description="Escolha uma nova senha para a sua conta."
     >
@@ -142,6 +142,6 @@ export function PasswordForm() {
           valer no próximo login.
         </p>
       </form>
-    </SectionCard>
+    </Section>
   );
 }

@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 
 import { ConfirmButton } from "@/components/app/ConfirmDialog";
-import { SectionCard } from "@/components/app/SectionCard";
+import { Section } from "@/components/app/Section";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
 import { BatchTestCasesDialog } from "@/components/professor/BatchTestCasesDialog";
 import { EditTestCaseForm } from "@/components/professor/EditTestCaseForm";
@@ -79,14 +79,7 @@ function TextPreview({ value }: { value: string }) {
  * Lists an exercise's test cases and hosts the create / edit / delete flows.
  * Editing happens inline, in place of the row being edited.
  */
-export function TestCasesCard({
-  exerciseId,
-  embedded = false,
-}: {
-  exerciseId: number;
-  /** Render the content without its own card, for a tab panel. */
-  embedded?: boolean;
-}) {
+export function TestCasesPanel({ exerciseId }: { exerciseId: number }) {
   const testCases = useAsync(
     () => getExerciseTestCases(exerciseId),
     `test-cases-${String(exerciseId)}`,
@@ -266,26 +259,10 @@ export function TestCasesCard({
     </div>
   );
 
-  if (embedded) {
-    return (
-      <div className="space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-muted-foreground text-sm">{description}</p>
-          {actions}
-        </div>
-        {content}
-      </div>
-    );
-  }
-
   return (
-    <SectionCard
-      title="Casos de teste"
-      description={description}
-      action={actions}
-    >
+    <Section title="Casos de teste" description={description} action={actions}>
       {content}
-    </SectionCard>
+    </Section>
   );
 }
 

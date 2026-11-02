@@ -7,7 +7,6 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
-	"html"
 	"io"
 	"log/slog"
 	"path"
@@ -17,20 +16,13 @@ import (
 
 	"github.com/runcodes-icmc/runcodes/database"
 	"github.com/runcodes-icmc/runcodes/judge"
-	"github.com/runcodes-icmc/runcodes/mailer"
 	"github.com/runcodes-icmc/runcodes/models"
 	"github.com/runcodes-icmc/runcodes/storage"
-	"github.com/runcodes-icmc/runcodes/validation"
 
 	"github.com/lib/pq"
 )
 
 const (
-	// MaxOfferingEmailSubjectLength and MaxOfferingEmailMessageLength bound the
-	// message a professor can send to every member of a class.
-	MaxOfferingEmailSubjectLength = 200
-	MaxOfferingEmailMessageLength = 20000
-
 	// maxBulkRecompile bounds one recompilation request. It is high enough for a
 	// large class and low enough that a misclick cannot queue tens of thousands
 	// of runs at once.
@@ -476,141 +468,4 @@ func wakeRecompiledCommits(commitIDs []int64) {
 			// for because of a transient wake-up failure.
 		}
 	}
-}
-
-/*
-SendOfferingEmail emails every non-banned member of an offering, plus its owner.
-Delivery runs in the background and the response reports how many recipients were
-queued: a class of a hundred students would otherwise keep the request open past
-the browser's timeout.
-*/
-func SendOfferingEmail(
-	ctx context.Context, offeringID int64, req *models.OfferingEmailRequest,
-	claims map[string]any,
-) (*models.OfferingEmailResponse, error) {
-	userID, role, err := claimsUserID(claims)
-	if err != nil {
-		return nil, err
-	}
-
-	rel, err := loadOfferingRelation(ctx, offeringID, userID, role)
-	if err != nil {
-		return nil, err
-	}
-	if !rel.CanAuthor() {
-		return nil, ErrOfferingNotFound
-	}
-
-	req.Subject = strings.TrimSpace(req.Subject)
-	if err := validation.ValidateRequiredString(
-		req.Subject, MaxOfferingEmailSubjectLength,
-	); err != nil {
-		return nil, err
-	}
-	if strings.ContainsAny(req.Subject, "\r\n") {
-		return nil, fmt.Errorf("%w: the subject cannot contain a line break",
-			ErrInvalidEmail)
-	}
-	if err := validation.ValidateRequiredString(
-		req.Message, MaxOfferingEmailMessageLength,
-	); err != nil {
-		return nil, err
-	}
-
-	recipients, err := loadOfferingRecipients(ctx, offeringID)
-	if err != nil {
-		return nil, err
-	}
-
-	message := mailer.Message{
-		Subject: req.Subject,
-		Text:    req.Message + "\n\n— " + rel.Offering.Name,
-		HTML:    offeringEmailHTML(rel.Offering.Name, req.Message),
-	}
-	go sendOfferingEmail(recipients, message)
-
-	slog.InfoContext(ctx, "offering email queued",
-		slog.Int64("offering_id", offeringID),
-		slog.Int("recipients", len(recipients)),
-	)
-
-	return &models.OfferingEmailResponse{Recipients: len(recipients)}, nil
-}
-
-type emailRecipient struct {
-	Name  string
-	Email string
-}
-
-func loadOfferingRecipients(
-	ctx context.Context, offeringID int64,
-) ([]emailRecipient, error) {
-	rows, err := database.DB.QueryContext(ctx, `
-		SELECT DISTINCT u.id, u.name, u.email
-		FROM users u
-		JOIN offerings o ON o.id = $1 AND o.owner_id = u.id
-		UNION
-		SELECT u.id, u.name, u.email
-		FROM enrollments en
-		JOIN users u ON u.id = en.user_id
-		WHERE en.offering_id = $1 AND NOT en.banned
-		ORDER BY name, email`, offeringID)
-	if err != nil {
-		slog.ErrorContext(ctx, "error loading offering recipients",
-			slog.Int64("offering_id", offeringID),
-			slog.String("error", err.Error()),
-		)
-		return nil, ErrServer
-	}
-	defer rows.Close()
-
-	recipients := make([]emailRecipient, 0, 32)
-	for rows.Next() {
-		var (
-			id    int64
-			name  string
-			email string
-		)
-		if err := rows.Scan(&id, &name, &email); err != nil {
-			return nil, ErrServer
-		}
-		recipients = append(recipients, emailRecipient{Name: name, Email: email})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, ErrServer
-	}
-	return recipients, nil
-}
-
-func sendOfferingEmail(recipients []emailRecipient, message mailer.Message) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	defer cancel()
-
-	failures := 0
-	for _, recipient := range recipients {
-		personal := message
-		personal.To = recipient.Email
-		if err := sendMail(ctx, personal); err != nil {
-			failures++
-			slog.ErrorContext(ctx, "error sending an offering email",
-				slog.String("recipient", recipient.Email),
-				slog.String("error", err.Error()),
-			)
-			continue
-		}
-	}
-
-	slog.InfoContext(ctx, "offering email delivery finished",
-		slog.Int("recipients", len(recipients)),
-		slog.Int("failures", failures),
-	)
-}
-
-func offeringEmailHTML(offeringName, message string) string {
-	escaped := html.EscapeString(message)
-	escaped = strings.ReplaceAll(escaped, "\r\n", "\n")
-	escaped = strings.ReplaceAll(escaped, "\n", "<br>")
-
-	return "<p>" + escaped + "</p><p>— " +
-		html.EscapeString(offeringName) + "</p>"
 }

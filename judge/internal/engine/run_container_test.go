@@ -73,6 +73,7 @@ func newTestEngine(t *testing.T, messages ...string) (*Engine, *fakeContainer, s
 		ExecDir:            dir,
 		BaseExecTimeout:    200 * time.Millisecond,
 		CompilationWait:    200 * time.Millisecond,
+		StartupWait:        200 * time.Millisecond,
 		DefaultCaseTimeout: 100 * time.Millisecond,
 		KeepWorkspaces:     true,
 	}
@@ -156,9 +157,12 @@ func TestRunContainerAcceptsOnlyMilestonesWithTheNonce(t *testing.T) {
 		if err == nil {
 			t.Fatal("a run whose milestones carry no nonce must not be accepted")
 		}
-		var timedOut *timeoutError
-		if !errors.As(err, &timedOut) {
-			t.Fatalf("error = %v, want a timeout waiting for the milestone", err)
+		// The first milestone never arrives with the run's nonce, so the run
+		// exhausts the startup budget and is reported as an infrastructure
+		// failure rather than a submission timeout.
+		var startup *startupError
+		if !errors.As(err, &startup) {
+			t.Fatalf("error = %v, want a startup budget failure", err)
 		}
 		// The deferred cleanup must still run. The fake container reports a clean
 		// exit, so it only needs removing; the kill path is covered by

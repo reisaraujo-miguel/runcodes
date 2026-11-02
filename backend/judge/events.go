@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/runcodes-icmc/runcodes/alerts"
 	"github.com/runcodes-icmc/runcodes/database"
 )
 
@@ -58,6 +59,14 @@ type Event struct {
 	Kind string `json:"kind,omitempty"`
 	URL  string `json:"url,omitempty"`
 
+	// alert
+	// Code is the stable identifier of the condition ("startup_timeout");
+	// Severity is one of the alerts package's severities; Details is the
+	// producer's structured context and is stored untouched.
+	Code     string          `json:"code,omitempty"`
+	Severity string          `json:"severity,omitempty"`
+	Details  json.RawMessage `json:"details,omitempty"`
+
 	// finished
 	NumCorrectCases    *int64      `json:"num_correct_cases,omitempty"`
 	Score              json.Number `json:"score,omitempty"`
@@ -106,6 +115,8 @@ func PersistEvent(ctx context.Context, ev *Event) error {
 		return persistCaseResult(ctx, ev)
 	case "timings":
 		return persistTimings(ctx, ev)
+	case "alert":
+		return persistAlert(ctx, ev)
 	case "finished":
 		return persistFinished(ctx, ev)
 	case "artifact":
@@ -289,6 +300,62 @@ func persistTimings(ctx context.Context, ev *Event) error {
 	}
 
 	return nil
+}
+
+/*
+persistAlert records an operational alert the judge raised for a run it could not
+complete.
+
+The insert is idempotent per (commit, code), which is what makes a replayed event
+safe: a reconnect resends the frame, the row is not duplicated and the
+administrators are not notified twice. Notifying them is asynchronous (the alert
+package owns that), so a slow or unavailable SMTP relay cannot stall the judge
+event stream.
+*/
+func persistAlert(ctx context.Context, ev *Event) error {
+	in, err := alertInput(ev)
+	if err != nil {
+		return err
+	}
+
+	if _, _, err := alerts.Create(ctx, in); err != nil {
+		return fmt.Errorf("persisting alert event: %w", err)
+	}
+
+	return nil
+}
+
+/*
+alertInput maps an `alert` event to the alert to record. It is separate from
+persistAlert so the validation and the defaults can be asserted without a
+database.
+*/
+func alertInput(ev *Event) (alerts.Input, error) {
+	if ev.Code == "" || ev.Message == "" {
+		return alerts.Input{}, fmt.Errorf("malformed alert event")
+	}
+
+	severity := ev.Severity
+	if severity == "" {
+		severity = alerts.SeverityWarning
+	}
+
+	// A judge always names the commit; a zero id would be a malformed event and
+	// an alert about nothing, so it is recorded without a target instead.
+	var commitID *int64
+	if ev.CommitID > 0 {
+		id := ev.CommitID
+		commitID = &id
+	}
+
+	return alerts.Input{
+		Severity: severity,
+		Code:     ev.Code,
+		Source:   alerts.SourceJudge,
+		CommitID: commitID,
+		Message:  ev.Message,
+		Details:  ev.Details,
+	}, nil
 }
 
 func persistFinished(ctx context.Context, ev *Event) error {

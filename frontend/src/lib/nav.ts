@@ -1,5 +1,6 @@
 import {
   BarChart3Icon,
+  BellRingIcon,
   BookOpenIcon,
   FileCode2Icon,
   GraduationCapIcon,
@@ -83,6 +84,11 @@ export function navSectionsFor(role: UserRole): NavSection[] {
           to: "/admin/languages",
           label: "Linguagens",
           icon: BarChart3Icon,
+        },
+        {
+          to: "/admin/alerts",
+          label: "Alertas",
+          icon: BellRingIcon,
         },
         {
           to: "/admin/settings",

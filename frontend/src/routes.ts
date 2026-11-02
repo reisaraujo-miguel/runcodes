@@ -185,6 +185,14 @@ export const router = createBrowserRouter([
                     },
                   },
                   {
+                    path: "alerts",
+                    lazy: async () => {
+                      const { AdminAlertsPage } =
+                        await import("./routes/admin/alerts/page.tsx");
+                      return { Component: AdminAlertsPage };
+                    },
+                  },
+                  {
                     path: "settings",
                     lazy: async () => {
                       const { AdminSettingsPage } =

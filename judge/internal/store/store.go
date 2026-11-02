@@ -97,19 +97,18 @@ func (s *Store) Claim(ctx context.Context) (*model.Commit, error) {
 	defer func() { _ = tx.Rollback() }()
 
 	var (
-		commit  model.Commit
-		userID  sql.NullInt64
-		s3Key   sql.NullString
-		created sql.NullTime
+		commit model.Commit
+		userID sql.NullInt64
+		s3Key  sql.NullString
 	)
 
 	err = tx.QueryRowContext(ctx, `
-		SELECT id, user_id, exercise_id, created_at, s3_key
+		SELECT id, user_id, exercise_id, s3_key
 		FROM commits
 		WHERE status = 'queued'
 		ORDER BY created_at ASC
 		FOR UPDATE SKIP LOCKED
-		LIMIT 1`).Scan(&commit.ID, &userID, &commit.ExerciseID, &created, &s3Key)
+		LIMIT 1`).Scan(&commit.ID, &userID, &commit.ExerciseID, &s3Key)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	} else if err != nil {
@@ -128,20 +127,27 @@ func (s *Store) Claim(ctx context.Context) (*model.Commit, error) {
 	if userID.Valid {
 		commit.UserID = userID.Int64
 	}
-	if created.Valid {
-		commit.CreatedAt = created.Time
-	}
 
-	// Mark the commit as `compiling` so other workers skip it. The same instant
-	// ends the queue-wait phase; the database timestamp is authoritative but the
-	// wall-clock value keeps the timing event independent of a second round trip.
-	claimedAt := time.Now()
-	if _, err := tx.ExecContext(ctx, `
+	// Mark the commit as `compiling` so other workers skip it, and read back how
+	// long it waited in the same statement. Both ends of the queue-wait phase
+	// come from the database's clock (now() and created_at), so the measurement
+	// cannot absorb a disagreement between the judge host and the database host.
+	var waitSeconds sql.NullFloat64
+	if err := tx.QueryRowContext(ctx, `
 		UPDATE commits SET status = 'compiling', compilation_started = now()
-		WHERE id = $1`, commit.ID); err != nil {
+		WHERE id = $1
+		RETURNING EXTRACT(EPOCH FROM (now() - created_at))::float8`, commit.ID,
+	).Scan(&waitSeconds); err != nil {
 		return nil, fmt.Errorf("claim commit %d: %w", commit.ID, err)
 	}
-	commit.ClaimedAt = claimedAt
+	if waitSeconds.Valid {
+		wait := time.Duration(waitSeconds.Float64 * float64(time.Second))
+		if wait < 0 {
+			wait = 0
+		}
+		commit.QueueWait = wait
+		commit.HasQueueWait = true
+	}
 
 	// `ghost` exercises re-use the real exercise's test cases/files.
 	err = tx.QueryRowContext(ctx, `

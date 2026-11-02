@@ -1,6 +1,6 @@
 import { CodeIcon, Loader2Icon } from "lucide-react";
 
-import { SectionCard } from "@/components/app/SectionCard";
+import { Section } from "@/components/app/Section";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useCodeEditorPreference } from "@/hooks/use-code-editor-preference";
 
@@ -12,7 +12,7 @@ export function EditorPreferenceCard() {
   const preference = useCodeEditorPreference();
 
   return (
-    <SectionCard
+    <Section
       title="Preferências"
       description="Escolha como você prefere enviar as suas soluções."
     >
@@ -48,6 +48,6 @@ export function EditorPreferenceCard() {
           <p className="text-destructive text-sm">{preference.error}</p>
         ) : null}
       </div>
-    </SectionCard>
+    </Section>
   );
 }

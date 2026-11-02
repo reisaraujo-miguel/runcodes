@@ -3,6 +3,11 @@
 -- 1. Row-count assertions: every old row must have arrived in the new schema.
 --    Failing here means a step above silently dropped data (e.g. deduped
 --    rows) and must be investigated before going to production.
+--
+--    The legacy announcements, system logs, mail logs and user messages have no
+--    counterpart in the new schema (there is no endpoint or UI that reads them),
+--    so they are excluded from the assertions; 99-optional-archive-legacy.sql
+--    preserves them instead.
 -- 2. Foreign-key orphan checks.
 -- 3. Informative summaries (statuses/roles distributions) to eyeball.
 
@@ -42,12 +47,6 @@ BEGIN
     RAISE EXCEPTION 'commits: % old vs % new', v_old, v_new;
   END IF;
 
-  SELECT count(*) INTO v_old FROM old.alerts;
-  SELECT count(*) INTO v_new FROM public.alerts;
-  IF v_old <> v_new THEN
-    RAISE EXCEPTION 'alerts: % old vs % new', v_old, v_new;
-  END IF;
-
   SELECT count(*) INTO v_old FROM old.exercise_cases;
   SELECT count(*) INTO v_new FROM public.exercises_test_cases;
   IF v_old <> v_new THEN
@@ -78,24 +77,6 @@ BEGIN
   SELECT count(*) INTO v_new FROM public.exercises_test_cases_files;
   IF v_old <> v_new THEN
     RAISE EXCEPTION 'exercise_case_files: % old vs % new', v_old, v_new;
-  END IF;
-
-  SELECT count(*) INTO v_old FROM old.logs;
-  SELECT count(*) INTO v_new FROM public.system_logs;
-  IF v_old <> v_new THEN
-    RAISE EXCEPTION 'logs: % old vs % new', v_old, v_new;
-  END IF;
-
-  SELECT count(*) INTO v_old FROM old.mail_logs;
-  SELECT count(*) INTO v_new FROM public.mail_logs;
-  IF v_old <> v_new THEN
-    RAISE EXCEPTION 'mail_logs: % old vs % new', v_old, v_new;
-  END IF;
-
-  SELECT count(*) INTO v_old FROM old.messages;
-  SELECT count(*) INTO v_new FROM public.user_messages;
-  IF v_old <> v_new THEN
-    RAISE EXCEPTION 'messages: % old vs % new', v_old, v_new;
   END IF;
 
   -- allowed file types: every old row must have been mapped to a new one.
@@ -172,24 +153,6 @@ BEGIN
   ) THEN RAISE EXCEPTION 'orphan test_cases.exercise_id'; END IF;
 
   IF EXISTS (
-    SELECT 1 FROM public.alerts a
-    LEFT JOIN public.users u ON u.id = a.user_id
-    WHERE a.user_id IS NOT NULL AND u.id IS NULL
-  ) THEN RAISE EXCEPTION 'orphan alerts.user_id'; END IF;
-
-  IF EXISTS (
-    SELECT 1 FROM public.alerts a
-    LEFT JOIN public.offerings o ON o.id = a.offering_id
-    WHERE a.offering_id IS NOT NULL AND o.id IS NULL
-  ) THEN RAISE EXCEPTION 'orphan alerts.offering_id'; END IF;
-
-  IF EXISTS (
-    SELECT 1 FROM public.system_logs l
-    LEFT JOIN public.users u ON u.id = l.user_id
-    WHERE l.user_id IS NOT NULL AND u.id IS NULL
-  ) THEN RAISE EXCEPTION 'orphan system_logs.user_id'; END IF;
-
-  IF EXISTS (
     SELECT 1 FROM public.commits c WHERE c.score < 0 OR c.score > 100
   ) THEN RAISE EXCEPTION 'commits.score out of range'; END IF;
 END;
@@ -201,12 +164,8 @@ UNION ALL SELECT 'offerings',  count(*) FROM public.offerings
 UNION ALL SELECT 'enrollments', count(*) FROM public.enrollments
 UNION ALL SELECT 'exercises', count(*) FROM public.exercises
 UNION ALL SELECT 'commits', count(*) FROM public.commits
-UNION ALL SELECT 'alerts', count(*) FROM public.alerts
 UNION ALL SELECT 'test_cases', count(*) FROM public.exercises_test_cases
 UNION ALL SELECT 'case_results', count(*) FROM public.commits_exercise_test_cases_results
-UNION ALL SELECT 'system_logs', count(*) FROM public.system_logs
-UNION ALL SELECT 'mail_logs', count(*) FROM public.mail_logs
-UNION ALL SELECT 'user_messages', count(*) FROM public.user_messages
 ORDER BY migrated_table;
 
 SELECT role, count(*) AS users FROM public.users GROUP BY role ORDER BY role;

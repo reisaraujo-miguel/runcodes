@@ -16,6 +16,7 @@ func clearEnv(t *testing.T) {
 		"JUDGE_IMAGE_REGISTRY", "JUDGE_RUNNER_IMAGE_PREFIX", "JUDGE_RUNNER_IMAGE_TAG",
 		"JUDGE_EXEC_DIR", "JUDGE_EXEC_DIR_REMOTE", "JUDGE_KEEP_WORKSPACES",
 		"JUDGE_DEFAULT_COMPILATION_TIMEOUT", "JUDGE_COMPILATION_WAIT",
+		"JUDGE_STARTUP_WAIT",
 		"JUDGE_DEFAULT_EXEC_TIMEOUT", "JUDGE_DEFAULT_CASE_TIMEOUT",
 		"JUDGE_MONITOR_MAX_FILE_SIZE", "JUDGE_MONITOR_MAX_MEM_SIZE",
 		"JUDGE_CONTAINER_MEMORY_BYTES", "JUDGE_CONTAINER_PIDS_LIMIT",
@@ -63,6 +64,9 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.CompilationWait != 2*time.Minute {
 		t.Errorf("CompilationWait = %s, want 2m", cfg.CompilationWait)
+	}
+	if cfg.StartupWait != 30*time.Second {
+		t.Errorf("StartupWait = %s, want 30s", cfg.StartupWait)
 	}
 	if cfg.MonitorMaxMemSize != 0 || cfg.MonitorMaxFileSize != 0 {
 		t.Errorf("monitor limits = %d/%d, want 0/0 (use the image's own)",
@@ -269,6 +273,29 @@ func TestLoadRejectsCompilationWaitShorterThanTheLimit(t *testing.T) {
 	t.Setenv("JUDGE_COMPILATION_WAIT", "30s")
 	if _, err := Load(); err != nil {
 		t.Fatalf("Load without a compilation limit: %v", err)
+	}
+}
+
+// The startup budget must stay inside the compilation budget: the first
+// milestone happens before the compiler runs, so a longer startup wait than the
+// whole compilation wait means one of the two numbers is wrong.
+func TestLoadRejectsStartupWaitLongerThanCompilationWait(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JUDGE_STARTUP_WAIT", "3m")
+	t.Setenv("JUDGE_COMPILATION_WAIT", "2m")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected an error when the startup wait exceeds the compilation wait")
+	}
+
+	t.Setenv("JUDGE_STARTUP_WAIT", "2m")
+	if _, err := Load(); err != nil {
+		t.Fatalf("Load with equal budgets: %v", err)
+	}
+
+	t.Setenv("JUDGE_STARTUP_WAIT", "0")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected an error for a zero startup wait")
 	}
 }
 

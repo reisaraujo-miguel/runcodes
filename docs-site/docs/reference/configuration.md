@@ -178,6 +178,7 @@ for example `registry.example.com/team/runners/%s:edge`.
 | --- | --- | --- |
 | `JUDGE_DEFAULT_COMPILATION_TIMEOUT` | `0` | container compilation timeout; 0 = image default |
 | `JUDGE_COMPILATION_WAIT` | `2m` | judge's patience for compilation milestones |
+| `JUDGE_STARTUP_WAIT` | `30s` | the container's first milestone; a wedged container fails here |
 | `JUDGE_DEFAULT_EXEC_TIMEOUT` | `5s` | default execution timeout |
 | `JUDGE_DEFAULT_CASE_TIMEOUT` | `3s` | default per-case timeout |
 | `JUDGE_MAX_RUN_DURATION` | `30m` | end-to-end budget per claim |
@@ -201,6 +202,10 @@ Validation rules:
 
 - `JUDGE_COMPILATION_WAIT` must be positive and, when
   `JUDGE_DEFAULT_COMPILATION_TIMEOUT > 0`, strictly greater than it.
+- `JUDGE_STARTUP_WAIT` must be positive and must not exceed
+  `JUDGE_COMPILATION_WAIT`: the first milestone happens before compilation
+  starts, so a longer startup budget than the whole compilation wait means one of
+  the two numbers is wrong.
 - workspace limits must not be negative; `0` disables either cap.
 - extraction limits must be positive and the per-entry limit must not exceed the
   total.
@@ -432,6 +437,7 @@ Source: `deploy/ansible/inventories/group_vars/all/config.yml.example` and
 | `config_runcodes_judge_stale_timeout` | `20m` | backend stale timeout |
 | `config_runcodes_judge_max_run_duration` | `15m` | per-run budget |
 | `config_runcodes_judge_compilation_wait` | `2m` | compilation patience |
+| `config_runcodes_judge_startup_wait` | `30s` | container first milestone (must not exceed the compilation wait) |
 | `config_runcodes_judge_poll_interval` | `1s` | poll interval |
 | `config_runcodes_judge_container_memory_bytes` | `1610612736` | 1.5 GiB |
 | `config_runcodes_judge_container_pids_limit` | `256` | pid cap |

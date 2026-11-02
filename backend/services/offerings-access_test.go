@@ -185,3 +185,29 @@ func TestValidateSettings(t *testing.T) {
 		})
 	}
 }
+
+// The bulletin board's write rule is not the authoring rule: a monitor may post
+// to the class board but cannot change the class, and a student may do neither.
+func TestOfferingRelationCanPost(t *testing.T) {
+	tests := []struct {
+		name     string
+		relation offeringRelation
+		want     bool
+	}{
+		{"owner", offeringRelation{Owner: true}, true},
+		{"admin panel", offeringRelation{AdminOverride: true}, true},
+		{"professor assigned to the class", offeringRelation{Role: EnrollmentRoleProfessor}, true},
+		{"monitor", offeringRelation{Role: EnrollmentRoleMonitor}, true},
+		{"student", offeringRelation{Role: EnrollmentRoleStudent}, false},
+		{"banned monitor", offeringRelation{Role: EnrollmentRoleMonitor, Banned: true}, false},
+		{"unrelated user", offeringRelation{}, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.relation.CanPost(); got != tc.want {
+				t.Fatalf("CanPost = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

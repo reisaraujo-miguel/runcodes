@@ -49,12 +49,13 @@ runcodes`. The main tables:
 | `allowed_file_types` | extension catalogue and compilable flag |
 | `commits` | submissions, status, score, compilation timestamps, S3 key, matched file type |
 | `commits_exercise_test_cases_results` | per-case verdict, CPU and wall time, peak memory, output, diagnostics |
-| `commit_phase_timings` | one row per measured phase (queue, workspace, image, startup, compile, run, grade) |
+| `commit_phase_timings` | one row per measured phase (queue, workspace, image, container create/start, startup, compile, run, grade, artifact) |
+| `system_alerts` | operational alerts for the administrators, acknowledged in the admin panel and emailed when recorded |
 | `platform_settings` | contact email and disclaimer edited by admins |
 | `email_verification_tokens` | SHA-256 of the verification token and expiry |
 | `password_reset_tokens` | SHA-256 of the password recovery token and expiry |
-| `alerts` | class/user announcements retained from the legacy model |
-| `system_*`, `mail_logs`, `user_messages` | retained operational/legacy tables |
+| `offering_posts` | a class's bulletin-board posts, written by professors and monitors |
+| `offering_post_comments` | comments on a post, optionally answering another comment |
 
 Enumerated types:
 
@@ -71,9 +72,9 @@ status = 'queued'` for the queue claim.
 Foreign keys the application always writes are `NOT NULL`: offerings have an
 owner, exercises belong to an offering and creator, test cases/files belong to
 their exercise, and commits belong to a user and exercise. The exceptions are
-intentional: `alerts.offering_id`/`user_id` may be global, and
-`system_logs.user_id`/`user_messages.user_id` are nullable for system/broadcast
-rows.
+intentional: `system_alerts.commit_id` is nullable (an alert that is not about a
+run) and so is `offering_post_comments.parent_comment_id` (a comment on the post
+itself).
 
 ## Role model
 
@@ -109,7 +110,8 @@ judge gets neither.
 The backend uses the application role and the judge uses the judge role.
 Migrations and the importer use the owner. In addition, the RLS migration
 enables row-level security on backend-only tables (users, tokens, enrollments,
-offerings, settings, messages) with a policy for `runcodes_app` only; the judge
+offerings, settings, bulletin posts and comments) with a policy for
+`runcodes_app` only; the judge
 is denied those tables even if a grant is later broadened. This is a
 service-role boundary, not per-user row filtering.
 
@@ -272,7 +274,7 @@ seed value `!`.
 instance of the new one. The old schema and data are restored side by side in an
 `old` schema, then ordered SQL scripts transform rows into `public`, preserving
 integer ids (only `users` get new ids because the old primary key was the email;
-`_migration.users_map` re-links foreign keys). `12-validate.sql` asserts that
+`_migration.users_map` re-links foreign keys). `10-validate.sql` asserts that
 every row arrived and that no foreign keys are orphaned.
 
 Prerequisites:
@@ -302,9 +304,6 @@ Mapping decisions:
 | `users.identifier` → `org_id` | copied; NULL when NULL or duplicated (the new column is unique) |
 | `users.password` | `legacy-sha1$<hash>`, upgraded to bcrypt on first login with `RUNCODES_LEGACY_PASSWORD_SALT` |
 | `enrollments.role` | 0=`student`, 1=`monitor`, 2=`professor` |
-| `alerts.type` | 0=`warning`, 1=`danger`, 2=`info`, 3=`success`, unknown=`info` |
-| `alerts.recipients` | 0=`students`, 1=`monitors`, 2=`professors`, unknown=`all` |
-| `alerts.valid` | end of that day at 23:59:59 São Paulo, stored as `valid_until` |
 | `commits.status` | 0=`queued`, 1=`compiling`, 2/3/10=`running`, 4=`uncompleted`, 5=`completed`, 6=`compilation_error`, 7=`pending`, 8=`plagiarism`, 9=`server_error`, 11=`queued` |
 | Case result | 1=`correct`, 2=`bad_formatted_output`, everything else=`killed_with_signal` |
 | `input_type` / `output_type` | 0=`text`, 1=`file`, unknown=`text` |
@@ -316,13 +315,15 @@ Mapping decisions:
 | `exercises.open_date` | falls back to `deadline` when NULL (the new column is NOT NULL) |
 | `created_at` / `updated_at` | migration time, or `last_update` for test cases |
 | IPs | cast to `inet`; invalid values become NULL (`0.0.0.0` for NOT NULL columns) |
-| Monitoring tables | `disk_reports` and `system_disk_reports` are discarded |
-| Dropped tables | `courses`, `universities`, `blacklist_mails`, `cria_schools`, `cria_students`, `droplets`, `ganglia`, `jail_status`, `public_exercises`, `questions`, `tickets` |
-| Dropped columns | `exercises.public/markdown/cases_change`, `commits.hash/compiled_signal`, `exercise_cases.abs_error/input_md5/output_md5`, and other legacy-only fields |
+| Monitoring tables | `disk_reports` is discarded |
+| Dropped tables | `courses`, `universities`, `blacklist_mails`, `cria_schools`, `cria_students`, `droplets`, `ganglia`, `jail_status`, `public_exercises`, `questions`, `tickets`; the legacy announcements, system logs, mail logs and user messages have no destination in the new schema and are only archived by `99-optional-archive-legacy.sql` |
+| Dropped columns | `exercises.public/markdown/cases_change/type`, `commits.hash/compiled_signal`, `exercise_cases.abs_error/input_md5/output_md5`, and other legacy-only fields |
 
 After validation, drop `old` and `_migration` once the data is verified. Run
 `99-optional-archive-legacy.sql` first if the legacy-only tables must be kept in
-a `legacy` schema. The migration runner skips `99` because the archive is
+a `legacy` schema. It archives the tables the new schema no longer has —
+announcements, system logs, mail logs, user messages and the class material that
+was never imported — verbatim. The migration runner skips `99` because the archive is
 optional, not an import step. It is one-shot and refuses to run if `legacy`
 already exists; drop the schema explicitly before retrying. The importer is not
 incremental either: re-running on an already-migrated database duplicates rows.

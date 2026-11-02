@@ -55,15 +55,16 @@ class).
 
 ### Class tabs
 
-A class has six tabs:
+A class has seven tabs:
 
 | Tab | Purpose |
 | --- | --- |
 | **Detalhes** (Details) | code, end date, enrollment status, edit and delete |
 | **Exercícios** (Exercises) | create, open and manage exercises |
+| **Mural** (Bulletin board) | announcements to the class and their question threads |
 | **Notas** (Grades) | gradebook, statistics and CSV export |
 | **Linguagens** (Languages) | language adoption, allowance and CPU cost within this class |
-| **Ferramentas** (Tools) | export the class, download submissions, recompile, email |
+| **Ferramentas** (Tools) | export the class, download submissions, recompile |
 | **Participantes** (Participants) | members, roles, bans and invitations |
 
 The **Linguagens** tab uses the same metrics as the admin report, but every
@@ -93,7 +94,9 @@ An exercise has four tabs:
 | Manage test cases and files | ✓ | ✓ | — |
 | View the gradebook | ✓ | ✓ | — |
 | View the language report | ✓ | ✓ | — |
-| Export the class, recompile, email | ✓ | ✓ | — |
+| Export the class and recompile | ✓ | ✓ | — |
+| Post on the class bulletin board | ✓ | ✓ | ✓ |
+| Comment on a bulletin-board post | ✓ | ✓ | ✓ |
 | Edit or delete the class | ✓ | — | — |
 | Rotate the enrollment code | ✓ | — | — |
 | Manage participants | ✓ | — | — |
@@ -482,22 +485,37 @@ runner image.
 Do not recompile during a submission window if the class is active; it competes
 with student runs for judge workers.
 
-### Email the class
+### Bulletin board (Mural)
 
-**Escrever email** (Write email) sends one message to every non-banned member of
-the class, including students, monitors, co-professors and the owner.
+The class **Mural** is its own tab on both the class page (the page students open
+from **Minhas Turmas**) and the class management page, and it replaces the old
+"email the class" message. It is a board of posts with a comment thread under
+each one, so the class can discuss an announcement instead of answering it
+privately.
 
-- **Assunto** (Subject) is required and at most 200 characters; it cannot contain
-  a line break.
-- **Mensagem** (Message) is required and at most 20,000 characters.
-- The message is sent as plain text with an HTML version. Attachments are not
-  supported.
-- Delivery runs in the background; the dialog reports how many recipients were
-  queued. Delivery failures are logged by the server.
+- **Reading.** The board opens as a list of summaries — title, author and two
+  lines of the text. Expanding a post reveals the full text, the thread and the
+  comment box, so a long board stays scannable.
+- **Who posts.** The owner, co-professors and monitors. Students read and comment;
+  they do not start posts.
+- **Replies.** A reply quotes the comment it answers, so a long thread stays
+  readable without indentation.
+- **Who is notified.** A new post emails every enrolled student with the post's
+  full text, so nobody has to sign in to read it. A comment emails the class
+  staff (owner, professors and monitors) — except when it answers a student's
+  comment, which emails only that student. Nobody is notified about their own
+  comment.
+- **Limits.** A post needs a title (at most 160 characters) and a body (at most
+  8,000). A comment is at most 4,000 characters.
+- **Delivery.** Emails are sent in the background; the post is stored even if the
+  mail relay is down (the failure is logged). There are no attachments: link to
+  the exercise or upload the file as exercise material instead. A banned student
+  stops receiving board mail, like every other class message.
 
-Use the class email for schedule changes and reminders. The platform also sends
-automatic deadline reminders to students who have not submitted when an exercise
-closes in 7 days and again in 3 days.
+Use the board for schedule changes, extra explanations and questions the whole
+class should see. The platform also sends automatic deadline reminders to
+students who have not submitted when an exercise closes in 7 days and again in
+3 days.
 
 ## Reuse and collaborate
 

@@ -22,6 +22,20 @@ $$;
 
 CREATE SCHEMA legacy;
 
+-- The import no longer copies these: the new schema dropped its legacy
+-- announcement, system log, mail log and user message tables.
+CREATE TABLE legacy.alerts (LIKE old.alerts INCLUDING ALL);
+INSERT INTO legacy.alerts SELECT * FROM old.alerts;
+
+CREATE TABLE legacy.logs (LIKE old.logs INCLUDING ALL);
+INSERT INTO legacy.logs SELECT * FROM old.logs;
+
+CREATE TABLE legacy.mail_logs (LIKE old.mail_logs INCLUDING ALL);
+INSERT INTO legacy.mail_logs SELECT * FROM old.mail_logs;
+
+CREATE TABLE legacy.messages (LIKE old.messages INCLUDING ALL);
+INSERT INTO legacy.messages SELECT * FROM old.messages;
+
 CREATE TABLE legacy.courses (LIKE old.courses INCLUDING ALL);
 INSERT INTO legacy.courses SELECT * FROM old.courses;
 

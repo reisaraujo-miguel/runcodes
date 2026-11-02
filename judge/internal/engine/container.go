@@ -18,6 +18,23 @@ func (e *timeoutError) Error() string { return e.msg }
 // errLogStreamEnded means the container exited before the expected milestone.
 var errLogStreamEnded = errors.New("container log stream ended")
 
+/*
+startupError is a container that did not print its first milestone within the
+judge's startup budget.
+
+It is deliberately not a timeoutError: no submitted code has run at this point,
+so the submission's own timeout is the wrong verdict. The run ends as
+`server_error` and the runner publishes an alert for the administrators.
+*/
+type startupError struct {
+	Milestone string
+	Wait      time.Duration
+}
+
+func (e *startupError) Error() string {
+	return fmt.Sprintf("the container did not print %q within %s", e.Milestone, e.Wait)
+}
+
 // milestoneLine is the exact line the image prints for a milestone: the name, a
 // space and the run's nonce.
 func milestoneLine(milestone, nonce string) string {
@@ -69,6 +86,41 @@ func (e *Engine) awaitLine(stream *podman.LogStream, expected, nonce string, tim
 			e.logger.Debug("container output", "line", line)
 		}
 	}
+}
+
+/*
+awaitStartup waits for the container's first milestone under the startup budget.
+
+Every later milestone is measured against the budget of the phase it belongs to
+(the compilation wait, or the execution timeout). This one waits for the
+container to boot and for the harness to start printing, and it is the wait that
+has to fail fast — with an infrastructure verdict, not the submission's timeout —
+when the runtime, the image or the log stream is wedged.
+*/
+func (e *Engine) awaitStartup(stream *podman.LogStream, milestone, nonce string) error {
+	wait := e.startupWait()
+	err := e.awaitLine(stream, milestone, nonce, wait)
+
+	var timedOut *timeoutError
+	if errors.As(err, &timedOut) {
+		return &startupError{Milestone: milestone, Wait: wait}
+	}
+
+	return err
+}
+
+// startupWait is the effective startup budget. The configuration validates it as
+// positive; the fallback keeps an Engine built without one (tests) from failing
+// every run against a zero budget.
+func (e *Engine) startupWait() time.Duration {
+	if e.cfg.StartupWait > 0 {
+		return e.cfg.StartupWait
+	}
+	if e.cfg.CompilationWait > 0 {
+		return e.cfg.CompilationWait
+	}
+
+	return time.Minute
 }
 
 // stopContainer waits for the container to exit, force-killing it on timeout,

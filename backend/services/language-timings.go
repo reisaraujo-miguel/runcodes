@@ -142,6 +142,10 @@ func loadLanguageTimings(
 			entry.Workspace = stat
 		case "image_ensure":
 			entry.Image = stat
+		case "container_create":
+			entry.ContainerCreate = stat
+		case "container_start":
+			entry.ContainerStart = stat
 		case "startup":
 			entry.Startup = stat
 		case "compile":
@@ -153,8 +157,8 @@ func loadLanguageTimings(
 		case "artifact":
 			entry.Artifact = stat
 		default:
-			// Workspace sub-steps are persisted for operations but are not part
-			// of the product breakdown yet.
+			// The workspace sub-steps are persisted for operations but are not
+			// part of the product breakdown yet.
 			continue
 		}
 		timings[fileTypeID] = entry

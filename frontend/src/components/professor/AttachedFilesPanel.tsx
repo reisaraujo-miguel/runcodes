@@ -3,7 +3,7 @@ import { useState } from "react";
 import { PaperclipIcon } from "lucide-react";
 
 import { ConfirmButton } from "@/components/app/ConfirmDialog";
-import { SectionCard } from "@/components/app/SectionCard";
+import { Section } from "@/components/app/Section";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -24,14 +24,7 @@ import { errorMessage } from "@/lib/errors";
  * starter files students read on the submission page. Uploading a same-named
  * file replaces the stored one.
  */
-export function AttachedFilesCard({
-  exerciseId,
-  embedded = false,
-}: {
-  exerciseId: number;
-  /** Render the content without its own card, for a tab panel. */
-  embedded?: boolean;
-}) {
+export function AttachedFilesPanel({ exerciseId }: { exerciseId: number }) {
   const files = useAsync(
     () => listAttachedFiles(exerciseId),
     `attached-files-${String(exerciseId)}`,
@@ -156,18 +149,9 @@ export function AttachedFilesCard({
     </div>
   );
 
-  if (embedded) {
-    return (
-      <div className="space-y-4">
-        <p className="text-muted-foreground text-sm">{description}</p>
-        {content}
-      </div>
-    );
-  }
-
   return (
-    <SectionCard title="Materiais anexados" description={description}>
+    <Section title="Materiais anexados" description={description}>
       {content}
-    </SectionCard>
+    </Section>
   );
 }

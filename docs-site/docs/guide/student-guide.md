@@ -119,7 +119,8 @@ opened yet does not appear here.
 ### Class page
 
 Open a class from **Minhas Turmas** to see every exercise you may view, including
-one the professor chose to show before its opening date. The class page shows:
+one the professor chose to show before its opening date. The class page has two
+tabs, **Exercícios** and **Mural**. The exercises tab shows:
 
 - your best score and latest status on each exercise;
 - a progress summary: exercises delivered, open exercises, graded exercises and
@@ -128,6 +129,13 @@ one the professor chose to show before its opening date. The class page shows:
   (No submission) and **Com nota** (Graded);
 - sorting by **Prazo** (Deadline), **Maior nota** (Highest score), **Menor nota**
   (Lowest score) or **Última entrega** (Latest submission).
+
+The **Mural** tab is the class bulletin board. Professors and monitors post
+announcements; you can comment on any of them to ask a question. Posts start
+collapsed with their title and a two-line preview — open one to read it in full
+and comment. A new post also arrives by email with its full text, and a reply to
+your comment emails you the answer, so you do not need to keep checking the
+page.
 
 The **Abertura** (Opens) and **Prazo** (Deadline) times use your browser's time
 zone.

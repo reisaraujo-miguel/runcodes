@@ -52,6 +52,18 @@ export function LanguagePhasesCard({
             </TableHead>
             <TableHead
               className="text-center"
+              title="Criação do contêiner no runtime (podman create)"
+            >
+              Criação
+            </TableHead>
+            <TableHead
+              className="text-center"
+              title="Start do contêiner no runtime (podman start), antes do harness"
+            >
+              Start
+            </TableHead>
+            <TableHead
+              className="text-center"
               title="Do start do contêiner até o primeiro marco da fase"
             >
               Startup
@@ -115,6 +127,12 @@ export function LanguagePhasesCard({
                   />
                 </TableCell>
                 <TableCell className="text-center">
+                  <PhaseCell stat={timings?.container_create} />
+                </TableCell>
+                <TableCell className="text-center">
+                  <PhaseCell stat={timings?.container_start} />
+                </TableCell>
+                <TableCell className="text-center">
                   <PhaseCell stat={timings?.startup} />
                 </TableCell>
                 <TableCell className="text-center">
@@ -140,7 +158,8 @@ export function LanguagePhasesCard({
         A porcentagem é a cobertura: execuções com a fase medida sobre as
         execuções classificadas no escopo. Submissões antigas não têm fases e
         aparecem como “sem dados”. O tempo de compilação vem do monitor, não da
-        diferença entre eventos.
+        diferença entre eventos. Criação e Start são chamadas do runtime: um
+        valor alto ali é um problema de infraestrutura, não da linguagem.
       </p>
     </div>
   );

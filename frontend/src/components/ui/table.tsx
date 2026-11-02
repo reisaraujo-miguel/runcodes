@@ -5,13 +5,23 @@ import { cn } from "@/lib/utils";
 function Table({
   className,
   containerClassName,
+  variant = "card",
   ...props
-}: React.ComponentProps<"table"> & { containerClassName?: string }) {
+}: React.ComponentProps<"table"> & {
+  containerClassName?: string;
+  /**
+   * `card` puts the scroll region on its own surface, which is how a table reads
+   * as one object on a page. `plain` is for a table that already sits on a
+   * surface of its own, such as a dialog.
+   */
+  variant?: "card" | "plain";
+}) {
   return (
     <div
       data-slot="table-container"
       className={cn(
         "relative max-h-[65dvh] w-full overflow-auto",
+        variant === "card" && "bg-card border-border rounded-xl border",
         containerClassName,
       )}
     >
@@ -28,7 +38,7 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
       data-slot="table-header"
-      className={cn("bg-card sticky top-0 z-10 [&_tr]:border-b", className)}
+      className={cn("bg-muted sticky top-0 z-10 [&_tr]:border-b", className)}
       {...props}
     />
   );
@@ -75,7 +85,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "text-muted-foreground bg-card h-10 px-3 text-left align-middle text-xs font-medium tracking-wide whitespace-nowrap uppercase",
+        "text-muted-foreground bg-muted h-10 px-3 text-left align-middle text-[11px] font-medium tracking-wide whitespace-nowrap uppercase",
         className,
       )}
       {...props}

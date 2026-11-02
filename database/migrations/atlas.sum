@@ -1,4 +1,4 @@
-h1:0xKTIwuVQo71gk9uQcLB6mAY4ZDXNkZGmeLo9JWaWBk=
+h1:lr/la5RQUdHl3BAlGkQ0Of2p1yYecLKO9QSzkeueZx4=
 20261020150022_baseline.sql h1:lH82Kx6gK/CEJuhe2Frs4qg8ruVTkzK0fVq2OOCYRTw=
 20261020150023_add_code_editor_preference.sql h1:+O6onQoRPu9aPFE/ARdhA/tDPaZ1a1F0IlHThsnlHlQ=
 20261020160000_add_email_verification_tokens.sql h1:trEVBFEHbF5TltShrpZIN1FmvhdtexcLifl9WXa9ams=
@@ -11,3 +11,6 @@ h1:0xKTIwuVQo71gk9uQcLB6mAY4ZDXNkZGmeLo9JWaWBk=
 20261024160000_add_deadline_reminders.sql h1:z5tso79uCoXh3j+707XSgm0S97lCF9WJFLqqdjPOZc0=
 20261102090000_add_commit_allowed_file_type.sql h1:Gl6oc6QeSOy9ZAIPKzUsALs2Exsap124VzhHIEkWeOo=
 20261102120000_add_commit_phase_timings.sql h1:lnOOWegSNS+w2/zTAZfOz2S/mTWusaTQlBqIarg5lcQ=
+20261102133157_add_system_alerts.sql h1:HojffE3MZjyplvRhBULASbzzO9nQyrm8NET4uRHM86w=
+20261102142229_drop_unused_schema.sql h1:6zViyh/zy2r1I0qgireEvpOieJMQodkwhSfTKr87p38=
+20261102142321_add_bulletin_board.sql h1:hUzba+B/njTB22Cq1MSUehXwov5rD0XqJPd/+Akbypc=
