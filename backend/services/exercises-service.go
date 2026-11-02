@@ -104,7 +104,9 @@ func CreateExercise(
 	if exs := []models.Exercise{exercise}; attachAllowedFileTypes(ctx, exs) == nil {
 		exercise = exs[0]
 	}
-	cache.Delete(ctx, cache.OfferingExercisesKey(offeringID))
+	cache.Delete(ctx, cache.OfferingExercisesKey(offeringID),
+		cache.KeyLanguageStatistics,
+		cache.OfferingLanguageStatisticsKey(offeringID))
 
 	slog.InfoContext(ctx, "exercise created",
 		slog.Int64("exercise_id", exercise.ID),
@@ -433,7 +435,9 @@ func UpdateExercise(
 		return nil, ErrServer
 	}
 
-	cache.Delete(ctx, cache.OfferingExercisesKey(ex.OfferingID))
+	cache.Delete(ctx, cache.OfferingExercisesKey(ex.OfferingID),
+		cache.KeyLanguageStatistics,
+		cache.OfferingLanguageStatisticsKey(ex.OfferingID))
 
 	if exs := []models.Exercise{ex}; attachAllowedFileTypes(ctx, exs) == nil {
 		ex = exs[0]
@@ -465,7 +469,9 @@ func DeleteExercise(
 		return ErrServer
 	}
 
-	cache.Delete(ctx, cache.OfferingExercisesKey(acc.exercise.OfferingID))
+	cache.Delete(ctx, cache.OfferingExercisesKey(acc.exercise.OfferingID),
+		cache.KeyLanguageStatistics,
+		cache.OfferingLanguageStatisticsKey(acc.exercise.OfferingID))
 	return nil
 }
 

@@ -1,6 +1,6 @@
 ---
 title: Administration API
-description: Admin endpoints for users, classes and platform settings.
+description: Admin endpoints for users, classes, platform settings and language statistics.
 ---
 
 # Administration API
@@ -213,6 +213,87 @@ missing id returns `404`; a duplicate extension returns `409`.
 
 Deletes an unused entry. Returns `204`. An entry referenced by at least one
 exercise returns `409`; hide it with `is_available: false` instead.
+
+## Language statistics
+
+### `GET /admin/language-stats`
+
+Returns one row per catalog entry plus the platform denominators the rates use.
+The report is cached for up to one minute. The panel and the fairness method are
+described in [Language statistics](../administration/language-statistics.md).
+For one class, use
+[`GET /offerings/{id}/language-stats`](./classes.md#get-offerings-id-language-stats),
+which returns the same shape with class-scoped denominators.
+
+```json
+{
+  "generated_at": "2026-11-02T12:00:00Z",
+  "summary": {
+    "exercises": 30,
+    "professors": 4,
+    "catalog_languages": 23,
+    "languages_offered": 9,
+    "languages_used": 6,
+    "classified_submissions": 285,
+    "students": 41,
+    "unclassified_submissions": 3
+  },
+  "languages": [
+    {
+      "file_type_id": 1,
+      "name": "Python 3",
+      "extension": "py",
+      "is_compilable": false,
+      "is_available": true,
+      "submissions": 120,
+      "submission_share": 42.11,
+      "students": 34,
+      "exercises_chosen": 12,
+      "pick_rate": 31.5,
+      "pick_rate_samples": 14,
+      "exercises_offered": 18,
+      "exercise_offer_rate": 60,
+      "offerings_offered": 4,
+      "professors_offering": 3,
+      "professor_offer_rate": 75,
+      "results": 480,
+      "test_cases": 40,
+      "compared_test_cases": 36,
+      "compared_exercises": 8,
+      "cpu_time_median_seconds": 0.0423,
+      "relative_cpu": 0.87,
+      "relative_cpu_p25": 0.72,
+      "relative_cpu_p75": 1.04
+    }
+  ]
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `submissions` | student submissions with a matched type, in non-removed exercises |
+| `submission_share` | `submissions` as a percentage of `summary.classified_submissions` |
+| `students` | distinct students who chose the language |
+| `exercises_chosen` | distinct exercises with at least one submission of the language |
+| `pick_rate` | mean, across offered exercises with submissions, of the language's share of those submissions; `null` when none |
+| `pick_rate_samples` | exercises behind `pick_rate` |
+| `exercises_offered` | non-removed exercises that allow the type |
+| `exercise_offer_rate` | `exercises_offered` as a percentage of `summary.exercises` |
+| `offerings_offered` | distinct classes with an exercise that allows the type |
+| `professors_offering` | distinct exercise authors who allow the type |
+| `professor_offer_rate` | `professors_offering` as a percentage of `summary.professors` |
+| `results` | executed test-case results for the language |
+| `test_cases` | distinct test cases with a result for the language |
+| `compared_test_cases` | test cases with at least two languages, behind `relative_cpu` |
+| `compared_exercises` | distinct exercises behind `relative_cpu` |
+| `cpu_time_median_seconds` | median CPU seconds across the compared test cases |
+| `relative_cpu` | median, across compared test cases, of the language's median CPU divided by the median of the languages on that case; `null` without a comparison |
+| `relative_cpu_p25`, `relative_cpu_p75` | quartiles of the same ratios |
+
+`mem_usage` is not part of the report: the monitor records `-1` (unknown) and the
+platform does not collect peak memory today. `relative_cpu` is an observational
+comparison, not a controlled benchmark; see the
+[methodology](../administration/language-statistics.md#what-the-numbers-can-and-cannot-say).
 
 ## Role preview
 

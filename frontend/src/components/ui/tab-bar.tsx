@@ -72,53 +72,55 @@ export function TabBar<T extends string>({
 
   return (
     <div className={cn("flex h-10 shrink-0 items-center border-b", className)}>
-      <div
-        role="tablist"
-        aria-label={label}
-        className="flex h-full min-w-0 items-stretch pl-1"
-        onKeyDown={handleKeyDown}
-      >
-        {items.map((item) => {
-          const active = item.value === value;
-          return (
-            <button
-              key={item.value}
-              ref={(node) => {
-                if (node) buttonRefs.current.set(item.value, node);
-                else buttonRefs.current.delete(item.value);
-              }}
-              type="button"
-              role="tab"
-              id={`${idPrefix}-tab-${item.value}`}
-              aria-selected={active}
-              aria-controls={`${idPrefix}-panel-${item.value}`}
-              tabIndex={active ? 0 : -1}
-              onClick={() => {
-                onChange(item.value);
-              }}
-              className={cn(
-                "focus-visible:ring-ring/50 relative inline-flex items-center gap-1.5 px-3 text-xs font-medium whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset",
-                active
-                  ? "text-foreground after:bg-primary after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full after:content-['']"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {item.label}
-              {item.badge !== undefined && item.badge !== null ? (
-                <span
-                  className={cn(
-                    "rounded-full px-1.5 py-px text-[10px] font-medium tabular-nums",
-                    active
-                      ? "bg-primary/12 text-primary"
-                      : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  {item.badge}
-                </span>
-              ) : null}
-            </button>
-          );
-        })}
+      <div className="min-w-0 flex-1 overflow-x-auto">
+        <div
+          role="tablist"
+          aria-label={label}
+          className="flex h-10 min-w-max items-stretch pl-1"
+          onKeyDown={handleKeyDown}
+        >
+          {items.map((item) => {
+            const active = item.value === value;
+            return (
+              <button
+                key={item.value}
+                ref={(node) => {
+                  if (node) buttonRefs.current.set(item.value, node);
+                  else buttonRefs.current.delete(item.value);
+                }}
+                type="button"
+                role="tab"
+                id={`${idPrefix}-tab-${item.value}`}
+                aria-selected={active}
+                aria-controls={`${idPrefix}-panel-${item.value}`}
+                tabIndex={active ? 0 : -1}
+                onClick={() => {
+                  onChange(item.value);
+                }}
+                className={cn(
+                  "focus-visible:ring-ring/50 relative inline-flex items-center gap-1.5 px-3 text-xs font-medium whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset",
+                  active
+                    ? "text-foreground after:bg-primary after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full after:content-['']"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {item.label}
+                {item.badge !== undefined && item.badge !== null ? (
+                  <span
+                    className={cn(
+                      "rounded-full px-1.5 py-px text-[10px] font-medium tabular-nums",
+                      active
+                        ? "bg-primary/12 text-primary"
+                        : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {item.badge}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
       </div>
       {trailing ? (
         <div className="ml-auto flex min-w-0 items-center gap-2 pr-2">

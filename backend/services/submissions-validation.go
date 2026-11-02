@@ -155,14 +155,29 @@ func validateTestCases(ctx context.Context, exerciseID int64) error {
 	return nil
 }
 
+// allowedFileType is the part of a catalog entry a submission match needs.
+type allowedFileType struct {
+	id        int64
+	extension string
+}
+
 /*
-validateFileType checks the submitted file extension against the exercise's
-allowed file types. Exercises without any configured allowed type are accepted
-as-is (there is nothing to validate against).
+resolveFileType checks the submitted file extension against the exercise's
+allowed file types and returns the catalog entry that matched.
+
+Exercises without any configured allowed type are accepted as-is (there is
+nothing to validate against); the second return value reports whether a type was
+matched, so the caller can store it on the commit.
+
+When more than one allowed extension matches (a file named `main.omp.c` matches
+both `c` and `omp.c`), the longest extension wins, mirroring the judge's
+compound-extension rule.
 */
-func validateFileType(ctx context.Context, exerciseID int64, filename string) error {
+func resolveFileType(
+	ctx context.Context, exerciseID int64, filename string,
+) (int64, bool, error) {
 	rows, err := database.DB.QueryContext(ctx,
-		`SELECT aft.extension
+		`SELECT aft.id, aft.extension
 		 FROM exercises_allowed_file_types eaft
 		 JOIN allowed_file_types aft ON aft.id = eaft.allowed_file_type_id
 		 WHERE eaft.exercise_id = $1 AND aft.is_available = TRUE`,
@@ -173,42 +188,66 @@ func validateFileType(ctx context.Context, exerciseID int64, filename string) er
 			slog.Int64("exercise_id", exerciseID),
 			slog.String("error", err.Error()),
 		)
-		return ErrServer
+		return 0, false, ErrServer
 	}
 	defer rows.Close()
 
-	allowed := make([]string, 0, 4)
+	allowed := make([]allowedFileType, 0, 4)
 	for rows.Next() {
-		var extension string
-		if err := rows.Scan(&extension); err != nil {
+		var candidate allowedFileType
+		if err := rows.Scan(&candidate.id, &candidate.extension); err != nil {
 			slog.ErrorContext(ctx, "error scanning allowed file type",
 				slog.String("error", err.Error()),
 			)
-			return ErrServer
+			return 0, false, ErrServer
 		}
-		allowed = append(allowed, extension)
+		allowed = append(allowed, candidate)
 	}
 	if err := rows.Err(); err != nil {
 		slog.ErrorContext(ctx, "error iterating allowed file types",
 			slog.String("error", err.Error()),
 		)
-		return ErrServer
+		return 0, false, ErrServer
 	}
 
 	if len(allowed) == 0 {
 		slog.WarnContext(ctx, "exercise has no allowed file types configured, accepting any file",
 			slog.Int64("exercise_id", exerciseID),
 		)
-		return nil
+		return 0, false, nil
 	}
 
-	for _, extension := range allowed {
-		if filenameMatchesExtension(filename, extension) {
-			return nil
+	id, ok := bestFileTypeMatch(filename, allowed)
+	if !ok {
+		return 0, false, ErrInvalidFileType
+	}
+
+	return id, true, nil
+}
+
+// bestFileTypeMatch picks the allowed extension that best matches filename. A
+// longer extension is more specific, so `omp.c` beats `c` for `main.omp.c`.
+func bestFileTypeMatch(
+	filename string, allowed []allowedFileType,
+) (int64, bool) {
+	var (
+		best  allowedFileType
+		found bool
+	)
+
+	for _, candidate := range allowed {
+		if !filenameMatchesExtension(filename, candidate.extension) {
+			continue
+		}
+		if !found ||
+			len(candidate.extension) > len(best.extension) ||
+			(len(candidate.extension) == len(best.extension) && candidate.id < best.id) {
+			best = candidate
+			found = true
 		}
 	}
 
-	return ErrInvalidFileType
+	return best.id, found
 }
 
 /*

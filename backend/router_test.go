@@ -40,6 +40,7 @@ func TestCreateRoutes(t *testing.T) {
 		"/api/v1/offerings/{id}/enrollment",
 		"/api/v1/offerings/{id}/members",
 		"/api/v1/offerings/{id}/members/{userId}",
+		"/api/v1/offerings/{id}/language-stats",
 		"/api/v1/offerings/{offeringId}/exercises",
 		"/api/v1/exercises/{id}",
 		"/api/v1/exercises/{id}/submissions",
@@ -58,6 +59,7 @@ func TestCreateRoutes(t *testing.T) {
 		"/api/v1/admin/offerings/{id}",
 		"/api/v1/admin/offerings/{id}/members",
 		"/api/v1/admin/settings",
+		"/api/v1/admin/language-stats",
 	}
 
 	for _, path := range want {

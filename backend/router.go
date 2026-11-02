@@ -157,6 +157,8 @@ func createRoutes(router *chi.Mux) {
 				// Grades and statistics derived from the class submissions.
 				r.Get("/api/v1/offerings/{id}/grades", handlers.GetOfferingGradebook)
 				r.Get("/api/v1/offerings/{id}/grades.csv", handlers.ExportOfferingGradesCSV)
+				r.Get("/api/v1/offerings/{id}/language-stats",
+					handlers.GetOfferingLanguageStatistics)
 
 				// Whole-class tools: backup/restore of the class material and batch
 				// operations on the students' submissions.
@@ -196,6 +198,10 @@ func createRoutes(router *chi.Mux) {
 				r.Post("/api/v1/admin/file-types", handlers.AdminCreateFileType)
 				r.Put("/api/v1/admin/file-types/{id}", handlers.AdminUpdateFileType)
 				r.Delete("/api/v1/admin/file-types/{id}", handlers.AdminDeleteFileType)
+
+				// Platform-wide adoption, allowance and CPU statistics for the
+				// file type catalog.
+				r.Get("/api/v1/admin/language-stats", handlers.GetLanguageStatistics)
 			})
 		})
 	})

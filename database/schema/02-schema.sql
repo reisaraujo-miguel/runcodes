@@ -176,7 +176,12 @@ CREATE TABLE commits (
   compilation_finished TIMESTAMP WITH TIME ZONE,
   compilation_error text,
   ip inet,
-  s3_key text
+  s3_key text,
+  -- The allowed-file-type row that matched the submitted filename. Storing the
+  -- choice at submission time lets the language statistics group by language
+  -- without re-parsing the object key, and keeps ZIP submissions distinguishable
+  -- from the languages the judge may detect inside them.
+  allowed_file_type_id int REFERENCES allowed_file_types (id) ON DELETE SET NULL
 );
 
 CREATE TYPE commit_exercise_test_case_status_t AS ENUM ('killed_with_signal', 'correct', 'bad_formatted_output');
@@ -278,6 +283,7 @@ CREATE INDEX idx_exercises_test_cases_exercise_id ON exercises_test_cases (exerc
 CREATE INDEX idx_exercises_test_cases_files_case_id ON exercises_test_cases_files (exercise_test_case_id);
 CREATE INDEX idx_commits_user_id ON commits (user_id);
 CREATE INDEX idx_commits_exercise_id ON commits (exercise_id);
+CREATE INDEX idx_commits_allowed_file_type_id ON commits (allowed_file_type_id);
 -- The results PK is (commit_id, exercise_test_case_id): commit_id is covered, the
 -- case id is not.
 CREATE INDEX idx_results_exercise_test_case_id ON commits_exercise_test_cases_results (exercise_test_case_id);

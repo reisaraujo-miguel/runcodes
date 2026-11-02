@@ -24,6 +24,7 @@ import { ClassMembersCard } from "@/components/professor/ClassMembersCard";
 import { EditClassForm } from "@/components/professor/EditClassForm";
 import { NewExerciseForm } from "@/components/professor/NewExerciseForm";
 import { OfferingGradesCard } from "@/components/professor/OfferingGradesCard";
+import { OfferingLanguageStatsCard } from "@/components/professor/OfferingLanguageStatsCard";
 import { OfferingToolsCard } from "@/components/professor/OfferingToolsCard";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -51,7 +52,8 @@ import { formatDateTime } from "@/lib/format";
 
 const breadcrumb = <BackLink to="/professor" />;
 
-type ClassTab = "details" | "exercises" | "grades" | "tools" | "participants";
+type ClassTab =
+  "details" | "exercises" | "grades" | "languages" | "tools" | "participants";
 
 const DEFAULT_TAB: ClassTab = "details";
 
@@ -60,6 +62,7 @@ function parseTab(value: string | null): ClassTab {
   switch (value) {
     case "exercises":
     case "grades":
+    case "languages":
     case "tools":
     case "participants":
       return value;
@@ -222,6 +225,7 @@ export function ClassPage() {
       badge: exerciseCount ?? exerciseList.length,
     },
     { value: "grades", label: "Notas" },
+    { value: "languages", label: "Linguagens" },
     { value: "tools", label: "Ferramentas" },
     {
       value: "participants",
@@ -518,6 +522,15 @@ export function ClassPage() {
             hidden={tab !== "grades"}
           >
             <OfferingGradesCard offeringId={offering.id} />
+          </div>
+
+          <div
+            role="tabpanel"
+            id="class-overview-panel-languages"
+            aria-labelledby="class-overview-tab-languages"
+            hidden={tab !== "languages"}
+          >
+            <OfferingLanguageStatsCard offeringId={offering.id} />
           </div>
 
           <div

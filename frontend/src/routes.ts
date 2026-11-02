@@ -177,6 +177,14 @@ export const router = createBrowserRouter([
                     },
                   },
                   {
+                    path: "languages",
+                    lazy: async () => {
+                      const { AdminLanguageStatsPage } =
+                        await import("./routes/admin/language-stats/page.tsx");
+                      return { Component: AdminLanguageStatsPage };
+                    },
+                  },
+                  {
                     path: "settings",
                     lazy: async () => {
                       const { AdminSettingsPage } =

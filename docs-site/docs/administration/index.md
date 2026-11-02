@@ -17,7 +17,7 @@ used.
 
 ## What an administrator can do
 
-The **Administração** (Administration) section of the sidebar has five pages:
+The **Administração** (Administration) section of the sidebar has six pages:
 
 | Page | Purpose |
 | --- | --- |
@@ -25,6 +25,7 @@ The **Administração** (Administration) section of the sidebar has five pages:
 | **Usuários** (Users) | search, edit, confirm and delete accounts |
 | **Todas as Turmas** (All classes) | edit any class, transfer ownership, inspect members, delete |
 | **Tipos de Arquivo** (File types) | maintain the extension catalog used by exercises |
+| **Linguagens** (Languages) | adoption, professor allowance and CPU cost per language |
 | **Configurações** (Settings) | contact email and login-page disclaimer |
 
 An administrator also has the teaching area, but only for classes they own or
@@ -191,6 +192,26 @@ image still decide how a file runs. Registering `rb` does not add Ruby support.
 See [Platform settings & file types](./platform.md#file-types) and
 [Languages & images](../reference/languages.md).
 
+## Read the language report
+
+**Linguagens** aggregates every class into three views of the same catalog:
+
+- **Escolha dos alunos** (Student choice): submissions, students and the share
+  each language gets inside the exercises that offered it;
+- **Oferta dos professores** (Professor allowance): exercises, classes and
+  distinct professors that allow each type;
+- **Tempo de CPU** (CPU time): a paired comparison that uses each test case as
+  its own baseline, with a sample-size warning for languages with little data.
+
+The page is not a ranking. A language can lead in adoption because it is offered
+everywhere, and the CPU index is observational: students are not assigned to
+languages at random and the monitor does not measure memory. The methodology,
+the denominators and the limitations are in
+[Language statistics](./language-statistics.md).
+
+Owners and co-professors see the same report scoped to their class in the
+**Linguagens** tab of the class page.
+
 ## Protect the administrator account
 
 - Use a unique, long password and keep the account email current.
@@ -213,6 +234,7 @@ See [Platform settings & file types](./platform.md#file-types) and
 | Accounts, roles, confirmation, deletion | [Users & role administration](./users.md) |
 | Class metadata, ownership transfer, deletion | [Class & ownership administration](./classes.md) |
 | Settings, file types, mail, preview | [Platform settings & file types](./platform.md) |
+| Language adoption, allowance and CPU | [Language statistics](./language-statistics.md) |
 | Health checks, backups, upgrades, incidents | [Platform operations](./operations.md) |
 | Infrastructure deployment | [Deployment overview](../deployment/index.md) |
 | Metrics, logs, traces and alerts | [Observability](../observability/index.md) |
