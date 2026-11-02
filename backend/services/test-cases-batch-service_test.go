@@ -199,6 +199,16 @@ func TestParseBatchTestCaseArchiveReportsTheBrokenCase(t *testing.T) {
 			wantReason: "estrutura",
 		},
 		{
+			name: "files/ without the case folder",
+			files: map[string]string{
+				"1.in":         "1",
+				"1.out":        "2",
+				"1/files/x.in": "extra",
+			},
+			wantCase:   "1",
+			wantReason: "files/",
+		},
+		{
 			name: "ignored root files only",
 			files: map[string]string{
 				"README.md": "instruções",

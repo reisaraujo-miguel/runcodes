@@ -337,6 +337,17 @@ are collected so the caller can show every offending case at once.
 func (e *batchArchiveEntries) testCases() ([]batchTestCase, error) {
 	rootInputs, rootOutputs := e.rootPairNames()
 
+	// A files/ subfolder only makes sense inside a case folder; when the pair is
+	// at the root there is no folder to hold its extras, and dropping them
+	// silently would hide files the professor meant to attach.
+	for name := range e.extraFolders {
+		if _, isFolder := e.folders[name]; !isFolder {
+			e.issues.add(name,
+				"os arquivos de files/ precisam ficar dentro da pasta do caso",
+			)
+		}
+	}
+
 	names := make([]string, 0, len(e.folders)+len(rootInputs)+len(rootOutputs))
 	for name := range e.folders {
 		names = append(names, name)
