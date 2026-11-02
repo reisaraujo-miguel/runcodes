@@ -15,6 +15,7 @@ import { formatDateTime } from "@/lib/format";
 import { LanguageAllowanceCard } from "./LanguageAllowanceCard";
 import { LanguageChoiceCard } from "./LanguageChoiceCard";
 import { LanguagePerformanceCard } from "./LanguagePerformanceCard";
+import { LanguagePhasesCard } from "./LanguagePhasesCard";
 import { formatCount } from "./language-stats";
 
 /**
@@ -126,6 +127,8 @@ export function LanguageStatsReport({
       />
 
       <LanguagePerformanceCard languages={languages} />
+
+      <LanguagePhasesCard languages={languages} />
 
       <p className="text-muted-foreground text-xs">
         Relatório calculado em {formatDateTime(data.generated_at)}. O resultado

@@ -32,6 +32,32 @@ export interface LanguageStat {
   relative_cpu: number | null;
   relative_cpu_p25: number | null;
   relative_cpu_p75: number | null;
+  timings?: LanguageTimings;
+}
+
+export interface PhaseStat {
+  median_seconds: number | null;
+  p25_seconds: number | null;
+  p75_seconds: number | null;
+  cpu_time_median_seconds?: number | null;
+  samples: number;
+  /** Image phase only: runs that used an image already in the local store. */
+  warm_samples?: number;
+  /** Image phase only: runs that had to pull the image. */
+  cold_samples?: number;
+  /** Percentage of the scope's classified commits with this phase measured. */
+  coverage: number;
+}
+
+export interface LanguageTimings {
+  queue?: PhaseStat;
+  workspace?: PhaseStat;
+  image?: PhaseStat;
+  startup?: PhaseStat;
+  compile?: PhaseStat;
+  run?: PhaseStat;
+  grade?: PhaseStat;
+  artifact?: PhaseStat;
 }
 
 export interface LanguageStatisticsSummary {

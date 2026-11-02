@@ -46,7 +46,7 @@ type fakeRuntime struct {
 	created   int
 }
 
-func (r *fakeRuntime) EnsureImage(context.Context, string) error { return nil }
+func (r *fakeRuntime) EnsureImage(context.Context, string) (bool, error) { return false, nil }
 func (r *fakeRuntime) RemoveByName(context.Context, string) error {
 	return nil
 }
@@ -125,7 +125,7 @@ func TestRunContainerAcceptsOnlyMilestonesWithTheNonce(t *testing.T) {
 		engine, container, dir := newTestEngine(t, nonced...)
 		ws := testWorkspace(dir)
 
-		if _, err := engine.runContainer(context.Background(), &model.Commit{ID: 1}, ws, engine.logger); err != nil {
+		if _, err := engine.runContainer(context.Background(), &model.Commit{ID: 1}, ws, model.NewRunTimings(), engine.logger); err != nil {
 			t.Fatalf("runContainer: %v", err)
 		}
 		if !container.removed {
@@ -143,7 +143,7 @@ func TestRunContainerAcceptsOnlyMilestonesWithTheNonce(t *testing.T) {
 		}
 
 		engine, _, dir := newTestEngine(t, messages...)
-		if _, err := engine.runContainer(context.Background(), &model.Commit{ID: 1}, testWorkspace(dir), engine.logger); err != nil {
+		if _, err := engine.runContainer(context.Background(), &model.Commit{ID: 1}, testWorkspace(dir), model.NewRunTimings(), engine.logger); err != nil {
 			t.Fatalf("runContainer: %v", err)
 		}
 	})
@@ -152,7 +152,7 @@ func TestRunContainerAcceptsOnlyMilestonesWithTheNonce(t *testing.T) {
 		engine, container, dir := newTestEngine(t, milestones...)
 		ws := testWorkspace(dir)
 
-		_, err := engine.runContainer(context.Background(), &model.Commit{ID: 1}, ws, engine.logger)
+		_, err := engine.runContainer(context.Background(), &model.Commit{ID: 1}, ws, model.NewRunTimings(), engine.logger)
 		if err == nil {
 			t.Fatal("a run whose milestones carry no nonce must not be accepted")
 		}
@@ -169,6 +169,85 @@ func TestRunContainerAcceptsOnlyMilestonesWithTheNonce(t *testing.T) {
 	})
 }
 
+// TestRunContainerRecordsPhaseTimings checks that the phases whose boundaries
+// are judge-side are actually accumulated. The compile phase is absent here
+// because the fake container does not write a compilation monitor report.
+func TestRunContainerRecordsPhaseTimings(t *testing.T) {
+	milestones := []string{
+		"compilation.start test-nonce",
+		"compilation.done test-nonce",
+		"run.start test-nonce",
+		"run.done test-nonce",
+	}
+
+	engine, _, dir := newTestEngine(t, milestones...)
+	timings := model.NewRunTimings()
+	if _, err := engine.runContainer(context.Background(), &model.Commit{ID: 1}, testWorkspace(dir), timings, engine.logger); err != nil {
+		t.Fatalf("runContainer: %v", err)
+	}
+
+	got := make(map[string]bool, len(timings.Phases()))
+	for _, phase := range timings.Phases() {
+		got[phase.Phase] = true
+	}
+	for _, want := range []string{
+		model.PhaseImageEnsure,
+		model.PhaseContainerCreate,
+		model.PhaseContainerStart,
+		model.PhaseStartup,
+		model.PhaseRun,
+		model.PhaseGrade,
+	} {
+		if !got[want] {
+			t.Errorf("phase %q was not recorded", want)
+		}
+	}
+}
+
+// TestRunContainerRecordsCompileTime uses the compile monitor's own wall and CPU
+// figures, not the distance between milestone events.
+func TestRunContainerRecordsCompileTime(t *testing.T) {
+	milestones := []string{
+		"compilation.start test-nonce",
+		"compilation.done test-nonce",
+		"run.start test-nonce",
+		"run.done test-nonce",
+	}
+
+	engine, _, dir := newTestEngine(t, milestones...)
+	ws := testWorkspace(dir)
+	if err := os.WriteFile(filepath.Join(dir, "compilation.monitor_out"),
+		[]byte("exit_status=0\nsignal=\ntime=1.250\ncpu_time=0.900\n"), 0o644); err != nil {
+		t.Fatalf("write compile monitor: %v", err)
+	}
+
+	timings := model.NewRunTimings()
+	if _, err := engine.runContainer(context.Background(), &model.Commit{ID: 1}, ws, timings, engine.logger); err != nil {
+		t.Fatalf("runContainer: %v", err)
+	}
+
+	phases := timings.Phases()
+	var compile *model.PhaseTiming
+	for i := range phases {
+		if phases[i].Phase == model.PhaseCompile {
+			compile = &phases[i]
+			break
+		}
+	}
+	if compile == nil {
+		t.Fatal("compile phase was not recorded")
+	}
+	if compile.Duration != 1250*time.Millisecond {
+		t.Errorf("compile wall = %s, want 1.25s", compile.Duration)
+	}
+	if !compile.HasCPU || compile.CPU != 900*time.Millisecond {
+		t.Errorf("compile CPU = %+v, want 900ms", compile)
+	}
+	if compile.Source != "monitor" {
+		t.Errorf("compile source = %q, want monitor", compile.Source)
+	}
+}
+
 // TestRunContainerRejectsAFailedHarness pins the exit-status check: a harness that
 // reports the run as done and then fails has not finished collecting its outputs,
 // so they must not be graded as a result.
@@ -183,7 +262,7 @@ func TestRunContainerRejectsAFailedHarness(t *testing.T) {
 	engine, container, dir := newTestEngine(t, milestones...)
 	container.exitCode = 137 // killed, e.g. out of memory
 
-	_, err := engine.runContainer(context.Background(), &model.Commit{ID: 1}, testWorkspace(dir), engine.logger)
+	_, err := engine.runContainer(context.Background(), &model.Commit{ID: 1}, testWorkspace(dir), model.NewRunTimings(), engine.logger)
 	if err == nil {
 		t.Fatal("expected the harness exit status to fail the run")
 	}
@@ -209,7 +288,7 @@ func TestRunContainerKillsAContainerThatWillNotExit(t *testing.T) {
 	engine, container, dir := newTestEngine(t, milestones...)
 	container.waitErr = context.DeadlineExceeded
 
-	if _, err := engine.runContainer(context.Background(), &model.Commit{ID: 1}, testWorkspace(dir), engine.logger); err != nil {
+	if _, err := engine.runContainer(context.Background(), &model.Commit{ID: 1}, testWorkspace(dir), model.NewRunTimings(), engine.logger); err != nil {
 		t.Fatalf("runContainer: %v", err)
 	}
 	if !container.killed {
@@ -229,7 +308,7 @@ func TestRunContainerSkipsCompilationMilestonesForInterpretedLanguages(t *testin
 	ws.Language = language.FromExtension("py")
 	ws.Compilable = false
 
-	if _, err := engine.runContainer(context.Background(), &model.Commit{ID: 1}, ws, engine.logger); err != nil {
+	if _, err := engine.runContainer(context.Background(), &model.Commit{ID: 1}, ws, model.NewRunTimings(), engine.logger); err != nil {
 		t.Fatalf("runContainer: %v", err)
 	}
 }

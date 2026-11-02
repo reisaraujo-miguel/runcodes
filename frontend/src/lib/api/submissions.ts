@@ -76,6 +76,8 @@ export interface SubmissionCommit {
 export interface SubmissionSnapshotResult {
   exercise_test_case_id: number;
   cpu_time: number;
+  /** Wall-clock seconds; absent on results written before the judge stored it. */
+  wall_time?: number | null;
   mem_usage: number;
   user_output: string;
   user_output_type: string;
@@ -121,6 +123,7 @@ export interface SubmissionCaseResultEvent {
   seq: number;
   test_case_id: number;
   cpu_time: number;
+  wall_time?: number;
   mem_usage: number;
   status: CaseResultStatus;
   status_message: string;
