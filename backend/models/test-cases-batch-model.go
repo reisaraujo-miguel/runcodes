@@ -1,7 +1,8 @@
 package models
 
-// BatchTestCaseIssue names one folder of a test-case archive that could not be
-// interpreted, and why. The folder is the path inside the zip.
+// BatchTestCaseIssue names one case of a test-case archive that could not be
+// interpreted, and why. The folder is the case folder inside the zip, or the
+// base name of a pair at the archive root.
 type BatchTestCaseIssue struct {
 	Folder string `json:"folder"`
 	Reason string `json:"reason"`
@@ -17,6 +18,9 @@ type BatchTestCaseErrorResponse struct {
 
 // BatchTestCaseImportResponse reports a successful batch import.
 type BatchTestCaseImportResponse struct {
-	Created   int        `json:"created"`
+	Created int `json:"created"`
+	// Ignored lists the files at the archive root that were skipped because they
+	// are neither `.in` nor `.out`, so the professor can tell what was left out.
+	Ignored   []string   `json:"ignored,omitempty"`
 	TestCases []TestCase `json:"test_cases"`
 }

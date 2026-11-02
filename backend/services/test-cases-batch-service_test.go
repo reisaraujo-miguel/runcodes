@@ -40,9 +40,12 @@ func TestParseBatchTestCaseArchiveAcceptsConventionalFolders(t *testing.T) {
 		"__MACOSX/caso1/._input.in": "metadata",
 	})
 
-	cases, err := ParseBatchTestCaseArchive(archive)
+	cases, ignored, err := ParseBatchTestCaseArchive(archive)
 	if err != nil {
 		t.Fatalf("ParseBatchTestCaseArchive: %v", err)
+	}
+	if len(ignored) != 0 {
+		t.Fatalf("ignored = %v, want none", ignored)
 	}
 	if len(cases) != 2 {
 		t.Fatalf("got %d cases, want 2", len(cases))
@@ -61,60 +64,162 @@ func TestParseBatchTestCaseArchiveAcceptsConventionalFolders(t *testing.T) {
 	}
 }
 
-func TestParseBatchTestCaseArchiveReportsTheBrokenFolder(t *testing.T) {
+func TestParseBatchTestCaseArchivePairsRootFiles(t *testing.T) {
+	archive := zipWith(t, map[string]string{
+		"1.in":      "um",
+		"1.out":     "dois",
+		"2.in":      "três",
+		"2.out":     "quatro",
+		"README.md": "instruções",
+		"notas.txt": "rascunho",
+	})
+
+	cases, ignored, err := ParseBatchTestCaseArchive(archive)
+	if err != nil {
+		t.Fatalf("ParseBatchTestCaseArchive: %v", err)
+	}
+	if len(cases) != 2 {
+		t.Fatalf("got %d cases, want 2", len(cases))
+	}
+	if cases[0].Folder != "1" || cases[0].InputName != "1.in" ||
+		string(cases[0].InputData) != "um" || string(cases[0].OutputData) != "dois" {
+		t.Fatalf("unexpected first case: %+v", cases[0])
+	}
+	if cases[1].Folder != "2" || cases[1].InputName != "2.in" {
+		t.Fatalf("unexpected second case: %+v", cases[1])
+	}
+	if len(cases[0].ExtraFiles) != 0 {
+		t.Fatalf("root case should have no extras: %+v", cases[0].ExtraFiles)
+	}
+	want := []string{"README.md", "notas.txt"}
+	if len(ignored) != len(want) || ignored[0] != want[0] || ignored[1] != want[1] {
+		t.Fatalf("ignored = %v, want %v", ignored, want)
+	}
+}
+
+func TestParseBatchTestCaseArchiveMixesRootPairsAndFolders(t *testing.T) {
+	archive := zipWith(t, map[string]string{
+		"1.in":         "um",
+		"1.out":        "dois",
+		"2/2.in":       "três",
+		"2/2.out":      "quatro",
+		"2/extra.txt":  "material",
+		"3/entrada.in": "cinco",
+		"3/saida.out":  "seis",
+	})
+
+	cases, ignored, err := ParseBatchTestCaseArchive(archive)
+	if err != nil {
+		t.Fatalf("ParseBatchTestCaseArchive: %v", err)
+	}
+	if len(ignored) != 0 {
+		t.Fatalf("ignored = %v, want none", ignored)
+	}
+	if len(cases) != 3 {
+		t.Fatalf("got %d cases, want 3", len(cases))
+	}
+	if cases[0].Folder != "1" || len(cases[0].ExtraFiles) != 0 {
+		t.Fatalf("unexpected root case: %+v", cases[0])
+	}
+	if cases[1].Folder != "2" || len(cases[1].ExtraFiles) != 1 {
+		t.Fatalf("unexpected folder case with extras: %+v", cases[1])
+	}
+	if cases[2].Folder != "3" || cases[2].InputName != "entrada.in" {
+		t.Fatalf("unexpected folder case: %+v", cases[2])
+	}
+}
+
+func TestParseBatchTestCaseArchiveReportsTheBrokenCase(t *testing.T) {
 	tests := []struct {
 		name       string
 		files      map[string]string
-		wantFolder string
+		wantCase   string
 		wantReason string
 	}{
 		{
-			name: "missing output",
+			name: "folder missing output",
 			files: map[string]string{
 				"bom/input.in": "ok",
 			},
-			wantFolder: "bom",
+			wantCase:   "bom",
 			wantReason: ".out",
 		},
 		{
-			name: "two inputs",
+			name: "two inputs in a folder",
 			files: map[string]string{
 				"bom/a.in":    "1",
 				"bom/b.in":    "2",
 				"bom/out.out": "3",
 			},
-			wantFolder: "bom",
+			wantCase:   "bom",
 			wantReason: "mais de um arquivo .in",
 		},
 		{
-			name: "file at root",
+			name: "root pair missing the output",
 			files: map[string]string{
-				"soltinho.txt": "x",
+				"1.in": "1",
 			},
-			wantFolder: "soltinho.txt",
-			wantReason: "raiz",
+			wantCase:   "1",
+			wantReason: `falta o arquivo "1.out"`,
+		},
+		{
+			name: "root pair missing the input",
+			files: map[string]string{
+				"1.out": "1",
+			},
+			wantCase:   "1",
+			wantReason: `falta o arquivo "1.in"`,
+		},
+		{
+			name: "two root inputs for the same case",
+			files: map[string]string{
+				"1.in":  "1",
+				"1.IN":  "1",
+				"1.out": "2",
+			},
+			wantCase:   "1",
+			wantReason: "mais de um arquivo .in",
+		},
+		{
+			name: "root pair and folder with the same name",
+			files: map[string]string{
+				"1.in":        "1",
+				"1.out":       "2",
+				"1/extra.txt": "material",
+			},
+			wantCase:   "1",
+			wantReason: "duas vezes",
 		},
 		{
 			name: "nested folder",
 			files: map[string]string{
 				"bom/sub/input.in": "1",
 			},
-			wantFolder: "bom",
+			wantCase:   "bom",
 			wantReason: "estrutura",
 		},
 		{
-			name: "no case folders",
+			name: "ignored root files only",
+			files: map[string]string{
+				"README.md": "instruções",
+				".DS_Store": "metadata",
+			},
+			wantCase:   "(raiz do arquivo)",
+			wantReason: "arquivos ignorados na raiz: README.md",
+		},
+		{
+			name: "nothing at all",
 			files: map[string]string{
 				".DS_Store": "metadata",
 			},
-			wantFolder: "(raiz do arquivo)",
-			wantReason: "nenhuma pasta",
+			wantCase:   "(raiz do arquivo)",
+			wantReason: "nenhum caso",
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := ParseBatchTestCaseArchive(zipWith(t, test.files))
+			_, _, err := ParseBatchTestCaseArchive(zipWith(t, test.files))
 			if err == nil {
 				t.Fatal("expected an error")
 			}
@@ -125,24 +230,24 @@ func TestParseBatchTestCaseArchiveReportsTheBrokenFolder(t *testing.T) {
 			}
 			found := false
 			for _, issue := range batchErr.Issues {
-				if issue.Folder == test.wantFolder &&
+				if issue.Folder == test.wantCase &&
 					strings.Contains(issue.Reason, test.wantReason) {
 					found = true
 				}
 			}
 			if !found {
-				t.Fatalf("issues = %+v, want folder %q with reason %q",
-					batchErr.Issues, test.wantFolder, test.wantReason)
+				t.Fatalf("issues = %+v, want case %q with reason %q",
+					batchErr.Issues, test.wantCase, test.wantReason)
 			}
 		})
 	}
 }
 
 func TestParseBatchTestCaseArchiveRejectsInvalidInput(t *testing.T) {
-	if _, err := ParseBatchTestCaseArchive(nil); !errors.Is(err, ErrInvalidArchive) {
+	if _, _, err := ParseBatchTestCaseArchive(nil); !errors.Is(err, ErrInvalidArchive) {
 		t.Fatalf("empty archive err = %v, want ErrInvalidArchive", err)
 	}
-	if _, err := ParseBatchTestCaseArchive([]byte("not a zip")); !errors.Is(err, ErrInvalidArchive) {
+	if _, _, err := ParseBatchTestCaseArchive([]byte("not a zip")); !errors.Is(err, ErrInvalidArchive) {
 		t.Fatalf("garbage archive err = %v, want ErrInvalidArchive", err)
 	}
 
@@ -159,7 +264,7 @@ func TestParseBatchTestCaseArchiveRejectsInvalidInput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = ParseBatchTestCaseArchive(buffer.Bytes())
+	_, _, err = ParseBatchTestCaseArchive(buffer.Bytes())
 	var batchErr *BatchImportError
 	if !errors.As(err, &batchErr) {
 		t.Fatalf("traversal err = %v, want *BatchImportError", err)
