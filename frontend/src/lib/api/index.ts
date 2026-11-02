@@ -101,6 +101,13 @@ export type {
 } from "./admin";
 
 export {
+  createBulletinComment,
+  createBulletinPost,
+  getOfferingBulletin,
+} from "./bulletin";
+export type { BulletinBoard, BulletinComment, BulletinPost } from "./bulletin";
+
+export {
   ALERT_PAGE_LIMIT,
   adminAcknowledgeAlert,
   adminListAlerts,

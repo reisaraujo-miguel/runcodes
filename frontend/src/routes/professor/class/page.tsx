@@ -18,8 +18,11 @@ import {
 
 import { BackLink } from "@/components/app/BackLink";
 import { ConfirmButton } from "@/components/app/ConfirmDialog";
+import { Field } from "@/components/app/Field";
 import { PageHeader } from "@/components/app/PageHeader";
+import { Section } from "@/components/app/Section";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
+import { BulletinBoard } from "@/components/classes/BulletinBoard";
 import { ClassMembersPanel } from "@/components/professor/ClassMembersPanel";
 import { EditClassForm } from "@/components/professor/EditClassForm";
 import { NewExerciseForm } from "@/components/professor/NewExerciseForm";
@@ -29,7 +32,6 @@ import { OfferingToolsPanel } from "@/components/professor/OfferingToolsPanel";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { TabBar, type TabBarItem } from "@/components/ui/tab-bar";
 import {
   Table,
@@ -53,7 +55,13 @@ import { formatDateTime } from "@/lib/format";
 const breadcrumb = <BackLink to="/professor" />;
 
 type ClassTab =
-  "details" | "exercises" | "grades" | "languages" | "tools" | "participants";
+  | "details"
+  | "exercises"
+  | "bulletin"
+  | "grades"
+  | "languages"
+  | "tools"
+  | "participants";
 
 const DEFAULT_TAB: ClassTab = "details";
 
@@ -61,6 +69,7 @@ const DEFAULT_TAB: ClassTab = "details";
 function parseTab(value: string | null): ClassTab {
   switch (value) {
     case "exercises":
+    case "bulletin":
     case "grades":
     case "languages":
     case "tools":
@@ -224,6 +233,7 @@ export function ClassPage() {
       label: "Exercícios",
       badge: exerciseCount ?? exerciseList.length,
     },
+    { value: "bulletin", label: "Mural" },
     { value: "grades", label: "Notas" },
     { value: "languages", label: "Linguagens" },
     { value: "tools", label: "Ferramentas" },
@@ -249,314 +259,302 @@ export function ClassPage() {
         }
       />
 
-      <Card className="gap-0 py-0">
-        <TabBar
-          items={tabs}
-          value={tab}
-          onChange={selectTab}
-          label="Seções da turma"
-          idPrefix="class-overview"
-          className="px-2"
-        />
+      <TabBar
+        items={tabs}
+        value={tab}
+        onChange={selectTab}
+        label="Seções da turma"
+        idPrefix="class-overview"
+      />
 
-        <div className="p-4 sm:p-5">
-          <div
-            role="tabpanel"
-            id="class-overview-panel-details"
-            aria-labelledby="class-overview-tab-details"
-            hidden={tab !== "details"}
-            className="space-y-6"
-          >
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h2 className="text-base font-medium">Informações da turma</h2>
-                <p className="text-muted-foreground text-sm">
-                  Código de matrícula, prazo e resumo desta turma.
-                </p>
+      <div
+        role="tabpanel"
+        id="class-overview-panel-details"
+        aria-labelledby="class-overview-tab-details"
+        hidden={tab !== "details"}
+        className="space-y-6"
+      >
+        <Section
+          title="Informações da turma"
+          description="Código de matrícula, prazo e resumo desta turma."
+          contentClassName="space-y-6"
+          action={
+            isOwner ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditing(true);
+                }}
+              >
+                <PencilIcon />
+                Editar turma
+              </Button>
+            ) : undefined
+          }
+        >
+          <dl className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+            <Field label="Código de matrícula">
+              <div className="space-y-2">
+                <EnrollmentCode code={offering.enrollment_code} />
+                {isOwner ? (
+                  <ConfirmButton
+                    size="sm"
+                    variant="outline"
+                    title="Gerar novo código de matrícula"
+                    description="O código atual deixa de funcionar imediatamente. Todos os alunos que ainda não se matricularam precisarão do novo código."
+                    confirmLabel="Gerar novo código"
+                    onConfirm={handleRotateCode}
+                  >
+                    <RefreshCwIcon />
+                    Gerar novo código
+                  </ConfirmButton>
+                ) : null}
+                {rotateError ? (
+                  <Alert variant="destructive">
+                    <AlertDescription>{rotateError}</AlertDescription>
+                  </Alert>
+                ) : null}
               </div>
-              {isOwner ? (
+            </Field>
+            <Field label="Disponível até">
+              {formatDateTime(offering.end_date)}
+            </Field>
+            <Field label="Matrícula">
+              <Badge
+                variant={offering.visible_to_enroll ? "success" : "secondary"}
+              >
+                {offering.visible_to_enroll ? "Aberta" : "Encerrada"}
+              </Badge>
+            </Field>
+            <Field label="Resumo">
+              {memberCount ?? "—"} participante(s) · {exerciseCount ?? "—"}{" "}
+              exercício(s)
+            </Field>
+          </dl>
+
+          {isOwner ? (
+            <div className="border-destructive/30 bg-destructive/5 rounded-xl border border-dashed p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
+                  <p className="font-medium">Excluir turma</p>
+                  <p className="text-muted-foreground text-sm">
+                    Excluir a turma apaga também os exercícios, os casos de
+                    teste e as submissões dos alunos. Esta ação não pode ser
+                    desfeita.
+                  </p>
+                </div>
+                <ConfirmButton
+                  destructive
+                  variant="destructive"
+                  title="Excluir turma"
+                  description={`Excluir “${offering.name}” e todo o seu conteúdo?`}
+                  confirmLabel="Excluir turma"
+                  onConfirm={handleDeleteClass}
+                >
+                  <Trash2Icon />
+                  Excluir turma
+                </ConfirmButton>
+              </div>
+              {deleteError ? (
+                <Alert variant="destructive" className="mt-3">
+                  <AlertDescription>{deleteError}</AlertDescription>
+                </Alert>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              Apenas o professor responsável pela turma pode editá-la ou
+              excluí-la.
+            </p>
+          )}
+        </Section>
+      </div>
+
+      <div
+        role="tabpanel"
+        id="class-overview-panel-exercises"
+        aria-labelledby="class-overview-tab-exercises"
+        hidden={tab !== "exercises"}
+        className="space-y-4"
+      >
+        <Section
+          title="Exercícios"
+          description="Crie e gerencie os exercícios desta turma."
+          action={
+            <Button
+              size="sm"
+              onClick={() => {
+                setCreatingExercise(true);
+              }}
+            >
+              <PlusIcon />
+              Novo exercício
+            </Button>
+          }
+          contentClassName="space-y-4"
+        >
+          {exercises.loading && exercises.data === null ? (
+            <LoadingState className="py-8" />
+          ) : exercises.error ? (
+            <ErrorState
+              description={exercises.error}
+              onRetry={exercises.reload}
+            />
+          ) : exerciseList.length === 0 ? (
+            <EmptyState
+              icon={BookOpenIcon}
+              title="Nenhum exercício ainda"
+              description="Crie o primeiro exercício e defina o período de entrega."
+              action={
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={() => {
-                    setEditing(true);
+                    setCreatingExercise(true);
                   }}
                 >
-                  <PencilIcon />
-                  Editar turma
+                  <PlusIcon />
+                  Novo exercício
                 </Button>
-              ) : null}
-            </div>
-
-            <dl className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <dt className="text-muted-foreground text-sm">
-                  Código de matrícula
-                </dt>
-                <dd className="mt-1 space-y-2">
-                  <EnrollmentCode code={offering.enrollment_code} />
-                  {isOwner ? (
-                    <ConfirmButton
-                      size="sm"
-                      variant="outline"
-                      title="Gerar novo código de matrícula"
-                      description="O código atual deixa de funcionar imediatamente. Todos os alunos que ainda não se matricularam precisarão do novo código."
-                      confirmLabel="Gerar novo código"
-                      onConfirm={handleRotateCode}
-                    >
-                      <RefreshCwIcon />
-                      Gerar novo código
-                    </ConfirmButton>
-                  ) : null}
-                  {rotateError ? (
-                    <Alert variant="destructive">
-                      <AlertDescription>{rotateError}</AlertDescription>
-                    </Alert>
-                  ) : null}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground text-sm">
-                  Disponível até
-                </dt>
-                <dd className="mt-1">{formatDateTime(offering.end_date)}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground text-sm">Matrícula</dt>
-                <dd className="mt-1">
-                  <Badge
-                    variant={
-                      offering.visible_to_enroll ? "success" : "secondary"
-                    }
-                  >
-                    {offering.visible_to_enroll ? "Aberta" : "Encerrada"}
-                  </Badge>
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground text-sm">Resumo</dt>
-                <dd className="mt-1 text-sm">
-                  {memberCount ?? "—"} participante(s) · {exerciseCount ?? "—"}{" "}
-                  exercício(s)
-                </dd>
-              </div>
-            </dl>
-
-            {isOwner ? (
-              <div className="border-destructive/30 bg-destructive/5 rounded-xl border border-dashed p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="space-y-1">
-                    <p className="font-medium">Excluir turma</p>
-                    <p className="text-muted-foreground text-sm">
-                      Excluir a turma apaga também os exercícios, os casos de
-                      teste e as submissões dos alunos. Esta ação não pode ser
-                      desfeita.
-                    </p>
-                  </div>
-                  <ConfirmButton
-                    destructive
-                    variant="destructive"
-                    title="Excluir turma"
-                    description={`Excluir “${offering.name}” e todo o seu conteúdo?`}
-                    confirmLabel="Excluir turma"
-                    onConfirm={handleDeleteClass}
-                  >
-                    <Trash2Icon />
-                    Excluir turma
-                  </ConfirmButton>
-                </div>
-                {deleteError ? (
-                  <Alert variant="destructive" className="mt-3">
-                    <AlertDescription>{deleteError}</AlertDescription>
-                  </Alert>
-                ) : null}
-              </div>
-            ) : (
-              <p className="text-muted-foreground text-sm">
-                Apenas o professor responsável pela turma pode editá-la ou
-                excluí-la.
-              </p>
-            )}
-          </div>
-
-          <div
-            role="tabpanel"
-            id="class-overview-panel-exercises"
-            aria-labelledby="class-overview-tab-exercises"
-            hidden={tab !== "exercises"}
-            className="space-y-4"
-          >
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-base font-medium">Exercícios</h2>
-                <p className="text-muted-foreground text-sm">
-                  Crie e gerencie os exercícios desta turma.
-                </p>
-              </div>
-              <Button
-                size="sm"
-                onClick={() => {
-                  setCreatingExercise(true);
-                }}
-              >
-                <PlusIcon />
-                Novo exercício
-              </Button>
-            </div>
-
-            {exercises.loading && exercises.data === null ? (
-              <LoadingState className="py-8" />
-            ) : exercises.error ? (
-              <ErrorState
-                description={exercises.error}
-                onRetry={exercises.reload}
-              />
-            ) : exerciseList.length === 0 ? (
-              <EmptyState
-                icon={BookOpenIcon}
-                title="Nenhum exercício ainda"
-                description="Crie o primeiro exercício e defina o período de entrega."
-                action={
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setCreatingExercise(true);
-                    }}
-                  >
-                    <PlusIcon />
-                    Novo exercício
-                  </Button>
-                }
-              />
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Exercício</TableHead>
-                    <TableHead>Abertura</TableHead>
-                    <TableHead>Prazo</TableHead>
-                    <TableHead>Situação</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {exerciseList.map((exercise) => (
-                    <TableRow key={exercise.id}>
-                      <TableCell>
-                        <p
-                          className={
-                            exercise.removed
-                              ? "font-medium line-through"
-                              : "font-medium"
+              }
+            />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Exercício</TableHead>
+                  <TableHead>Abertura</TableHead>
+                  <TableHead>Prazo</TableHead>
+                  <TableHead>Situação</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {exerciseList.map((exercise) => (
+                  <TableRow key={exercise.id}>
+                    <TableCell>
+                      <p
+                        className={
+                          exercise.removed
+                            ? "font-medium line-through"
+                            : "font-medium"
+                        }
+                      >
+                        {exercise.title}
+                      </p>
+                      {exercise.description ? (
+                        <p className="text-muted-foreground line-clamp-1 text-xs">
+                          {exercise.description}
+                        </p>
+                      ) : null}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground whitespace-nowrap text-xs">
+                      {formatDateTime(exercise.open_date)}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground whitespace-nowrap text-xs">
+                      {formatDateTime(exercise.deadline)}
+                    </TableCell>
+                    <TableCell>
+                      {exercise.removed ? (
+                        <Badge variant="destructive">Removido</Badge>
+                      ) : exercise.show_before_open_date ? (
+                        <Badge variant="outline">
+                          Visível antes da abertura
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">Publicado</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          render={
+                            <Link
+                              to={`/exercises/${String(exercise.id)}/submit`}
+                              state={{
+                                from: `${location.pathname}${location.search}`,
+                              }}
+                            />
                           }
                         >
-                          {exercise.title}
-                        </p>
-                        {exercise.description ? (
-                          <p className="text-muted-foreground line-clamp-1 text-xs">
-                            {exercise.description}
-                          </p>
-                        ) : null}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground whitespace-nowrap text-xs">
-                        {formatDateTime(exercise.open_date)}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground whitespace-nowrap text-xs">
-                        {formatDateTime(exercise.deadline)}
-                      </TableCell>
-                      <TableCell>
-                        {exercise.removed ? (
-                          <Badge variant="destructive">Removido</Badge>
-                        ) : exercise.show_before_open_date ? (
-                          <Badge variant="outline">
-                            Visível antes da abertura
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary">Publicado</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap items-center justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            render={
-                              <Link
-                                to={`/exercises/${String(exercise.id)}/submit`}
-                                state={{
-                                  from: `${location.pathname}${location.search}`,
-                                }}
-                              />
-                            }
-                          >
-                            Enviar solução
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            render={
-                              <Link
-                                to={`/professor/exercise/${String(exercise.id)}`}
-                                state={{
-                                  from: `${location.pathname}${location.search}`,
-                                }}
-                              />
-                            }
-                          >
-                            Gerenciar
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </div>
+                          Enviar solução
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          render={
+                            <Link
+                              to={`/professor/exercise/${String(exercise.id)}`}
+                              state={{
+                                from: `${location.pathname}${location.search}`,
+                              }}
+                            />
+                          }
+                        >
+                          Gerenciar
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </Section>
+      </div>
 
-          <div
-            role="tabpanel"
-            id="class-overview-panel-grades"
-            aria-labelledby="class-overview-tab-grades"
-            hidden={tab !== "grades"}
-          >
-            <OfferingGradesPanel offeringId={offering.id} />
-          </div>
+      <div
+        role="tabpanel"
+        id="class-overview-panel-bulletin"
+        aria-labelledby="class-overview-tab-bulletin"
+        hidden={tab !== "bulletin"}
+      >
+        <BulletinBoard offeringId={offering.id} showTitle={false} />
+      </div>
 
-          <div
-            role="tabpanel"
-            id="class-overview-panel-languages"
-            aria-labelledby="class-overview-tab-languages"
-            hidden={tab !== "languages"}
-          >
-            <OfferingLanguageStatsPanel offeringId={offering.id} />
-          </div>
+      <div
+        role="tabpanel"
+        id="class-overview-panel-grades"
+        aria-labelledby="class-overview-tab-grades"
+        hidden={tab !== "grades"}
+      >
+        <OfferingGradesPanel offeringId={offering.id} />
+      </div>
 
-          <div
-            role="tabpanel"
-            id="class-overview-panel-tools"
-            aria-labelledby="class-overview-tab-tools"
-            hidden={tab !== "tools"}
-          >
-            <OfferingToolsPanel offeringId={offering.id} />
-          </div>
+      <div
+        role="tabpanel"
+        id="class-overview-panel-languages"
+        aria-labelledby="class-overview-tab-languages"
+        hidden={tab !== "languages"}
+      >
+        <OfferingLanguageStatsPanel offeringId={offering.id} />
+      </div>
 
-          <div
-            role="tabpanel"
-            id="class-overview-panel-participants"
-            aria-labelledby="class-overview-tab-participants"
-            hidden={tab !== "participants"}
-          >
-            <ClassMembersPanel
-              offeringId={offering.id}
-              isOwner={isOwner}
-              ownerId={ownerId}
-              onChanged={data.reload}
-            />
-          </div>
-        </div>
-      </Card>
+      <div
+        role="tabpanel"
+        id="class-overview-panel-tools"
+        aria-labelledby="class-overview-tab-tools"
+        hidden={tab !== "tools"}
+      >
+        <OfferingToolsPanel offeringId={offering.id} />
+      </div>
+
+      <div
+        role="tabpanel"
+        id="class-overview-panel-participants"
+        aria-labelledby="class-overview-tab-participants"
+        hidden={tab !== "participants"}
+      >
+        <ClassMembersPanel
+          offeringId={offering.id}
+          isOwner={isOwner}
+          ownerId={ownerId}
+          onChanged={data.reload}
+        />
+      </div>
 
       {editing ? (
         <EditClassForm
