@@ -279,20 +279,66 @@ A file-based input or expected output is stored as an object. A text input or
 expected output lives in the database and is shown inline in the results panel
 when you release it.
 
+### How the program reads its input and writes its output
+
+Every test case reaches the program through **standard input**, and its result is
+read from **standard output**. That is the same for text and file cases: the
+`Texto`/`Arquivo` choice describes how *you* supply the data and how the platform
+stores and compares it, not how the program opens it.
+
+- A **text** input is stored in the database and written to the case's input
+  file; a **file** input is an uploaded object, materialised the same way. Either
+  one is fed to the program on stdin — the program is not told a path and cannot
+  open it by name.
+- A **text** expected output is compared with stdout as text; a **file** expected
+  output is compared with stdout byte for byte. If the program writes its answer
+  to a file instead of stdout, it will not be compared and the case fails.
+- Whatever the program writes into its working directory is collected after the
+  case and packed into the submission's artifact zip, with its relative path
+  (`case_<id>/…`). Students can download that zip from the results panel when the
+  student output is released; the files are bounded by the case's file-size
+  limit.
+
 ### Limits
 
-Set the four limits for the case:
+Limits are per language. Each case shows one row per language the exercise
+allows, with the four limits:
 
 | Field | Unit | Notes |
 | --- | --- | --- |
-| **Tempo limite** (Time limit) | seconds | bounds the wall-clock execution time of the case |
-| **Limite de memória** (Memory limit) | bytes | caps the address space |
-| **Limite de pilha** (Stack limit) | bytes | caps the process stack |
-| **Limite de arquivo** (File-size limit) | bytes | caps a file the program writes |
+| **CPU** | seconds | bounds the wall-clock execution time of the case |
+| **Memória** (Memory) | MiB | caps the address space; `0` means no limit |
+| **Pilha** (Stack) | MiB | caps the process stack; `0` means no limit |
+| **Arquivo** (File size) | MiB | caps a file the program writes; `0` means no limit |
 
-A value of 0 uses the platform default. The judge also applies deployment-wide
-cgroup caps, so a case limit above the deployment cap still hits the cap. Ask the
-administrator when a case needs a larger backstop.
+An empty field inherits the value shown as its placeholder, and the last column
+says where that value comes from: **plataforma** (the platform default),
+**exercício** (the exercise defaults) or **caso** (an override on this case).
+
+The resolution is always platform → exercise → case, field by field: a case may
+override the CPU time and inherit the memory limit from the exercise. The
+platform defaults are CPU 5 s, memory 512 MiB, stack system default and file size
+256 MiB; an administrator can change them with the `RUNCODES_DEFAULT_*`
+variables.
+
+Set the exercise-wide defaults in the **Limites** tab of the exercise, so every
+case of that language starts from a value that fits it. The judge also applies
+deployment-wide cgroup caps, so a limit above the deployment cap still hits the
+cap. Ask the administrator when an exercise needs a larger backstop.
+
+When a run reaches a limit, the result names it: *Tempo limite excedido*,
+*Limite de memória atingido (pico X MiB)*, *Limite de pilha* or *Limite de
+tamanho de arquivo*. A runtime that cannot allocate often exits with its own
+error instead of a signal — a `MemoryError`, a `bad_alloc`, or an import that
+fails with "failed to map segment". The platform recognizes those allocation
+failures (and a peak close to the cap) and reports the memory limit, with the
+program's own output still visible alongside it.
+
+The exercise page also shows a warning when a language keeps failing submissions
+because of a limit; acknowledge it after adjusting the value. The exercise author
+also receives that warning by email, naming the test cases the failures are
+concentrated in — a limit that is too tight for every case looks different from
+one expensive test tripping it.
 
 ### Visibility
 
@@ -300,13 +346,16 @@ administrator when a case needs a larger backstop.
 - **Mostrar saída esperada** (Show expected output): students can read the
   expected output.
 - **Mostrar saída do aluno** (Show student output): students can read their own
-  program's output for the case.
+  program's output for the case, and download the files the program wrote.
+  Turning it off hides both. A case interrupted by a limit publishes no files at
+  all, because what it left was still being written when the program died.
 
 All three are off by default except the student output, which starts on. Use the
 flags deliberately: showing the expected output of every case makes the exercise
 trivial, while hiding the input of a large case keeps the statement readable.
 File-based inputs and outputs are never displayed inline, even when their flag is
-on.
+on. Hiding the student output also hides the files that case generated: they are
+often the very output the case compares.
 
 ### Case order and types
 
@@ -359,7 +408,9 @@ the same case, a folder without a pair, or a folder nested inside a case folder
 is reported by name, and the whole import is refused.
 
 The form applies one configuration to every case in the batch: input and output
-type, visibility flags and limits. Check the values before importing.
+type, visibility flags and limits. The limits become overrides for every language
+the exercise allows, so a case in the batch starts from the same values as one
+created by hand. Check the values before importing.
 
 The archive is validated completely before anything is written. Limits: 500
 cases, 64 MiB compressed, 256 MiB expanded, 32 MiB per file and 4000 zip
@@ -571,9 +622,12 @@ the test cases themselves.
 | A recompilation fails with `503` | the judge is not ready; check with the administrator, then retry |
 | An imported class fails on a file type | the extension is not in the platform catalog; ask an administrator to register it |
 | A batch import fails | a case has no `.in`, no `.out`, more than one of either, a nested folder, or the archive exceeds a limit |
+| A case is "Interrompido" | see the reason next to the status: timeout, CPU, memory, stack or file-size limit, a signal, or a sandbox failure. Adjust that limit for the student's language in **Limites** |
 | A CSV grade looks different from the table | missing cells are empty in the CSV but count as zero in the class grade; the table shows the best score, while **Baixar submissões** reports the latest |
 | The class email did not arrive | SMTP is misconfigured, or recipients are on a blocked relay; check with the administrator and the server logs |
 | Students cannot see the expected output | **Mostrar saída esperada** is off for the case |
+| A file the program wrote has no download link | the file is larger than the runner image's collection cap, or the image predates that step; the judge logs *the runner image did not collect generated files*. Ask an administrator to rebuild the runner images |
+| A case's download link is missing although its output is released | the case is hidden: **Mostrar saída do aluno** off also hides the files it produced |
 | The wrong language ran | the file extension does not match the intended language; check the allowed types and the language matrix |
 | Grades did not change after editing cases | existing runs are not rescored; use **Recompilar** |
 

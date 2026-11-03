@@ -71,7 +71,8 @@ The persisted state (commit, results, artifacts) sent at the start of an SSE
 subscription, so a reload can restore the UI.
 
 **Artifact**
-A generated output archive. `artifact` events and the snapshot advertise it; the
+A file the submission generated. `artifact` events and the snapshot advertise
+that they exist; the
 file itself is served by the judge and proxied by the backend.
 
 ## Execution

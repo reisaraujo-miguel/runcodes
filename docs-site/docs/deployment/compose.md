@@ -188,7 +188,7 @@ backend so the session cookie is not marked `Secure`. Never do that behind HTTPS
 | Volume | Contents | Backup? |
 | --- | --- | --- |
 | `runcodes-db-vol` | PostgreSQL data directory | **yes** |
-| `runcodes-seaweed-vol` | submissions, test cases, output archives | **yes** |
+| `runcodes-seaweed-vol` | submissions, test cases, generated files | **yes** |
 | `runcodes-redis-vol` | cache/session counters | no (disposable) |
 | `caddy_data` / `caddy_config` | certificates and Caddy state | regenerable |
 | `smtp4dev-data` | caught mail | no |

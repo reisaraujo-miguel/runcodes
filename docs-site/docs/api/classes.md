@@ -586,6 +586,27 @@ curl -b cookies.txt -X POST \
 Upload limits are deliberate: a test case can carry at most 32 MiB of multipart
 data.
 
+### Limits
+
+Limits resolve per language: the test case's override, then the exercise default,
+then the platform default, field by field.
+
+- `GET /limits` returns the platform defaults (CPU, memory, stack, file size and
+  the compilation timeout).
+- `GET /exercises/{id}/language-limits` returns one entry per language the
+  exercise allows, with the exercise's override, the resolved values and the
+  source of each (`platform`, `exercise` or `case`).
+- `PUT /exercises/{id}/language-limits` replaces the exercise's defaults; a null
+  field inherits the platform value.
+- `GET /exercises/{id}/limit-alerts` returns the unacknowledged limit-failure
+  warnings of the exercise, and
+  `POST /exercises/{id}/limit-alerts/{alertId}/acknowledge` closes one.
+
+A test case's create/update body carries `language_limits`, a JSON array of
+`{allowed_file_type_id, cpu_time_limit_seconds, mem_usage_limit_bytes,
+stack_limit_bytes, file_size_limit_bytes}`; a null field inherits and `0` means
+"no limit" for the three byte-valued ones.
+
 ### `POST /exercises/{id}/test-cases/batch`
 
 Creates many cases from one zip. The body is `multipart/form-data`:

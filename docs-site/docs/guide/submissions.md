@@ -1,6 +1,6 @@
 ---
 title: Submissions & live judging
-description: Submission flow, statuses, Server-Sent Events, artifacts and failure modes.
+description: Submission flow, statuses, Server-Sent Events, generated files and failure modes.
 ---
 
 # Submissions & live judging
@@ -83,7 +83,7 @@ handled by JavaScript.
 | `status` | judge claims or starts the run | `status`: `compiling` or `running` |
 | `compilation` | compilation ends | `compiled`, `message`, `error` |
 | `case_result` | each test case ends | `test_case_id`, `status`, `cpu_time`, `user_output`, diagnostics |
-| `artifact` | an output archive exists | `kind: "output"` |
+| `artifact` | the submission generated files | `kind: "output"` |
 | `finished` | run finishes | terminal `status`, `num_correct_cases`, `score`, timestamps |
 | `error` | unexpected stream-side failure | `message`; the stream ends |
 
@@ -128,14 +128,19 @@ the only source.
 | --- | --- |
 | `GET /api/v1/exercises/{id}/submissions` | the caller's last 50 submissions for an exercise, newest first |
 | `GET /api/v1/submissions/{id}/source` | download the original source; restores it into the editor |
-| `GET /api/v1/submissions/{id}/output` | download the archive of files the submission produced |
+| `GET /api/v1/submissions/{id}/outputfiles` | list the files the submission produced |
+| `GET /api/v1/submissions/{id}/outputfiles/{path}` | download one generated file |
+| `GET /api/v1/submissions/{id}/output` | download all of them as a zip |
 
-All three only return the caller's own commits. A missing commit and another
+All of them only return the caller's own commits. A missing commit and another
 user's commit both answer `404`, so the API never discloses that a commit exists.
-The output archive is generated only when the submission wrote at least one
-output file; internal monitor and per-case reports are excluded. The backend
-proxies the archive from the judge, so the browser never needs the judge's
-internal address.
+The file list is empty when the submission wrote nothing; internal monitor and
+per-case reports are excluded, and so are the files of a case whose program
+output the author did not release. The judge uploads each case's files to object
+storage as soon as that case finishes, so the list can grow while the run is
+still in progress, and the zip is built from those objects on request. Files are
+deleted once they pass `RUNCODES_OUTPUT_FILE_TTL` (168 hours by default). The
+browser never needs the judge's internal address.
 
 ## Failure handling
 

@@ -105,7 +105,10 @@ the trust boundary between them.
 - [ ] Confirm `GET /readyz` on the backend returns `database: ok`.
 - [ ] Confirm the judge `/readyz` returns `ok`, not `podman unavailable`.
 - [ ] Run a real submission from a test class and confirm **Concluído**.
-- [ ] Download the submission source and, if produced, the output archive.
+- [ ] Download the submission source and, if produced, the generated files.
+- [ ] For a submission that writes a file larger than 8 MiB, confirm its download
+      link appears; a missing link means the runner images were built before the
+      per-case collection step.
 - [ ] Complete a signup and email verification through the real relay.
 - [ ] Request a password reset and complete it.
 - [ ] Disable or remove the test class and test accounts after the checks.
@@ -116,7 +119,7 @@ the trust boundary between them.
 - [ ] Store backups encrypted and off the deployment hosts.
 - [ ] Keep the secrets needed to restore (database owner password, S3 keys).
 - [ ] Confirm Redis is not treated as durable data.
-- [ ] Set a retention for output archives that matches student expectations.
+- [ ] Confirm the generated files in the `-outputfiles` bucket are in the backup and that the bucket has a retention that matches student expectations.
 - [ ] Set a retention for logs, traces and metrics that fits the disk.
 - [ ] Restore the latest backup into a scratch environment and run a submission.
 - [ ] Record the last restore-drill date and the person who performed it.
@@ -162,7 +165,7 @@ The procedures are in [Observability](../observability/index.md) and the
 - [ ] The queue depth limit matches the expected submission burst.
 - [ ] Per-case limits in exercises are below the deployment's cgroup backstops.
 - [ ] The stale timeout is longer than the longest expected run.
-- [ ] The artifact retention and object-store growth are understood.
+- [ ] The generated-file retention and object-store growth are understood.
 - [ ] A classroom behind one NAT fits the rate limits.
 
 ## 11. Hand over the operations
@@ -185,7 +188,7 @@ Run this sequence in one sitting:
 4. Submit a correct solution and a wrong solution.
 5. Confirm the correct run reaches **Concluído** and the wrong one
    **Não concluído**.
-6. Download the source of the submission and, if produced, the output archive.
+6. Download the source of the submission and, if produced, the generated files.
 7. As a professor, open **Notas** and download the CSV.
 8. Send a class email and confirm delivery.
 9. Change the contact email and see it on the login page.

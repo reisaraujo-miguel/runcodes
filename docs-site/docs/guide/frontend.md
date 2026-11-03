@@ -66,7 +66,7 @@ documentation site is in English.
   syntax highlighting, local drafts, and restore-from-previous-submission. The
   live SSE stream drives per-case results as they arrive.
 - **Submission history** — the last 50 submissions for an exercise, with score
-  and status, source download and output archive when available.
+  and status, source download and generated files when available.
 - **Class pages** — exercises, deadlines, staff, member list for owners,
   progress for students, and the class bulletin board.
 - **Professor authoring** — create and edit exercises, test cases, attached

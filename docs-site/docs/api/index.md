@@ -180,6 +180,11 @@ origin. A wildcard origin is rejected at startup.
 | GET | `/api/v1/offerings/{offeringId}/exercises` | member/staff |
 | GET | `/api/v1/exercises/{id}` | member/staff |
 | PUT / DELETE | `/api/v1/exercises/{id}` | staff |
+| GET | `/api/v1/limits` | authenticated |
+| GET | `/api/v1/exercises/{id}/language-limits` | staff |
+| PUT | `/api/v1/exercises/{id}/language-limits` | staff |
+| GET | `/api/v1/exercises/{id}/limit-alerts` | staff |
+| POST | `/api/v1/exercises/{id}/limit-alerts/{alertId}/acknowledge` | staff |
 | GET | `/api/v1/exercises/{id}/test-cases` | member/staff |
 | POST | `/api/v1/exercises/{id}/test-cases` | staff |
 | POST | `/api/v1/exercises/{id}/test-cases/batch` | staff |

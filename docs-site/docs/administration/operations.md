@@ -251,7 +251,7 @@ The full workflow is in [Database](../services/database.md).
 
 | Data | Default retention | Where to change |
 | --- | --- | --- |
-| Output archives | 168 hours (`JUDGE_ARTIFACT_TTL`) | judge environment; `0` keeps them |
+| Generated files | 168 hours (`RUNCODES_OUTPUT_FILE_TTL`) | backend environment; `0` leaves them to the bucket |
 | Judge event log | 10 minutes in memory | `JUDGE_EVENT_RETENTION` |
 | Judge workspaces | swept after the run budget plus grace | `JUDGE_KEEP_WORKSPACES`, exec directory |
 | Submission sources | kept with the commit | database/object-store lifecycle |
@@ -264,9 +264,12 @@ Class and account deletion cascade to submissions and storage objects. There is
 no automatic purge of old classes or users. Decide with the institution how long
 to keep a term's data, and export or archive a class before deleting it.
 
-Output archives are built from the run workspace and kept on the judge host for
-`JUDGE_ARTIFACT_TTL`. Once the judge removes them, they are gone. Do not set a
-short TTL if students need to download their output files weeks later.
+Generated files are uploaded to the `-outputfiles` bucket while the run advances,
+so they survive a judge restart while they are kept. They are the only copy:
+PostgreSQL knows nothing about them, and once the backend's hourly sweep deletes
+an expired file the student's download is gone. Set
+`RUNCODES_OUTPUT_FILE_TTL` to the window your students actually need, and include
+the bucket in backups if downloads must survive a restore.
 
 ## Capacity
 
@@ -281,9 +284,14 @@ short TTL if students need to download their output files weeks later.
 - Database: commits and results grow with every run, including recompilations.
   A recompile of a large class creates one new commit per student and exercise.
 - Object store: every submission stores a source object; case files and materials
-  add objects per exercise.
-- Judge disk: output archives and workspaces live on the judge host, not in
-  SeaweedFS. Size that volume for the artifact retention.
+  add objects per exercise. Generated files add up to one case's file-size limit
+  per test case and submission, removed by `RUNCODES_OUTPUT_FILE_TTL`. SeaweedFS
+  rejects uploads once its volume budget is spent (`-volume.max` ×
+  `-master.volumeSizeLimitMB`, 100 GiB in Compose), so size that budget with the
+  disk and the retention.
+- Judge disk: workspaces live on the judge host, not in SeaweedFS, and generated
+  files leave them case by case. Size that volume for the concurrent runs, not
+  for the retention.
 
 See [Security & scaling](../deployment/security.md#capacity-starting-points) for
 host sizing and the four-machine topology.

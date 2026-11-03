@@ -102,8 +102,41 @@ The score is a percentage in `[0, 100]`.
 | GET | `/readyz` | PostgreSQL + Podman reachable (backend pre-check) |
 | POST | `/v1/runs/{id}` | wake the poll loop for a commit |
 | GET | `/v1/runs/{id}/events` | replayable SSE stream (`?from=<seq>`) |
-| GET | `/v1/runs/{id}/output` | generated output archive |
-| HEAD | `/v1/runs/{id}/output` | whether the output archive exists |
+
+Generated files are not served by the judge: it uploads them to the
+`-outputfiles` bucket and the backend serves them to the author. The runner image
+collects each case's files under `outputfiles/case_<id>/`, a directory it creates
+even when the case wrote nothing. An image from before that step leaves no
+directory, and the judge warns once per run that the runner images must be
+rebuilt — the files themselves are gone with the case's scratch directory.
+
+A case interrupted by a limit or a signal publishes no files. The program was
+killed mid-write, so the collected bytes are a truncated file (exactly at the
+file-size limit, when that is what killed it) and are not a result the student
+should download.
+
+Uploads run on four background workers, not on the goroutine that reads the
+container's milestones: a large file must not delay the next case's result. Each
+finished upload publishes an `artifact` event, so the download appears while the
+suite is still running.
+
+A case's collected files are moved out of the run's workspace into
+`pending_<commit>/`, where they wait for their upload. The move is a rename, and it
+keeps the upload backlog out of the run's workspace quota, which is sized for the
+program, not for the judge's queue. The queue holds a burst of cases and refuses
+deeper backlogs, and a request never makes the log stream wait: a slow store costs
+that case's download, not the run's progress.
+
+The terminal `finished` event is sent as soon as grading ends, before the upload
+queue drains: a slow store never keeps the run looking unfinished. The uploads
+finish in the background, and the last `ready` events can therefore arrive after
+the stream closed — a client that showed the `pending` placeholder polls the
+listing until the file appears.
+
+A store that fails does not stall the run either: after three consecutive upload
+failures the judge stops publishing for that commit, logs why and finishes. The
+pending area is removed when the run closes, and the sweeper reclaims one left
+behind by a crashed judge.
 
 `/v1` requires `Authorization: Bearer $JUDGE_AUTH_TOKEN` (or
 `RUNCODES_JUDGE_TOKEN`). While no token is configured, every `/v1` request is
@@ -131,8 +164,13 @@ stack_<case_id>=1048576       # stack, only when the exercise sets one
 ```
 
 The harness expects the milestones `compilation.start`, `compilation.done`,
-`run.start` and `run.done`, each printed as `<name> <run_nonce>`. Languages that
-do not compile skip the compilation milestones.
+`run.start`, `run.done` and `case.done <case_id>`, each printed with the run
+nonce (`case.done` as `case.done <case_id> <run_nonce>`). Languages that do not
+compile skip the compilation milestones. `case.done` is printed once per case,
+after its artifacts are complete: the judge grades and publishes that case's
+result immediately, so the student sees cases finish while the rest of the suite
+still runs. A case without the milestone is graded at the end, so older images
+keep working.
 
 Text test-case inputs and expected outputs are materialised from the database
 columns; file-based cases use their S3 objects. This keeps legacy text cases,
@@ -215,10 +253,42 @@ signal. The cap applies per concurrent run, so `JUDGE_CONCURRENCY` multiplies it
 ### Image-side limits
 
 The monitor inside the container enforces the per-case CPU, memory, stack and
-file-size limits. The judge passes the exercise limits as `t_`, `ms_`, `fs_`,
-and `stack_` keys. `JUDGE_MONITOR_MAX_FILE_SIZE` and
-`JUDGE_MONITOR_MAX_MEM_SIZE` (both default 0) are deployment-wide overrides;
-0 sends nothing and leaves each language image's own default in place.
+file-size limits. The judge resolves them per language (platform → exercise →
+test case) and freezes the result in `commit_test_case_limits` when the
+submission is queued, then sends every value as a `t_`, `ms_`, `fs_` and `stack_`
+key. A `0` byte limit means "no limit" and is sent explicitly: the images carry
+no defaults of their own. The deployment-wide compilation caps are
+`JUDGE_MONITOR_MAX_FILE_SIZE` and `JUDGE_MONITOR_MAX_MEM_SIZE`.
+
+### Reading memory inside the container
+
+The monitor samples the container's own cgroup charge (`memory.current` on
+cgroup v2, or the v1 memory controller) while the case runs. For that path to
+exist, the container needs its **private cgroup namespace**: the judge asks for
+one on every run, so `/proc/self/cgroup` reads `0::/` and `/sys/fs/cgroup` is the
+container's own cgroup. A runtime that forces the host cgroup namespace, masks
+`/sys/fs/cgroup`, or mounts only cgroup v1 without the memory controller makes
+the sample fail.
+
+The monitor then falls back to `wait4`'s `ru_maxrss` - the peak resident set of
+the command and the children it waited for - so the run still reports a memory
+figure; only its exactness changes (a cgroup charge includes the page cache and
+every descendant, the RSS peak does not).
+
+To verify from a runner container:
+
+```bash
+podman run --rm --cgroupns=private <runner-image> \
+  sh -c 'cat /proc/self/cgroup; cat /sys/fs/cgroup/memory.current'
+# 0::/
+# 12345678
+```
+
+Both lines must print. If the second is missing, check the cgroup version
+(`stat -fc %T /sys/fs/cgroup` prints `cgroup2fs` on v2) and make sure the
+hierarchy is mounted inside the container. With cgroup v1, mount the memory
+controller at `/sys/fs/cgroup/memory`; the monitor reads
+`/sys/fs/cgroup/memory/memory.usage_in_bytes` there.
 
 ### Timeouts and read bounds
 
@@ -231,8 +301,7 @@ and `stack_` keys. `JUDGE_MONITOR_MAX_FILE_SIZE` and
 | `JUDGE_DEFAULT_CASE_TIMEOUT` | 3s | default per-case timeout |
 | `JUDGE_MAX_RUN_DURATION` | 30m | end-to-end budget for one claimed commit |
 | `JUDGE_MAX_COMPARE_FILE_BYTES` | 16 MiB | max size of the two files a case is graded from |
-| `JUDGE_MAX_ARTIFACT_BYTES` | 64 MiB | max output archive size |
-| `JUDGE_ARTIFACT_TTL` | 168h | how long a published output archive is kept; 0 keeps it forever |
+| `JUDGE_MAX_ARTIFACT_BYTES` | 64 MiB | largest file published when a case sets no file-size limit; each case is bounded on its own |
 | `JUDGE_MAX_EXTRACT_FILE_BYTES` | 64 MiB | max single entry when unpacking a zip |
 | `JUDGE_MAX_EXTRACT_BYTES` | 256 MiB | max total expanded zip size |
 | `JUDGE_MAX_EXTRACT_ENTRIES` | 1000 | max entries in a zip submission |
@@ -387,9 +456,9 @@ so language containers can bind-mount it. In Compose:
 
 The judge sweeps this directory at startup and hourly: `commit_*`/`expected_*`
 workspaces older than `JUDGE_MAX_RUN_DURATION` plus a five-minute grace period are
-removed, and `outputs/*.zip` older than `JUDGE_ARTIFACT_TTL` (default 168h, 0
-keeps them) are deleted. It also removes containers labeled
-`io.runcodes.commit` left by a previous process before starting workers.
+removed. Generated files leave the workspace as soon as their test case
+finishes, so nothing else accumulates here. The judge also removes containers
+labeled `io.runcodes.commit` left by a previous process before starting workers.
 
 ## Integration test
 

@@ -89,6 +89,35 @@ Buckets: `<prefix>-commits`, `<prefix>-cases`, `<prefix>-files`,
 `RUNCODES_JUDGE_STALE_TIMEOUT` must be positive and should be longer than the
 judge's `JUDGE_MAX_RUN_DURATION` plus margin.
 
+### Platform limits
+
+The defaults every language inherits when neither the exercise nor the test case
+sets a value. They replace the per-image limits the runner images used to carry.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `RUNCODES_DEFAULT_CPU_TIME_LIMIT_SECONDS` | `5` | wall-clock budget of one test case |
+| `RUNCODES_DEFAULT_MEM_USAGE_LIMIT_BYTES` | `536870912` (512 MiB) | address-space cap; `0` = no limit |
+| `RUNCODES_DEFAULT_STACK_LIMIT_BYTES` | `0` | stack cap; `0` = system default |
+| `RUNCODES_DEFAULT_FILE_SIZE_LIMIT_BYTES` | `268435456` (256 MiB) | largest file a case may write |
+| `RUNCODES_DEFAULT_COMPILATION_TIMEOUT_SECONDS` | `60` | compilation budget |
+| `RUNCODES_LIMIT_ALERT_THRESHOLD` | `5` | submissions failing on one exercise/language/limit before the author is warned |
+| `RUNCODES_LIMIT_ALERT_WINDOW` | `1h` | how far back the failures are counted |
+| `RUNCODES_LIMIT_ALERT_COOLDOWN` | `6h` | minimum gap between two alerts for the same exercise/language/limit |
+
+The CPU time and the compilation timeout must be positive; the byte limits may be
+zero (no limit) but not negative.
+
+### Generated files
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `RUNCODES_OUTPUT_FILE_TTL` | `168h` | how long the files a submission generated stay downloadable; `0` disables the sweep |
+
+The backend deletes generated files older than this once an hour. They are not
+referenced by any row, so the retention is the only thing that keeps the
+`-outputfiles` bucket from growing with every run.
+
 ### Mail
 
 | Variable | Default | Required | Meaning |
@@ -176,22 +205,21 @@ for example `registry.example.com/team/runners/%s:edge`.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `JUDGE_DEFAULT_COMPILATION_TIMEOUT` | `0` | container compilation timeout; 0 = image default |
+| `JUDGE_DEFAULT_COMPILATION_TIMEOUT` | `60s` | compilation budget sent to the container |
 | `JUDGE_COMPILATION_WAIT` | `2m` | judge's patience for compilation milestones |
 | `JUDGE_STARTUP_WAIT` | `30s` | the container's first milestone; a wedged container fails here |
 | `JUDGE_DEFAULT_EXEC_TIMEOUT` | `5s` | default execution timeout |
-| `JUDGE_DEFAULT_CASE_TIMEOUT` | `3s` | default per-case timeout |
+| `JUDGE_DEFAULT_CASE_TIMEOUT` | `3s` | fallback per-case timeout when the limits snapshot has none |
 | `JUDGE_MAX_RUN_DURATION` | `30m` | end-to-end budget per claim |
-| `JUDGE_MONITOR_MAX_FILE_SIZE` | `0` | `monitor_max_fs` override; 0 sends nothing |
-| `JUDGE_MONITOR_MAX_MEM_SIZE` | `0` | `monitor_max_ms` override; 0 sends nothing |
-| `JUDGE_MAX_OUTPUT_FILE_SIZE` | `1 MiB` | max size of one collected output file |
+| `JUDGE_MONITOR_MAX_FILE_SIZE` | `256 MiB` | compilation file-size cap sent to the container |
+| `JUDGE_MONITOR_MAX_MEM_SIZE` | `512 MiB` | compilation address-space cap sent to the container |
+| `JUDGE_MAX_OUTPUT_FILE_SIZE` | `1 MiB` | max compiler output the judge reads into the run message |
 | `JUDGE_CONTAINER_MEMORY_BYTES` | `1536 MiB` | cgroup memory/swap cap |
 | `JUDGE_CONTAINER_PIDS_LIMIT` | `256` | cgroup pid cap |
 | `JUDGE_CONTAINER_CPU_QUOTA` | `100000` | CPU quota per 100 ms period |
 | `JUDGE_CONTAINER_TMPFS_BYTES` | `256 MiB` | writable `/tmp` cap when the rootfs is read-only |
 | `JUDGE_MAX_COMPARE_FILE_BYTES` | `16 MiB` | max file a case is graded from |
-| `JUDGE_MAX_ARTIFACT_BYTES` | `64 MiB` | max output archive |
-| `JUDGE_ARTIFACT_TTL` | `168h` | retention for output archives; `0` keeps them |
+| `JUDGE_MAX_ARTIFACT_BYTES` | `64 MiB` | largest generated file published when the case sets no file-size limit; not a per-run budget |
 | `JUDGE_MAX_EXTRACT_FILE_BYTES` | `64 MiB` | max single zip entry |
 | `JUDGE_MAX_EXTRACT_BYTES` | `256 MiB` | max total expanded zip |
 | `JUDGE_MAX_EXTRACT_ENTRIES` | `1000` | max entries in a zip submission |

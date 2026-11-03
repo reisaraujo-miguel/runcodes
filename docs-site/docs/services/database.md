@@ -41,6 +41,10 @@ runcodes`. The main tables:
 | `offerings` | classes, owner, end date, enrollment code, discoverability |
 | `enrollments` | per-class role (`student`, `monitor`, `professor`) and ban flag |
 | `exercises` | title, description, open date, deadline, visibility |
+| `exercise_language_limits` | the exercise's per-language limit defaults; a NULL column inherits the platform default |
+| `test_case_language_limits` | a test case's per-language overrides; a NULL column inherits the exercise default |
+| `commit_test_case_limits` | the limits a submission runs under, frozen when it is queued |
+| `exercise_limit_alerts` | warnings shown to the exercise author when a language keeps failing on a limit |
 | `exercises_test_cases` | input/expected output and per-case CPU/memory/stack/file limits |
 | `exercises_test_cases_files` | extra file attachments for a test case |
 | `exercises_compilation_files` | files placed in the workspace before compilation |
