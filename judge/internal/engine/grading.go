@@ -151,6 +151,188 @@ func exitFailureMessage(info monitorInfo) (string, bool) {
 	return fmt.Sprintf("exit status %d", info.ExitStatus), true
 }
 
+// exitReason attributes a failed exit status. The harness wraps the command in
+// `timeout`: the wall-clock expiry is 124, and coreutils reports 137 when the
+// command had to be killed with SIGKILL. Any other status is the program failing
+// on its own and has no sandbox cause to report.
+func exitReason(info monitorInfo) model.CaseReason {
+	if info.ExitStatus == 124 || info.ExitStatus == 137 {
+		return model.CaseReasonTimeout
+	}
+	return ""
+}
+
+// exceededTimeout reports whether the run reached the case's wall-clock budget.
+// Some kernels report the timeout as the sandbox child dying of SIGKILL instead
+// of `timeout`'s own exit status; the elapsed time is what distinguishes that
+// from a program that crashed.
+func exceededTimeout(info monitorInfo, tc model.TestCase) bool {
+	return tc.CPUTimeLimit > 0 &&
+		info.Time >= float64(tc.CPUTimeLimit)*0.9
+}
+
+// signalReason attributes a terminating signal to the limit that produced it.
+// The monitor sets the address-space and stack limits, so a segmentation fault
+// is reported against the limit in place; with no limit set it is just a crash.
+func signalReason(info monitorInfo, tc model.TestCase) model.CaseReason {
+	switch info.Signal {
+	case "SIGXCPU":
+		return model.CaseReasonCPULimit
+	case "SIGXFSZ":
+		return model.CaseReasonFileSizeLimit
+	case "SIGKILL":
+		if exceededTimeout(info, tc) {
+			return model.CaseReasonTimeout
+		}
+	case "SIGSEGV", "SIGBUS":
+		// An explicit stack limit is the likelier explanation for a crash: the
+		// platform default leaves the stack alone, so a professor who set one is
+		// hunting a deep recursion.
+		if tc.StackLimit > 0 {
+			return model.CaseReasonStackLimit
+		}
+		// Without one, only blame the memory cap when the run actually
+		// approached it. A crash at 10 MiB under a 512 MiB cap is a plain
+		// segmentation fault - usually a stack overflow under the system stack -
+		// and calling it a memory limit misleads.
+		if tc.MemUsageLimit > 0 && info.HasMem &&
+			float64(info.Mem) >= float64(tc.MemUsageLimit)*0.75 {
+			return model.CaseReasonMemoryLimit
+		}
+	}
+	return model.CaseReasonSignal
+}
+
+// allocationFailureMarkers are the messages a runtime prints when the system
+// refuses to give it memory. They are matched in the program's stderr only to
+// explain a failure that already happened, never to change the verdict.
+var allocationFailureMarkers = []string{
+	"MemoryError",
+	"OutOfMemoryError",
+	"std::bad_alloc",
+	"bad_alloc",
+	"out of memory",
+	"Cannot allocate memory",
+	"cannot allocate memory",
+	"failed to map segment",
+	"not enough memory",
+	"ENOMEM",
+}
+
+// allocationFailure reports whether the program's own error output shows an
+// allocation that failed, which is how an address-space limit surfaces in most
+// runtimes: the process is not killed, it just cannot allocate and exits.
+func allocationFailure(errContent string) bool {
+	for _, marker := range allocationFailureMarkers {
+		if strings.Contains(errContent, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// stackOverflowMarkers are the messages a runtime prints when it exhausted the
+// stack. Like the allocation markers, they only explain an existing failure.
+var stackOverflowMarkers = []string{
+	"stack overflow",
+	"StackOverflowError",
+	"stack smashing detected",
+	"stack-level limit exceeded",
+}
+
+func stackOverflowFailure(errContent string) bool {
+	for _, marker := range stackOverflowMarkers {
+		if strings.Contains(errContent, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// fileSizeFailureMarkers are how a runtime reports a write that the file-size
+// limit refused: EFBIG, "File too large", or the Python OSError spelling.
+var fileSizeFailureMarkers = []string{
+	"File too large",
+	"Errno 27",
+	"EFBIG",
+	"file size limit exceeded",
+	"FileSizeLimitExceeded",
+}
+
+func fileSizeFailure(errContent string) bool {
+	for _, marker := range fileSizeFailureMarkers {
+		if strings.Contains(errContent, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// usageLimitReason attributes a non-zero exit to a limit the run reached. Only
+// the memory limit is observable this way: the monitor's peak is the RSS, and a
+// runtime that cannot allocate fails with its own status rather than a signal.
+func usageLimitReason(info monitorInfo, tc model.TestCase) model.CaseReason {
+	if tc.MemUsageLimit > 0 && info.HasMem &&
+		float64(info.Mem) >= float64(tc.MemUsageLimit)*0.75 {
+		return model.CaseReasonMemoryLimit
+	}
+	return ""
+}
+
+// limitStatusMessage names the limit a killed run reached, so the result reads
+// as "the memory limit of 64 MiB was reached" instead of a bare signal or exit
+// status. Non-limit failures keep their original message.
+func limitStatusMessage(
+	reason model.CaseReason, info monitorInfo, tc model.TestCase, fallback string,
+) string {
+	switch reason {
+	case model.CaseReasonTimeout:
+		if tc.CPUTimeLimit > 0 {
+			return fmt.Sprintf("the time limit of %ds was exceeded", tc.CPUTimeLimit)
+		}
+		return "the time limit was exceeded"
+	case model.CaseReasonMemoryLimit:
+		if tc.MemUsageLimit > 0 {
+			// A run that died close to the cap reached it; one that failed to
+			// allocate early did not, and saying it "was reached" next to a tiny
+			// peak would be misleading.
+			if info.HasMem &&
+				float64(info.Mem) >= float64(tc.MemUsageLimit)*0.75 {
+				return fmt.Sprintf("the memory limit of %s was reached (peak %s)",
+					humanBytes(tc.MemUsageLimit), humanBytes(info.Mem))
+			}
+			return fmt.Sprintf(
+				"the program could not allocate memory (the limit is %s)",
+				humanBytes(tc.MemUsageLimit))
+		}
+		return "the memory limit was reached"
+	case model.CaseReasonStackLimit:
+		return "the stack limit was exceeded"
+	case model.CaseReasonFileSizeLimit:
+		if tc.FileSizeLimit > 0 {
+			return fmt.Sprintf("the file size limit of %s was exceeded",
+				humanBytes(tc.FileSizeLimit))
+		}
+		return "the file size limit was exceeded"
+	case model.CaseReasonCPULimit:
+		return "the CPU time limit was exceeded"
+	default:
+		return fallback
+	}
+}
+
+// humanBytes renders a byte count with the unit a professor reads it in.
+func humanBytes(value int64) string {
+	const mib = 1024 * 1024
+	if value >= mib && value%mib == 0 {
+		return fmt.Sprintf("%d MiB", value/mib)
+	}
+	if value >= 1024 && value%1024 == 0 {
+		return fmt.Sprintf("%d KiB", value/1024)
+	}
+	return fmt.Sprintf("%d bytes", value)
+}
+
 // compilationFailed reports whether a compilation monitor report means the
 // compiler did not succeed. A missing or truncated report is a sandbox failure,
 // and it must not be read as a successful compile: the zero exit status of an
@@ -161,13 +343,24 @@ func compilationFailed(info monitorInfo) bool {
 
 // gradeAll grades every test case, using inline text outputs or downloading file
 // outputs from S3.
-func (e *Engine) gradeAll(ctx context.Context, commit *model.Commit, ws *workspace) ([]model.CaseResult, error) {
+func (e *Engine) gradeAll(
+	ctx context.Context, commit *model.Commit, ws *workspace, stream *caseStream,
+) ([]model.CaseResult, error) {
 	results := make([]model.CaseResult, 0, len(ws.TestCases))
 
 	// Grade each test case and collect the results. Each case gets its own span:
 	// the container ran all cases in one process, so this is where the judge can
 	// show per-case latency and the child S3 fetch for the expected output.
 	for _, tc := range ws.TestCases {
+		// A case the judge already graded when its milestone arrived is not read
+		// again: the container is gone by now, and the result is final.
+		if stream != nil {
+			if result, ok := stream.lookup(tc.ID); ok {
+				results = append(results, result)
+				continue
+			}
+		}
+
 		caseCtx, span := telemetry.Tracer().Start(ctx, "judge.grade_test_case",
 			trace.WithAttributes(
 				attribute.Int64("runcodes.commit.id", commit.ID),
@@ -195,6 +388,16 @@ func (e *Engine) gradeAll(ctx context.Context, commit *model.Commit, ws *workspa
 	}
 
 	return results, nil
+}
+
+// findTestCase looks a case up by its database id.
+func findTestCase(cases []model.TestCase, id int64) (model.TestCase, bool) {
+	for _, tc := range cases {
+		if tc.ID == id {
+			return tc, true
+		}
+	}
+	return model.TestCase{}, false
 }
 
 // gradeCase grades a single test case, reading the user's output and comparing it
@@ -248,6 +451,7 @@ func (e *Engine) gradeCase(ctx context.Context, tc model.TestCase, ws *workspace
 			"monitor_path", monitorPath,
 		)
 		result.Status = model.CaseKilledBySignal
+		result.Reason = model.CaseReasonMonitor
 		result.StatusMsg = "the monitor did not produce a report"
 		result.ErrorMessage = errContent
 
@@ -260,6 +464,7 @@ func (e *Engine) gradeCase(ctx context.Context, tc model.TestCase, ws *workspace
 			"error", outputErr,
 		)
 		result.Status = model.CaseKilledBySignal
+		result.Reason = model.CaseReasonOutput
 		result.ErrorMessage = "the output of this test case could not be read"
 
 	case exitFailed:
@@ -267,14 +472,48 @@ func (e *Engine) gradeCase(ctx context.Context, tc model.TestCase, ws *workspace
 		// expected output: the harness wraps the command in `timeout`, which
 		// reports expiry as exit status 124 with no signal and no stderr.
 		result.Status = model.CaseKilledBySignal
-		result.StatusMsg = exitMsg
+		result.Reason = exitReason(info)
+		if result.Reason == "" {
+			// A limit breach does not always kill the process: an allocation
+			// failure usually makes the runtime exit non-zero with its own error
+			// (a MemoryError, for one). The peak is one clue, the runtime's own
+			// allocation-failure message is the other - and the decisive one for
+			// an address-space limit, where RSS stays far below the cap.
+			if tc.MemUsageLimit > 0 &&
+				(usageLimitReason(info, tc) == model.CaseReasonMemoryLimit ||
+					allocationFailure(errContent)) {
+				result.Reason = model.CaseReasonMemoryLimit
+			}
+			// A stack overflow that a runtime reports itself (a caught SEGV, a
+			// guard-page message) also exits non-zero without a signal.
+			// A runtime that reports its own stack exhaustion (the JVM's
+			// StackOverflowError, a guard-page message) does so whether or not
+			// the platform set a stack limit.
+			if result.Reason == "" && stackOverflowFailure(errContent) {
+				result.Reason = model.CaseReasonStackLimit
+			}
+			// A write past the file-size limit surfaces as EFBIG ("File too
+			// large") in the program's own error output, not as a signal.
+			if result.Reason == "" && tc.FileSizeLimit > 0 &&
+				fileSizeFailure(errContent) {
+				result.Reason = model.CaseReasonFileSizeLimit
+			}
+		}
+		result.StatusMsg = limitStatusMessage(result.Reason, info, tc, exitMsg)
 		result.ErrorMessage = errContent
 
 	case info.Signal != "":
 		// A signal is a failure. Stderr alone is not: a program may write
 		// warnings or debug output there and still produce the correct answer.
 		result.Status = model.CaseKilledBySignal
-		result.StatusMsg = info.Signal
+		result.Reason = signalReason(info, tc)
+		fallback := info.Signal
+		if result.Reason == model.CaseReasonSignal &&
+			(info.Signal == "SIGSEGV" || info.Signal == "SIGBUS") {
+			fallback = "the program crashed with " + info.Signal +
+				" (a stack overflow is the usual cause)"
+		}
+		result.StatusMsg = limitStatusMessage(result.Reason, info, tc, fallback)
 		result.ErrorMessage = errContent
 
 	case info.HasExit && info.ExitStatus < 0:
@@ -282,6 +521,7 @@ func (e *Engine) gradeCase(ctx context.Context, tc model.TestCase, ws *workspace
 		// report: there is no trustworthy cause to show, but a clean comparison
 		// would contradict the monitor.
 		result.Status = model.CaseKilledBySignal
+		result.Reason = model.CaseReasonSignal
 		result.StatusMsg = "the command did not exit normally"
 		result.ErrorMessage = errContent
 

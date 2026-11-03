@@ -211,8 +211,8 @@ func TestFetchTestCasesReadsInlineText(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, exercise_id, input_type::text, COALESCE\(input, ''\)`).
-		WithArgs(int64(3)).
+	mock.ExpectQuery(`SELECT tc.id, tc.exercise_id`).
+		WithArgs(int64(3), int64(9)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "exercise_id", "input_type", "input",
 			"expected_output_type", "expected_output",
@@ -229,7 +229,7 @@ func TestFetchTestCasesReadsInlineText(t *testing.T) {
 		WithArgs(sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{"exercise_test_case_id", "path"}))
 
-	cases, err := NewWithDB(db).FetchTestCases(context.Background(), 3)
+	cases, err := NewWithDB(db).FetchTestCases(context.Background(), 9, 3)
 	if err != nil {
 		t.Fatalf("FetchTestCases: %v", err)
 	}

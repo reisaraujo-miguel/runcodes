@@ -14,6 +14,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -153,7 +154,9 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 
 	s3cfg := s3ConfigFromEnv()
 	s3client := newS3Client(ctx, t, s3cfg)
-	for _, bucket := range []string{s3cfg.CommitsBucket(), s3cfg.CasesBucket(), s3cfg.FilesBucket()} {
+	for _, bucket := range []string{
+		s3cfg.CommitsBucket(), s3cfg.CasesBucket(), s3cfg.FilesBucket(), s3cfg.OutputsBucket(),
+	} {
 		ensureBucket(ctx, t, s3client, bucket)
 	}
 
@@ -211,6 +214,7 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 		_, _ = db.ExecContext(bg, `DELETE FROM users WHERE id = $1`, userID)
 		for _, obj := range []struct{ bucket, key string }{
 			{s3cfg.CommitsBucket(), sourceKey},
+			{s3cfg.OutputsBucket(), fmt.Sprintf("%d/test_%d/result.txt", commitID, caseID)},
 		} {
 			_, _ = s3client.DeleteObject(bg, &s3.DeleteObjectInput{
 				Bucket: aws.String(obj.bucket), Key: aws.String(obj.key),
@@ -346,13 +350,27 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 		t.Errorf("score = %v, want 100", score)
 	}
 
-	// The C fixture deliberately creates a user file; R and Verilog have no
-	// user output file, so their archive is allowed to be absent.
+	// The C fixture deliberately creates a user file in the case's working
+	// directory; R and Verilog create none, so their listing is allowed to be
+	// empty. The judge publishes the file to object storage, keyed by commit and
+	// by the test case that produced it.
 	if fixture.artifact {
-		if info, err := os.Stat(eng.ArtifactPath(commitID)); err != nil {
-			t.Errorf("output archive missing: %v", err)
-		} else if info.Size() == 0 {
-			t.Error("output archive is empty")
+		client := newS3Client(ctx, t, cfg.S3)
+		key := fmt.Sprintf("%d/test_%d/result.txt", commitID, caseID)
+		out, err := client.GetObject(ctx, &s3.GetObjectInput{
+			Bucket: aws.String(cfg.S3.OutputsBucket()),
+			Key:    aws.String(key),
+		})
+		if err != nil {
+			t.Errorf("generated file %s missing: %v", key, err)
+		} else {
+			data, readErr := io.ReadAll(out.Body)
+			out.Body.Close()
+			if readErr != nil {
+				t.Errorf("read %s: %v", key, readErr)
+			} else if string(data) != "generated\n" {
+				t.Errorf("%s = %q, want generated", key, data)
+			}
 		}
 	}
 }

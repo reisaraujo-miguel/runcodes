@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/runcodes-icmc/judge/internal/config"
@@ -153,7 +154,7 @@ func TestGradeCaseTreatsNonZeroExitAsFailure(t *testing.T) {
 		exitStatus string
 		wantMsg    string
 	}{
-		{"timeout", "124", "timeout"},
+		{"timeout", "124", "the time limit was exceeded"},
 		{"non-zero exit", "1", "exit status 1"},
 	}
 
@@ -346,8 +347,58 @@ func TestGradeCaseReportsSignalNotSentinelExitStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("gradeCase: %v", err)
 	}
-	if result.Status != model.CaseKilledBySignal || result.StatusMsg != "SIGSEGV" {
+	wantMsg := "the program crashed with SIGSEGV (a stack overflow is the usual cause)"
+	if result.Status != model.CaseKilledBySignal || result.StatusMsg != wantMsg {
 		t.Fatalf("gradeCase = status %q msg %q, want %q %q",
-			result.Status, result.StatusMsg, model.CaseKilledBySignal, "SIGSEGV")
+			result.Status, result.StatusMsg, model.CaseKilledBySignal, wantMsg)
+	}
+	if result.Reason != model.CaseReasonSignal {
+		t.Fatalf("reason = %q, want %q", result.Reason, model.CaseReasonSignal)
+	}
+}
+
+// TestAllocationFailureNamesTheMemoryLimit covers the case where the runtime
+// does not get a signal: an address-space limit makes mmap fail (the numpy
+// import in the profile case), the program exits non-zero, and the report must
+// still name the memory limit.
+func TestAllocationFailureNamesTheMemoryLimit(t *testing.T) {
+	dir := t.TempDir()
+	ws := &workspace{BaseDir: dir}
+
+	if err := os.WriteFile(filepath.Join(dir, "7.output"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	monitor := "[info]\nexit_status=1\nsignal=\ntime=0.08\nmem_peak_bytes=9437184\n"
+	if err := os.WriteFile(filepath.Join(dir, "7.monitor_out"), []byte(monitor), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stderr := "Traceback (most recent call last):\n" +
+		"  File \"numpy/core/multiarray.py\", line 11, in <module>\n" +
+		"ImportError: failed to map segment from shared object\n"
+	if err := os.WriteFile(filepath.Join(dir, "7.error"), []byte(stderr), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	e := &Engine{
+		cfg: &config.Config{
+			MaxOutputFileSize:   1024,
+			MaxCompareFileBytes: 1024,
+		},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	result, err := e.gradeCase(
+		context.Background(),
+		model.TestCase{ID: 7, MemUsageLimit: 20 << 20},
+		ws,
+	)
+	if err != nil {
+		t.Fatalf("gradeCase: %v", err)
+	}
+	if result.Reason != model.CaseReasonMemoryLimit {
+		t.Fatalf("reason = %q, want %q", result.Reason, model.CaseReasonMemoryLimit)
+	}
+	if !strings.Contains(result.StatusMsg, "20 MiB") {
+		t.Fatalf("status message %q does not name the limit", result.StatusMsg)
 	}
 }

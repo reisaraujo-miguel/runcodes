@@ -20,7 +20,7 @@ func clearEnv(t *testing.T) {
 		"JUDGE_DEFAULT_EXEC_TIMEOUT", "JUDGE_DEFAULT_CASE_TIMEOUT",
 		"JUDGE_MONITOR_MAX_FILE_SIZE", "JUDGE_MONITOR_MAX_MEM_SIZE",
 		"JUDGE_CONTAINER_MEMORY_BYTES", "JUDGE_CONTAINER_PIDS_LIMIT",
-		"JUDGE_CONTAINER_CPU_QUOTA", "JUDGE_CONTAINER_TMPFS_BYTES", "JUDGE_MAX_RUN_DURATION", "JUDGE_ARTIFACT_TTL",
+		"JUDGE_CONTAINER_CPU_QUOTA", "JUDGE_CONTAINER_TMPFS_BYTES", "JUDGE_MAX_RUN_DURATION",
 		"JUDGE_MAX_WORKSPACE_BYTES", "JUDGE_MAX_WORKSPACE_ENTRIES",
 		"RUNCODES_DB_HOST", "RUNCODES_DB_PORT", "RUNCODES_DB_NAME",
 		"RUNCODES_DB_USER", "RUNCODES_DB_USERNAME", "RUNCODES_DB_PASSWORD",
@@ -58,9 +58,10 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.ImageFormat != "ghcr.io/runcodes-icmc/runcodes-runner-%s:latest" {
 		t.Errorf("ImageFormat = %q, want the default runner template", cfg.ImageFormat)
 	}
-	// The compilation limit is the image's; the judge only bounds its own patience.
-	if cfg.CompilationTimeout != 0 {
-		t.Errorf("CompilationTimeout = %s, want 0 (use the image's own)", cfg.CompilationTimeout)
+	// The runner images carry no defaults of their own; the judge sends the
+	// platform values on every run.
+	if cfg.CompilationTimeout != time.Minute {
+		t.Errorf("CompilationTimeout = %s, want 1m", cfg.CompilationTimeout)
 	}
 	if cfg.CompilationWait != 2*time.Minute {
 		t.Errorf("CompilationWait = %s, want 2m", cfg.CompilationWait)
@@ -68,12 +69,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.StartupWait != 30*time.Second {
 		t.Errorf("StartupWait = %s, want 30s", cfg.StartupWait)
 	}
-	if cfg.MonitorMaxMemSize != 0 || cfg.MonitorMaxFileSize != 0 {
-		t.Errorf("monitor limits = %d/%d, want 0/0 (use the image's own)",
+	if cfg.MonitorMaxMemSize != 512<<20 || cfg.MonitorMaxFileSize != 256<<20 {
+		t.Errorf("monitor limits = %d/%d, want 512 MiB/256 MiB",
 			cfg.MonitorMaxMemSize, cfg.MonitorMaxFileSize)
-	}
-	if cfg.ArtifactTTL != 7*24*time.Hour {
-		t.Errorf("ArtifactTTL = %s, want 168h", cfg.ArtifactTTL)
 	}
 	if cfg.ContainerTmpfsBytes != 256*1024*1024 {
 		t.Errorf("ContainerTmpfsBytes = %d, want 256 MiB", cfg.ContainerTmpfsBytes)
@@ -101,7 +99,6 @@ func TestLoadOverrides(t *testing.T) {
 	t.Setenv("JUDGE_CONCURRENCY", "8")
 	t.Setenv("JUDGE_POLL_INTERVAL", "250ms")
 	t.Setenv("JUDGE_AUTH_TOKEN", "s3cret")
-	t.Setenv("JUDGE_ARTIFACT_TTL", "24h")
 	t.Setenv("JUDGE_CONTAINER_TMPFS_BYTES", "67108864")
 	t.Setenv("JUDGE_MAX_WORKSPACE_BYTES", "268435456")
 	t.Setenv("JUDGE_MAX_WORKSPACE_ENTRIES", "1234")
@@ -131,9 +128,6 @@ func TestLoadOverrides(t *testing.T) {
 	if cfg.S3.CommitsBucket() != "mycode-commits" {
 		t.Errorf("CommitsBucket = %q", cfg.S3.CommitsBucket())
 	}
-	if cfg.ArtifactTTL != 24*time.Hour {
-		t.Errorf("ArtifactTTL = %s, want 24h", cfg.ArtifactTTL)
-	}
 	if cfg.ContainerTmpfsBytes != 64*1024*1024 {
 		t.Errorf("ContainerTmpfsBytes = %d, want 64 MiB", cfg.ContainerTmpfsBytes)
 	}
@@ -142,15 +136,6 @@ func TestLoadOverrides(t *testing.T) {
 	}
 	if cfg.MaxWorkspaceEntries != 1234 {
 		t.Errorf("MaxWorkspaceEntries = %d, want 1234", cfg.MaxWorkspaceEntries)
-	}
-}
-
-func TestLoadRejectsNegativeArtifactTTL(t *testing.T) {
-	clearEnv(t)
-	t.Setenv("JUDGE_ARTIFACT_TTL", "-1h")
-
-	if _, err := Load(); err == nil {
-		t.Fatal("expected an error for a negative JUDGE_ARTIFACT_TTL")
 	}
 }
 

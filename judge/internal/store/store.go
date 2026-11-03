@@ -198,18 +198,24 @@ func (s *Store) markTerminal(
 
 // FetchTestCases returns the test cases of an exercise (ordered by id), each
 // with the paths of its attached files.
-func (s *Store) FetchTestCases(ctx context.Context, exerciseID int64) ([]model.TestCase, error) {
+func (s *Store) FetchTestCases(ctx context.Context, commitID, exerciseID int64) ([]model.TestCase, error) {
 	// Fetch the test cases first, then fetch the files in a second query to avoid
 	// the N+1 problem. We use a map to associate test case IDs with their files.
+	// The limits come from the snapshot the backend wrote when it queued this
+	// commit, not from the test case row: they are resolved for the submission's
+	// language and frozen, so an exercise edited while the run was queued cannot
+	// change what this submission is graded against.
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, exercise_id, input_type::text, COALESCE(input, ''),
-		       expected_output_type::text, COALESCE(expected_output, ''),
-		       show_input, show_expected_output, show_user_output,
-		       cpu_time_limit_seconds, mem_usage_limit_bytes,
-		       stack_limit_bytes, file_size_limit_bytes
-		FROM exercises_test_cases
-		WHERE exercise_id = $1
-		ORDER BY id`, exerciseID)
+		SELECT tc.id, tc.exercise_id, tc.input_type::text, COALESCE(tc.input, ''),
+		       tc.expected_output_type::text, COALESCE(tc.expected_output, ''),
+		       tc.show_input, tc.show_expected_output, tc.show_user_output,
+		       cl.cpu_time_limit_seconds, cl.mem_usage_limit_bytes,
+		       cl.stack_limit_bytes, cl.file_size_limit_bytes
+		FROM exercises_test_cases tc
+		JOIN commit_test_case_limits cl
+		  ON cl.exercise_test_case_id = tc.id AND cl.commit_id = $2
+		WHERE tc.exercise_id = $1
+		ORDER BY tc.id`, exerciseID, commitID)
 	if err != nil {
 		return nil, fmt.Errorf("query test cases: %w", err)
 	}

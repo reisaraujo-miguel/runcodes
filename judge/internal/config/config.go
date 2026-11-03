@@ -104,12 +104,11 @@ type Config struct {
 	MaxWorkspaceBytes   int64
 	MaxWorkspaceEntries int64
 
-	// MaxArtifactBytes bounds the output archive published for a commit, so a
-	// submission cannot fill the shared execution directory with output files.
+	// MaxArtifactBytes bounds one generated file, not a run's total: each case
+	// is normally bounded by its own file-size limit, and this value applies when
+	// the case has none. It keeps a submission from publishing an unbounded file
+	// without letting an earlier case's large file suppress a later case's.
 	MaxArtifactBytes int64
-	// ArtifactTTL is how long a published output archive is kept. Old archives
-	// are swept periodically; 0 disables archive deletion.
-	ArtifactTTL time.Duration
 
 	// MaxExtractFileBytes bounds a single entry, MaxExtractBytes the total
 	// expanded size, and MaxExtractEntries the number of entries when unpacking
@@ -208,7 +207,7 @@ func Load() (*Config, error) {
 		// 0 leaves each language image's own compilation timeout in place: 10s for most
 		// languages, 60s for Go, C# and Julia, 20s for Zig. A language knows how long
 		// its compiler needs better than a single deployment-wide number does.
-		CompilationTimeout: envDuration("JUDGE_DEFAULT_COMPILATION_TIMEOUT", 0),
+		CompilationTimeout: envDuration("JUDGE_DEFAULT_COMPILATION_TIMEOUT", 60*time.Second),
 		CompilationWait:    envDuration("JUDGE_COMPILATION_WAIT", 2*time.Minute),
 		// A container prints its first milestone within a second on a healthy
 		// host. Thirty seconds is already a wedged run, and small enough that a
@@ -218,8 +217,8 @@ func Load() (*Config, error) {
 		DefaultCaseTimeout: envDuration("JUDGE_DEFAULT_CASE_TIMEOUT", 3*time.Second),
 		MaxRunDuration:     envDuration("JUDGE_MAX_RUN_DURATION", 30*time.Minute),
 
-		MonitorMaxFileSize: envInt64("JUDGE_MONITOR_MAX_FILE_SIZE", 0),
-		MonitorMaxMemSize:  envInt64("JUDGE_MONITOR_MAX_MEM_SIZE", 0),
+		MonitorMaxFileSize: envInt64("JUDGE_MONITOR_MAX_FILE_SIZE", 256<<20),
+		MonitorMaxMemSize:  envInt64("JUDGE_MONITOR_MAX_MEM_SIZE", 512<<20),
 		MaxOutputFileSize:  envInt64("JUDGE_MAX_OUTPUT_FILE_SIZE", 1024*1024),
 
 		// Above the largest per-language default a language image sets (1GB), so
@@ -235,7 +234,6 @@ func Load() (*Config, error) {
 		MaxWorkspaceBytes:   envInt64("JUDGE_MAX_WORKSPACE_BYTES", 1024*1024*1024),
 		MaxWorkspaceEntries: envInt64("JUDGE_MAX_WORKSPACE_ENTRIES", 50_000),
 		MaxArtifactBytes:    envInt64("JUDGE_MAX_ARTIFACT_BYTES", 64*1024*1024),
-		ArtifactTTL:         envDuration("JUDGE_ARTIFACT_TTL", 7*24*time.Hour),
 
 		MaxExtractFileBytes: envInt64("JUDGE_MAX_EXTRACT_FILE_BYTES", 64*1024*1024),
 		MaxExtractBytes:     envInt64("JUDGE_MAX_EXTRACT_BYTES", 256*1024*1024),
@@ -345,10 +343,6 @@ func (c *Config) validate() error {
 
 	if c.MaxArtifactBytes <= 0 {
 		return fmt.Errorf("JUDGE_MAX_ARTIFACT_BYTES must be positive")
-	}
-
-	if c.ArtifactTTL < 0 {
-		return fmt.Errorf("JUDGE_ARTIFACT_TTL must not be negative")
 	}
 
 	if c.MaxRunDuration <= 0 {

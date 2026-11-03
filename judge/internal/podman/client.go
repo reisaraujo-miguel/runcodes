@@ -292,6 +292,13 @@ func specFor(rc RunConfig, limits Limits) *specgen.SpecGenerator {
 	s.PidNS = specgen.Namespace{NSMode: specgen.Private}
 	s.UtsNS = specgen.Namespace{NSMode: specgen.Private}
 	s.IpcNS = specgen.Namespace{NSMode: specgen.Private}
+	// The monitor samples the container's own cgroup (memory.current) for the
+	// memory peak. With the host cgroup namespace - the rootful default - the
+	// path in /proc/self/cgroup is not the one mounted inside the container, so
+	// the sample fails and the report falls back to the command's peak RSS. A
+	// private namespace makes the container's cgroup the root of /sys/fs/cgroup,
+	// which is the file the monitor looks for.
+	s.CgroupNS = specgen.Namespace{NSMode: specgen.Private}
 	// Graded code is untrusted, so it gets no network at all: the default
 	// namespace would let a submission reach the internet (mining, exfiltrating
 	// test-case inputs, fetching reference answers) and the services on the
