@@ -415,6 +415,14 @@ export function Artifacts({
   refreshKey: string;
 }) {
   const [files, setFiles] = useState<SubmissionOutputFile[]>([]);
+  // The poll below is bounded: a failed upload whose final event was lost must
+  // not leave a spinner running forever. The give-up is recorded against the
+  // poll's own key, so any new attempt (another case, a new listing, the pending
+  // flag changing) automatically shows the placeholder again without a reset
+  // effect.
+  const pollKey = `${String(commitId)}:${refreshKey}:${pending ? "pending" : "settled"}:${String(testCaseId)}`;
+  const [gaveUpFor, setGaveUpFor] = useState<string | null>(null);
+  const gaveUp = gaveUpFor === pollKey;
 
   // While this case's upload is in flight, the listing is polled: the ready event
   // can arrive after the run's terminal event, when the stream is already closed,
@@ -443,6 +451,7 @@ export function Artifacts({
         attempts += 1;
         if (attempts > 30) {
           if (timer) clearInterval(timer);
+          if (active) setGaveUpFor(pollKey);
           return;
         }
         read();
@@ -453,11 +462,11 @@ export function Artifacts({
       active = false;
       if (timer) clearInterval(timer);
     };
-  }, [commitId, refreshKey, pending]);
+  }, [commitId, pending, pollKey]);
 
   const caseFiles = filesForTestCase(files, testCaseId);
   if (caseFiles.length === 0) {
-    if (!pending) return null;
+    if (!pending || gaveUp) return null;
 
     return (
       <div className="border-t pt-2">
