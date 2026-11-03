@@ -77,3 +77,41 @@ AttachmentKey is the S3 key of an exercise attachment in the files bucket
 func AttachmentKey(exerciseID int64, filename string) string {
 	return fmt.Sprintf("attachments/%d/%s", exerciseID, FileBasename(filename))
 }
+
+/*
+OutputFileKey is the S3 key of a file the submission generated, in the
+outputfiles bucket (`<commit_id>/<path>`). The path keeps the workspace layout
+the judge collected from: `test_<case_id>/<relative>` for a file a test case
+produced, `outputfiles/<relative>` for one written directly to the runner's
+output directory.
+*/
+func OutputFileKey(commitID int64, filePath string) string {
+	return fmt.Sprintf("%d/%s", commitID, filePath)
+}
+
+/*
+OutputPrefix is the key prefix shared by every generated file of a commit, for
+listing and for deleting them together.
+*/
+func OutputPrefix(commitID int64) string {
+	return fmt.Sprintf("%d/", commitID)
+}
+
+/*
+OutputPathValid reports whether rel names a file inside a commit's output
+namespace. The path arrives from the browser, so it must be slash-separated,
+relative and already clean: `a/../b`, `/etc/passwd` and `a//b` are all rejected
+instead of being resolved into a key outside the commit's prefix.
+*/
+func OutputPathValid(rel string) bool {
+	if rel == "" || rel == "." || strings.HasPrefix(rel, "/") {
+		return false
+	}
+
+	clean := path.Clean(rel)
+	if clean != rel {
+		return false
+	}
+
+	return clean != ".." && !strings.HasPrefix(clean, "../")
+}

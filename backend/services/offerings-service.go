@@ -574,7 +574,7 @@ rows go first: an object left behind by a failed cleanup is orphaned storage,
 while a row left behind by a failed delete is a class the owner cannot remove.
 */
 func deleteOfferingRow(ctx context.Context, rel *offeringRelation) error {
-	keys, err := offeringStorageKeys(ctx, rel.Offering.ID)
+	keys, commitIDs, err := offeringStorageKeys(ctx, rel.Offering.ID)
 	if err != nil {
 		return err
 	}
@@ -594,6 +594,7 @@ func deleteOfferingRow(ctx context.Context, rel *offeringRelation) error {
 		cache.OfferingExercisesKey(rel.Offering.ID))
 
 	deleteObjectsBestEffort(ctx, keys)
+	deleteCommitOutputsBestEffort(ctx, commitIDs)
 
 	slog.InfoContext(ctx, "offering deleted",
 		slog.Int64("offering_id", rel.Offering.ID),

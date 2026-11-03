@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -108,6 +109,43 @@ func firstUploadedFile(
 }
 
 /*
+parseLanguageLimits decodes the per-language overrides the form sends as JSON:
+one entry per allowed language, with a null field meaning "inherit". The array is
+the whole set, so an entry left out clears that language's override.
+*/
+func parseLanguageLimits(raw string) ([]models.LanguageLimits, error) {
+	var payload []struct {
+		AllowedFileTypeID   int64  `json:"allowed_file_type_id"`
+		CPUTimeLimitSeconds *int   `json:"cpu_time_limit_seconds"`
+		MemUsageLimitBytes  *int64 `json:"mem_usage_limit_bytes"`
+		StackLimitBytes     *int64 `json:"stack_limit_bytes"`
+		FileSizeLimitBytes  *int64 `json:"file_size_limit_bytes"`
+	}
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&payload); err != nil {
+		return nil, services.ErrInvalidLimits
+	}
+
+	limits := make([]models.LanguageLimits, 0, len(payload))
+	for _, entry := range payload {
+		if entry.AllowedFileTypeID <= 0 {
+			return nil, services.ErrInvalidLimits
+		}
+		limits = append(limits, models.LanguageLimits{
+			AllowedFileTypeID: entry.AllowedFileTypeID,
+			Overrides: models.LimitOverrides{
+				CPUTimeLimitSeconds: entry.CPUTimeLimitSeconds,
+				MemUsageLimitBytes:  entry.MemUsageLimitBytes,
+				StackLimitBytes:     entry.StackLimitBytes,
+				FileSizeLimitBytes:  entry.FileSizeLimitBytes,
+			},
+		})
+	}
+	return limits, nil
+}
+
+/*
 parseTestCaseInput maps a parsed multipart form onto a TestCaseInput. It only
 decodes values; cross-field validation happens in the service layer.
 */
@@ -132,17 +170,13 @@ func parseTestCaseInput(form *multipart.Form, partial bool) (*services.TestCaseI
 		return nil, err
 	}
 
-	if in.CPUTimeLimitSeconds, err = parseOptionalInt(form, "cpu_time_limit_seconds"); err != nil {
-		return nil, err
-	}
-	if in.MemUsageLimitBytes, err = parseOptionalInt64(form, "mem_usage_limit_bytes"); err != nil {
-		return nil, err
-	}
-	if in.StackLimitBytes, err = parseOptionalInt64(form, "stack_limit_bytes"); err != nil {
-		return nil, err
-	}
-	if in.FileSizeLimitBytes, err = parseOptionalInt64(form, "file_size_limit_bytes"); err != nil {
-		return nil, err
+	if raw, ok := form.Value["language_limits"]; ok && len(raw) > 0 {
+		limits, err := parseLanguageLimits(raw[0])
+		if err != nil {
+			return nil, err
+		}
+		in.LanguageLimits = limits
+		in.LanguageLimitsProvided = true
 	}
 
 	if in.InputFile, err = firstUploadedFile(form, "input_file"); err != nil {

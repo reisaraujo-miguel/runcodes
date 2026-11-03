@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -668,6 +669,11 @@ func CreateTestCasesBatch(
 
 	uploaded := make([]string, 0, len(cases)*2)
 	created := make([]models.TestCase, 0, len(cases))
+	createdIDs := make([]int64, 0, len(cases))
+	languageOverrides, err := batchLanguageOverrides(ctx, tx, authoringID, config)
+	if err != nil {
+		return nil, err
+	}
 
 	upload := func(key string, content []byte, contentType string) error {
 		if err := storage.PutCaseObject(
@@ -713,6 +719,12 @@ func CreateTestCasesBatch(
 			)
 			deleteCaseObjectsBestEffort(ctx, uploaded)
 			return nil, ErrServer
+		}
+		if err := InsertTestCaseLanguageLimits(
+			ctx, tx, caseID, languageOverrides,
+		); err != nil {
+			deleteCaseObjectsBestEffort(ctx, uploaded)
+			return nil, err
 		}
 
 		inputContentType := "application/octet-stream"
@@ -777,21 +789,19 @@ func CreateTestCasesBatch(
 		}
 
 		created = append(created, models.TestCase{
-			ID:                  caseID,
-			ExerciseID:          authoringID,
-			Input:               inputColumn,
-			InputType:           config.InputType,
-			ShowInput:           config.ShowInput,
-			ExpectedOutput:      outputColumn,
-			ExpectedOutputType:  config.ExpectedOutputType,
-			ShowExpectedOutput:  config.ShowExpectedOutput,
-			ShowUserOutput:      config.ShowUserOutput,
-			CPUTimeLimitSeconds: config.CPUTimeLimitSeconds,
-			MemUsageLimitBytes:  config.MemUsageLimitBytes,
-			StackLimitBytes:     config.StackLimitBytes,
-			FileSizeLimitBytes:  config.FileSizeLimitBytes,
-			Files:               files,
+			ID:                 caseID,
+			ExerciseID:         authoringID,
+			Input:              inputColumn,
+			InputType:          config.InputType,
+			ShowInput:          config.ShowInput,
+			ExpectedOutput:     outputColumn,
+			ExpectedOutputType: config.ExpectedOutputType,
+			ShowExpectedOutput: config.ShowExpectedOutput,
+			ShowUserOutput:     config.ShowUserOutput,
+			Limits:             languageOverrides,
+			Files:              files,
 		})
+		createdIDs = append(createdIDs, caseID)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -808,11 +818,68 @@ func CreateTestCasesBatch(
 		slog.Int("created", len(created)),
 	)
 
+	// Resolve the effective limits once, so the response shows them even when the
+	// batch inherited the exercise defaults instead of setting its own.
+	if resolved, err := TestCaseLanguageLimits(ctx, authoringID, createdIDs); err == nil {
+		for i := range created {
+			if limits, ok := resolved[created[i].ID]; ok {
+				created[i].Limits = limits
+			}
+		}
+	}
+
 	return &models.BatchTestCaseImportResponse{
 		Created:   len(created),
 		Ignored:   ignored,
 		TestCases: created,
 	}, nil
+}
+
+/*
+batchLanguageOverrides turns the batch's shared limits into one override per
+allowed language. A value of zero means "inherit the exercise or platform
+default", so it is left unset rather than stored as a limit.
+*/
+func batchLanguageOverrides(
+	ctx context.Context, tx *sql.Tx, exerciseID int64, config BatchTestCaseConfig,
+) ([]models.LanguageLimits, error) {
+	if config.CPUTimeLimitSeconds <= 0 && config.MemUsageLimitBytes <= 0 &&
+		config.StackLimitBytes <= 0 && config.FileSizeLimitBytes <= 0 {
+		return nil, nil
+	}
+
+	languages, err := loadAllowedLanguages(ctx, tx, exerciseID)
+	if err != nil {
+		return nil, err
+	}
+	override := models.LimitOverrides{}
+	if config.CPUTimeLimitSeconds > 0 {
+		value := config.CPUTimeLimitSeconds
+		override.CPUTimeLimitSeconds = &value
+	}
+	if config.MemUsageLimitBytes > 0 {
+		value := config.MemUsageLimitBytes
+		override.MemUsageLimitBytes = &value
+	}
+	if config.StackLimitBytes > 0 {
+		value := config.StackLimitBytes
+		override.StackLimitBytes = &value
+	}
+	if config.FileSizeLimitBytes > 0 {
+		value := config.FileSizeLimitBytes
+		override.FileSizeLimitBytes = &value
+	}
+
+	limits := make([]models.LanguageLimits, 0, len(languages))
+	for _, language := range languages {
+		limits = append(limits, models.LanguageLimits{
+			AllowedFileTypeID: language.ID,
+			Name:              language.Name,
+			Extension:         language.Extension,
+			Overrides:         override,
+		})
+	}
+	return limits, nil
 }
 
 func validateBatchConfig(config *BatchTestCaseConfig) error {
@@ -855,8 +922,7 @@ func ExportExerciseTestCasesArchive(
 	rows, err := database.DB.QueryContext(ctx, `
 		SELECT id, exercise_id, input, input_type::text, show_input,
 		       expected_output, expected_output_type::text,
-		       show_expected_output, show_user_output, cpu_time_limit_seconds,
-		       mem_usage_limit_bytes, stack_limit_bytes, file_size_limit_bytes
+		       show_expected_output, show_user_output
 		FROM exercises_test_cases
 		WHERE exercise_id = $1
 		ORDER BY id`, authoringID)
@@ -877,8 +943,6 @@ func ExportExerciseTestCasesArchive(
 			&testCase.InputType, &testCase.ShowInput,
 			&testCase.ExpectedOutput, &testCase.ExpectedOutputType,
 			&testCase.ShowExpectedOutput, &testCase.ShowUserOutput,
-			&testCase.CPUTimeLimitSeconds, &testCase.MemUsageLimitBytes,
-			&testCase.StackLimitBytes, &testCase.FileSizeLimitBytes,
 		); err != nil {
 			rows.Close()
 			slog.ErrorContext(ctx, "error scanning a test case for export",

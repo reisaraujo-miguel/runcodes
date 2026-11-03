@@ -94,6 +94,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Judge.MaxQueueDepth != defaultMaxQueueDepth {
 		t.Errorf("Judge.MaxQueueDepth = %d, want %d", cfg.Judge.MaxQueueDepth, defaultMaxQueueDepth)
 	}
+	if cfg.OutputFiles.TTL != defaultOutputFileTTL {
+		t.Errorf("OutputFiles.TTL = %s, want %s", cfg.OutputFiles.TTL, defaultOutputFileTTL)
+	}
 	if cfg.PublicURL != "https://runcodes.example" {
 		t.Errorf("PublicURL = %q", cfg.PublicURL)
 	}
@@ -258,6 +261,11 @@ func TestLoadRejectsMalformedValues(t *testing.T) {
 			name:  "negative redis db",
 			env:   map[string]string{"RUNCODES_REDIS_DB": "-1"},
 			names: "RUNCODES_REDIS_DB",
+		},
+		{
+			name:  "negative output file ttl",
+			env:   map[string]string{"RUNCODES_OUTPUT_FILE_TTL": "-1h"},
+			names: "RUNCODES_OUTPUT_FILE_TTL",
 		},
 		{
 			name:  "debug mode is not a boolean",

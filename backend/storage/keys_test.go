@@ -48,3 +48,45 @@ func TestFileBasename(t *testing.T) {
 		}
 	}
 }
+
+func TestOutputFileKey(t *testing.T) {
+	if got := OutputFileKey(7, "test_1/result.txt"); got != "7/test_1/result.txt" {
+		t.Fatalf("OutputFileKey = %q", got)
+	}
+	if got := OutputPrefix(7); got != "7/" {
+		t.Fatalf("OutputPrefix = %q", got)
+	}
+}
+
+func TestOutputPathValid(t *testing.T) {
+	valid := []string{
+		"result.txt",
+		"test_1/result.txt",
+		"test_1/nested/dir/result.txt",
+		"outputfiles/explicit.txt",
+		"a file with spaces.txt",
+		"acentuação.txt",
+	}
+	for _, rel := range valid {
+		if !OutputPathValid(rel) {
+			t.Errorf("OutputPathValid(%q) = false, want true", rel)
+		}
+	}
+
+	invalid := []string{
+		"",
+		".",
+		"..",
+		"../other.txt",
+		"a/../b",
+		"/etc/passwd",
+		"a//b",
+		"./a",
+		"a/",
+	}
+	for _, rel := range invalid {
+		if OutputPathValid(rel) {
+			t.Errorf("OutputPathValid(%q) = true, want false", rel)
+		}
+	}
+}

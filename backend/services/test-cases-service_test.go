@@ -15,14 +15,10 @@ func ptrString(v string) *string { return &v }
 
 func validTextCreate() *TestCaseInput {
 	return &TestCaseInput{
-		InputType:           ptrString(IOTypeText),
-		ExpectedOutputType:  ptrString(IOTypeText),
-		Input:               ptrString("1 2"),
-		ExpectedOutput:      ptrString("3"),
-		CPUTimeLimitSeconds: ptrInt(5),
-		MemUsageLimitBytes:  ptrInt64(1024),
-		StackLimitBytes:     ptrInt64(2048),
-		FileSizeLimitBytes:  ptrInt64(4096),
+		InputType:          ptrString(IOTypeText),
+		ExpectedOutputType: ptrString(IOTypeText),
+		Input:              ptrString("1 2"),
+		ExpectedOutput:     ptrString("3"),
 	}
 }
 
@@ -40,9 +36,6 @@ func TestResolveTestCaseInputTextCreate(t *testing.T) {
 	}
 	if !res.ShowInput || !res.ShowExpectedOutput || !res.ShowUserOutput {
 		t.Fatalf("show_* must default to true: %+v", res)
-	}
-	if res.CPUTimeLimitSeconds != 5 || res.MemUsageLimitBytes != 1024 {
-		t.Fatalf("unexpected limits: %+v", res)
 	}
 	if res.InputObject == nil || string(res.InputObject.Data) != "1 2" {
 		t.Fatalf("expected input object to upload: %+v", res.InputObject)
@@ -86,9 +79,6 @@ func TestResolveTestCaseInputValidation(t *testing.T) {
 		{"invalid input type", func(in *TestCaseInput) { in.InputType = ptrString("binary") }, true},
 		{"missing input text", func(in *TestCaseInput) { in.Input = nil }, true},
 		{"missing output text", func(in *TestCaseInput) { in.ExpectedOutput = nil }, true},
-		{"negative cpu limit", func(in *TestCaseInput) { in.CPUTimeLimitSeconds = ptrInt(-1) }, true},
-		{"negative mem limit", func(in *TestCaseInput) { in.MemUsageLimitBytes = ptrInt64(-1) }, true},
-		{"negative size limit", func(in *TestCaseInput) { in.FileSizeLimitBytes = ptrInt64(-1) }, true},
 		{"file input without file", func(in *TestCaseInput) {
 			in.InputType = ptrString(IOTypeFile)
 			in.Input = nil
@@ -110,39 +100,17 @@ func TestResolveTestCaseInputValidation(t *testing.T) {
 	}
 }
 
-func TestResolveTestCaseInputLimitsDefaultToZero(t *testing.T) {
-	in := &TestCaseInput{
-		InputType:          ptrString(IOTypeText),
-		ExpectedOutputType: ptrString(IOTypeText),
-		Input:              ptrString(""),
-		ExpectedOutput:     ptrString("ok"),
-	}
-
-	res, err := ResolveTestCaseInput(in, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if res.CPUTimeLimitSeconds != 0 || res.MemUsageLimitBytes != 0 ||
-		res.StackLimitBytes != 0 || res.FileSizeLimitBytes != 0 {
-		t.Fatalf("expected zero-value limits, got %+v", res)
-	}
-}
-
 func TestResolveTestCaseInputPartialUpdate(t *testing.T) {
 	existing := &models.TestCase{
-		ID:                  1,
-		ExerciseID:          2,
-		Input:               "old input",
-		InputType:           IOTypeText,
-		ShowInput:           true,
-		ExpectedOutput:      "old output",
-		ExpectedOutputType:  IOTypeText,
-		ShowExpectedOutput:  true,
-		ShowUserOutput:      true,
-		CPUTimeLimitSeconds: 3,
-		MemUsageLimitBytes:  100,
-		StackLimitBytes:     200,
-		FileSizeLimitBytes:  300,
+		ID:                 1,
+		ExerciseID:         2,
+		Input:              "old input",
+		InputType:          IOTypeText,
+		ShowInput:          true,
+		ExpectedOutput:     "old output",
+		ExpectedOutputType: IOTypeText,
+		ShowExpectedOutput: true,
+		ShowUserOutput:     true,
 	}
 
 	in := &TestCaseInput{ShowInput: ptrBool(false)}
@@ -157,9 +125,6 @@ func TestResolveTestCaseInputPartialUpdate(t *testing.T) {
 	if res.Input != "old input" || res.ExpectedOutput != "old output" {
 		t.Fatalf("untouched fields changed: %+v", res)
 	}
-	if res.CPUTimeLimitSeconds != 3 || res.MemUsageLimitBytes != 100 {
-		t.Fatalf("limits should be preserved: %+v", res)
-	}
 	if res.InputObject != nil || res.OutputObject != nil {
 		t.Fatal("no object should be re-uploaded for an unchanged text case")
 	}
@@ -167,11 +132,10 @@ func TestResolveTestCaseInputPartialUpdate(t *testing.T) {
 
 func TestResolveTestCaseInputPartialUpdateFileKeepsObject(t *testing.T) {
 	existing := &models.TestCase{
-		Input:               "input.txt",
-		InputType:           IOTypeFile,
-		ExpectedOutput:      "out.txt",
-		ExpectedOutputType:  IOTypeFile,
-		CPUTimeLimitSeconds: 2,
+		Input:              "input.txt",
+		InputType:          IOTypeFile,
+		ExpectedOutput:     "out.txt",
+		ExpectedOutputType: IOTypeFile,
 	}
 
 	res, err := ResolveTestCaseInput(&TestCaseInput{ShowInput: ptrBool(true)}, existing)

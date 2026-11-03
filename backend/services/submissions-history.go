@@ -189,7 +189,7 @@ func GetCommitSnapshot(ctx context.Context, commitID int64) (*models.Snapshot, e
 
 	rows, err := database.DB.QueryContext(ctx,
 		`SELECT exercise_test_case_id, cpu_time, wall_time, mem_usage, user_output,
-		        user_output_type, status, status_message, error_message
+		        user_output_type, status, reason::text, status_message, error_message
 		 FROM commits_exercise_test_cases_results
 		 WHERE commit_id = $1
 		 ORDER BY exercise_test_case_id`,
@@ -213,7 +213,8 @@ func GetCommitSnapshot(ctx context.Context, commitID int64) (*models.Snapshot, e
 		if err := rows.Scan(
 			&result.ExerciseTestCaseID, &result.CPUTime, &wallTime,
 			&result.MemUsage, &result.UserOutput, &result.UserOutputType,
-			&result.Status, &result.StatusMessage, &result.ErrorMessage,
+			&result.Status, &result.Reason, &result.StatusMessage,
+			&result.ErrorMessage,
 		); err != nil {
 			slog.ErrorContext(ctx, "error scanning commit result",
 				slog.Int64("commit_id", commitID),
@@ -317,6 +318,51 @@ func HiddenTestCaseIDs(
 	}
 
 	return hidden, nil
+}
+
+/*
+InterruptedTestCaseIDs returns the ids of the cases whose run was interrupted by a
+limit or a signal. Such a case publishes no generated files — its file was still
+being written when the process died — but an object uploaded before that rule
+existed can still be in storage, so the artifact endpoints exclude the case too.
+*/
+func InterruptedTestCaseIDs(
+	ctx context.Context, commitID int64,
+) (map[int64]struct{}, error) {
+	rows, err := database.DB.QueryContext(ctx, `
+		SELECT r.exercise_test_case_id
+		FROM commits_exercise_test_cases_results r
+		WHERE r.commit_id = $1 AND r.status = 'killed_with_signal'`, commitID)
+	if err != nil {
+		slog.ErrorContext(ctx, "error fetching interrupted test cases",
+			slog.Int64("commit_id", commitID),
+			slog.String("error", err.Error()),
+		)
+		return nil, ErrServer
+	}
+	defer rows.Close()
+
+	interrupted := make(map[int64]struct{})
+	for rows.Next() {
+		var caseID int64
+		if err := rows.Scan(&caseID); err != nil {
+			slog.ErrorContext(ctx, "error scanning an interrupted test case",
+				slog.Int64("commit_id", commitID),
+				slog.String("error", err.Error()),
+			)
+			return nil, ErrServer
+		}
+		interrupted[caseID] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		slog.ErrorContext(ctx, "error iterating interrupted test cases",
+			slog.Int64("commit_id", commitID),
+			slog.String("error", err.Error()),
+		)
+		return nil, ErrServer
+	}
+
+	return interrupted, nil
 }
 
 /*

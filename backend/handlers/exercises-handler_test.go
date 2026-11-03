@@ -154,12 +154,6 @@ func TestParseTestCaseInputText(t *testing.T) {
 	if in.ShowExpectedOutput == nil || !*in.ShowExpectedOutput {
 		t.Fatal("expected show_expected_output true")
 	}
-	if in.CPUTimeLimitSeconds == nil || *in.CPUTimeLimitSeconds != 5 {
-		t.Fatalf("unexpected cpu limit: %v", in.CPUTimeLimitSeconds)
-	}
-	if in.MemUsageLimitBytes == nil || *in.MemUsageLimitBytes != 1024 {
-		t.Fatalf("unexpected mem limit: %v", in.MemUsageLimitBytes)
-	}
 	if in.FilesProvided {
 		t.Fatal("no files should be provided")
 	}
@@ -167,13 +161,9 @@ func TestParseTestCaseInputText(t *testing.T) {
 
 func TestParseTestCaseInputFiles(t *testing.T) {
 	form := parseMultipartForm(t, map[string][]string{
-		"input_type":             {"file"},
-		"expected_output_type":   {"text"},
-		"expected_output":        {"ok"},
-		"cpu_time_limit_seconds": {"1"},
-		"mem_usage_limit_bytes":  {"0"},
-		"stack_limit_bytes":      {"0"},
-		"file_size_limit_bytes":  {"0"},
+		"input_type":           {"file"},
+		"expected_output_type": {"text"},
+		"expected_output":      {"ok"},
 	}, []filePart{
 		{field: "input_file", name: "in.txt", content: "payload"},
 		{field: "files", name: "a.txt", content: "a"},
@@ -204,7 +194,7 @@ func TestParseTestCaseInputErrors(t *testing.T) {
 		name   string
 		fields map[string][]string
 	}{
-		{"invalid int", map[string][]string{"cpu_time_limit_seconds": {"abc"}}},
+		{"invalid limits", map[string][]string{"language_limits": {"not json"}}},
 		{"invalid bool", map[string][]string{"show_input": {"yes"}}},
 	}
 
@@ -230,21 +220,43 @@ func TestParseTestCaseInputAbsentFields(t *testing.T) {
 	}
 }
 
-func TestParseTestCaseInputTolerantNumbers(t *testing.T) {
+func TestParseTestCaseInputLanguageLimits(t *testing.T) {
 	form := parseMultipartForm(t, map[string][]string{
-		"cpu_time_limit_seconds": {"1.5"},
-		"mem_usage_limit_bytes":  {""},
+		"input_type": {"text"},
+		"language_limits": {`[
+			{"allowed_file_type_id": 3, "cpu_time_limit_seconds": 2,
+			 "mem_usage_limit_bytes": null, "stack_limit_bytes": 0,
+			 "file_size_limit_bytes": null}
+		]`},
 	}, nil)
 
-	in, err := parseTestCaseInput(form, true)
+	in, err := parseTestCaseInput(form, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if in.CPUTimeLimitSeconds == nil || *in.CPUTimeLimitSeconds != 2 {
-		t.Fatalf("expected decimal seconds to round to 2, got %v", in.CPUTimeLimitSeconds)
+	if !in.LanguageLimitsProvided || len(in.LanguageLimits) != 1 {
+		t.Fatalf("language limits = %+v, want one entry", in.LanguageLimits)
 	}
-	if in.MemUsageLimitBytes != nil {
-		t.Fatalf("empty numeric fields must be treated as absent, got %v", *in.MemUsageLimitBytes)
+	entry := in.LanguageLimits[0]
+	if entry.AllowedFileTypeID != 3 {
+		t.Fatalf("allowed_file_type_id = %d, want 3", entry.AllowedFileTypeID)
+	}
+	if entry.Overrides.CPUTimeLimitSeconds == nil || *entry.Overrides.CPUTimeLimitSeconds != 2 {
+		t.Fatalf("cpu override = %v, want 2", entry.Overrides.CPUTimeLimitSeconds)
+	}
+	if entry.Overrides.MemUsageLimitBytes != nil {
+		t.Fatalf("memory override = %v, want nil (inherit)", *entry.Overrides.MemUsageLimitBytes)
+	}
+	if entry.Overrides.StackLimitBytes == nil || *entry.Overrides.StackLimitBytes != 0 {
+		t.Fatalf("stack override = %v, want the explicit no-limit zero", entry.Overrides.StackLimitBytes)
+	}
+
+	bad := parseMultipartForm(t, map[string][]string{
+		"input_type":      {"text"},
+		"language_limits": {`{"allowed_file_type_id": 3}`},
+	}, nil)
+	if _, err := parseTestCaseInput(bad, false); err == nil {
+		t.Fatal("a non-array language_limits must be rejected")
 	}
 }
 

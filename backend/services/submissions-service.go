@@ -76,8 +76,10 @@ func CreateSubmission(ctx context.Context, in SubmissionInput) (int64, error) {
 	// any file, and the commit then has no language to attribute. database/sql
 	// writes the untyped nil as SQL NULL.
 	var fileType any
+	var fileTypePtr *int64
 	if fileTypeMatched {
 		fileType = fileTypeID
+		fileTypePtr = &fileTypeID
 	}
 
 	// Refuse work before uploading anything when the caller already has runs in
@@ -136,6 +138,15 @@ func CreateSubmission(ctx context.Context, in SubmissionInput) (int64, error) {
 		)
 		deleteSourceBestEffort(ctx, key)
 		return 0, ErrServer
+	}
+
+	// Freeze the limits this submission runs under: the judge grades against this
+	// snapshot, so editing the exercise afterwards cannot change a queued run.
+	if err := SnapshotCommitLimits(
+		ctx, tx, commitID, in.ExerciseID, fileTypePtr,
+	); err != nil {
+		deleteSourceBestEffort(ctx, key)
+		return 0, err
 	}
 
 	if err := tx.Commit(); err != nil {

@@ -50,7 +50,13 @@ var (
 	ErrBulletinPostForbidden = errors.New("only professors and monitors can post to the class board")
 
 	ErrInvalidTestCase = errors.New("invalid test case")
+	// ErrInvalidLimits rejects a per-language limit with an unknown language or an
+	// unusable value (a non-positive CPU time, a negative byte limit).
+	ErrInvalidLimits   = errors.New("invalid limit")
 	ErrInvalidExercise = errors.New("invalid exercise")
+	// ErrLimitAlertNotFound is returned when acknowledging an alert that is gone
+	// or belongs to another exercise.
+	ErrLimitAlertNotFound = errors.New("limit alert not found")
 
 	ErrInvalidEnrollmentCode  = errors.New("invalid enrollment code")
 	ErrEnrollmentClosed       = errors.New("enrollment is closed for this offering")

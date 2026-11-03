@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"archive/zip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -17,6 +19,7 @@ import (
 	"github.com/runcodes-icmc/runcodes/judge"
 	"github.com/runcodes-icmc/runcodes/models"
 	"github.com/runcodes-icmc/runcodes/services"
+	"github.com/runcodes-icmc/runcodes/storage"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -310,21 +313,21 @@ func GetSubmissionSource(w http.ResponseWriter, r *http.Request) {
 }
 
 /*
-GetSubmissionOutput handles GET /api/v1/submissions/{id}/output. It proxies the
-generated output archive from the judge so the browser can download it through
-the authenticated API. The archive is available to the commit's owner only.
+ownedCommitID resolves the {id} path parameter of a submission route and checks
+that the caller owns that submission. It writes the error response itself and
+reports false when the caller must stop.
 */
-func GetSubmissionOutput(w http.ResponseWriter, r *http.Request) {
+func ownedCommitID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	ctx := r.Context()
 
 	claims, ok := tokenClaims(w, r)
 	if !ok {
-		return
+		return 0, false
 	}
 	userID, ok := claimsID(claims)
 	if !ok {
 		WriteResponse(w, http.StatusUnauthorized, nil)
-		return
+		return 0, false
 	}
 
 	commitID, err := pathID(r, "id")
@@ -332,7 +335,7 @@ func GetSubmissionOutput(w http.ResponseWriter, r *http.Request) {
 		WriteResponse(w, http.StatusBadRequest,
 			models.Error{Message: "invalid commit id"},
 		)
-		return
+		return 0, false
 	}
 
 	if err := services.VerifyMyCommit(ctx, commitID, int64(userID)); err != nil {
@@ -340,31 +343,71 @@ func GetSubmissionOutput(w http.ResponseWriter, r *http.Request) {
 			WriteResponse(w, http.StatusNotFound,
 				models.Error{Message: services.ErrCommitNotFound.Error()},
 			)
-			return
+			return 0, false
 		}
 		writeServiceError(ctx, w, err)
+		return 0, false
+	}
+
+	return commitID, true
+}
+
+/*
+visibleOutputFiles lists a commit's generated files as its owner may see them.
+The files of a case whose program output the author did not release are dropped
+here, so the listing, the per-file download and the zip all enforce the same
+rule.
+*/
+func visibleOutputFiles(
+	ctx context.Context, commitID int64,
+) ([]storage.OutputFile, error) {
+	files, err := storage.ListOutputFiles(ctx, commitID)
+	if err != nil {
+		return nil, err
+	}
+
+	unavailable, err := services.UnavailableGeneratedFileCases(ctx, commitID)
+	if err != nil {
+		return nil, err
+	}
+
+	return services.VisibleOutputFiles(files, unavailable), nil
+}
+
+/*
+GetSubmissionOutput handles GET /api/v1/submissions/{id}/output. It builds a zip
+of the files the submission generated on the fly, so the browser can download
+them all at once through the authenticated API. The archive is available to the
+commit's owner only.
+
+The files live in object storage, where the judge uploaded them case by case;
+the zip exists only for the duration of the request.
+*/
+func GetSubmissionOutput(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	commitID, ok := ownedCommitID(w, r)
+	if !ok {
 		return
 	}
 
-	archive, err := judge.OpenOutput(ctx, commitID)
+	files, err := visibleOutputFiles(ctx, commitID)
 	if err != nil {
-		switch {
-		case errors.Is(err, judge.ErrOutputNotFound):
-			WriteResponse(w, http.StatusNotFound,
-				models.Error{Message: "no output was generated for this submission"},
-			)
-		default:
-			slog.ErrorContext(ctx, "failed to fetch generated output",
-				slog.Int64("commit_id", commitID),
-				slog.String("error", err.Error()),
-			)
-			WriteResponse(w, http.StatusBadGateway,
-				models.Error{Message: "could not fetch the generated output"},
-			)
-		}
+		slog.ErrorContext(ctx, "failed to list generated files",
+			slog.Int64("commit_id", commitID),
+			slog.String("error", err.Error()),
+		)
+		WriteResponse(w, http.StatusBadGateway,
+			models.Error{Message: "could not fetch the generated output"},
+		)
 		return
 	}
-	defer archive.Body.Close()
+	if len(files) == 0 {
+		WriteResponse(w, http.StatusNotFound,
+			models.Error{Message: "no output was generated for this submission"},
+		)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition",
@@ -372,16 +415,175 @@ func GetSubmissionOutput(w http.ResponseWriter, r *http.Request) {
 			strconv.FormatInt(commitID, 10)+".zip"),
 	)
 	w.Header().Set("Cache-Control", "private, no-store")
-	if archive.ContentLength > 0 {
-		w.Header().Set("Content-Length",
-			strconv.FormatInt(archive.ContentLength, 10),
+	w.WriteHeader(http.StatusOK)
+
+	// The response has started, so a failure can only be logged: the client
+	// receives a truncated archive and can ask for a single file instead.
+	out := newDeadlineWriter(w)
+	archive := zip.NewWriter(out)
+	for _, file := range files {
+		if err := appendToArchive(ctx, archive, commitID, file); err != nil {
+			slog.ErrorContext(ctx, "failed to stream a generated file",
+				slog.Int64("commit_id", commitID),
+				slog.String("path", file.Path),
+				slog.String("error", err.Error()),
+			)
+		}
+	}
+	if err := archive.Close(); err != nil {
+		slog.ErrorContext(ctx, "failed to finish the generated output archive",
+			slog.Int64("commit_id", commitID),
+			slog.String("error", err.Error()),
 		)
+	}
+}
+
+/*
+appendToArchive copies one generated file into the archive, under the same path
+listing reports. A file that disappeared between the listing and the read is
+skipped: storage is the only copy, so it can only be gone because the commit was
+cleaned up.
+*/
+func appendToArchive(
+	ctx context.Context, archive *zip.Writer, commitID int64,
+	file storage.OutputFile,
+) error {
+	object, err := storage.GetOutputFile(ctx, commitID, file.Path)
+	if err != nil {
+		return err
+	}
+	defer object.Body.Close()
+
+	// A zip entry needs a header; carry the upload time so the extracted files
+	// keep the order the submission wrote them in.
+	header := &zip.FileHeader{Name: file.Path, Method: zip.Deflate}
+	header.Modified = file.Modified
+
+	entry, err := archive.CreateHeader(header)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(entry, object.Body)
+	return err
+}
+
+// OutputFileEntry is one file in the generated-files listing.
+type OutputFileEntry struct {
+	// Path identifies the file within the submission's output namespace, for
+	// example `test_1/saida.txt`.
+	Path string `json:"path"`
+	Size int64  `json:"size"`
+}
+
+/*
+ListSubmissionOutputFiles handles GET /api/v1/submissions/{id}/outputfiles. It
+lists the files the submission generated, so the results panel can offer one
+download per file. The listing belongs to the commit's owner.
+*/
+func ListSubmissionOutputFiles(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	commitID, ok := ownedCommitID(w, r)
+	if !ok {
+		return
+	}
+
+	files, err := visibleOutputFiles(ctx, commitID)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to list generated files",
+			slog.Int64("commit_id", commitID),
+			slog.String("error", err.Error()),
+		)
+		WriteResponse(w, http.StatusBadGateway,
+			models.Error{Message: "could not fetch the generated output"},
+		)
+		return
+	}
+
+	entries := make([]OutputFileEntry, 0, len(files))
+	for _, file := range files {
+		entries = append(entries, OutputFileEntry{Path: file.Path, Size: file.Size})
+	}
+
+	WriteResponse(w, http.StatusOK, entries)
+}
+
+/*
+GetSubmissionOutputFile handles
+GET /api/v1/submissions/{id}/outputfiles/{path}. It streams one generated file so
+the browser can save it individually. The path is matched against the commit's
+own namespace, and only a clean relative path names an object: `..` segments and
+absolute paths are refused instead of being resolved into another commit's keys.
+*/
+func GetSubmissionOutputFile(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	commitID, ok := ownedCommitID(w, r)
+	if !ok {
+		return
+	}
+
+	filePath := chi.URLParam(r, "*")
+	if !storage.OutputPathValid(filePath) {
+		WriteResponse(w, http.StatusBadRequest,
+			models.Error{Message: "invalid file path"},
+		)
+		return
+	}
+
+	// A file from a case that must not be published is indistinguishable from a
+	// missing one: the answer must not confirm that the case wrote it.
+	unavailable, err := services.UnavailableGeneratedFileCases(ctx, commitID)
+	if err != nil {
+		writeServiceError(ctx, w, err)
+		return
+	}
+	if !services.OutputFileVisible(filePath, unavailable) {
+		WriteResponse(w, http.StatusNotFound,
+			models.Error{Message: "file not found"},
+		)
+		return
+	}
+
+	object, err := storage.GetOutputFile(ctx, commitID, filePath)
+	if err != nil {
+		if errors.Is(err, storage.ErrObjectNotFound) {
+			WriteResponse(w, http.StatusNotFound,
+				models.Error{Message: "file not found"},
+			)
+			return
+		}
+		slog.ErrorContext(ctx, "failed to open a generated file",
+			slog.Int64("commit_id", commitID),
+			slog.String("path", filePath),
+			slog.String("error", err.Error()),
+		)
+		WriteResponse(w, http.StatusBadGateway,
+			models.Error{Message: "could not fetch the generated file"},
+		)
+		return
+	}
+	defer object.Body.Close()
+
+	// The content is whatever the submission wrote, so it is always served as an
+	// opaque download: a generated HTML or SVG file must not be rendered by the
+	// API's origin.
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition",
+		fmt.Sprintf("attachment; filename=%q", path.Base(filePath)),
+	)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "private, no-store")
+	if object.Size >= 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(object.Size, 10))
 	}
 	w.WriteHeader(http.StatusOK)
 
-	if _, err := io.Copy(newDeadlineWriter(w), archive.Body); err != nil {
-		slog.ErrorContext(ctx, "failed to stream generated output",
+	if _, err := io.Copy(newDeadlineWriter(w), object.Body); err != nil {
+		slog.ErrorContext(ctx, "failed to stream a generated file",
 			slog.Int64("commit_id", commitID),
+			slog.String("path", filePath),
 			slog.String("error", err.Error()),
 		)
 	}
@@ -500,14 +702,14 @@ func StreamSubmissionEvents(w http.ResponseWriter, r *http.Request) {
 		services.RedactSnapshotOutput(snapshot, hidden)
 	}
 
-	// Artifact events are transient and never persisted. Ask the judge whether
-	// the generated archive exists so a reloading client can show the files
-	// section. The archive can appear before the finished event, so check even
-	// while the run is still in progress. Only the owner can download it, so do
-	// not advertise it on a privileged viewer's snapshot.
+	// Artifact events are transient and never persisted. Ask storage whether the
+	// submission generated any file so a reloading client can show the files
+	// section. The judge uploads each case's files as the run advances, so this
+	// can become true before the finished event. Only the owner can download
+	// them, so do not advertise them on a privileged viewer's snapshot.
 	if owned {
 		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		exists, err := judge.OutputExists(checkCtx, commitID)
+		exists, err := storage.OutputFilesExist(checkCtx, commitID)
 		cancel()
 		if err != nil {
 			slog.WarnContext(ctx, "could not check generated output",
