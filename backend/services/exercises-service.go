@@ -421,7 +421,36 @@ func UpdateExercise(
 		if err := insertAllowedFileTypes(ctx, tx, exerciseID, *req.AllowedFileTypeIDs); err != nil {
 			return nil, err
 		}
-		ex.AllowedFileTypeIDs = dedupeIDs(*req.AllowedFileTypeIDs)
+		allowedIDs := dedupeIDs(*req.AllowedFileTypeIDs)
+		// Limits are stored per language, so a language removed from the exercise
+		// must lose its overrides too. Keeping them would silently restore limits
+		// nobody remembers setting if the language is allowed again later.
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM exercise_language_limits
+			WHERE exercise_id = $1 AND allowed_file_type_id <> ALL($2)`,
+			exerciseID, pq.Array(allowedIDs),
+		); err != nil {
+			slog.ErrorContext(ctx, "error clearing the stale exercise language limits",
+				slog.Int64("exercise_id", exerciseID),
+				slog.String("error", err.Error()),
+			)
+			return nil, ErrServer
+		}
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM test_case_language_limits tcl
+			USING exercises_test_cases tc
+			WHERE tcl.exercise_test_case_id = tc.id
+			  AND tc.exercise_id = $1
+			  AND tcl.allowed_file_type_id <> ALL($2)`,
+			exerciseID, pq.Array(allowedIDs),
+		); err != nil {
+			slog.ErrorContext(ctx, "error clearing the stale test case language limits",
+				slog.Int64("exercise_id", exerciseID),
+				slog.String("error", err.Error()),
+			)
+			return nil, ErrServer
+		}
+		ex.AllowedFileTypeIDs = allowedIDs
 	} else {
 		if ex.AllowedFileTypeIDs, err = loadAllowedFileTypeIDs(ctx, exerciseID); err != nil {
 			return nil, err
