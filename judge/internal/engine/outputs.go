@@ -12,8 +12,9 @@ object storage without the judge being online.
 
 What the submission wrote is untrusted: only regular files are read (never a
 symlink, which would otherwise publish the contents of any file the judge can
-read), and the total uploaded per commit is bounded by MaxArtifactBytes so a
-submission cannot fill the bucket.
+read). Each file is bounded by its case's file-size limit, and every file of the
+run shares MaxCommitArtifactBytes, so a suite cannot multiply the per-case limit
+into an unbounded amount of object storage.
 */
 
 import (
@@ -50,6 +51,48 @@ type generatedFile struct {
 	// Path is slash-separated and relative to the directory it was found in.
 	Path string
 	Size int64
+}
+
+/*
+artifactBudget caps how many bytes one commit may publish. Every case's files
+share it, so a suite cannot multiply the per-case file-size limit into an
+unbounded amount of object storage. It is safe for the publisher's workers to
+use concurrently: the bytes are reserved before an upload and released when the
+upload fails.
+*/
+type artifactBudget struct {
+	limit int64
+	used  atomic.Int64
+}
+
+// newArtifactBudget returns the budget of one run. A zero limit disables it.
+func newArtifactBudget(limit int64) *artifactBudget {
+	return &artifactBudget{limit: limit}
+}
+
+// reserve claims n bytes, reporting whether the commit had room left for them.
+func (b *artifactBudget) reserve(n int64) bool {
+	if b == nil || b.limit <= 0 || n <= 0 {
+		return true
+	}
+
+	for {
+		used := b.used.Load()
+		if used > b.limit-n {
+			return false
+		}
+		if b.used.CompareAndSwap(used, used+n) {
+			return true
+		}
+	}
+}
+
+// release gives back bytes reserved for an upload that did not reach storage.
+func (b *artifactBudget) release(n int64) {
+	if b == nil || b.limit <= 0 || n <= 0 {
+		return
+	}
+	b.used.Add(-n)
 }
 
 // caseOutputDir is the directory the runner collects one test case's files in.
@@ -156,17 +199,22 @@ type publishRequest struct {
 	SkipDir func(name string) bool
 	// SkipFile, when set, skips a file by its collected path.
 	SkipFile func(rel string) bool
+	// Budget, when set, is the bytes-each-case-shares cap of the commit. It is
+	// the same object for every request of one run.
+	Budget *artifactBudget
 }
 
 /*
 publishGeneratedFiles uploads the files described by req and then removes the
 request's directory. It returns how many files were uploaded.
 
-Each file is bounded on its own, by the limit of the case it belongs to. The
-bound is deliberately not shared across the run: a case that writes a large file
-must not make the following cases' files unpublishable, which is what a per-run
-byte budget would do. A file that cannot be uploaded is logged and skipped: the
-run's results do not depend on an artifact that could not be published.
+Each file is bounded on its own by the limit of the case it belongs to, and the
+run's files also share the commit's budget (req.Budget): the per-case bound alone
+would let a suite of cases publish an unbounded total. The budget is only a
+ceiling, so a case with a large file cannot make the following cases' files
+unpublishable until the commit's total is actually exhausted. A file that cannot
+be uploaded is logged and skipped: the run's results do not depend on an
+artifact that could not be published.
 */
 func (e *Engine) publishGeneratedFiles(
 	ctx context.Context, commitID int64, req publishRequest,
@@ -193,6 +241,15 @@ func (e *Engine) publishGeneratedFiles(
 			)
 			continue
 		}
+		if !req.Budget.reserve(file.Size) {
+			e.logger.Warn("generated files exceeded the commit's budget; not published",
+				"commit_id", commitID,
+				"path", req.Prefix+"/"+file.Path,
+				"size_bytes", file.Size,
+				"budget_bytes", req.Budget.limit,
+			)
+			continue
+		}
 
 		rel := file.Path
 		if req.Prefix != "" {
@@ -204,6 +261,7 @@ func (e *Engine) publishGeneratedFiles(
 			filepath.Join(req.Dir, filepath.FromSlash(file.Path)),
 		)
 		if err != nil {
+			req.Budget.release(file.Size)
 			e.logger.Warn("could not upload a generated file",
 				"commit_id", commitID,
 				"path", rel,
@@ -279,6 +337,7 @@ func (e *Engine) casePublishRequest(
 		Prefix:       "test_" + strconv.FormatInt(testCase.ID, 10),
 		TestCaseID:   testCase.ID,
 		MaxFileBytes: e.caseFileLimit(testCase),
+		Budget:       ws.ArtifactBudget,
 	}, true, nil
 }
 
@@ -389,6 +448,7 @@ func (e *Engine) publishRootOutputs(
 		SkipFile: func(rel string) bool {
 			return isInternalOutputFile(filepath.Base(rel))
 		},
+		Budget: ws.ArtifactBudget,
 	}
 
 	uploaded, _, err := e.publishGeneratedFiles(ctx, commitID, req)
@@ -473,6 +533,11 @@ func (p *outputPublisher) worker() {
 				"error", err,
 			)
 			p.recordFailure(1)
+			// The client was told to wait for this case's files, so it must be
+			// told the upload will not happen; otherwise its placeholder spins
+			// until the listing poll gives up.
+			p.engine.hub.ArtifactCase(p.commitID, req.TestCaseID,
+				events.ArtifactFailed, "output", p.listingURL())
 			continue
 		}
 		if failed > 0 {

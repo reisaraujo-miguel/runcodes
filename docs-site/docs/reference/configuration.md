@@ -114,6 +114,7 @@ this API.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `RUNCODES_OUTPUT_FILE_TTL` | `168h` | how long the files a submission generated stay downloadable; `0` disables the sweep |
+| `RUNCODES_OUTPUT_ARCHIVE_MAX_BYTES` | `268435456` (256 MiB) | largest total the zip of one submission's generated files may have; larger submissions download file by file |
 
 The backend deletes generated files older than this once an hour. They are not
 referenced by any row, so the retention is the only thing that keeps the
@@ -220,7 +221,8 @@ for example `registry.example.com/team/runners/%s:edge`.
 | `JUDGE_CONTAINER_CPU_QUOTA` | `100000` | CPU quota per 100 ms period |
 | `JUDGE_CONTAINER_TMPFS_BYTES` | `256 MiB` | writable `/tmp` cap when the rootfs is read-only |
 | `JUDGE_MAX_COMPARE_FILE_BYTES` | `16 MiB` | max file a case is graded from |
-| `JUDGE_MAX_ARTIFACT_BYTES` | `64 MiB` | largest generated file published when the case sets no file-size limit; not a per-run budget |
+| `JUDGE_MAX_ARTIFACT_BYTES` | `64 MiB` | largest generated file published when the case sets no file-size limit |
+| `JUDGE_MAX_COMMIT_ARTIFACT_BYTES` | `256 MiB` | total bytes one submission may publish, shared by every case |
 | `JUDGE_MAX_EXTRACT_FILE_BYTES` | `64 MiB` | max single zip entry |
 | `JUDGE_MAX_EXTRACT_BYTES` | `256 MiB` | max total expanded zip |
 | `JUDGE_MAX_EXTRACT_ENTRIES` | `1000` | max entries in a zip submission |

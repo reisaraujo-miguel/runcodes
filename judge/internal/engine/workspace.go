@@ -38,6 +38,9 @@ type workspace struct {
 	Extension  string
 	Compilable bool
 	TestCases  []model.TestCase
+	// ArtifactBudget bounds everything this run may publish, shared by every
+	// case's upload and by the run-level files.
+	ArtifactBudget *artifactBudget
 }
 
 // newRunNonce returns the random value the image echoes back with every
@@ -151,6 +154,7 @@ func (e *Engine) prepareWorkspace(
 	ws = &workspace{
 		BaseDir: baseDir, RemoteDir: remoteDir, SourceDir: srcDir,
 		ExpectedDir: expectedDir, RunNonce: nonce,
+		ArtifactBudget: newArtifactBudget(e.cfg.MaxCommitArtifactBytes),
 	}
 
 	fname := commit.Filename()

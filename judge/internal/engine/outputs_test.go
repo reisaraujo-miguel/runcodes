@@ -58,12 +58,16 @@ func newOutputEngine(t *testing.T) (*Engine, *fakeOutputStore, *workspace) {
 	store := &fakeOutputStore{}
 	return &Engine{
 		cfg: &config.Config{
-			ExecDir:          t.TempDir(),
-			MaxArtifactBytes: 1 << 20,
+			ExecDir:                t.TempDir(),
+			MaxArtifactBytes:       1 << 20,
+			MaxCommitArtifactBytes: 1 << 20,
 		},
 		outputs: store,
 		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
-	}, store, &workspace{BaseDir: t.TempDir()}
+	}, store, &workspace{
+		BaseDir:        t.TempDir(),
+		ArtifactBudget: newArtifactBudget(1 << 20),
+	}
 }
 
 // publishTest runs one case's decision and upload synchronously, the way the run's
@@ -244,6 +248,56 @@ func TestPublishGeneratedFilesRespectsTheCaseLimit(t *testing.T) {
 	}
 }
 
+// The commit's budget bounds the whole run: once the shared bytes are used, the
+// remaining files are not published even though each one is under its case's
+// own limit.
+func TestPublishGeneratedFilesRespectsTheCommitBudget(t *testing.T) {
+	engine, store, ws := newOutputEngine(t)
+	ws.ArtifactBudget = newArtifactBudget(4)
+
+	writeWorkspaceFile(t, ws.BaseDir, "outputfiles/case_8/first.bin", "1234")
+	writeWorkspaceFile(t, ws.BaseDir, "outputfiles/case_8/second.bin", "5678")
+
+	testCase := model.TestCase{ID: 8, FileSizeLimit: 100}
+	uploaded, err := publishTest(t, engine, 7, testCase, model.CaseResult{Status: model.CaseCorrect}, ws)
+	if err != nil {
+		t.Fatalf("publishCaseOutputs: %v", err)
+	}
+	if uploaded != 1 {
+		t.Fatalf("uploaded = %d, want 1", uploaded)
+	}
+	if _, ok := store.uploaded["test_8/first.bin"]; !ok {
+		t.Fatal("the first file fits in the commit budget and must be published")
+	}
+	if _, ok := store.uploaded["test_8/second.bin"]; ok {
+		t.Fatal("a file past the commit budget must not be published")
+	}
+}
+
+func TestArtifactBudgetReserveAndRelease(t *testing.T) {
+	budget := newArtifactBudget(10)
+	if !budget.reserve(4) || !budget.reserve(6) {
+		t.Fatal("the budget must accept bytes up to its limit")
+	}
+	if budget.reserve(1) {
+		t.Fatal("the budget must refuse bytes past its limit")
+	}
+	budget.release(2)
+	if !budget.reserve(2) {
+		t.Fatal("releasing an upload's bytes must free room again")
+	}
+
+	unlimited := newArtifactBudget(0)
+	if !unlimited.reserve(1 << 40) {
+		t.Fatal("a zero budget disables the cap")
+	}
+
+	var none *artifactBudget
+	if !none.reserve(1) {
+		t.Fatal("an unset budget must not block uploads")
+	}
+}
+
 func TestPublishGeneratedFilesWithoutALimitUsesTheCeiling(t *testing.T) {
 	engine, store, ws := newOutputEngine(t)
 	engine.cfg.MaxArtifactBytes = 4
@@ -265,10 +319,9 @@ func TestPublishGeneratedFilesWithoutALimitUsesTheCeiling(t *testing.T) {
 	}
 }
 
-// TestPublishCaseOutputsDoesNotShareALimitAcrossCases pins that a large file in
-// one case does not make the following cases unpublishable. A per-run byte budget
-// did exactly that: the first case's file consumed it and every later case's
-// download silently went missing.
+// TestPublishCaseOutputsDoesNotShareALimitAcrossCases pins that one case's
+// per-case file-size limit does not affect the next case. The commit-wide budget
+// is a ceiling above these per-case limits, so it is not reached here.
 func TestPublishCaseOutputsDoesNotShareALimitAcrossCases(t *testing.T) {
 	engine, store, ws := newOutputEngine(t)
 	engine.cfg.MaxArtifactBytes = 1024
@@ -489,6 +542,42 @@ func TestQueueCaseOutputsAnnouncesFailure(t *testing.T) {
 	if err := engine.queueCaseOutputs(
 		publisher, 7,
 		model.TestCase{ID: 6, FileSizeLimit: 64, ShowUserOutput: true},
+		model.CaseResult{Status: model.CaseCorrect},
+		ws,
+	); err != nil {
+		t.Fatalf("queueCaseOutputs: %v", err)
+	}
+	publisher.Close()
+
+	frames := artifactEvents(sub)
+	if len(frames) != 2 {
+		t.Fatalf("artifact events = %d, want 2: %v", len(frames), frames)
+	}
+	if got := frames[0]["state"]; got != events.ArtifactPending {
+		t.Fatalf("first state = %v, want pending", got)
+	}
+	if got := frames[1]["state"]; got != events.ArtifactFailed {
+		t.Fatalf("second state = %v, want failed", got)
+	}
+}
+
+// TestQueueCaseOutputsAnnouncesAnUnusableStore pins that a failure before the
+// first byte is uploaded (an unusable store, an unreadable collection) still
+// clears the placeholder, not only an upload that returned an error.
+func TestQueueCaseOutputsAnnouncesAnUnusableStore(t *testing.T) {
+	engine, _, ws := newOutputEngine(t)
+	engine.hub = events.New(time.Minute)
+	engine.outputs = nil
+
+	writeWorkspaceFile(t, ws.BaseDir, "outputfiles/case_9/a.txt", "alpha")
+
+	sub := engine.hub.Subscribe(7, 0)
+	defer sub.Cancel()
+
+	publisher := newOutputPublisher(context.Background(), engine, 7)
+	if err := engine.queueCaseOutputs(
+		publisher, 7,
+		model.TestCase{ID: 9, FileSizeLimit: 64, ShowUserOutput: true},
 		model.CaseResult{Status: model.CaseCorrect},
 		ws,
 	); err != nil {

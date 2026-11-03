@@ -304,7 +304,8 @@ controller at `/sys/fs/cgroup/memory`; the monitor reads
 | `JUDGE_DEFAULT_CASE_TIMEOUT` | 3s | default per-case timeout |
 | `JUDGE_MAX_RUN_DURATION` | 30m | end-to-end budget for one claimed commit |
 | `JUDGE_MAX_COMPARE_FILE_BYTES` | 16 MiB | max size of the two files a case is graded from |
-| `JUDGE_MAX_ARTIFACT_BYTES` | 64 MiB | largest file published when a case sets no file-size limit; each case is bounded on its own |
+| `JUDGE_MAX_ARTIFACT_BYTES` | 64 MiB | largest file published when a case sets no file-size limit |
+| `JUDGE_MAX_COMMIT_ARTIFACT_BYTES` | 256 MiB | total bytes one submission may publish, shared by every case's files |
 | `JUDGE_MAX_EXTRACT_FILE_BYTES` | 64 MiB | max single entry when unpacking a zip |
 | `JUDGE_MAX_EXTRACT_BYTES` | 256 MiB | max total expanded zip size |
 | `JUDGE_MAX_EXTRACT_ENTRIES` | 1000 | max entries in a zip submission |
