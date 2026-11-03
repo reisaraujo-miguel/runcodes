@@ -5,9 +5,9 @@ if ! compgen -G "src/?akefile" >/dev/null; then
     run_command="./bin/Release/net10.0/src"
 fi
 
-# Leave memory to the judge's cgroup backstop, but bound a single file. The
-# workspace itself has no aggregate quota, so an unbounded file would let a
-# submission fill the host disk.
+# Every limit (compilation memory, per-case memory and file size, workspace
+# quota) comes from container.config, which the judge writes. The image sets no
+# defaults of its own.
 
 compile "${compilation_command}" "${pre_compilation_command}" "${post_compilation_command}"
 
