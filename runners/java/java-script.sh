@@ -4,9 +4,6 @@ if ! compgen -G "src/?akefile" >/dev/null; then
     run_command="java Main"
 fi
 
-# The JVM image has no memory limit; keep it that way.
-monitor_max_ms=0 # no memory limit
-
 compile "$compilation_command"
 
 # Bail if there are any compilation errors
