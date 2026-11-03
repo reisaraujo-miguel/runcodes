@@ -323,7 +323,8 @@ export interface BatchTestCaseImportResult {
 /**
  * Upload a zip with one test case per `.in`/`.out` pair. The pair may sit at the
  * archive root, named after the case, or inside a folder of that name when the
- * case carries extra files. The configuration applies to every case.
+ * case carries extra files. A single top-level folder that wraps the whole
+ * archive is treated as its root. The configuration applies to every case.
  */
 export function importTestCasesBatch(
   exerciseId: number,

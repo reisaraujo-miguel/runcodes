@@ -64,6 +64,131 @@ func TestParseBatchTestCaseArchiveAcceptsConventionalFolders(t *testing.T) {
 	}
 }
 
+func TestParseBatchTestCaseArchiveUnwrapsSingleRootFolder(t *testing.T) {
+	archive := zipWith(t, map[string]string{
+		"casos/1.in":      "um",
+		"casos/1.out":     "dois",
+		"casos/2.in":      "três",
+		"casos/2.out":     "quatro",
+		"casos/notas.txt": "rascunho",
+		"LEIAME.md":       "instruções",
+	})
+
+	cases, ignored, err := ParseBatchTestCaseArchive(archive)
+	if err != nil {
+		t.Fatalf("ParseBatchTestCaseArchive: %v", err)
+	}
+	if len(cases) != 2 {
+		t.Fatalf("got %d cases, want 2", len(cases))
+	}
+	if cases[0].Folder != "1" || cases[0].InputName != "1.in" ||
+		string(cases[0].InputData) != "um" {
+		t.Fatalf("unexpected first case: %+v", cases[0])
+	}
+	if cases[1].Folder != "2" || cases[1].OutputName != "2.out" {
+		t.Fatalf("unexpected second case: %+v", cases[1])
+	}
+	want := []string{"LEIAME.md", "notas.txt"}
+	if len(ignored) != len(want) || ignored[0] != want[0] || ignored[1] != want[1] {
+		t.Fatalf("ignored = %v, want %v", ignored, want)
+	}
+}
+
+func TestParseBatchTestCaseArchiveUnwrapsSingleFolderOfCases(t *testing.T) {
+	archive := zipWith(t, map[string]string{
+		"turma/caso_001/input.in":   "1",
+		"turma/caso_001/output.out": "2",
+		"turma/caso_001/extra.txt":  "material",
+		"turma/caso_002/input.in":   "3",
+		"turma/caso_002/output.out": "4",
+		"turma/caso_002/files/x.in": "extra",
+	})
+
+	cases, ignored, err := ParseBatchTestCaseArchive(archive)
+	if err != nil {
+		t.Fatalf("ParseBatchTestCaseArchive: %v", err)
+	}
+	if len(ignored) != 0 {
+		t.Fatalf("ignored = %v, want none", ignored)
+	}
+	if len(cases) != 2 {
+		t.Fatalf("got %d cases, want 2", len(cases))
+	}
+	if cases[0].Folder != "caso_001" || len(cases[0].ExtraFiles) != 1 {
+		t.Fatalf("unexpected first case: %+v", cases[0])
+	}
+	if cases[1].Folder != "caso_002" || len(cases[1].ExtraFiles) != 1 ||
+		cases[1].ExtraFiles[0].Name != "x.in" {
+		t.Fatalf("unexpected second case: %+v", cases[1])
+	}
+}
+
+func TestParseBatchTestCaseArchiveUnwrapsMixedFolderLayout(t *testing.T) {
+	archive := zipWith(t, map[string]string{
+		"turma/1.in":        "um",
+		"turma/1.out":       "dois",
+		"turma/2/2.in":      "três",
+		"turma/2/2.out":     "quatro",
+		"turma/2/extra.txt": "material",
+	})
+
+	cases, _, err := ParseBatchTestCaseArchive(archive)
+	if err != nil {
+		t.Fatalf("ParseBatchTestCaseArchive: %v", err)
+	}
+	if len(cases) != 2 {
+		t.Fatalf("got %d cases, want 2", len(cases))
+	}
+	if cases[0].Folder != "1" {
+		t.Fatalf("unexpected root case: %+v", cases[0])
+	}
+	if cases[1].Folder != "2" || len(cases[1].ExtraFiles) != 1 {
+		t.Fatalf("unexpected folder case: %+v", cases[1])
+	}
+}
+
+func TestParseBatchTestCaseArchiveUnwrapsFolderWithOneCase(t *testing.T) {
+	archive := zipWith(t, map[string]string{
+		"turma/caso_001/input.in":   "1",
+		"turma/caso_001/output.out": "2",
+		"turma/caso_001/extra.txt":  "material",
+	})
+
+	cases, _, err := ParseBatchTestCaseArchive(archive)
+	if err != nil {
+		t.Fatalf("ParseBatchTestCaseArchive: %v", err)
+	}
+	if len(cases) != 1 {
+		t.Fatalf("got %d cases, want 1", len(cases))
+	}
+	if cases[0].Folder != "caso_001" || len(cases[0].ExtraFiles) != 1 {
+		t.Fatalf("unexpected case: %+v", cases[0])
+	}
+}
+
+func TestParseBatchTestCaseArchiveKeepsSingleCaseFolderIntact(t *testing.T) {
+	archive := zipWith(t, map[string]string{
+		"caso_001/input.in":   "1",
+		"caso_001/output.out": "2",
+		"caso_001/extra.txt":  "material",
+		"caso_001/files/x.in": "extra",
+	})
+
+	cases, ignored, err := ParseBatchTestCaseArchive(archive)
+	if err != nil {
+		t.Fatalf("ParseBatchTestCaseArchive: %v", err)
+	}
+	if len(ignored) != 0 {
+		t.Fatalf("ignored = %v, want none", ignored)
+	}
+	if len(cases) != 1 {
+		t.Fatalf("got %d cases, want 1", len(cases))
+	}
+	if cases[0].Folder != "caso_001" || len(cases[0].ExtraFiles) != 2 {
+		t.Fatalf("single case folder lost its extras: %+v", cases[0])
+	}
+}
+
 func TestParseBatchTestCaseArchivePairsRootFiles(t *testing.T) {
 	archive := zipWith(t, map[string]string{
 		"1.in":      "um",

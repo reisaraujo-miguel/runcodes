@@ -195,23 +195,84 @@ ignored and returned in the second value, so the caller can tell the professor
 what the import skipped. Inside a case folder every other file is an extra case
 file, and a `files/` subfolder holds extras whose names end in `.in` or `.out`.
 
+When the archive is not valid as written and every entry lives inside a single
+top-level folder, that folder is treated as the root and the archive is parsed
+again. This is what happens when someone zips the folder holding the cases
+instead of selecting the files inside it. The second attempt only wins if it
+produces cases, so a single case folder keeps its extras and its error messages.
+
 The second return value is the sorted list of ignored root files; it is empty
 when every root file was used.
 */
 func ParseBatchTestCaseArchive(data []byte) ([]batchTestCase, []string, error) {
-	entries, err := readBatchArchive(data)
+	entries, rootFolder, err := readBatchArchive(data, false)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	cases, err := entries.testCases()
-	if err != nil {
+	if err == nil {
+		return cases, sortedIgnored(entries), nil
+	}
+
+	// Retry when the whole archive sits inside one top-level folder. This is
+	// what happens when someone zips the folder holding the cases instead of
+	// selecting the files inside it.
+	if rootFolder == "" {
 		return nil, nil, err
 	}
 
+	unwrapped, _, readErr := readBatchArchive(data, true)
+	if readErr != nil {
+		return nil, nil, err
+	}
+	cases, unwrapErr := unwrapped.testCases()
+	if unwrapErr != nil {
+		return nil, nil, err
+	}
+	return cases, sortedIgnored(unwrapped), nil
+}
+
+// sortedIgnored returns the archive's ignored root entries in a stable order.
+func sortedIgnored(entries *batchArchiveEntries) []string {
 	ignored := append([]string(nil), entries.ignored...)
 	sort.Strings(ignored)
-	return cases, ignored, nil
+	return ignored
+}
+
+/*
+batchArchiveRootFolder returns the only top-level folder of the archive, or ""
+when the archive has entries at its root or more than one top-level folder.
+
+An archive whose root already holds a case file cannot be wrapped: treating its
+folder as the root would mix both levels. Files the importer ignores anyway, such
+as a README beside the folder, do not prevent the folder from being detected.
+*/
+func batchArchiveRootFolder(files []*zip.File) string {
+	folder := ""
+	for _, file := range files {
+		if file.FileInfo().IsDir() {
+			continue
+		}
+		segments, ok := normalizeArchivePath(file.Name)
+		if !ok || ignoredArchiveEntry(segments) {
+			continue
+		}
+		if len(segments) == 1 {
+			if caseFileExtension(segments[0]) != "" {
+				return ""
+			}
+			continue
+		}
+		if folder == "" {
+			folder = segments[0]
+			continue
+		}
+		if segments[0] != folder {
+			return ""
+		}
+	}
+	return folder
 }
 
 // batchArchiveEntries is the raw content of an archive, grouped before it is
@@ -230,23 +291,29 @@ type batchArchiveEntries struct {
 
 /*
 readBatchArchive validates the zip container and groups its entries. Only the
-structure is checked here; pairing the files is testCases' job.
+structure is checked here; pairing the files is testCases' job. When unwrapRoot
+is set, a single top-level folder that wraps the whole archive is dropped first.
+The second result is that folder, empty when the archive has none.
 */
-func readBatchArchive(data []byte) (*batchArchiveEntries, error) {
+func readBatchArchive(
+	data []byte, unwrapRoot bool,
+) (*batchArchiveEntries, string, error) {
 	if len(data) == 0 {
-		return nil, fmt.Errorf("%w: the archive is empty", ErrInvalidArchive)
+		return nil, "", fmt.Errorf("%w: the archive is empty", ErrInvalidArchive)
 	}
 	if len(data) > MaxBatchArchiveBytes {
-		return nil, ErrArchiveTooLarge
+		return nil, "", ErrArchiveTooLarge
 	}
 
 	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidArchive, err)
+		return nil, "", fmt.Errorf("%w: %v", ErrInvalidArchive, err)
 	}
 	if len(reader.File) > MaxBatchEntries {
-		return nil, fmt.Errorf("%w: too many entries", ErrArchiveTooLarge)
+		return nil, "", fmt.Errorf("%w: too many entries", ErrArchiveTooLarge)
 	}
+
+	rootFolder := batchArchiveRootFolder(reader.File)
 
 	entries := &batchArchiveEntries{
 		folders:      make(map[string]map[string][]byte),
@@ -271,29 +338,33 @@ func readBatchArchive(data []byte) (*batchArchiveEntries, error) {
 		if ignoredArchiveEntry(segments) {
 			continue
 		}
+		if unwrapRoot && rootFolder != "" && len(segments) > 1 &&
+			segments[0] == rootFolder {
+			segments = segments[1:]
+		}
 
 		// Count every entry, including the ignored ones, so the expanded size
 		// stays a real bound on what the archive could unpack to.
 		expanded += int64(file.UncompressedSize64)
 		if expanded > MaxBatchExpandedBytes {
-			return nil, ErrArchiveTooLarge
+			return nil, "", ErrArchiveTooLarge
 		}
 
 		switch {
 		case len(segments) == 1:
 			if err := entries.addRootEntry(file, segments[0]); err != nil {
-				return nil, err
+				return nil, "", err
 			}
 		case len(segments) == 2:
 			content, err := readZipEntry(file)
 			if err != nil {
-				return nil, err
+				return nil, "", err
 			}
 			addArchiveFile(entries.folders, segments[0], segments[1], content)
 		case len(segments) == 3 && segments[1] == "files":
 			content, err := readZipEntry(file)
 			if err != nil {
-				return nil, err
+				return nil, "", err
 			}
 			addArchiveFile(entries.extraFolders, segments[0], segments[2], content)
 		default:
@@ -304,7 +375,7 @@ func readBatchArchive(data []byte) (*batchArchiveEntries, error) {
 		}
 	}
 
-	return entries, nil
+	return entries, rootFolder, nil
 }
 
 /*
