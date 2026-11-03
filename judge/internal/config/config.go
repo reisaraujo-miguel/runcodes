@@ -48,15 +48,14 @@ type Config struct {
 	// when the judge runs in a container while podman runs on the host.
 	ExecDirRemote string
 
-	// CompilationTimeout is the compilation limit the container is told to enforce,
-	// in seconds. Zero (the default) writes nothing and leaves each language image's
-	// own value in place; a positive value overrides every language.
+	// CompilationTimeout is the compilation limit the container is told to
+	// enforce. The runner images no longer carry a per-language default, so this
+	// is the only compilation budget the harness gets and it must be positive.
 	CompilationTimeout time.Duration
 	// CompilationWait is how long the judge waits for the compilation milestones.
-	// It is the judge's patience, not the container's limit: it must outlast the
-	// compilation timeout the image runs under (the images' largest is 60s) plus
-	// container startup, or the judge gives up on a compilation the container is
-	// still allowed to finish.
+	// It is the judge's patience, not the container's limit: it must outlast
+	// CompilationTimeout plus container startup, or the judge gives up on a
+	// compilation the container is still allowed to finish.
 	CompilationWait    time.Duration
 	BaseExecTimeout    time.Duration
 	DefaultCaseTimeout time.Duration
@@ -204,9 +203,9 @@ func Load() (*Config, error) {
 		ExecDir:        env("JUDGE_EXEC_DIR", filepath.Join(os.TempDir(), "runcodes-judge")),
 		KeepWorkspaces: envBool("JUDGE_KEEP_WORKSPACES", false),
 
-		// 0 leaves each language image's own compilation timeout in place: 10s for most
-		// languages, 60s for Go, C# and Julia, 20s for Zig. A language knows how long
-		// its compiler needs better than a single deployment-wide number does.
+		// The harness always runs the compiler under this budget, so the default
+		// matches the platform's documented 60s compilation limit. A deployment
+		// that needs longer raises it together with JUDGE_COMPILATION_WAIT.
 		CompilationTimeout: envDuration("JUDGE_DEFAULT_COMPILATION_TIMEOUT", 60*time.Second),
 		CompilationWait:    envDuration("JUDGE_COMPILATION_WAIT", 2*time.Minute),
 		// A container prints its first milestone within a second on a healthy
@@ -298,9 +297,11 @@ func (c *Config) validate() error {
 		return fmt.Errorf("monitor limits must not be negative")
 	}
 
-	// Bounded because the judge also waits this long for the compilation milestones.
-	if c.CompilationTimeout < 0 {
-		return fmt.Errorf("JUDGE_DEFAULT_COMPILATION_TIMEOUT must not be negative")
+	// The harness requires a positive value: `timeout 0` disables the harness
+	// bound entirely, which leaves a wedged compiler to the judge's wait and turns
+	// a compilation timeout into a milestone timeout.
+	if c.CompilationTimeout <= 0 {
+		return fmt.Errorf("JUDGE_DEFAULT_COMPILATION_TIMEOUT must be positive")
 	}
 
 	if c.CompilationWait <= 0 {
@@ -325,7 +326,7 @@ func (c *Config) validate() error {
 	// A judge that waits less than the container may compile gives up first, and the
 	// run fails with a milestone timeout instead of reporting the compilation error
 	// the student needs to see. Equal values race, so the wait has to be longer.
-	if c.CompilationTimeout > 0 && c.CompilationWait <= c.CompilationTimeout {
+	if c.CompilationWait <= c.CompilationTimeout {
 		return fmt.Errorf(
 			"JUDGE_COMPILATION_WAIT (%s) must exceed JUDGE_DEFAULT_COMPILATION_TIMEOUT (%s)",
 			c.CompilationWait, c.CompilationTimeout,

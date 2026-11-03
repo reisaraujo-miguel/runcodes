@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"html"
 	"log/slog"
@@ -65,19 +66,12 @@ func limitReason(limit string) string {
 	return ""
 }
 
-// limitAlertCase is one test case the alert's failures were concentrated in,
-// numbered the way the exercise page numbers its cases.
-type limitAlertCase struct {
-	Number   int
-	Failures int
-}
-
 // alertCaseLimit caps how many cases the email names, so an exercise where every
 // case fails still produces a short message.
 const alertCaseLimit = 5
 
 // formatLimitAlertCases renders the affected cases for the email body.
-func formatLimitAlertCases(cases []limitAlertCase) string {
+func formatLimitAlertCases(cases []models.LimitAlertCase) string {
 	if len(cases) == 0 {
 		return ""
 	}
@@ -253,15 +247,31 @@ func raiseLimitAlert(ctx context.Context, group limitFailureGroup, cfg config.Li
 		}
 	}
 
+	// The cases are part of the alert: the email names them, and the in-app alert
+	// reads them back from the record instead of re-aggregating a window that may
+	// still be filling.
+	cases := limitAlertCases(ctx, group, exerciseID)
+	if cases == nil {
+		cases = []models.LimitAlertCase{}
+	}
+	casesJSON, err := json.Marshal(cases)
+	if err != nil {
+		slog.ErrorContext(ctx, "error encoding the limit alert cases",
+			slog.Int64("exercise_id", exerciseID),
+			slog.String("error", err.Error()),
+		)
+		return
+	}
+
 	var alertID int64
 	if err := database.DB.QueryRowContext(ctx, `
 		INSERT INTO exercise_limit_alerts
-		    (exercise_id, allowed_file_type_id, limit_name, failures,
+		    (exercise_id, allowed_file_type_id, limit_name, failures, cases,
 		     window_started_at, window_ended_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
 		RETURNING id`,
 		exerciseID, group.AllowedFileTypeID, group.LimitName, group.Failures,
-		group.WindowStart, group.WindowEnd,
+		string(casesJSON), group.WindowStart, group.WindowEnd,
 	).Scan(&alertID); err != nil {
 		slog.ErrorContext(ctx, "error recording a limit alert",
 			slog.Int64("exercise_id", exerciseID),
@@ -280,7 +290,6 @@ func raiseLimitAlert(ctx context.Context, group limitFailureGroup, cfg config.Li
 	if authorEmail == "" {
 		return
 	}
-	cases := limitAlertCases(ctx, group, exerciseID)
 	sendLimitAlertEmail(ctx, group, cases, alertID, exerciseID,
 		title, offeringName, languageName, authorEmail)
 }
@@ -309,7 +318,7 @@ the real exercise's cases, so the numbers match the results panel).
 */
 func limitAlertCases(
 	ctx context.Context, group limitFailureGroup, exerciseID int64,
-) []limitAlertCase {
+) []models.LimitAlertCase {
 	reason := limitReason(group.LimitName)
 	if reason == "" {
 		return nil
@@ -342,9 +351,9 @@ func limitAlertCases(
 	}
 	defer rows.Close()
 
-	cases := make([]limitAlertCase, 0, 4)
+	cases := make([]models.LimitAlertCase, 0, 4)
 	for rows.Next() {
-		var affected limitAlertCase
+		var affected models.LimitAlertCase
 		if err := rows.Scan(&affected.Number, &affected.Failures); err != nil {
 			slog.ErrorContext(ctx, "error scanning an affected test case",
 				slog.String("error", err.Error()),
@@ -367,7 +376,7 @@ func limitAlertCases(
 // submissions it caught and which test cases it is concentrated in, with a link
 // to the limits tab.
 func sendLimitAlertEmail(
-	ctx context.Context, group limitFailureGroup, cases []limitAlertCase,
+	ctx context.Context, group limitFailureGroup, cases []models.LimitAlertCase,
 	alertID, exerciseID int64,
 	title, offeringName, languageName, recipient string,
 ) {
@@ -449,7 +458,8 @@ func ListExerciseLimitAlerts(
 
 	rows, err := database.DB.QueryContext(ctx, `
 		SELECT a.id, a.exercise_id, a.allowed_file_type_id, aft.name,
-		       a.limit_name, a.failures, a.window_started_at, a.window_ended_at,
+		       a.limit_name, a.failures, a.cases,
+		       a.window_started_at, a.window_ended_at,
 		       a.created_at, a.acknowledged_at
 		FROM exercise_limit_alerts a
 		LEFT JOIN allowed_file_types aft ON aft.id = a.allowed_file_type_id
@@ -466,14 +476,28 @@ func ListExerciseLimitAlerts(
 
 	alerts := make([]models.ExerciseLimitAlert, 0, 4)
 	for rows.Next() {
-		var alert models.ExerciseLimitAlert
+		var (
+			alert    models.ExerciseLimitAlert
+			casesRaw []byte
+		)
 		if err := rows.Scan(
 			&alert.ID, &alert.ExerciseID, &alert.AllowedFileTypeID,
-			&alert.LanguageName, &alert.LimitName, &alert.Failures,
+			&alert.LanguageName, &alert.LimitName, &alert.Failures, &casesRaw,
 			&alert.WindowStartedAt, &alert.WindowEndedAt, &alert.CreatedAt,
 			&alert.AcknowledgedAt,
 		); err != nil {
 			return nil, ErrServer
+		}
+		// The column is NOT NULL with an array default, so a reader can always
+		// treat the field as a list; a row that does not decode is logged and
+		// reported as "no case detail" instead of leaking a null to the client.
+		alert.Cases = []models.LimitAlertCase{}
+		if err := json.Unmarshal(casesRaw, &alert.Cases); err != nil {
+			slog.ErrorContext(ctx, "error decoding the limit alert cases",
+				slog.Int64("alert_id", alert.ID),
+				slog.String("error", err.Error()),
+			)
+			alert.Cases = []models.LimitAlertCase{}
 		}
 		alerts = append(alerts, alert)
 	}

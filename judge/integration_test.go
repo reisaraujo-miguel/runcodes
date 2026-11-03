@@ -185,10 +185,9 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 	}
 	if err := db.QueryRowContext(ctx, `
 		INSERT INTO exercises_test_cases
-		    (exercise_id, input, input_type, expected_output, expected_output_type,
-		     cpu_time_limit_seconds, mem_usage_limit_bytes, stack_limit_bytes, file_size_limit_bytes)
-		VALUES ($1, '', 'text', 'hello', 'text', 5, $2, 0, 0)
-		RETURNING id`, exerciseID, 256*1024*1024).Scan(&caseID); err != nil {
+		    (exercise_id, input, input_type, expected_output, expected_output_type)
+		VALUES ($1, '', 'text', 'hello', 'text')
+		RETURNING id`, exerciseID).Scan(&caseID); err != nil {
 		t.Fatalf("insert test case: %v", err)
 	}
 
@@ -198,6 +197,16 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 		VALUES ($1, $2, 'queued', $3)
 		RETURNING id`, userID, exerciseID, sourceKey).Scan(&commitID); err != nil {
 		t.Fatalf("insert commit: %v", err)
+	}
+	// The judge grades against the frozen snapshot the backend writes when it
+	// queues a commit, so the fixture has to write one too. Without it the judge
+	// would refuse the run instead of guessing the limits.
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO commit_test_case_limits
+		    (commit_id, exercise_test_case_id, cpu_time_limit_seconds,
+		     mem_usage_limit_bytes, stack_limit_bytes, file_size_limit_bytes)
+		VALUES ($1, $2, 5, $3, 0, 0)`, commitID, caseID, 256*1024*1024); err != nil {
+		t.Fatalf("insert commit limits snapshot: %v", err)
 	}
 
 	putObject(ctx, t, s3client, s3cfg.CommitsBucket(), sourceKey, []byte(fixture.source))

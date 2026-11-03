@@ -699,17 +699,13 @@ func CreateTestCasesBatch(
 		err := tx.QueryRowContext(ctx, `
 			INSERT INTO exercises_test_cases
 			    (exercise_id, input, input_type, show_input, expected_output,
-			     expected_output_type, show_expected_output, show_user_output,
-			     cpu_time_limit_seconds, mem_usage_limit_bytes,
-			     stack_limit_bytes, file_size_limit_bytes)
+			     expected_output_type, show_expected_output, show_user_output)
 			VALUES ($1, $2, $3::input_output_type_t, $4, $5,
-			        $6::input_output_type_t, $7, $8, $9, $10, $11, $12)
+			        $6::input_output_type_t, $7, $8)
 			RETURNING id`,
 			authoringID, inputColumn, config.InputType, config.ShowInput,
 			outputColumn, config.ExpectedOutputType, config.ShowExpectedOutput,
-			config.ShowUserOutput, config.CPUTimeLimitSeconds,
-			config.MemUsageLimitBytes, config.StackLimitBytes,
-			config.FileSizeLimitBytes,
+			config.ShowUserOutput,
 		).Scan(&caseID)
 		if err != nil {
 			slog.ErrorContext(ctx, "error inserting a batch test case",

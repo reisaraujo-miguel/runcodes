@@ -57,9 +57,9 @@ A language script only sets `compilation_command` / `run_command` and calls
   faking them;
 - running the compiler and each test case through the monitor, passing the
   per-case limits (`ms_<id>`, `fs_<id>`, `stack_<id>`) and timeout (`t_<id>`);
-- preferring the global limits the judge sends (`monitor_max_fs`,
-  `monitor_max_ms`, `compilation_timeout`) over the defaults each language
-  script assigns;
+- snapshotting the global limits the judge sends (`monitor_max_fs`,
+  `monitor_max_ms`, `compilation_timeout`) before the language script is sourced,
+  so a script that still assigns one cannot override the platform policy;
 - killing whatever the submission left running after each case and after
   compilation.
 
@@ -118,20 +118,22 @@ The judge maps a submission's extension to an image name; the mapping (including
 compound extensions such as `main.omp.c`) lives in `judge/internal/language`.
 See [Languages & images](../reference/languages.md) for the extension matrix.
 
-## Image-side defaults and precedence
+## Where the limits come from
 
-Language scripts set their own defaults for some limits. For example,
-`monitor_max_ms` is 1 GiB for Python, most JVM images set none, Go and C# compile
-with a 60 s timeout, and Zig uses 20 s. These are **defaults**: a value the judge
-writes wins.
+The images carry no limit defaults of their own. The backend resolves the
+platform, exercise and test-case layers when a submission is queued, freezes them
+in the commit's limits snapshot, and the judge writes every value the harness
+applies into `container.config`. A missing key is a broken invocation, not a
+value to guess: the same exercise no longer behaves differently depending on
+which language image ran it.
 
 Two ordering constraints apply:
 
-- keep every image memory default **below** `JUDGE_CONTAINER_MEMORY_BYTES`, or a
-  run that exceeds it is killed by the cgroup and reported as a signal instead of
-  as a memory limit;
-- keep `JUDGE_COMPILATION_WAIT` **above** the largest `compilation_timeout`
-  (60 s), or the judge gives up on a compilation the container may still finish.
+- keep the case byte limits **below** `JUDGE_CONTAINER_MEMORY_BYTES`, or a run
+  that exceeds the cgroup is killed and reported as a signal instead of as a
+  memory limit;
+- keep `JUDGE_COMPILATION_WAIT` **above** `JUDGE_DEFAULT_COMPILATION_TIMEOUT`, or
+  the judge gives up on a compilation the container may still finish.
 
 ## The monitor
 

@@ -253,11 +253,12 @@ func TestLoadRejectsCompilationWaitShorterThanTheLimit(t *testing.T) {
 		t.Fatalf("Load with a longer wait: %v", err)
 	}
 
-	// With no override the wait stands alone: the image's limit is not known here.
+	// The runner images no longer carry a per-language default, so zero is
+	// rejected instead of leaving the harness without a compilation budget.
 	t.Setenv("JUDGE_DEFAULT_COMPILATION_TIMEOUT", "0")
 	t.Setenv("JUDGE_COMPILATION_WAIT", "30s")
-	if _, err := Load(); err != nil {
-		t.Fatalf("Load without a compilation limit: %v", err)
+	if _, err := Load(); err == nil {
+		t.Fatal("expected an error for a zero compilation timeout")
 	}
 }
 

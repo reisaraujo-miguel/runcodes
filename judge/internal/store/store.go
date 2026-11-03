@@ -244,6 +244,27 @@ func (s *Store) FetchTestCases(ctx context.Context, commitID, exerciseID int64) 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate test cases: %w", err)
 	} else if len(cases) == 0 {
+		// The join above drops a case whose snapshot row is missing, and grading
+		// zero cases would report an ungraded run as if the exercise had none. A
+		// commit queued before the snapshot existed (or by a node that predates
+		// it) lands here, so say so instead of finalizing in silence.
+		var unsnapshotted int
+		if err := s.db.QueryRowContext(ctx, `
+			SELECT count(*)
+			FROM exercises_test_cases tc
+			WHERE tc.exercise_id = $1
+			  AND NOT EXISTS (
+			      SELECT 1 FROM commit_test_case_limits cl
+			      WHERE cl.commit_id = $2 AND cl.exercise_test_case_id = tc.id
+			  )`, exerciseID, commitID).Scan(&unsnapshotted); err != nil {
+			return nil, fmt.Errorf("check the limit snapshot: %w", err)
+		}
+		if unsnapshotted > 0 {
+			return nil, fmt.Errorf(
+				"commit %d has no limits snapshot for exercise %d (%d case(s) missing)",
+				commitID, exerciseID, unsnapshotted,
+			)
+		}
 		return cases, nil
 	}
 

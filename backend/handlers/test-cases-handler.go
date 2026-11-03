@@ -114,6 +114,16 @@ one entry per allowed language, with a null field meaning "inherit". The array i
 the whole set, so an entry left out clears that language's override.
 */
 func parseLanguageLimits(raw string) ([]models.LanguageLimits, error) {
+	return decodeLanguageLimits(strings.NewReader(raw))
+}
+
+/*
+decodeLanguageLimits reads the flat per-language payload shared by the test-case
+form and the exercise defaults endpoint: one entry per allowed language, with the
+same four limit fields at the top level. Both write paths go through this decoder
+so they cannot drift into accepting different shapes.
+*/
+func decodeLanguageLimits(reader io.Reader) ([]models.LanguageLimits, error) {
 	var payload []struct {
 		AllowedFileTypeID   int64  `json:"allowed_file_type_id"`
 		CPUTimeLimitSeconds *int   `json:"cpu_time_limit_seconds"`
@@ -121,7 +131,7 @@ func parseLanguageLimits(raw string) ([]models.LanguageLimits, error) {
 		StackLimitBytes     *int64 `json:"stack_limit_bytes"`
 		FileSizeLimitBytes  *int64 `json:"file_size_limit_bytes"`
 	}
-	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder := json.NewDecoder(reader)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&payload); err != nil {
 		return nil, services.ErrInvalidLimits

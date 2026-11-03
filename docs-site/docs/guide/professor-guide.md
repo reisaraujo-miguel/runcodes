@@ -294,10 +294,11 @@ stores and compares it, not how the program opens it.
   output is compared with stdout byte for byte. If the program writes its answer
   to a file instead of stdout, it will not be compared and the case fails.
 - Whatever the program writes into its working directory is collected after the
-  case and packed into the submission's artifact zip, with its relative path
-  (`case_<id>/…`). Students can download that zip from the results panel when the
-  student output is released; the files are bounded by the case's file-size
-  limit.
+  case and packed into the submission's artifact zip under `test_<id>/`, where
+  `<id>` is the case's id in the results, so two cases writing the same file name
+  do not collide. Students can download that zip from the results panel when the
+  student output is released, and also each case's files from its own tab; the
+  files are bounded by the case's file-size limit.
 
 ### Limits
 

@@ -77,9 +77,7 @@ export interface LimitOverrides {
 }
 
 /** The platform-wide defaults, the last layer of the chain. */
-export interface PlatformLimits extends LimitValues {
-  compilation_timeout_seconds: number;
-}
+export type PlatformLimits = LimitValues;
 
 /** One language of an exercise, with its override and the values that apply. */
 export interface LanguageLimits {
@@ -286,6 +284,12 @@ export function deleteTestCase(
   );
 }
 
+/** One test case a limit alert's failures were concentrated in. */
+export interface LimitAlertCase {
+  number: number;
+  failures: number;
+}
+
 /** A warning that a language has been failing submissions because of a limit. */
 export interface ExerciseLimitAlert {
   id: number;
@@ -294,6 +298,8 @@ export interface ExerciseLimitAlert {
   language_name: string | null;
   limit_name: string;
   failures: number;
+  /** The affected cases, worst first; empty when none could be attributed. */
+  cases: LimitAlertCase[];
   window_started_at: string;
   window_ended_at: string;
   created_at: string;

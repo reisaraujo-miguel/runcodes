@@ -260,6 +260,46 @@ func TestParseTestCaseInputLanguageLimits(t *testing.T) {
 	}
 }
 
+// The exercise defaults endpoint takes the same JSON body the test-case form
+// sends: the limit fields are flat, not nested under "overrides". Decoding the
+// model directly would reject every non-empty save, which is what this pins.
+func TestDecodeLanguageLimitsAcceptsTheFlatBody(t *testing.T) {
+	limits, err := decodeLanguageLimits(strings.NewReader(`[
+		{"allowed_file_type_id": 3, "cpu_time_limit_seconds": 2,
+		 "mem_usage_limit_bytes": null, "stack_limit_bytes": 0,
+		 "file_size_limit_bytes": null}
+	]`))
+	if err != nil {
+		t.Fatalf("decodeLanguageLimits: %v", err)
+	}
+	if len(limits) != 1 || limits[0].AllowedFileTypeID != 3 {
+		t.Fatalf("limits = %+v, want one entry for language 3", limits)
+	}
+	overrides := limits[0].Overrides
+	if overrides.CPUTimeLimitSeconds == nil || *overrides.CPUTimeLimitSeconds != 2 {
+		t.Fatalf("cpu override = %v, want 2", overrides.CPUTimeLimitSeconds)
+	}
+	if overrides.MemUsageLimitBytes != nil {
+		t.Fatalf("memory override = %v, want nil (inherit)", *overrides.MemUsageLimitBytes)
+	}
+	if overrides.StackLimitBytes == nil || *overrides.StackLimitBytes != 0 {
+		t.Fatalf("stack override = %v, want the explicit no-limit zero", overrides.StackLimitBytes)
+	}
+
+	// The nested shape is the model's own, not the wire contract: accepting it
+	// would let the two endpoints drift apart again.
+	if _, err := decodeLanguageLimits(strings.NewReader(
+		`[{"allowed_file_type_id": 3, "overrides": {"cpu_time_limit_seconds": 2}}]`,
+	)); err == nil {
+		t.Fatal("the nested overrides shape must be rejected")
+	}
+	if _, err := decodeLanguageLimits(strings.NewReader(
+		`{"allowed_file_type_id": 3}`,
+	)); err == nil {
+		t.Fatal("a non-array body must be rejected")
+	}
+}
+
 func TestIsClientInputError(t *testing.T) {
 	if !isClientInputError(services.ErrInvalidExercise) {
 		t.Fatal("ErrInvalidExercise should be a client input error")

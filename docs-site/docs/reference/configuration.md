@@ -100,13 +100,14 @@ sets a value. They replace the per-image limits the runner images used to carry.
 | `RUNCODES_DEFAULT_MEM_USAGE_LIMIT_BYTES` | `536870912` (512 MiB) | address-space cap; `0` = no limit |
 | `RUNCODES_DEFAULT_STACK_LIMIT_BYTES` | `0` | stack cap; `0` = system default |
 | `RUNCODES_DEFAULT_FILE_SIZE_LIMIT_BYTES` | `268435456` (256 MiB) | largest file a case may write |
-| `RUNCODES_DEFAULT_COMPILATION_TIMEOUT_SECONDS` | `60` | compilation budget |
 | `RUNCODES_LIMIT_ALERT_THRESHOLD` | `5` | submissions failing on one exercise/language/limit before the author is warned |
 | `RUNCODES_LIMIT_ALERT_WINDOW` | `1h` | how far back the failures are counted |
 | `RUNCODES_LIMIT_ALERT_COOLDOWN` | `6h` | minimum gap between two alerts for the same exercise/language/limit |
 
-The CPU time and the compilation timeout must be positive; the byte limits may be
-zero (no limit) but not negative.
+The CPU time must be positive; the byte limits may be zero (no limit) but not
+negative. The compilation budget is the judge's `JUDGE_DEFAULT_COMPILATION_TIMEOUT`:
+it is not a per-case limit the resolution chain can inherit, so it is not part of
+this API.
 
 ### Generated files
 
@@ -205,7 +206,7 @@ for example `registry.example.com/team/runners/%s:edge`.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `JUDGE_DEFAULT_COMPILATION_TIMEOUT` | `60s` | compilation budget sent to the container |
+| `JUDGE_DEFAULT_COMPILATION_TIMEOUT` | `60s` | compilation budget sent to the container; must be positive |
 | `JUDGE_COMPILATION_WAIT` | `2m` | judge's patience for compilation milestones |
 | `JUDGE_STARTUP_WAIT` | `30s` | the container's first milestone; a wedged container fails here |
 | `JUDGE_DEFAULT_EXEC_TIMEOUT` | `5s` | default execution timeout |
@@ -228,8 +229,9 @@ for example `registry.example.com/team/runners/%s:edge`.
 
 Validation rules:
 
-- `JUDGE_COMPILATION_WAIT` must be positive and, when
-  `JUDGE_DEFAULT_COMPILATION_TIMEOUT > 0`, strictly greater than it.
+- `JUDGE_COMPILATION_WAIT` must be positive and strictly greater than
+  `JUDGE_DEFAULT_COMPILATION_TIMEOUT`, which must also be positive: the harness
+  runs the compiler under `timeout` and the images carry no default of their own.
 - `JUDGE_STARTUP_WAIT` must be positive and must not exceed
   `JUDGE_COMPILATION_WAIT`: the first milestone happens before compilation
   starts, so a longer startup budget than the whole compilation wait means one of

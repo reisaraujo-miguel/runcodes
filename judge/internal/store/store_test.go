@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
 
@@ -242,6 +243,41 @@ func TestFetchTestCasesReadsInlineText(t *testing.T) {
 	}
 	if tc.ExpectedOutput != "3" || tc.ExpectedOutputType != "text" {
 		t.Fatalf("expected = %q/%q", tc.ExpectedOutput, tc.ExpectedOutputType)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A commit queued before its limit snapshot existed joins no test case, and
+// finalizing it would report an ungraded run as if the exercise had no cases.
+// The store refuses it instead, so the failure is visible in the run status.
+func TestFetchTestCasesRefusesACommitWithoutItsLimitSnapshot(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	mock.ExpectQuery(`SELECT tc.id, tc.exercise_id`).
+		WithArgs(int64(3), int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "exercise_id", "input_type", "input",
+			"expected_output_type", "expected_output",
+			"show_input", "show_expected_output", "show_user_output",
+			"cpu_time_limit_seconds", "mem_usage_limit_bytes",
+			"stack_limit_bytes", "file_size_limit_bytes",
+		}))
+	mock.ExpectQuery(`SELECT count\(\*\)`).
+		WithArgs(int64(3), int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(4))
+
+	_, err = NewWithDB(db).FetchTestCases(context.Background(), 9, 3)
+	if err == nil {
+		t.Fatal("FetchTestCases returned no error for a commit without a snapshot")
+	}
+	if !strings.Contains(err.Error(), "no limits snapshot") {
+		t.Fatalf("FetchTestCases error = %q, want the missing snapshot named", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

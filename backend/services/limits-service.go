@@ -41,7 +41,6 @@ func PlatformLimits() models.PlatformLimits {
 			StackLimitBytes:     limits.StackLimitBytes,
 			FileSizeLimitBytes:  limits.FileSizeLimitBytes,
 		},
-		CompilationTimeoutSeconds: limits.CompilationTimeoutSeconds,
 	}
 }
 
@@ -479,37 +478,55 @@ func InsertTestCaseLanguageLimits(
 }
 
 /*
-SnapshotCommitLimits freezes the limits a submission runs under. The language is
-the file type the backend matched at submission time; a submission with no match
-(an unknown extension) runs under the platform defaults. Grading reads this
-snapshot, so editing the exercise after a submission does not change it.
+SnapshotCommitLimits freezes the limits a submission runs under. Every value is
+read from the commit row itself: the exercise it was submitted to (resolving a
+ghost exercise to the one that owns the cases) and the language the backend
+matched at submission time. A submission with no language match runs under the
+platform defaults. Grading reads this snapshot, so editing the exercise after a
+submission does not change it.
+
+Every path that queues a commit must call this inside the same transaction, so a
+commit the judge can claim never lacks a snapshot. The call is idempotent, which
+lets a retry after a partial failure finish the rows it was missing.
 */
 func SnapshotCommitLimits(
-	ctx context.Context, tx *sql.Tx, commitID, exerciseID int64,
-	languageID *int64,
+	ctx context.Context, tx *sql.Tx, commitIDs []int64,
 ) error {
+	if len(commitIDs) == 0 {
+		return nil
+	}
+
 	platform := PlatformLimits()
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO commit_test_case_limits
 		    (commit_id, exercise_test_case_id, cpu_time_limit_seconds,
 		     mem_usage_limit_bytes, stack_limit_bytes, file_size_limit_bytes)
-		SELECT $1, tc.id,
-		       COALESCE(tcl.cpu_time_limit_seconds, ell.cpu_time_limit_seconds, $3),
-		       COALESCE(tcl.mem_usage_limit_bytes, ell.mem_usage_limit_bytes, $4),
-		       COALESCE(tcl.stack_limit_bytes, ell.stack_limit_bytes, $5),
-		       COALESCE(tcl.file_size_limit_bytes, ell.file_size_limit_bytes, $6)
-		FROM exercises_test_cases tc
+		SELECT c.id, tc.id,
+		       COALESCE(tcl.cpu_time_limit_seconds, ell.cpu_time_limit_seconds, $1),
+		       COALESCE(tcl.mem_usage_limit_bytes, ell.mem_usage_limit_bytes, $2),
+		       COALESCE(tcl.stack_limit_bytes, ell.stack_limit_bytes, $3),
+		       COALESCE(tcl.file_size_limit_bytes, ell.file_size_limit_bytes, $4)
+		FROM commits c
+		JOIN exercises e ON e.id = c.exercise_id
+		JOIN exercises_test_cases tc
+		  ON tc.exercise_id = CASE
+		       WHEN e.ghost AND e.real_id IS NOT NULL THEN e.real_id
+		       ELSE e.id
+		     END
 		LEFT JOIN test_case_language_limits tcl
-		  ON tcl.exercise_test_case_id = tc.id AND tcl.allowed_file_type_id = $2
+		  ON tcl.exercise_test_case_id = tc.id
+		 AND tcl.allowed_file_type_id = c.allowed_file_type_id
 		LEFT JOIN exercise_language_limits ell
-		  ON ell.exercise_id = tc.exercise_id AND ell.allowed_file_type_id = $2
-		WHERE tc.exercise_id = $7`,
-		commitID, languageID,
+		  ON ell.exercise_id = tc.exercise_id
+		 AND ell.allowed_file_type_id = c.allowed_file_type_id
+		WHERE c.id = ANY($5)
+		ON CONFLICT DO NOTHING`,
 		platform.CPUTimeLimitSeconds, platform.MemUsageLimitBytes,
-		platform.StackLimitBytes, platform.FileSizeLimitBytes, exerciseID,
+		platform.StackLimitBytes, platform.FileSizeLimitBytes,
+		pq.Array(commitIDs),
 	); err != nil {
 		slog.ErrorContext(ctx, "error snapshotting the commit limits",
-			slog.Int64("commit_id", commitID),
+			slog.Any("commit_ids", commitIDs),
 			slog.String("error", err.Error()),
 		)
 		return ErrServer

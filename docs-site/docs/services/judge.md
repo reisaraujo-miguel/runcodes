@@ -152,16 +152,20 @@ The workspace is bind-mounted at `/root`. The image's `CMD /usr/bin/runcodes`
 sources `container.config` from there. The judge writes:
 
 ```ini
-monitor_max_fs=5242880        # only when JUDGE_MONITOR_MAX_FILE_SIZE is set
-monitor_max_ms=268435456      # only when JUDGE_MONITOR_MAX_MEM_SIZE is set
-compilation_timeout=10        # only when JUDGE_DEFAULT_COMPILATION_TIMEOUT is set
+monitor_max_fs=5242880        # JUDGE_MONITOR_MAX_FILE_SIZE
+monitor_max_ms=268435456      # JUDGE_MONITOR_MAX_MEM_SIZE
+compilation_timeout=60        # JUDGE_DEFAULT_COMPILATION_TIMEOUT, always written
 run_nonce='7f3c…'
 src_file='submission.c'       # or the selected entry point inside a zip
 t_<case_id>=5                 # wall-clock seconds for the case
-ms_<case_id>=67108864         # address space, only when the exercise sets one
-fs_<case_id>=1048576          # file size, only when the exercise sets one
-stack_<case_id>=1048576       # stack, only when the exercise sets one
+ms_<case_id>=67108864         # address space, 0 = no limit
+fs_<case_id>=1048576          # file size, 0 = no limit
+stack_<case_id>=1048576       # stack, 0 = the system default
 ```
+
+Every key is written on every run, including a byte limit of `0`: the images
+carry no defaults of their own, so an omitted key would be a broken invocation
+rather than an inherited value.
 
 The harness expects the milestones `compilation.start`, `compilation.done`,
 `run.start`, `run.done` and `case.done <case_id>`, each printed with the run
@@ -209,13 +213,12 @@ The judge only pulls the image; the deployment must publish or mirror the
 runner images under the configured registry. See
 [Languages & images](../reference/languages.md#image-names).
 
-These globals override the image's own defaults. The language script is appended
-to the base script and assigns `monitor_max_fs`, `monitor_max_ms` and
-`compilation_timeout` itself (for example Python asks for 1 GiB). The harness
-snapshots the values it read before running the language script and prefers
-them, which is why the judge writes those three keys **only when the deployment
-sets them**: the per-language default belongs to the image, the per-case limit
-belongs to the exercise, and the deployment-wide value is an operator override.
+The language script is appended to the base script and may still assign
+`monitor_max_fs`, `monitor_max_ms` and `compilation_timeout` while it is sourced.
+The harness snapshots the values it read from `container.config` before running
+the language script and prefers them, so the judge's values always win: the
+platform defaults (and the per-case limits, resolved and frozen by the backend)
+are the policy, and the image no longer carries a default to fall back to.
 
 ### Why the nonce
 
@@ -296,7 +299,7 @@ controller at `/sys/fs/cgroup/memory`; the monitor reads
 | --- | --- | --- |
 | `JUDGE_COMPILATION_WAIT` | 2m | the judge's patience for compilation milestones |
 | `JUDGE_STARTUP_WAIT` | 30s | the container's first milestone; a wedged container fails here instead of consuming the compilation or execution budget |
-| `JUDGE_DEFAULT_COMPILATION_TIMEOUT` | 0 (image default) | container compilation timeout; 10s for most, 60s for Go/C#/Julia, 20s for Zig |
+| `JUDGE_DEFAULT_COMPILATION_TIMEOUT` | 60s | compilation budget the harness enforces; must be positive and below `JUDGE_COMPILATION_WAIT` |
 | `JUDGE_DEFAULT_EXEC_TIMEOUT` | 5s | default execution timeout |
 | `JUDGE_DEFAULT_CASE_TIMEOUT` | 3s | default per-case timeout |
 | `JUDGE_MAX_RUN_DURATION` | 30m | end-to-end budget for one claimed commit |

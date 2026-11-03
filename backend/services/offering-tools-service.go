@@ -411,12 +411,28 @@ func loadLatestSubmissionIDs(
 	return ids, nil
 }
 
+/*
+enqueueRecompilations queues a fresh commit for every source submission, copying
+the language the student submitted in so the new run resolves the same limits,
+and freezes that run's limits in the same transaction. A recompilation is a full
+grading run: without its snapshot the judge would find no test case to grade.
+*/
 func enqueueRecompilations(
 	ctx context.Context, sourceIDs []int64,
 ) ([]int64, error) {
-	rows, err := database.DB.QueryContext(ctx, `
-		INSERT INTO commits (user_id, exercise_id, status, s3_key)
-		SELECT user_id, exercise_id, 'queued', s3_key
+	tx, err := database.DB.BeginTx(ctx, nil)
+	if err != nil {
+		slog.ErrorContext(ctx, "error starting the recompilation transaction",
+			slog.String("error", err.Error()),
+		)
+		return nil, ErrServer
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.QueryContext(ctx, `
+		INSERT INTO commits
+		    (user_id, exercise_id, status, s3_key, allowed_file_type_id)
+		SELECT user_id, exercise_id, 'queued', s3_key, allowed_file_type_id
 		FROM commits
 		WHERE id = ANY($1)
 		  AND s3_key IS NOT NULL AND s3_key <> ''
@@ -427,17 +443,30 @@ func enqueueRecompilations(
 		)
 		return nil, ErrServer
 	}
-	defer rows.Close()
 
 	newIDs := make([]int64, 0, len(sourceIDs))
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
+			rows.Close()
 			return nil, ErrServer
 		}
 		newIDs = append(newIDs, id)
 	}
-	if err := rows.Err(); err != nil {
+	iterErr := rows.Err()
+	closeErr := rows.Close()
+	if iterErr != nil || closeErr != nil {
+		return nil, ErrServer
+	}
+
+	if err := SnapshotCommitLimits(ctx, tx, newIDs); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		slog.ErrorContext(ctx, "error committing the recompilations",
+			slog.String("error", err.Error()),
+		)
 		return nil, ErrServer
 	}
 	return newIDs, nil

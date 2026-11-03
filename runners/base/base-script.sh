@@ -291,11 +291,14 @@ run_tests() {
         # judge can then say so instead of silently omitting the downloads.
         case_files_dir="${outputfiles_dir}/case_${test_id}"
         mkdir -p "${case_files_dir}"
-        while IFS= read -r produced; do
+        # The walk is NUL-delimited: the program picks its own filenames, and a
+        # newline in one would otherwise split it into two paths and drop the
+        # file.
+        while IFS= read -r -d '' produced; do
             case_relative="${produced#"${test_dir}"/}"
             mkdir -p "${case_files_dir}/$(dirname "${case_relative}")"
             mv -f "${produced}" "${case_files_dir}/${case_relative}"
-        done < <(find "${test_dir}" -type f -newer "${test_id}.start")
+        done < <(find "${test_dir}" -type f -newer "${test_id}.start" -print0)
         rm -f -- "${test_id}.start"
 
         cp "${test_id}.monitor_out" "${outputfiles_dir}"

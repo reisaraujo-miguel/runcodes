@@ -59,12 +59,22 @@ type LanguageLimits struct {
 	Sources           LimitSources   `json:"sources"`
 }
 
-// PlatformLimits is the default set every language inherits.
+/*
+PlatformLimits is the default set every language inherits. It carries only the
+four per-case limits: the compilation budget is a judge deployment setting
+(JUDGE_DEFAULT_COMPILATION_TIMEOUT), not a value the resolution chain can
+override, so it is not advertised here as if the professor's layers could change
+it.
+*/
 type PlatformLimits struct {
 	Limits
-	// CompilationTimeoutSeconds is the time a compilation may take; it is not a
-	// test case limit, but it is part of the same policy.
-	CompilationTimeoutSeconds int `json:"compilation_timeout_seconds"`
+}
+
+// LimitAlertCase is one test case a limit alert's failures were concentrated
+// in, numbered the way the exercise page numbers its cases.
+type LimitAlertCase struct {
+	Number   int `json:"number"`
+	Failures int `json:"failures"`
 }
 
 // ExerciseLimitAlert is one warning shown to the exercise owner: submissions
@@ -75,10 +85,12 @@ type ExerciseLimitAlert struct {
 	AllowedFileTypeID *int64  `json:"allowed_file_type_id"`
 	LanguageName      *string `json:"language_name"`
 	// LimitName is cpu_time, memory, stack, file_size or timeout.
-	LimitName       string     `json:"limit_name"`
-	Failures        int        `json:"failures"`
-	WindowStartedAt time.Time  `json:"window_started_at"`
-	WindowEndedAt   time.Time  `json:"window_ended_at"`
-	CreatedAt       time.Time  `json:"created_at"`
-	AcknowledgedAt  *time.Time `json:"acknowledged_at,omitempty"`
+	LimitName string `json:"limit_name"`
+	Failures  int    `json:"failures"`
+	// Cases are the test cases most of those failures happened on, worst first.
+	Cases           []LimitAlertCase `json:"cases"`
+	WindowStartedAt time.Time        `json:"window_started_at"`
+	WindowEndedAt   time.Time        `json:"window_ended_at"`
+	CreatedAt       time.Time        `json:"created_at"`
+	AcknowledgedAt  *time.Time       `json:"acknowledged_at,omitempty"`
 }

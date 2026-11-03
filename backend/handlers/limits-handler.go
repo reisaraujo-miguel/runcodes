@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"net/http"
 
@@ -82,10 +81,10 @@ func ReplaceExerciseLanguageLimits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var limits []models.LanguageLimits
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&limits); err != nil {
+	// The body is the same flat per-language payload the test-case form sends, so
+	// both write paths share one decoder and one set of field names.
+	limits, err := decodeLanguageLimits(bytes.NewReader(body))
+	if err != nil {
 		WriteResponse(w, http.StatusUnprocessableEntity,
 			models.Error{Message: services.ErrInvalidLimits.Error()},
 		)

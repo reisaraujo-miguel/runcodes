@@ -85,11 +85,10 @@ type OutputFilesConfig struct {
 type LimitsConfig struct {
 	// Defaults apply to every language until the professor overrides them on the
 	// exercise or on a test case.
-	CPUTimeLimitSeconds       int
-	MemUsageLimitBytes        int64
-	StackLimitBytes           int64
-	FileSizeLimitBytes        int64
-	CompilationTimeoutSeconds int
+	CPUTimeLimitSeconds int
+	MemUsageLimitBytes  int64
+	StackLimitBytes     int64
+	FileSizeLimitBytes  int64
 
 	// AlertThreshold is how many submissions in AlertWindow must fail because of
 	// the same limit before the exercise owner hears about it; AlertCooldown
@@ -236,12 +235,6 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	defaultCompilationTimeout, err := envInt(
-		"RUNCODES_DEFAULT_COMPILATION_TIMEOUT_SECONDS", 60,
-	)
-	if err != nil {
-		return nil, err
-	}
 	limitAlertThreshold, err := envInt("RUNCODES_LIMIT_ALERT_THRESHOLD", 5)
 	if err != nil {
 		return nil, err
@@ -259,9 +252,6 @@ func Load() (*Config, error) {
 	}
 	if defaultMemLimit < 0 || defaultStackLimit < 0 || defaultFileSizeLimit < 0 {
 		return nil, fmt.Errorf("the default byte limits cannot be negative")
-	}
-	if defaultCompilationTimeout <= 0 {
-		return nil, fmt.Errorf("RUNCODES_DEFAULT_COMPILATION_TIMEOUT_SECONDS must be positive")
 	}
 	if limitAlertThreshold < 1 {
 		return nil, fmt.Errorf("RUNCODES_LIMIT_ALERT_THRESHOLD must be at least 1")
@@ -349,14 +339,13 @@ func Load() (*Config, error) {
 			TTL: outputFileTTL,
 		},
 		Limits: LimitsConfig{
-			CPUTimeLimitSeconds:       defaultCPULimit,
-			MemUsageLimitBytes:        int64(defaultMemLimit),
-			StackLimitBytes:           int64(defaultStackLimit),
-			FileSizeLimitBytes:        int64(defaultFileSizeLimit),
-			CompilationTimeoutSeconds: defaultCompilationTimeout,
-			AlertThreshold:            limitAlertThreshold,
-			AlertWindow:               limitAlertWindow,
-			AlertCooldown:             limitAlertCooldown,
+			CPUTimeLimitSeconds: defaultCPULimit,
+			MemUsageLimitBytes:  int64(defaultMemLimit),
+			StackLimitBytes:     int64(defaultStackLimit),
+			FileSizeLimitBytes:  int64(defaultFileSizeLimit),
+			AlertThreshold:      limitAlertThreshold,
+			AlertWindow:         limitAlertWindow,
+			AlertCooldown:       limitAlertCooldown,
 		},
 	}
 

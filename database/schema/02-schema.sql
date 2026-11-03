@@ -269,6 +269,10 @@ CREATE TABLE exercise_limit_alerts (
   limit_name text NOT NULL,
   -- How many submissions in the window failed because of it.
   failures int NOT NULL,
+  -- The test cases the failures concentrate in, as
+  -- [{"number": 3, "failures": 2}, …], so the in-app alert can name them the
+  -- way the email does. Empty when nothing could be attributed.
+  cases jsonb DEFAULT '[]'::jsonb NOT NULL,
   window_started_at TIMESTAMP WITH TIME ZONE NOT NULL,
   window_ended_at TIMESTAMP WITH TIME ZONE NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,

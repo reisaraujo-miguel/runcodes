@@ -12,18 +12,7 @@ import {
   type ExerciseLimitAlert,
 } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-
-const LIMIT_LABELS: Record<string, string> = {
-  timeout: "tempo limite",
-  cpu_time: "tempo de CPU",
-  memory: "memória",
-  stack: "pilha",
-  file_size: "tamanho de arquivo",
-};
-
-function limitLabel(limit: string): string {
-  return LIMIT_LABELS[limit] ?? limit;
-}
+import { formatLimitAlertCases, limitLabel } from "@/lib/limit-alerts";
 
 /**
  * The professor's limit-failure warnings for one exercise: a language that keeps
@@ -61,37 +50,48 @@ export function ExerciseLimitAlerts({ exerciseId }: { exerciseId: number }) {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
-      {data.map((alert) => (
-        <Alert key={alert.id} variant="warning">
-          <AlertTriangleIcon />
-          <AlertDescription>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <p>
-                {alert.failures} submissão(ões) de{" "}
-                <strong>
-                  {alert.language_name ?? "linguagem não identificada"}
-                </strong>{" "}
-                falharam por causa do limite de{" "}
-                <strong>{limitLabel(alert.limit_name)}</strong> entre{" "}
-                {formatDateTime(alert.window_started_at)} e{" "}
-                {formatDateTime(alert.window_ended_at)}. Verifique se o limite
-                está apertado demais na aba <strong>Limites</strong>.
-              </p>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={acknowledging === alert.id}
-                onClick={() => {
-                  void acknowledge(alert);
-                }}
-              >
-                {acknowledging === alert.id ? <Spinner /> : null}
-                Reconhecer
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      ))}
+      {data.map((alert) => {
+        const affected = formatLimitAlertCases(alert.cases);
+        return (
+          <Alert key={alert.id} variant="warning">
+            <AlertTriangleIcon />
+            <AlertDescription>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <p>
+                  {alert.failures} submissão(ões) de{" "}
+                  <strong>
+                    {alert.language_name ?? "linguagem não identificada"}
+                  </strong>{" "}
+                  falharam por causa do limite de{" "}
+                  <strong>{limitLabel(alert.limit_name)}</strong> entre{" "}
+                  {formatDateTime(alert.window_started_at)} e{" "}
+                  {formatDateTime(alert.window_ended_at)}.
+                  {affected ? (
+                    <>
+                      {" "}
+                      Casos em que o limite foi atingido:{" "}
+                      <strong>{affected}</strong>.
+                    </>
+                  ) : null}{" "}
+                  Verifique se o limite está apertado demais na aba{" "}
+                  <strong>Limites</strong>.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={acknowledging === alert.id}
+                  onClick={() => {
+                    void acknowledge(alert);
+                  }}
+                >
+                  {acknowledging === alert.id ? <Spinner /> : null}
+                  Reconhecer
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        );
+      })}
     </div>
   );
 }
