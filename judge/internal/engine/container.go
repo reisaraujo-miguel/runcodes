@@ -52,7 +52,12 @@ func milestoneLine(milestone, nonce string) string {
 // interleaved in this stream, so a bare name is not evidence of anything: it is
 // reported once as a warning, because the usual cause is an image older than the
 // judge, and then ignored.
-func (e *Engine) awaitLine(stream *podman.LogStream, expected, nonce string, timeout time.Duration) error {
+func (e *Engine) awaitLine(
+	stream *podman.LogStream,
+	expected, nonce string,
+	timeout time.Duration,
+	onLine ...func(string),
+) error {
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 
@@ -73,6 +78,13 @@ func (e *Engine) awaitLine(stream *podman.LogStream, expected, nonce string, tim
 			// Check if the current line matches the expected line.
 			if line == wanted {
 				return nil
+			}
+
+			// The callback sees the milestones of a phase that has not ended
+			// yet, which is how a case result is published while the rest of the
+			// suite is still running.
+			if len(onLine) > 0 && onLine[0] != nil {
+				onLine[0](line)
 			}
 
 			if !warned && nonce != "" && line == expected {

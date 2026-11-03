@@ -65,6 +65,24 @@ const (
 	CaseKilledBySignal CaseStatus = "killed_with_signal"
 )
 
+// CaseReason explains why an interrupted case did not produce a verdict.
+// It mirrors `case_interruption_reason_t`; an empty reason means the case was
+// graded normally (correct or badly formatted) or failed without an interruption
+// the sandbox can attribute (a non-zero exit status).
+type CaseReason string
+
+const (
+	CaseReasonTimeout       CaseReason = "timeout"
+	CaseReasonCPULimit      CaseReason = "cpu_limit"
+	CaseReasonMemoryLimit   CaseReason = "memory_limit"
+	CaseReasonStackLimit    CaseReason = "stack_limit"
+	CaseReasonFileSizeLimit CaseReason = "file_size_limit"
+	CaseReasonSignal        CaseReason = "signal"
+	CaseReasonMonitor       CaseReason = "monitor_error"
+	CaseReasonOutput        CaseReason = "output_error"
+	CaseReasonServer        CaseReason = "server_error"
+)
+
 // CaseResult is the graded outcome of one test case.
 type CaseResult struct {
 	TestCaseID   int64
@@ -72,6 +90,7 @@ type CaseResult struct {
 	WallTime     float64
 	MemUsage     int64
 	Status       CaseStatus
+	Reason       CaseReason
 	StatusMsg    string
 	UserOutput   string
 	OutputType   string // "text" | "file"

@@ -49,10 +49,10 @@ type TestCaseInput struct {
 	ShowExpectedOutput *bool
 	ShowUserOutput     *bool
 
-	CPUTimeLimitSeconds *int
-	MemUsageLimitBytes  *int64
-	StackLimitBytes     *int64
-	FileSizeLimitBytes  *int64
+	// LanguageLimits carries the per-language overrides; nil means "not part of
+	// this request", which keeps a partial update from clearing them.
+	LanguageLimits         []models.LanguageLimits
+	LanguageLimitsProvided bool
 
 	InputFile          *UploadedFile
 	ExpectedOutputFile *UploadedFile
@@ -77,10 +77,7 @@ type resolvedTestCase struct {
 	ShowExpectedOutput bool
 	ShowUserOutput     bool
 
-	CPUTimeLimitSeconds int
-	MemUsageLimitBytes  int64
-	StackLimitBytes     int64
-	FileSizeLimitBytes  int64
+	LanguageLimits []models.LanguageLimits
 
 	// InputObject/OutputObject are non-nil when the object must be (re)uploaded
 	// to <case_id>/in or <case_id>/out.
@@ -123,10 +120,6 @@ func ResolveTestCaseInput(
 		res.ShowInput = existing.ShowInput
 		res.ShowExpectedOutput = existing.ShowExpectedOutput
 		res.ShowUserOutput = existing.ShowUserOutput
-		res.CPUTimeLimitSeconds = existing.CPUTimeLimitSeconds
-		res.MemUsageLimitBytes = existing.MemUsageLimitBytes
-		res.StackLimitBytes = existing.StackLimitBytes
-		res.FileSizeLimitBytes = existing.FileSizeLimitBytes
 	} else {
 		// Matches the schema defaults.
 		res.ShowInput = true
@@ -200,29 +193,6 @@ func ResolveTestCaseInput(
 		res.ShowUserOutput = *in.ShowUserOutput
 	}
 
-	var err error
-	if res.CPUTimeLimitSeconds, err = resolveInt(
-		in.CPUTimeLimitSeconds, existingCPUTime(existing),
-	); err != nil {
-		return nil, err
-	}
-
-	if res.MemUsageLimitBytes, err = resolveInt64(
-		in.MemUsageLimitBytes, existingMem(existing),
-	); err != nil {
-		return nil, err
-	}
-	if res.StackLimitBytes, err = resolveInt64(
-		in.StackLimitBytes, existingStack(existing),
-	); err != nil {
-		return nil, err
-	}
-	if res.FileSizeLimitBytes, err = resolveInt64(
-		in.FileSizeLimitBytes, existingFileSize(existing),
-	); err != nil {
-		return nil, err
-	}
-
 	if in.FilesProvided {
 		res.FilesChanged = true
 		res.Files = make([]resolvedFile, 0, len(in.Files))
@@ -244,54 +214,6 @@ func ResolveTestCaseInput(
 	return res, nil
 }
 
-func existingCPUTime(existing *models.TestCase) int {
-	if existing == nil {
-		return 0
-	}
-	return existing.CPUTimeLimitSeconds
-}
-
-func existingMem(existing *models.TestCase) int64 {
-	if existing == nil {
-		return 0
-	}
-	return existing.MemUsageLimitBytes
-}
-
-func existingStack(existing *models.TestCase) int64 {
-	if existing == nil {
-		return 0
-	}
-	return existing.StackLimitBytes
-}
-
-func existingFileSize(existing *models.TestCase) int64 {
-	if existing == nil {
-		return 0
-	}
-	return existing.FileSizeLimitBytes
-}
-
-func resolveInt(provided *int, fallback int) (int, error) {
-	if provided == nil {
-		return fallback, nil
-	}
-	if *provided < 0 {
-		return 0, fmt.Errorf("%w: value cannot be negative", ErrInvalidTestCase)
-	}
-	return *provided, nil
-}
-
-func resolveInt64(provided *int64, fallback int64) (int64, error) {
-	if provided == nil {
-		return fallback, nil
-	}
-	if *provided < 0 {
-		return 0, fmt.Errorf("%w: value cannot be negative", ErrInvalidTestCase)
-	}
-	return *provided, nil
-}
-
 /*
 loadTestCase fetches a single test case scoped to its exercise.
 */
@@ -302,15 +224,13 @@ func loadTestCase(
 	err := database.DB.QueryRowContext(ctx, `
 		SELECT id, exercise_id, input, input_type::text, show_input,
 		       expected_output, expected_output_type::text,
-		       show_expected_output, show_user_output, cpu_time_limit_seconds,
-		       mem_usage_limit_bytes, stack_limit_bytes, file_size_limit_bytes
+		       show_expected_output, show_user_output
 		FROM exercises_test_cases
 		WHERE id = $1 AND exercise_id = $2`, caseID, exerciseID,
 	).Scan(
 		&tc.ID, &tc.ExerciseID, &tc.Input, &tc.InputType, &tc.ShowInput,
 		&tc.ExpectedOutput, &tc.ExpectedOutputType, &tc.ShowExpectedOutput,
-		&tc.ShowUserOutput, &tc.CPUTimeLimitSeconds, &tc.MemUsageLimitBytes,
-		&tc.StackLimitBytes, &tc.FileSizeLimitBytes,
+		&tc.ShowUserOutput,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

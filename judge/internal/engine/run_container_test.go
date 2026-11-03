@@ -318,8 +318,9 @@ func TestRunContainerSkipsCompilationMilestonesForInterpretedLanguages(t *testin
 }
 
 // TestWriteContainerConfigCarriesTheContract checks the keys the harness reads:
-// the nonce, the source file and the per-case limits (only when the exercise set
-// them, so an unauthored limit does not become a limit of zero).
+// the nonce, the source file and every per-case limit. A zero byte limit is
+// written explicitly (it means "no limit"), and a case without a CPU time limit
+// falls back to the default case timeout.
 func TestWriteContainerConfigCarriesTheContract(t *testing.T) {
 	dir := t.TempDir()
 	e := &Engine{cfg: &config.Config{
@@ -351,20 +352,20 @@ func TestWriteContainerConfigCarriesTheContract(t *testing.T) {
 	for _, want := range []string{
 		"run_nonce='abc123'",
 		"src_file='main.c'",
+		"monitor_max_fs=5242880",
+		"monitor_max_ms=268435456",
+		"compilation_timeout=10",
 		"t_3=5",
 		"ms_3=1048576",
 		"stack_3=524288",
-		"t_4=3", // falls back to the default case timeout
+		"fs_3=0", // no limit, written explicitly
+		"t_4=3",  // falls back to the default case timeout
+		"ms_4=0",
+		"fs_4=0",
+		"stack_4=0",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in container.config:\n%s", want, got)
-		}
-	}
-
-	// Case 4 authored no limits: its keys must not appear at all.
-	for _, unwanted := range []string{"ms_4=", "fs_4=", "stack_4=", "fs_3="} {
-		if strings.Contains(got, unwanted) {
-			t.Errorf("unexpected %q in container.config:\n%s", unwanted, got)
 		}
 	}
 }

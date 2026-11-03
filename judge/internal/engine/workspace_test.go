@@ -50,13 +50,15 @@ func TestWriteContainerConfig(t *testing.T) {
 	}
 }
 
-// The per-language defaults live in the images, so a judge that was not told to
-// override them must not write them at all: the harness sends whatever the config
-// carried, and the image's own value is what the language needs (1GB for Python,
-// 64MB files for the Rust compiler, 60s to compile Go).
-func TestWriteContainerConfigOmitsUnsetGlobalLimits(t *testing.T) {
+// The images carry no limit defaults of their own, so the judge writes the
+// globals it was configured with on every run; leaving them out would let the
+// harness apply nothing at all.
+func TestWriteContainerConfigAlwaysWritesGlobalLimits(t *testing.T) {
 	e := &Engine{cfg: &config.Config{
 		DefaultCaseTimeout: 3 * time.Second,
+		MonitorMaxFileSize: 256 << 20,
+		MonitorMaxMemSize:  512 << 20,
+		CompilationTimeout: 60 * time.Second,
 	}}
 
 	dir := t.TempDir()
@@ -74,19 +76,17 @@ func TestWriteContainerConfigOmitsUnsetGlobalLimits(t *testing.T) {
 	}
 	got := string(raw)
 
-	for _, unwanted := range []string{
-		"monitor_max_fs=",
-		"monitor_max_ms=",
-		"compilation_timeout=",
+	for _, want := range []string{
+		"monitor_max_fs=268435456",
+		"monitor_max_ms=536870912",
+		"compilation_timeout=60",
+		"ms_7=1048576",
+		"fs_7=0",
+		"stack_7=0",
 	} {
-		if strings.Contains(got, unwanted) {
-			t.Errorf("container.config carries %q although the judge has no value set:\n%s", unwanted, got)
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in container.config:\n%s", want, got)
 		}
-	}
-
-	// The per-case limit is the exercise's, and is still written.
-	if !strings.Contains(got, "ms_7=1048576") {
-		t.Errorf("the per-case limit was dropped:\n%s", got)
 	}
 }
 

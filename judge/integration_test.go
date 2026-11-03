@@ -14,6 +14,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -153,7 +154,9 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 
 	s3cfg := s3ConfigFromEnv()
 	s3client := newS3Client(ctx, t, s3cfg)
-	for _, bucket := range []string{s3cfg.CommitsBucket(), s3cfg.CasesBucket(), s3cfg.FilesBucket()} {
+	for _, bucket := range []string{
+		s3cfg.CommitsBucket(), s3cfg.CasesBucket(), s3cfg.FilesBucket(), s3cfg.OutputsBucket(),
+	} {
 		ensureBucket(ctx, t, s3client, bucket)
 	}
 
@@ -182,10 +185,9 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 	}
 	if err := db.QueryRowContext(ctx, `
 		INSERT INTO exercises_test_cases
-		    (exercise_id, input, input_type, expected_output, expected_output_type,
-		     cpu_time_limit_seconds, mem_usage_limit_bytes, stack_limit_bytes, file_size_limit_bytes)
-		VALUES ($1, '', 'text', 'hello', 'text', 5, $2, 0, 0)
-		RETURNING id`, exerciseID, 256*1024*1024).Scan(&caseID); err != nil {
+		    (exercise_id, input, input_type, expected_output, expected_output_type)
+		VALUES ($1, '', 'text', 'hello', 'text')
+		RETURNING id`, exerciseID).Scan(&caseID); err != nil {
 		t.Fatalf("insert test case: %v", err)
 	}
 
@@ -195,6 +197,16 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 		VALUES ($1, $2, 'queued', $3)
 		RETURNING id`, userID, exerciseID, sourceKey).Scan(&commitID); err != nil {
 		t.Fatalf("insert commit: %v", err)
+	}
+	// The judge grades against the frozen snapshot the backend writes when it
+	// queues a commit, so the fixture has to write one too. Without it the judge
+	// would refuse the run instead of guessing the limits.
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO commit_test_case_limits
+		    (commit_id, exercise_test_case_id, cpu_time_limit_seconds,
+		     mem_usage_limit_bytes, stack_limit_bytes, file_size_limit_bytes)
+		VALUES ($1, $2, 5, $3, 0, 0)`, commitID, caseID, 256*1024*1024); err != nil {
+		t.Fatalf("insert commit limits snapshot: %v", err)
 	}
 
 	putObject(ctx, t, s3client, s3cfg.CommitsBucket(), sourceKey, []byte(fixture.source))
@@ -211,6 +223,7 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 		_, _ = db.ExecContext(bg, `DELETE FROM users WHERE id = $1`, userID)
 		for _, obj := range []struct{ bucket, key string }{
 			{s3cfg.CommitsBucket(), sourceKey},
+			{s3cfg.OutputsBucket(), fmt.Sprintf("%d/test_%d/result.txt", commitID, caseID)},
 		} {
 			_, _ = s3client.DeleteObject(bg, &s3.DeleteObjectInput{
 				Bucket: aws.String(obj.bucket), Key: aws.String(obj.key),
@@ -346,13 +359,27 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 		t.Errorf("score = %v, want 100", score)
 	}
 
-	// The C fixture deliberately creates a user file; R and Verilog have no
-	// user output file, so their archive is allowed to be absent.
+	// The C fixture deliberately creates a user file in the case's working
+	// directory; R and Verilog create none, so their listing is allowed to be
+	// empty. The judge publishes the file to object storage, keyed by commit and
+	// by the test case that produced it.
 	if fixture.artifact {
-		if info, err := os.Stat(eng.ArtifactPath(commitID)); err != nil {
-			t.Errorf("output archive missing: %v", err)
-		} else if info.Size() == 0 {
-			t.Error("output archive is empty")
+		client := newS3Client(ctx, t, cfg.S3)
+		key := fmt.Sprintf("%d/test_%d/result.txt", commitID, caseID)
+		out, err := client.GetObject(ctx, &s3.GetObjectInput{
+			Bucket: aws.String(cfg.S3.OutputsBucket()),
+			Key:    aws.String(key),
+		})
+		if err != nil {
+			t.Errorf("generated file %s missing: %v", key, err)
+		} else {
+			data, readErr := io.ReadAll(out.Body)
+			out.Body.Close()
+			if readErr != nil {
+				t.Errorf("read %s: %v", key, readErr)
+			} else if string(data) != "generated\n" {
+				t.Errorf("%s = %q, want generated", key, data)
+			}
 		}
 	}
 }

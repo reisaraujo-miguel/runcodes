@@ -40,8 +40,7 @@ func ListTestCases(
 	rows, err := database.DB.QueryContext(ctx, `
 		SELECT id, exercise_id, input, input_type::text, show_input,
 		       expected_output, expected_output_type::text,
-		       show_expected_output, show_user_output, cpu_time_limit_seconds,
-		       mem_usage_limit_bytes, stack_limit_bytes, file_size_limit_bytes
+		       show_expected_output, show_user_output
 		FROM exercises_test_cases
 		WHERE exercise_id = $1
 		ORDER BY id`, authoringID)
@@ -61,8 +60,7 @@ func ListTestCases(
 		if err := rows.Scan(
 			&tc.ID, &tc.ExerciseID, &tc.Input, &tc.InputType, &tc.ShowInput,
 			&tc.ExpectedOutput, &tc.ExpectedOutputType, &tc.ShowExpectedOutput,
-			&tc.ShowUserOutput, &tc.CPUTimeLimitSeconds, &tc.MemUsageLimitBytes,
-			&tc.StackLimitBytes, &tc.FileSizeLimitBytes,
+			&tc.ShowUserOutput,
 		); err != nil {
 			slog.ErrorContext(ctx, "error scanning test case",
 				slog.String("error", err.Error()),
@@ -81,9 +79,16 @@ func ListTestCases(
 	if err != nil {
 		return nil, err
 	}
+	limits, err := TestCaseLanguageLimits(ctx, authoringID, ids)
+	if err != nil {
+		return nil, err
+	}
 	for i := range cases {
 		if f, ok := files[cases[i].ID]; ok {
 			cases[i].Files = f
+		}
+		if l, ok := limits[cases[i].ID]; ok {
+			cases[i].Limits = l
 		}
 	}
 
@@ -133,16 +138,12 @@ func CreateTestCase(
 	err = tx.QueryRowContext(ctx, `
 		INSERT INTO exercises_test_cases
 		    (exercise_id, input, input_type, show_input, expected_output,
-		     expected_output_type, show_expected_output, show_user_output,
-		     cpu_time_limit_seconds, mem_usage_limit_bytes, stack_limit_bytes,
-		     file_size_limit_bytes)
+		     expected_output_type, show_expected_output, show_user_output)
 		VALUES ($1, $2, $3::input_output_type_t, $4, $5,
-		        $6::input_output_type_t, $7, $8, $9, $10, $11, $12)
+		        $6::input_output_type_t, $7, $8)
 		RETURNING id`,
 		authoringID, res.Input, res.InputType, res.ShowInput, res.ExpectedOutput,
 		res.ExpectedOutputType, res.ShowExpectedOutput, res.ShowUserOutput,
-		res.CPUTimeLimitSeconds, res.MemUsageLimitBytes, res.StackLimitBytes,
-		res.FileSizeLimitBytes,
 	).Scan(&caseID)
 	if err != nil {
 		slog.ErrorContext(ctx, "error inserting test case",
@@ -150,6 +151,12 @@ func CreateTestCase(
 			slog.String("error", err.Error()),
 		)
 		return nil, ErrServer
+	}
+
+	if err := ReplaceTestCaseLanguageLimits(
+		ctx, tx, caseID, authoringID, in.LanguageLimits,
+	); err != nil {
+		return nil, err
 	}
 
 	uploaded := make([]string, 0, 4)
@@ -220,7 +227,9 @@ func CreateTestCase(
 		return nil, ErrServer
 	}
 
-	return testCaseFromResolved(caseID, authoringID, res, files), nil
+	return attachResolvedLimits(
+		ctx, authoringID, testCaseFromResolved(caseID, authoringID, res, files),
+	)
 }
 
 /*
@@ -274,21 +283,25 @@ func UpdateTestCase(
 		UPDATE exercises_test_cases
 		SET input = $1, input_type = $2::input_output_type_t, show_input = $3,
 		    expected_output = $4, expected_output_type = $5::input_output_type_t,
-		    show_expected_output = $6, show_user_output = $7,
-		    cpu_time_limit_seconds = $8, mem_usage_limit_bytes = $9,
-		    stack_limit_bytes = $10, file_size_limit_bytes = $11,
-		    updated_at = now()
-		WHERE id = $12 AND exercise_id = $13`,
+		    show_expected_output = $6, show_user_output = $7, updated_at = now()
+		WHERE id = $8 AND exercise_id = $9`,
 		res.Input, res.InputType, res.ShowInput, res.ExpectedOutput,
 		res.ExpectedOutputType, res.ShowExpectedOutput, res.ShowUserOutput,
-		res.CPUTimeLimitSeconds, res.MemUsageLimitBytes, res.StackLimitBytes,
-		res.FileSizeLimitBytes, caseID, authoringID,
+		caseID, authoringID,
 	); err != nil {
 		slog.ErrorContext(ctx, "error updating test case",
 			slog.Int64("test_case_id", caseID),
 			slog.String("error", err.Error()),
 		)
 		return nil, ErrServer
+	}
+
+	if in.LanguageLimitsProvided {
+		if err := ReplaceTestCaseLanguageLimits(
+			ctx, tx, caseID, authoringID, in.LanguageLimits,
+		); err != nil {
+			return nil, err
+		}
 	}
 
 	// Objects are replaced in place, but the replacer backs up their previous
@@ -385,7 +398,9 @@ func UpdateTestCase(
 		}
 	}
 
-	return testCaseFromResolved(caseID, authoringID, res, newFiles), nil
+	return attachResolvedLimits(
+		ctx, authoringID, testCaseFromResolved(caseID, authoringID, res, newFiles),
+	)
 }
 
 /*
@@ -433,6 +448,21 @@ func DeleteTestCase(
 	return nil
 }
 
+// attachResolvedLimits fills the per-language limits (values and sources) so a
+// create or update response has the same shape as the list.
+func attachResolvedLimits(
+	ctx context.Context, exerciseID int64, testCase *models.TestCase,
+) (*models.TestCase, error) {
+	limits, err := TestCaseLanguageLimits(ctx, exerciseID, []int64{testCase.ID})
+	if err != nil {
+		return nil, err
+	}
+	if resolved, ok := limits[testCase.ID]; ok {
+		testCase.Limits = resolved
+	}
+	return testCase, nil
+}
+
 func testCaseFromResolved(
 	caseID, exerciseID int64, res *resolvedTestCase, files []models.TestCaseFile,
 ) *models.TestCase {
@@ -440,20 +470,17 @@ func testCaseFromResolved(
 		files = []models.TestCaseFile{}
 	}
 	return &models.TestCase{
-		ID:                  caseID,
-		ExerciseID:          exerciseID,
-		Input:               res.Input,
-		InputType:           res.InputType,
-		ShowInput:           res.ShowInput,
-		ExpectedOutput:      res.ExpectedOutput,
-		ExpectedOutputType:  res.ExpectedOutputType,
-		ShowExpectedOutput:  res.ShowExpectedOutput,
-		ShowUserOutput:      res.ShowUserOutput,
-		CPUTimeLimitSeconds: res.CPUTimeLimitSeconds,
-		MemUsageLimitBytes:  res.MemUsageLimitBytes,
-		StackLimitBytes:     res.StackLimitBytes,
-		FileSizeLimitBytes:  res.FileSizeLimitBytes,
-		Files:               files,
+		ID:                 caseID,
+		ExerciseID:         exerciseID,
+		Input:              res.Input,
+		InputType:          res.InputType,
+		ShowInput:          res.ShowInput,
+		ExpectedOutput:     res.ExpectedOutput,
+		ExpectedOutputType: res.ExpectedOutputType,
+		ShowExpectedOutput: res.ShowExpectedOutput,
+		ShowUserOutput:     res.ShowUserOutput,
+		Limits:             res.LanguageLimits,
+		Files:              files,
 	}
 }
 

@@ -14,6 +14,7 @@ const snapshotResult = {
   user_output: "hello\n",
   user_output_type: "text",
   status: "correct",
+  reason: null,
   status_message: "",
   error_message: "",
 } as const;
@@ -26,6 +27,7 @@ describe("viewFromSnapshot", () => {
       cpuTime: 0.12,
       memUsage: 2048,
       status: "correct",
+      reason: null,
       statusMessage: "",
       errorMessage: "",
       userOutput: "hello\n",
@@ -62,6 +64,7 @@ describe("upsertCaseResult", () => {
       cpuTime: 0,
       memUsage: -1,
       status,
+      reason: null,
       statusMessage: "",
       errorMessage: "",
       userOutput: "",

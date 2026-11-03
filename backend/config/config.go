@@ -33,6 +33,10 @@ const (
 	defaultMaxQueueDepth            = 100
 	defaultSMTPPort                 = "587"
 	defaultDeadlineReminderInterval = 30 * time.Minute
+	// defaultOutputFileTTL matches the week the judge used to keep generated
+	// archives: long enough to download after a deadline, short enough that a
+	// term of runs does not stay forever.
+	defaultOutputFileTTL = 7 * 24 * time.Hour
 )
 
 // Config holds every tunable of the backend service.
@@ -59,6 +63,39 @@ type Config struct {
 	Mail  MailConfig
 	// Notifications configures the background deadline reminders.
 	Notifications NotificationConfig
+	// Limits holds the platform-wide limit defaults and the threshold that
+	// alerts a professor when submissions start failing because of them.
+	Limits LimitsConfig
+	// OutputFiles controls how long the files a submission generated are kept.
+	OutputFiles OutputFilesConfig
+}
+
+// OutputFilesConfig describes the retention of the files the judge publishes for
+// download. They are not referenced by any row, so an expiry is the only thing
+// that keeps the outputfiles bucket from growing with every run.
+type OutputFilesConfig struct {
+	// TTL is how long a generated file is kept after the judge uploaded it. 0
+	// disables the sweep and leaves retention to the object store.
+	TTL time.Duration
+}
+
+// LimitsConfig is the platform's limit policy: the values a test case inherits
+// when neither the exercise nor the case sets one, and the aggregation that
+// warns the professor when a language is failing because of them.
+type LimitsConfig struct {
+	// Defaults apply to every language until the professor overrides them on the
+	// exercise or on a test case.
+	CPUTimeLimitSeconds int
+	MemUsageLimitBytes  int64
+	StackLimitBytes     int64
+	FileSizeLimitBytes  int64
+
+	// AlertThreshold is how many submissions in AlertWindow must fail because of
+	// the same limit before the exercise owner hears about it; AlertCooldown
+	// keeps one bad language from mailing once per submission.
+	AlertThreshold int
+	AlertWindow    time.Duration
+	AlertCooldown  time.Duration
 }
 
 // NotificationConfig describes the background email reminders. The notifier
@@ -182,6 +219,52 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	defaultCPULimit, err := envInt("RUNCODES_DEFAULT_CPU_TIME_LIMIT_SECONDS", 5)
+	if err != nil {
+		return nil, err
+	}
+	defaultMemLimit, err := envInt("RUNCODES_DEFAULT_MEM_USAGE_LIMIT_BYTES", 512<<20)
+	if err != nil {
+		return nil, err
+	}
+	defaultStackLimit, err := envInt("RUNCODES_DEFAULT_STACK_LIMIT_BYTES", 0)
+	if err != nil {
+		return nil, err
+	}
+	defaultFileSizeLimit, err := envInt("RUNCODES_DEFAULT_FILE_SIZE_LIMIT_BYTES", 256<<20)
+	if err != nil {
+		return nil, err
+	}
+	limitAlertThreshold, err := envInt("RUNCODES_LIMIT_ALERT_THRESHOLD", 5)
+	if err != nil {
+		return nil, err
+	}
+	limitAlertWindow, err := envDuration("RUNCODES_LIMIT_ALERT_WINDOW", time.Hour)
+	if err != nil {
+		return nil, err
+	}
+	limitAlertCooldown, err := envDuration("RUNCODES_LIMIT_ALERT_COOLDOWN", 6*time.Hour)
+	if err != nil {
+		return nil, err
+	}
+	if defaultCPULimit <= 0 {
+		return nil, fmt.Errorf("RUNCODES_DEFAULT_CPU_TIME_LIMIT_SECONDS must be positive")
+	}
+	if defaultMemLimit < 0 || defaultStackLimit < 0 || defaultFileSizeLimit < 0 {
+		return nil, fmt.Errorf("the default byte limits cannot be negative")
+	}
+	if limitAlertThreshold < 1 {
+		return nil, fmt.Errorf("RUNCODES_LIMIT_ALERT_THRESHOLD must be at least 1")
+	}
+
+	outputFileTTL, err := envDuration("RUNCODES_OUTPUT_FILE_TTL", defaultOutputFileTTL)
+	if err != nil {
+		return nil, err
+	}
+	if outputFileTTL < 0 {
+		return nil, fmt.Errorf("RUNCODES_OUTPUT_FILE_TTL cannot be negative")
+	}
+
 	deadlineReminders, err := envBool("RUNCODES_DEADLINE_REMINDERS", true)
 	if err != nil {
 		return nil, err
@@ -251,6 +334,18 @@ func Load() (*Config, error) {
 		Notifications: NotificationConfig{
 			DeadlineReminders:        deadlineReminders,
 			DeadlineReminderInterval: deadlineReminderInterval,
+		},
+		OutputFiles: OutputFilesConfig{
+			TTL: outputFileTTL,
+		},
+		Limits: LimitsConfig{
+			CPUTimeLimitSeconds: defaultCPULimit,
+			MemUsageLimitBytes:  int64(defaultMemLimit),
+			StackLimitBytes:     int64(defaultStackLimit),
+			FileSizeLimitBytes:  int64(defaultFileSizeLimit),
+			AlertThreshold:      limitAlertThreshold,
+			AlertWindow:         limitAlertWindow,
+			AlertCooldown:       limitAlertCooldown,
 		},
 	}
 

@@ -131,6 +131,7 @@ export { FALLBACK_SETTINGS, getPublicSettings } from "./settings";
 export type { PlatformSettings } from "./settings";
 
 export {
+  acknowledgeExerciseLimitAlert,
   createCompilationFile,
   createExercise,
   createTestCase,
@@ -141,9 +142,13 @@ export {
   getAllowedFileTypes,
   getCompilationFiles,
   getExercise,
+  getExerciseLanguageLimits,
+  getExerciseLimitAlerts,
   getExerciseTestCases,
   getOfferingExercises,
+  getPlatformLimits,
   importTestCasesBatch,
+  replaceExerciseLanguageLimits,
   updateExercise,
   updateTestCase,
 } from "./exercises";
@@ -155,8 +160,16 @@ export type {
   BatchTestCaseIssue,
   CompilationFile,
   Exercise,
+  ExerciseLimitAlert,
   ExercisePayload,
+  LanguageLimits,
+  LanguageLimitsPayload,
+  LimitOverrides,
+  LimitSource,
+  LimitSources,
+  LimitValues,
   NewTestCase,
+  PlatformLimits,
   TestCase,
   TestCasePatch,
 } from "./exercises";
@@ -171,9 +184,11 @@ export type { AttachedFile } from "./attached-files";
 
 export {
   createSubmission,
+  getSubmissionOutputFiles,
   getSubmissionSourceBlob,
   getSubmissionSourceText,
   listExerciseSubmissions,
+  submissionOutputFileUrl,
   submissionOutputUrl,
   subscribeSubmissionEvents,
 } from "./submissions";
@@ -190,6 +205,7 @@ export type {
   SubmissionEvent,
   SubmissionEventHandlers,
   SubmissionFinishedEvent,
+  SubmissionOutputFile,
   SubmissionSnapshotEvent,
   SubmissionSnapshotResult,
   SubmissionStatusEvent,

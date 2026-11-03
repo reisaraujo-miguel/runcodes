@@ -88,9 +88,16 @@ offeringStorageKeys collects the objects an offering owns: test case inputs,
 outputs and extra files, compilation files, attachments and submitted sources.
 They are removed after the rows are gone, so a deleted class does not leave its
 authoring content and submissions behind in the object store.
+
+The commit IDs are returned separately: their generated files are not discrete
+keys but a prefix in the outputfiles bucket, so they need one listing per commit
+instead of a batched delete.
 */
-func offeringStorageKeys(ctx context.Context, offeringID int64) ([]storageObject, error) {
+func offeringStorageKeys(
+	ctx context.Context, offeringID int64,
+) ([]storageObject, []int64, error) {
 	keys := make([]storageObject, 0, 16)
+	commitIDs := make([]int64, 0, 8)
 	seenCase := make(map[int64]bool)
 
 	rows, err := database.DB.QueryContext(ctx, `
@@ -106,7 +113,7 @@ func offeringStorageKeys(ctx context.Context, offeringID int64) ([]storageObject
 			slog.String("error", err.Error()),
 			slog.Int64("offering_id", offeringID),
 		)
-		return nil, ErrServer
+		return nil, nil, ErrServer
 	}
 	defer rows.Close()
 
@@ -119,7 +126,7 @@ func offeringStorageKeys(ctx context.Context, offeringID int64) ([]storageObject
 			slog.ErrorContext(ctx, "error scanning test case object",
 				slog.String("error", err.Error()),
 			)
-			return nil, ErrServer
+			return nil, nil, ErrServer
 		}
 		// Every case has an input and an expected-output object, including text
 		// cases: the backend still uploads text objects for compatibility. Legacy
@@ -141,7 +148,7 @@ func offeringStorageKeys(ctx context.Context, offeringID int64) ([]storageObject
 		slog.ErrorContext(ctx, "error iterating test case objects",
 			slog.String("error", err.Error()),
 		)
-		return nil, ErrServer
+		return nil, nil, ErrServer
 	}
 
 	rows, err = database.DB.QueryContext(ctx, `
@@ -160,7 +167,7 @@ func offeringStorageKeys(ctx context.Context, offeringID int64) ([]storageObject
 			slog.String("error", err.Error()),
 			slog.Int64("offering_id", offeringID),
 		)
-		return nil, ErrServer
+		return nil, nil, ErrServer
 	}
 	defer rows.Close()
 
@@ -174,7 +181,7 @@ func offeringStorageKeys(ctx context.Context, offeringID int64) ([]storageObject
 			slog.ErrorContext(ctx, "error scanning exercise file object",
 				slog.String("error", err.Error()),
 			)
-			return nil, ErrServer
+			return nil, nil, ErrServer
 		}
 		if kind == "compilation" {
 			keys = append(keys, storageObject{
@@ -190,11 +197,11 @@ func offeringStorageKeys(ctx context.Context, offeringID int64) ([]storageObject
 		slog.ErrorContext(ctx, "error iterating exercise file objects",
 			slog.String("error", err.Error()),
 		)
-		return nil, ErrServer
+		return nil, nil, ErrServer
 	}
 
 	rows, err = database.DB.QueryContext(ctx, `
-		SELECT c.s3_key
+		SELECT c.id, c.s3_key
 		FROM commits c
 		JOIN exercises e ON e.id = c.exercise_id
 		WHERE e.offering_id = $1 AND c.s3_key IS NOT NULL`, offeringID,
@@ -204,28 +211,49 @@ func offeringStorageKeys(ctx context.Context, offeringID int64) ([]storageObject
 			slog.String("error", err.Error()),
 			slog.Int64("offering_id", offeringID),
 		)
-		return nil, ErrServer
+		return nil, nil, ErrServer
 	}
 	defer rows.Close()
 
 	for rows.Next() {
-		var key string
-		if err := rows.Scan(&key); err != nil {
+		var (
+			commitID int64
+			key      string
+		)
+		if err := rows.Scan(&commitID, &key); err != nil {
 			slog.ErrorContext(ctx, "error scanning submitted source",
 				slog.String("error", err.Error()),
 			)
-			return nil, ErrServer
+			return nil, nil, ErrServer
 		}
 		keys = append(keys, storageObject{bucketCommits, key})
+		commitIDs = append(commitIDs, commitID)
 	}
 	if err := rows.Err(); err != nil {
 		slog.ErrorContext(ctx, "error iterating submitted sources",
 			slog.String("error", err.Error()),
 		)
-		return nil, ErrServer
+		return nil, nil, ErrServer
 	}
 
-	return keys, nil
+	return keys, commitIDs, nil
+}
+
+/*
+deleteCommitOutputsBestEffort removes the generated files of the given commits.
+Each commit's files are a prefix in the outputfiles bucket, so a failure for one
+commit is logged and the rest still run: a deleted class must not keep paying for
+storage nobody can reach.
+*/
+func deleteCommitOutputsBestEffort(ctx context.Context, commitIDs []int64) {
+	for _, commitID := range commitIDs {
+		if err := storage.DeleteCommitOutputs(ctx, commitID); err != nil {
+			slog.ErrorContext(ctx, "error deleting generated files",
+				slog.Int64("commit_id", commitID),
+				slog.String("error", err.Error()),
+			)
+		}
+	}
 }
 
 /*

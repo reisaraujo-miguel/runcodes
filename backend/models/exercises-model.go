@@ -59,20 +59,19 @@ type TestCaseFile struct {
 // TestCase is a single test case as returned by the API. When requested by a
 // student, fields whose show_* flag is false are blanked out.
 type TestCase struct {
-	ID                  int64          `json:"id"`
-	ExerciseID          int64          `json:"exercise_id"`
-	Input               string         `json:"input"`
-	InputType           string         `json:"input_type"`
-	ShowInput           bool           `json:"show_input"`
-	ExpectedOutput      string         `json:"expected_output"`
-	ExpectedOutputType  string         `json:"expected_output_type"`
-	ShowExpectedOutput  bool           `json:"show_expected_output"`
-	ShowUserOutput      bool           `json:"show_user_output"`
-	CPUTimeLimitSeconds int            `json:"cpu_time_limit_seconds"`
-	MemUsageLimitBytes  int64          `json:"mem_usage_limit_bytes"`
-	StackLimitBytes     int64          `json:"stack_limit_bytes"`
-	FileSizeLimitBytes  int64          `json:"file_size_limit_bytes"`
-	Files               []TestCaseFile `json:"files"`
+	ID                 int64  `json:"id"`
+	ExerciseID         int64  `json:"exercise_id"`
+	Input              string `json:"input"`
+	InputType          string `json:"input_type"`
+	ShowInput          bool   `json:"show_input"`
+	ExpectedOutput     string `json:"expected_output"`
+	ExpectedOutputType string `json:"expected_output_type"`
+	ShowExpectedOutput bool   `json:"show_expected_output"`
+	ShowUserOutput     bool   `json:"show_user_output"`
+	// Limits is resolved per allowed language: the case override when there is
+	// one, otherwise the exercise default, otherwise the platform default.
+	Limits []LanguageLimits `json:"limits"`
+	Files  []TestCaseFile   `json:"files"`
 }
 
 // CompilationFile is an extra source file compiled together with a submission.

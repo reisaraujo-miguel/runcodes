@@ -49,7 +49,7 @@ binds to a private node address.
 | Backend | edge / app host | authentication, authorization, all Postgres writes, all S3 uploads, SSE relay | code execution |
 | Judge | compute host | claiming commits, container lifecycle, grading, event stream | persistence, artifacts |
 | PostgreSQL | data host | users, classes, exercises, commits, results, queue | files, source code |
-| SeaweedFS | data host | submitted source, test-case I/O, exercise files, output archives | relational data |
+| SeaweedFS | data host | submitted source, test-case I/O, exercise files, generated files | relational data |
 | Redis | data host | cached responses | durable data |
 | Runners | compute host | compiling and running one submission | orchestration |
 | Monitor | inside a runner | per-process limits, CPU time, exit status | grading decisions |
@@ -137,7 +137,7 @@ crash-safe and multi-instance safe.
 | Data | Location | Durability |
 | --- | --- | --- |
 | Users, classes, exercises, commits, results | PostgreSQL | must be backed up |
-| Submitted source, test cases, exercise files, output archives | SeaweedFS (`<prefix>-commits`, `-cases`, `-files`, `-outputfiles`) | must be backed up |
+| Submitted source, test cases, exercise files, generated files | SeaweedFS (`<prefix>-commits`, `-cases`, `-files`, `-outputfiles`) | must be backed up |
 | Cached API responses | Redis | disposable |
 | Judge workspaces | `JUDGE_EXEC_DIR` (`/exec` in Compose) | disposable |
 | Telemetry | observability volumes | optional; retention-capped |

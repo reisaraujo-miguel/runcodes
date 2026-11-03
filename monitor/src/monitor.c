@@ -384,6 +384,13 @@ static void trace_child(pid_t child_pid, MonitorStats *stats) {
       clock_gettime(CLOCK_MONOTONIC, &ts_end);
       stats->time_sec = elapsed_secs(&ts_start, &ts_end);
       stats->child_cpu_sec = rusage_cpu_secs(&usage);
+      /* The cgroup charge is unreadable in some container setups (a host
+         cgroup namespace, a read-only hierarchy). rusage carries the peak RSS
+         of the command and the children it waited for, so it is the fallback
+         that keeps the report useful there. */
+      if (stats->mem_peak_bytes <= 0 && usage.ru_maxrss > 0) {
+        stats->mem_peak_bytes = (long long)usage.ru_maxrss * 1024;
+      }
       if (WIFSIGNALED(status)) {
         /* Report the terminating signal whether or not a core dump was
            produced. A core dump does not mean the process exited cleanly, and

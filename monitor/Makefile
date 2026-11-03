@@ -1,10 +1,8 @@
-build:
-	echo "Warning: This make file runs the Docker build, for building locally go inside the src directory!"
-	docker build -t ghcr.io/runcodes-icmc/runcodes-monitor:latest -f ./Dockerfile .
+BUILD ?= podman build
 
-podman-build:
-	echo "Warning: This make file runs the Podman build, for building locally go inside the src directory!"
-	podman build -t ghcr.io/runcodes-icmc/runcodes-monitor:latest -f ./Dockerfile .
+build:
+	echo "Warning: This make file runs the container build, for building locally go inside the src directory!"
+	$(BUILD) -t ghcr.io/runcodes-icmc/runcodes-monitor:latest -f ./Dockerfile .
 
 all: build
 

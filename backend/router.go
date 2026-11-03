@@ -112,10 +112,15 @@ func createRoutes(router *chi.Mux) {
 			r.Get("/api/v1/submissions/{id}/events", handlers.StreamSubmissionEvents)
 			r.Get("/api/v1/submissions/{id}/source", handlers.GetSubmissionSource)
 			r.Get("/api/v1/submissions/{id}/output", handlers.GetSubmissionOutput)
+			r.Get("/api/v1/submissions/{id}/outputfiles",
+				handlers.ListSubmissionOutputFiles)
+			r.Get("/api/v1/submissions/{id}/outputfiles/*",
+				handlers.GetSubmissionOutputFile)
 			r.Get("/api/v1/exercises/{id}/submissions", handlers.ListSubmissionHistory)
 
 			// exercise & test-case authoring (access is enforced in the services)
 			r.Get("/api/v1/allowed-file-types", handlers.ListAllowedFileTypes)
+			r.Get("/api/v1/limits", handlers.GetPlatformLimits)
 
 			r.Post("/api/v1/offerings/{offeringId}/exercises", handlers.CreateExercise)
 			r.Get("/api/v1/offerings/{offeringId}/exercises", handlers.ListOfferingExercises)
@@ -123,6 +128,15 @@ func createRoutes(router *chi.Mux) {
 			r.Get("/api/v1/exercises/{id}", handlers.GetExercise)
 			r.Put("/api/v1/exercises/{id}", handlers.UpdateExercise)
 			r.Delete("/api/v1/exercises/{id}", handlers.DeleteExercise)
+
+			r.Get("/api/v1/exercises/{id}/language-limits",
+				handlers.GetExerciseLanguageLimits)
+			r.Get("/api/v1/exercises/{id}/limit-alerts",
+				handlers.ListExerciseLimitAlerts)
+			r.Post("/api/v1/exercises/{id}/limit-alerts/{alertId}/acknowledge",
+				handlers.AcknowledgeExerciseLimitAlert)
+			r.Put("/api/v1/exercises/{id}/language-limits",
+				handlers.ReplaceExerciseLanguageLimits)
 
 			r.Get("/api/v1/exercises/{id}/test-cases", handlers.ListTestCases)
 			r.Post("/api/v1/exercises/{id}/test-cases", handlers.CreateTestCase)

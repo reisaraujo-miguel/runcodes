@@ -16,11 +16,9 @@ user_bin=executable
 # per-case t_<id> (seconds), ms_<id> (bytes), fs_<id> (bytes) and stack_<id>
 # (bytes).
 #
-# They are read into the same names the image uses for its own defaults, so the
-# values are snapshotted as soon as the file has been sourced. The language
-# script is appended to this one and assigns those defaults afterwards (the
-# Python image asks for 1GB), with no way of knowing whether the judge sent a
-# value; the judge's value is the exercise's, so it wins — see limit_fs().
+# They are read into the same names and snapshotted immediately: the values are
+# the judge's, resolved from the platform, the exercise and the test case, and
+# the images carry no defaults of their own to fall back to.
 monitor_max_fs=''
 monitor_max_ms=''
 compilation_timeout=''
@@ -30,12 +28,6 @@ run_nonce=''
 judge_max_fs="${monitor_max_fs}"
 judge_max_ms="${monitor_max_ms}"
 judge_compilation_seconds="${compilation_timeout}"
-
-# The image's own defaults, used when the judge sent nothing (an image can also
-# be run by hand). The language script may override them.
-monitor_max_fs=5242880   # 5MB
-monitor_max_ms=268435456 #256MB
-compilation_timeout=10
 
 # The nonce authenticates the progress milestones, so nothing submitted may be
 # able to read it: a Makefile submission (and anything it runs) can execute code
@@ -70,20 +62,27 @@ milestone() {
     fi
 }
 
-# Effective global limits: the judge's value when container.config carried one —
-# an explicit 0 included, which means "no limit" — and the image's own default
-# otherwise. They are resolved when the run happens, not when this script is
-# read, because by then the language script's defaults are in place.
+# The limits are the judge's. The images used to carry a default for their own
+# language, which made the same exercise behave differently depending on the
+# image; that policy now lives in the platform and the judge sends every value
+# on every run. A missing global is a broken invocation, not a default to guess.
+for required in monitor_max_fs monitor_max_ms compilation_timeout; do
+    if [ -z "${!required}" ]; then
+        echo "runcodes: container.config is missing ${required}" >&2
+        exit 2
+    fi
+done
+
 limit_fs() {
-    printf '%s' "${judge_max_fs:-${monitor_max_fs}}"
+    printf '%s' "${judge_max_fs}"
 }
 
 limit_ms() {
-    printf '%s' "${judge_max_ms:-${monitor_max_ms}}"
+    printf '%s' "${judge_max_ms}"
 }
 
 limit_compilation_seconds() {
-    printf '%s' "${judge_compilation_seconds:-${compilation_timeout}}"
+    printf '%s' "${judge_compilation_seconds}"
 }
 
 # Kills every process this script started that is still alive.
@@ -229,18 +228,27 @@ run_tests() {
 
         cd "${test_dir}" || exit
 
-        # These should have a value set in ${container_config_file}; the judge
-        # sends the exercise's per-case limits, and the image's globals are the
-        # fallback.
+        # The judge sends all four limits for every case; a missing byte limit
+        # means "no limit", and a missing CPU budget is an error rather than a
+        # guessed timeout.
         local timeout ms_limit fs_limit stack_limit var
         var="t_${test_id}"
-        [ -z "${!var}" ] && timeout=3 || timeout="${!var}"
+        timeout="${!var}"
+        if [ -z "${timeout}" ]; then
+            echo "runcodes: container.config is missing t_${test_id}" >&2
+            exit 2
+        fi
         var="ms_${test_id}"
-        [ -z "${!var}" ] && ms_limit="$(limit_ms)" || ms_limit="${!var}"
+        ms_limit="${!var:-0}"
         var="fs_${test_id}"
-        [ -z "${!var}" ] && fs_limit="$(limit_fs)" || fs_limit="${!var}"
+        fs_limit="${!var:-0}"
         var="stack_${test_id}"
-        [ -z "${!var}" ] && stack_limit=0 || stack_limit="${!var}"
+        stack_limit="${!var:-0}"
+
+        # Files the program creates or changes are collected into the artifact
+        # zip after the case: the timestamp marker tells them apart from the
+        # copy of the source the harness placed here.
+        : > "../${test_id}.start"
 
         [ -z "${pre_run_command}" ] || eval "${pre_run_command} ${test_id}"
 
@@ -265,10 +273,51 @@ run_tests() {
         # Nothing the graded program left behind may touch this case's results.
         kill_stragglers
 
+        # Collect what the program wrote, preserving its relative paths, so the
+        # student can download the files the submission produced. The files are
+        # moved, not copied (the scratch directory is discarded next, and a
+        # second copy would double the workspace charge).
+        #
+        # There is no size filter here: the case's file-size limit is already a
+        # kernel limit (RLIMIT_FSIZE, set by the monitor), so a program cannot
+        # write a file past it, and a case with no limit is bounded by the
+        # workspace quota instead. The judge uploads this directory as soon as
+        # the case reports `case.done` and deletes the local copy, so it is only
+        # ever on disk for one case.
+        #
+        # The directory is created even when the program wrote nothing: the judge
+        # reads its existence as "this image collects generated files". An image
+        # from before that was introduced leaves no directory at all, and the
+        # judge can then say so instead of silently omitting the downloads.
+        case_files_dir="${outputfiles_dir}/case_${test_id}"
+        mkdir -p "${case_files_dir}"
+        # The walk is NUL-delimited: the program picks its own filenames, and a
+        # newline in one would otherwise split it into two paths and drop the
+        # file.
+        while IFS= read -r -d '' produced; do
+            case_relative="${produced#"${test_dir}"/}"
+            mkdir -p "${case_files_dir}/$(dirname "${case_relative}")"
+            mv -f "${produced}" "${case_files_dir}/${case_relative}"
+        done < <(find "${test_dir}" -type f -newer "${test_id}.start" -print0)
+        rm -f -- "${test_id}.start"
+
         cp "${test_id}.monitor_out" "${outputfiles_dir}"
         cp "${test_id}.monitor_err" "${outputfiles_dir}"
         cp "${test_id}.output" "${outputfiles_dir}"
         cp "${test_id}.error" "${outputfiles_dir}"
+
+        # The case's artifacts are complete: the judge grades and publishes this
+        # one now, instead of waiting for the whole suite to finish.
+        case_done_msg="case.done ${test_id}"
+        milestone "${case_done_msg}"
+
+        # Free the case's scratch directory: the copy of the source and every
+        # file the program wrote there. The artifacts the judge needs (output,
+        # error and the monitor report) live at the workspace root, and the
+        # outputfiles copies are already made, so nothing grading depends on is
+        # removed. Without this a suite of cases that write files accumulates
+        # them until the workspace quota kills the run.
+        rm -rf -- "./test_${test_id}"
     done
 
     milestone "${run_done_msg}"

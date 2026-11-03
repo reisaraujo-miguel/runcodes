@@ -178,7 +178,7 @@ func (e *Engine) prepareWorkspace(
 	var testCases []model.TestCase
 	if err := timings.MeasureFunc(model.PhaseTestCases, func() error {
 		var fetchErr error
-		testCases, fetchErr = e.store.FetchTestCases(ctx, commit.RealExerciseID)
+		testCases, fetchErr = e.store.FetchTestCases(ctx, commit.ID, commit.RealExerciseID)
 		return fetchErr
 	}); err != nil {
 		return nil, fmt.Errorf("fetch test cases: %w", err)
@@ -401,24 +401,13 @@ func (e *Engine) writeContainerConfig(commit *model.Commit, ws *workspace) error
 
 	var b strings.Builder
 
-	// The global limits are only written when the operator configured them: every
-	// image carries its own per-language default (`monitor_max_ms` is 1GB for the
-	// Python image, and the JVM images set no limit at all), and the harness lets a
-	// value the judge sent win over them. Writing the judge's default for every
-	// language would flatten those defaults — capping the Rust or Go compiler at
-	// 256MB, for one. 0 therefore means "use the image's default", and an explicit
-	// value is an override for the whole deployment. `compilation_timeout` works the
-	// same way, and `JUDGE_COMPILATION_WAIT` is what bounds the judge's own patience
-	// (see config), so the two are independent numbers.
-	if e.cfg.MonitorMaxFileSize > 0 {
-		fmt.Fprintf(&b, "monitor_max_fs=%d\n", e.cfg.MonitorMaxFileSize)
-	}
-	if e.cfg.MonitorMaxMemSize > 0 {
-		fmt.Fprintf(&b, "monitor_max_ms=%d\n", e.cfg.MonitorMaxMemSize)
-	}
-	if e.cfg.CompilationTimeout > 0 {
-		fmt.Fprintf(&b, "compilation_timeout=%d\n", int(e.cfg.CompilationTimeout.Seconds()))
-	}
+	// The images carry no limit defaults of their own any more: the judge sends
+	// every number the harness applies. The globals below bound the compilation,
+	// and the per-case limits are written for every case (a zero means "no limit"
+	// for a byte limit, and is written as such rather than omitted).
+	fmt.Fprintf(&b, "monitor_max_fs=%d\n", e.cfg.MonitorMaxFileSize)
+	fmt.Fprintf(&b, "monitor_max_ms=%d\n", e.cfg.MonitorMaxMemSize)
+	fmt.Fprintf(&b, "compilation_timeout=%d\n", int(e.cfg.CompilationTimeout.Seconds()))
 	fmt.Fprintf(&b, "run_nonce='%s'\n", shellSingleQuote(ws.RunNonce))
 
 	sourceName := commit.Filename()
@@ -431,25 +420,17 @@ func (e *Engine) writeContainerConfig(commit *model.Commit, ws *workspace) error
 	}
 	fmt.Fprintf(&b, "src_file='%s'\n", srcFile)
 
-	// Write the per-case settings, omitting the ones the exercise leaves unset so
-	// the image's own defaults apply. A limit the exercise did not author is not
-	// the same as a limit of zero.
+	// Every limit is written, including a zero byte limit (which means "no
+	// limit"): the harness no longer has a fallback of its own to fall back to.
 	for _, tc := range ws.TestCases {
 		timeout := tc.CPUTimeLimit
 		if timeout <= 0 {
 			timeout = defaultCase
 		}
 		fmt.Fprintf(&b, "t_%d=%d\n", tc.ID, timeout)
-
-		if tc.MemUsageLimit > 0 {
-			fmt.Fprintf(&b, "ms_%d=%d\n", tc.ID, tc.MemUsageLimit)
-		}
-		if tc.FileSizeLimit > 0 {
-			fmt.Fprintf(&b, "fs_%d=%d\n", tc.ID, tc.FileSizeLimit)
-		}
-		if tc.StackLimit > 0 {
-			fmt.Fprintf(&b, "stack_%d=%d\n", tc.ID, tc.StackLimit)
-		}
+		fmt.Fprintf(&b, "ms_%d=%d\n", tc.ID, tc.MemUsageLimit)
+		fmt.Fprintf(&b, "fs_%d=%d\n", tc.ID, tc.FileSizeLimit)
+		fmt.Fprintf(&b, "stack_%d=%d\n", tc.ID, tc.StackLimit)
 	}
 
 	return os.WriteFile(filepath.Join(ws.BaseDir, "container.config"), []byte(b.String()), 0o644)

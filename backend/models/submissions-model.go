@@ -51,8 +51,12 @@ type CaseResult struct {
 	UserOutput         *string  `json:"user_output"`
 	UserOutputType     string   `json:"user_output_type"`
 	Status             string   `json:"status"`
-	StatusMessage      *string  `json:"status_message"`
-	ErrorMessage       *string  `json:"error_message"`
+	// Reason classifies an interrupted case: timeout, cpu_limit, memory_limit,
+	// stack_limit, file_size_limit, signal, monitor_error, output_error or
+	// server_error. Nil on a graded case and on an ordinary non-zero exit.
+	Reason        *string `json:"reason"`
+	StatusMessage *string `json:"status_message"`
+	ErrorMessage  *string `json:"error_message"`
 }
 
 // SubmissionArtifact identifies a generated file the download endpoint can

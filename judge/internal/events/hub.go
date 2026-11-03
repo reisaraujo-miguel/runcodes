@@ -311,6 +311,7 @@ type CaseResultPayload struct {
 	WallTime       float64 `json:"wall_time"`
 	MemUsage       int64   `json:"mem_usage"`
 	Status         string  `json:"status"`
+	Reason         string  `json:"reason,omitempty"`
 	StatusMessage  string  `json:"status_message"`
 	UserOutput     string  `json:"user_output"`
 	UserOutputType string  `json:"user_output_type"`
@@ -336,10 +337,22 @@ type TimingsPayload struct {
 }
 
 // ArtifactPayload is an `artifact` event.
+//
+// Per-case events also carry the case and the state of its upload, so the client
+// can show a placeholder while the file is still being stored:
+//   - `state: "pending"` — the case generated files and they are being uploaded;
+//   - `state: "ready"` — they are stored and the listing grew;
+//   - `state: "failed"` — the upload was refused or failed, so there will be no
+//     link for that case.
+//
+// The run-level event (files written outside a case's directory) has no case and
+// no state.
 type ArtifactPayload struct {
 	basePayload
-	Kind string `json:"kind"`
-	URL  string `json:"url"`
+	Kind       string `json:"kind"`
+	URL        string `json:"url"`
+	TestCaseID int64  `json:"test_case_id,omitempty"`
+	State      string `json:"state,omitempty"`
 }
 
 // FinishedPayload is the terminal `finished` event.
@@ -394,7 +407,7 @@ func (h *Hub) Compilation(id int64, compiled bool, message, errMsg string, at ti
 
 // CaseResult publishes a `case_result` event for a specific test case of a commit,
 // including performance metrics and output details.
-func (h *Hub) CaseResult(id, testCaseID int64, cpuTime, wallTime float64, memUsage int64, status, statusMsg, userOutput, outputType, errMsg string) {
+func (h *Hub) CaseResult(id, testCaseID int64, cpuTime, wallTime float64, memUsage int64, status, reason, statusMsg, userOutput, outputType, errMsg string) {
 	h.publish(id, NameCaseResult, &CaseResultPayload{
 		basePayload:    basePayload{Type: NameCaseResult, CommitID: id},
 		TestCaseID:     testCaseID,
@@ -402,6 +415,7 @@ func (h *Hub) CaseResult(id, testCaseID int64, cpuTime, wallTime float64, memUsa
 		WallTime:       wallTime,
 		MemUsage:       memUsage,
 		Status:         status,
+		Reason:         reason,
 		StatusMessage:  statusMsg,
 		UserOutput:     userOutput,
 		UserOutputType: outputType,
@@ -458,6 +472,25 @@ func (h *Hub) Artifact(id int64, kind, url string) {
 		URL:         url,
 	})
 }
+
+// ArtifactCase publishes an `artifact` event for one test case and the state of
+// its upload, so the client can replace a placeholder with the download link.
+func (h *Hub) ArtifactCase(id, testCaseID int64, state, kind, url string) {
+	h.publish(id, NameArtifact, &ArtifactPayload{
+		basePayload: basePayload{Type: NameArtifact, CommitID: id},
+		Kind:        kind,
+		URL:         url,
+		TestCaseID:  testCaseID,
+		State:       state,
+	})
+}
+
+// Artifact states, as sent on a per-case `artifact` event.
+const (
+	ArtifactPending = "pending"
+	ArtifactReady   = "ready"
+	ArtifactFailed  = "failed"
+)
 
 // Finished publishes the terminal `finished` event for a commit, including the final status, score,
 // and compilation messages.

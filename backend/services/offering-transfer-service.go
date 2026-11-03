@@ -72,18 +72,32 @@ type offeringArchiveExercise struct {
 }
 
 type offeringArchiveTestCase struct {
-	Input               string   `json:"input"`
-	InputType           string   `json:"input_type"`
-	ShowInput           bool     `json:"show_input"`
-	ExpectedOutput      string   `json:"expected_output"`
-	ExpectedOutputType  string   `json:"expected_output_type"`
-	ShowExpectedOutput  bool     `json:"show_expected_output"`
-	ShowUserOutput      bool     `json:"show_user_output"`
-	CPUTimeLimitSeconds int      `json:"cpu_time_limit_seconds"`
-	MemUsageLimitBytes  int64    `json:"mem_usage_limit_bytes"`
-	StackLimitBytes     int64    `json:"stack_limit_bytes"`
-	FileSizeLimitBytes  int64    `json:"file_size_limit_bytes"`
-	Files               []string `json:"files"`
+	Input              string `json:"input"`
+	InputType          string `json:"input_type"`
+	ShowInput          bool   `json:"show_input"`
+	ExpectedOutput     string `json:"expected_output"`
+	ExpectedOutputType string `json:"expected_output_type"`
+	ShowExpectedOutput bool   `json:"show_expected_output"`
+	ShowUserOutput     bool   `json:"show_user_output"`
+	// Limits carries the per-language overrides. Archives written before limits
+	// were per language carry the four fields below instead; the import applies
+	// them to every allowed language, which is what they used to mean.
+	Limits              []offeringArchiveLimit `json:"limits,omitempty"`
+	CPUTimeLimitSeconds int                    `json:"cpu_time_limit_seconds"`
+	MemUsageLimitBytes  int64                  `json:"mem_usage_limit_bytes"`
+	StackLimitBytes     int64                  `json:"stack_limit_bytes"`
+	FileSizeLimitBytes  int64                  `json:"file_size_limit_bytes"`
+	Files               []string               `json:"files"`
+}
+
+// offeringArchiveLimit is one language's overrides, named by file extension
+// because the archive is portable between installations with different ids.
+type offeringArchiveLimit struct {
+	Extension           string `json:"extension"`
+	CPUTimeLimitSeconds *int   `json:"cpu_time_limit_seconds,omitempty"`
+	MemUsageLimitBytes  *int64 `json:"mem_usage_limit_bytes,omitempty"`
+	StackLimitBytes     *int64 `json:"stack_limit_bytes,omitempty"`
+	FileSizeLimitBytes  *int64 `json:"file_size_limit_bytes,omitempty"`
 }
 
 // OfferingImportOptions are the fields the professor may override when turning
@@ -207,24 +221,47 @@ func ExportOfferingArchive(
 			writer.Close()
 			return "", nil, err
 		}
+		languages, err := loadAllowedLanguages(ctx, database.DB, exercise.authoringID)
+		if err != nil {
+			writer.Close()
+			return "", nil, err
+		}
+		caseIDs := make([]int64, len(cases))
+		for i := range cases {
+			caseIDs[i] = cases[i].ID
+		}
+		caseOverrides, err := loadCaseOverrides(ctx, database.DB, caseIDs)
+		if err != nil {
+			writer.Close()
+			return "", nil, err
+		}
 
 		for caseIndex := range cases {
 			testCase := &cases[caseIndex]
 			base := fmt.Sprintf("exercises/%03d/testcases/%03d", index+1, caseIndex+1)
 
 			exportCase := offeringArchiveTestCase{
-				Input:               testCase.Input,
-				InputType:           testCase.InputType,
-				ShowInput:           testCase.ShowInput,
-				ExpectedOutput:      testCase.ExpectedOutput,
-				ExpectedOutputType:  testCase.ExpectedOutputType,
-				ShowExpectedOutput:  testCase.ShowExpectedOutput,
-				ShowUserOutput:      testCase.ShowUserOutput,
-				CPUTimeLimitSeconds: testCase.CPUTimeLimitSeconds,
-				MemUsageLimitBytes:  testCase.MemUsageLimitBytes,
-				StackLimitBytes:     testCase.StackLimitBytes,
-				FileSizeLimitBytes:  testCase.FileSizeLimitBytes,
-				Files:               []string{},
+				Input:              testCase.Input,
+				InputType:          testCase.InputType,
+				ShowInput:          testCase.ShowInput,
+				ExpectedOutput:     testCase.ExpectedOutput,
+				ExpectedOutputType: testCase.ExpectedOutputType,
+				ShowExpectedOutput: testCase.ShowExpectedOutput,
+				ShowUserOutput:     testCase.ShowUserOutput,
+				Files:              []string{},
+			}
+			for _, language := range languages {
+				override := caseOverrides[testCase.ID][language.ID]
+				if override.Empty() {
+					continue
+				}
+				exportCase.Limits = append(exportCase.Limits, offeringArchiveLimit{
+					Extension:           language.Extension,
+					CPUTimeLimitSeconds: override.CPUTimeLimitSeconds,
+					MemUsageLimitBytes:  override.MemUsageLimitBytes,
+					StackLimitBytes:     override.StackLimitBytes,
+					FileSizeLimitBytes:  override.FileSizeLimitBytes,
+				})
 			}
 
 			input, err := loadCaseObject(
@@ -387,8 +424,7 @@ func loadExportTestCases(
 	rows, err := database.DB.QueryContext(ctx, `
 		SELECT id, exercise_id, input, input_type::text, show_input,
 		       expected_output, expected_output_type::text,
-		       show_expected_output, show_user_output, cpu_time_limit_seconds,
-		       mem_usage_limit_bytes, stack_limit_bytes, file_size_limit_bytes
+		       show_expected_output, show_user_output
 		FROM exercises_test_cases
 		WHERE exercise_id = $1
 		ORDER BY id`, authoringID)
@@ -410,8 +446,6 @@ func loadExportTestCases(
 			&testCase.InputType, &testCase.ShowInput,
 			&testCase.ExpectedOutput, &testCase.ExpectedOutputType,
 			&testCase.ShowExpectedOutput, &testCase.ShowUserOutput,
-			&testCase.CPUTimeLimitSeconds, &testCase.MemUsageLimitBytes,
-			&testCase.StackLimitBytes, &testCase.FileSizeLimitBytes,
 		); err != nil {
 			return nil, ErrServer
 		}
@@ -609,6 +643,16 @@ func validateOfferingManifest(manifest *offeringArchiveManifest) error {
 				ErrArchiveTooLarge)
 		}
 
+		seenExtensions := make(map[string]struct{}, len(exercise.AllowedFileTypeExtensions))
+		for _, extension := range exercise.AllowedFileTypeExtensions {
+			extension = strings.ToLower(extension)
+			if _, duplicate := seenExtensions[extension]; duplicate {
+				return fmt.Errorf("%w: duplicate file type %q in exercise %q",
+					ErrInvalidTransfer, extension, exercise.Title)
+			}
+			seenExtensions[extension] = struct{}{}
+		}
+
 		for caseIndex := range exercise.TestCases {
 			testCase := &exercise.TestCases[caseIndex]
 			if err := validateIOType(testCase.InputType); err != nil {
@@ -626,6 +670,31 @@ func validateOfferingManifest(manifest *offeringArchiveManifest) error {
 				return fmt.Errorf("%w: test case %d of %q has a negative limit",
 					ErrInvalidTransfer, caseIndex+1, exercise.Title)
 			}
+			seenLimits := make(map[string]struct{}, len(testCase.Limits))
+			for _, limit := range testCase.Limits {
+				extension := strings.ToLower(limit.Extension)
+				if _, duplicate := seenLimits[extension]; duplicate {
+					return fmt.Errorf("%w: test case %d of %q repeats the %q limits",
+						ErrInvalidTransfer, caseIndex+1, exercise.Title, extension)
+				}
+				seenLimits[extension] = struct{}{}
+				if _, allowed := seenExtensions[extension]; !allowed {
+					return fmt.Errorf(
+						"%w: test case %d of %q sets limits for %q, which the exercise does not allow",
+						ErrInvalidTransfer, caseIndex+1, exercise.Title, extension,
+					)
+				}
+				if limit.CPUTimeLimitSeconds != nil && *limit.CPUTimeLimitSeconds <= 0 {
+					return fmt.Errorf("%w: test case %d of %q has a non-positive cpu limit",
+						ErrInvalidTransfer, caseIndex+1, exercise.Title)
+				}
+				if (limit.MemUsageLimitBytes != nil && *limit.MemUsageLimitBytes < 0) ||
+					(limit.StackLimitBytes != nil && *limit.StackLimitBytes < 0) ||
+					(limit.FileSizeLimitBytes != nil && *limit.FileSizeLimitBytes < 0) {
+					return fmt.Errorf("%w: test case %d of %q has a negative limit",
+						ErrInvalidTransfer, caseIndex+1, exercise.Title)
+				}
+			}
 			if err := validateArchiveFileNames(&testCase.Files); err != nil {
 				return err
 			}
@@ -637,17 +706,76 @@ func validateOfferingManifest(manifest *offeringArchiveManifest) error {
 		if err := validateArchiveFileNames(&exercise.AttachedFiles); err != nil {
 			return err
 		}
-		seenExtensions := make(map[string]struct{}, len(exercise.AllowedFileTypeExtensions))
-		for _, extension := range exercise.AllowedFileTypeExtensions {
-			if _, duplicate := seenExtensions[extension]; duplicate {
-				return fmt.Errorf("%w: duplicate file type %q in exercise %q",
-					ErrInvalidTransfer, extension, exercise.Title)
-			}
-			seenExtensions[extension] = struct{}{}
-		}
 	}
 
 	return nil
+}
+
+/*
+archiveCaseLimits maps an archive case's overrides to the language ids of the
+imported exercise. An archive written before limits were per language has no
+limits array; its four values are applied to every allowed language, which is
+what they used to mean.
+*/
+func archiveCaseLimits(
+	testCase *offeringArchiveTestCase, languages []models.LanguageLimits,
+) ([]models.LanguageLimits, error) {
+	if len(testCase.Limits) == 0 {
+		if testCase.CPUTimeLimitSeconds <= 0 && testCase.MemUsageLimitBytes <= 0 &&
+			testCase.StackLimitBytes <= 0 && testCase.FileSizeLimitBytes <= 0 {
+			return nil, nil
+		}
+		override := models.LimitOverrides{}
+		if testCase.CPUTimeLimitSeconds > 0 {
+			value := testCase.CPUTimeLimitSeconds
+			override.CPUTimeLimitSeconds = &value
+		}
+		if testCase.MemUsageLimitBytes > 0 {
+			value := testCase.MemUsageLimitBytes
+			override.MemUsageLimitBytes = &value
+		}
+		if testCase.StackLimitBytes > 0 {
+			value := testCase.StackLimitBytes
+			override.StackLimitBytes = &value
+		}
+		if testCase.FileSizeLimitBytes > 0 {
+			value := testCase.FileSizeLimitBytes
+			override.FileSizeLimitBytes = &value
+		}
+		limits := make([]models.LanguageLimits, 0, len(languages))
+		for _, language := range languages {
+			limits = append(limits, models.LanguageLimits{
+				AllowedFileTypeID: language.AllowedFileTypeID,
+				Extension:         language.Extension,
+				Overrides:         override,
+			})
+		}
+		return limits, nil
+	}
+
+	byExtension := make(map[string]int64, len(languages))
+	for _, language := range languages {
+		byExtension[strings.ToLower(language.Extension)] = language.AllowedFileTypeID
+	}
+	limits := make([]models.LanguageLimits, 0, len(testCase.Limits))
+	for _, limit := range testCase.Limits {
+		id, ok := byExtension[strings.ToLower(limit.Extension)]
+		if !ok {
+			return nil, fmt.Errorf("%w: limit for unknown file type %q",
+				ErrInvalidTransfer, limit.Extension)
+		}
+		limits = append(limits, models.LanguageLimits{
+			AllowedFileTypeID: id,
+			Extension:         limit.Extension,
+			Overrides: models.LimitOverrides{
+				CPUTimeLimitSeconds: limit.CPUTimeLimitSeconds,
+				MemUsageLimitBytes:  limit.MemUsageLimitBytes,
+				StackLimitBytes:     limit.StackLimitBytes,
+				FileSizeLimitBytes:  limit.FileSizeLimitBytes,
+			},
+		})
+	}
+	return limits, nil
 }
 
 func validateArchiveFileNames(names *[]string) error {
@@ -866,6 +994,7 @@ func ImportOfferingArchive(
 			return fail(ErrServer)
 		}
 
+		exerciseTypes := make([]models.LanguageLimits, 0, len(exercise.AllowedFileTypeExtensions))
 		for _, extension := range exercise.AllowedFileTypeExtensions {
 			typeID, ok := allowedTypes[strings.ToLower(extension)]
 			if !ok {
@@ -882,6 +1011,10 @@ func ImportOfferingArchive(
 			); err != nil {
 				return fail(ErrServer)
 			}
+			exerciseTypes = append(exerciseTypes, models.LanguageLimits{
+				AllowedFileTypeID: typeID,
+				Extension:         extension,
+			})
 		}
 
 		for caseIndex, testCase := range exercise.TestCases {
@@ -901,23 +1034,27 @@ func ImportOfferingArchive(
 			err = tx.QueryRowContext(ctx, `
 				INSERT INTO exercises_test_cases
 				    (exercise_id, input, input_type, show_input, expected_output,
-				     expected_output_type, show_expected_output, show_user_output,
-				     cpu_time_limit_seconds, mem_usage_limit_bytes,
-				     stack_limit_bytes, file_size_limit_bytes)
+				     expected_output_type, show_expected_output, show_user_output)
 				VALUES ($1, $2, $3::input_output_type_t, $4, $5,
-				        $6::input_output_type_t, $7, $8, $9, $10, $11, $12)
+				        $6::input_output_type_t, $7, $8)
 				RETURNING id`,
 				exerciseID, testCase.Input, testCase.InputType, testCase.ShowInput,
 				testCase.ExpectedOutput, testCase.ExpectedOutputType,
 				testCase.ShowExpectedOutput, testCase.ShowUserOutput,
-				testCase.CPUTimeLimitSeconds, testCase.MemUsageLimitBytes,
-				testCase.StackLimitBytes, testCase.FileSizeLimitBytes,
 			).Scan(&caseID)
 			if err != nil {
 				slog.ErrorContext(ctx, "error inserting an imported test case",
 					slog.String("error", err.Error()),
 				)
 				return fail(ErrServer)
+			}
+
+			limits, err := archiveCaseLimits(&testCase, exerciseTypes)
+			if err != nil {
+				return fail(err)
+			}
+			if err := InsertTestCaseLanguageLimits(ctx, tx, caseID, limits); err != nil {
+				return fail(err)
 			}
 
 			if err := uploadCase(storage.CaseInputKey(caseID), input, "text/plain; charset=utf-8"); err != nil {

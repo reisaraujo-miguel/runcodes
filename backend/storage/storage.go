@@ -1,7 +1,8 @@
 /*
 Package storage owns the S3-compatible object storage used for submissions,
-test cases, compilation files and attachments, along with the object keys and
-in-place replacement helper that go with it.
+test cases, compilation files, attachments and the files a submission
+generates, along with the object keys and in-place replacement helper that go
+with it.
 
 The object keys are shared with the judge, which materialises the objects in its
 workspaces under exactly these names (`<case_id>/in`, `<case_id>/out`, ...), so
@@ -17,6 +18,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -314,6 +316,82 @@ func DeleteCommitObjects(ctx context.Context, keys []string) error {
 	return deleteObjectsInBucket(ctx, func(b Buckets) string { return b.Commits }, keys)
 }
 
+/*
+DeleteCommitOutputs removes every file a commit generated. The objects share the
+commit's prefix and are not referenced by any row, so they are listed and deleted
+by prefix: nothing in the database says which files exist.
+*/
+func DeleteCommitOutputs(ctx context.Context, commitID int64) error {
+	client, buckets, err := Client()
+	if err != nil {
+		return err
+	}
+
+	prefix := OutputPrefix(commitID)
+	paginator := s3.NewListObjectsV2Paginator(client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(buckets.OutputFiles),
+		Prefix: aws.String(prefix),
+	})
+
+	var keys []string
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return fmt.Errorf("listing generated files: %w", err)
+		}
+		for _, obj := range page.Contents {
+			if obj.Key != nil {
+				keys = append(keys, *obj.Key)
+			}
+		}
+	}
+
+	return deleteObjectsInBucket(
+		ctx, func(b Buckets) string { return b.OutputFiles }, keys,
+	)
+}
+
+/*
+DeleteExpiredOutputFiles removes the generated files uploaded before cutoff and
+returns how many it scheduled for deletion. Unlike the other buckets, nothing in
+the database references these objects, so age is the only thing that can decide
+what to remove; the caller picks the cutoff from the configured retention.
+*/
+func DeleteExpiredOutputFiles(ctx context.Context, cutoff time.Time) (int, error) {
+	client, buckets, err := Client()
+	if err != nil {
+		return 0, err
+	}
+
+	paginator := s3.NewListObjectsV2Paginator(client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(buckets.OutputFiles),
+	})
+
+	expired := make([]string, 0, 64)
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return 0, fmt.Errorf("listing generated files: %w", err)
+		}
+		for _, obj := range page.Contents {
+			if obj.Key == nil || obj.LastModified == nil {
+				continue
+			}
+			if obj.LastModified.Before(cutoff) {
+				expired = append(expired, *obj.Key)
+			}
+		}
+	}
+
+	if err := deleteObjectsInBucket(
+		ctx, func(b Buckets) string { return b.OutputFiles }, expired,
+	); err != nil {
+		return 0, err
+	}
+
+	return len(expired), nil
+}
+
 func deleteObjectsInBucket(
 	ctx context.Context, bucketName func(Buckets) string, keys []string,
 ) error {
@@ -554,4 +632,96 @@ func GetCommitObject(ctx context.Context, key string) (*FileObject, error) {
 	}
 
 	return getObject(ctx, buckets.Commits, key)
+}
+
+// OutputFile is one file the submission generated, as uploaded by the judge.
+type OutputFile struct {
+	// Path is the file's location inside the commit's output namespace, for
+	// example `test_1/saida.txt`.
+	Path string
+	Size int64
+	// Modified is when the judge uploaded the file.
+	Modified time.Time
+}
+
+/*
+ListOutputFiles lists the files the submission generated for a commit. The
+judge uploads each case's files as the run advances and deletes its local copy,
+so this listing is the artifact record: an empty result means the submission
+produced no files.
+*/
+func ListOutputFiles(ctx context.Context, commitID int64) ([]OutputFile, error) {
+	client, buckets, err := Client()
+	if err != nil {
+		return nil, err
+	}
+
+	prefix := OutputPrefix(commitID)
+	paginator := s3.NewListObjectsV2Paginator(client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(buckets.OutputFiles),
+		Prefix: aws.String(prefix),
+	})
+
+	files := make([]OutputFile, 0, 8)
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("listing generated files: %w", err)
+		}
+
+		for _, obj := range page.Contents {
+			if obj.Key == nil {
+				continue
+			}
+			rel := strings.TrimPrefix(*obj.Key, prefix)
+			// Directory markers (`<dir>/`) are not files, and anything that is not
+			// a clean relative path came from outside this writer.
+			if !OutputPathValid(rel) {
+				continue
+			}
+			files = append(files, OutputFile{
+				Path:     rel,
+				Size:     aws.ToInt64(obj.Size),
+				Modified: aws.ToTime(obj.LastModified),
+			})
+		}
+	}
+
+	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
+
+	return files, nil
+}
+
+/*
+OutputFilesExist reports whether the submission generated at least one file. The
+submission snapshot uses it to restore the generated-files section after a page
+reload, when the transient artifact event is no longer in the stream.
+*/
+func OutputFilesExist(ctx context.Context, commitID int64) (bool, error) {
+	files, err := ListOutputFiles(ctx, commitID)
+	if err != nil {
+		return false, err
+	}
+
+	return len(files) > 0, nil
+}
+
+/*
+GetOutputFile opens one generated file for streaming to the client. rel must be
+a path returned by ListOutputFiles: the key is built from it, so a value that is
+not a clean relative path is rejected rather than resolved.
+*/
+func GetOutputFile(
+	ctx context.Context, commitID int64, rel string,
+) (*FileObject, error) {
+	_, buckets, err := Client()
+	if err != nil {
+		return nil, err
+	}
+
+	if !OutputPathValid(rel) {
+		return nil, ErrObjectNotFound
+	}
+
+	return getObject(ctx, buckets.OutputFiles, OutputFileKey(commitID, rel))
 }
