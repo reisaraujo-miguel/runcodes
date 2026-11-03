@@ -290,9 +290,13 @@ services:
       - server
       - -s3
       - -s3.config=/etc/seaweedfs/s3.json
-      - -volume.max=50
+      # Generated files make the store grow with every submission that writes
+      # output, so the defaults allow a real term's worth of data: 100 volumes of
+      # 1 GiB. Raise them together with the host disk; a store that runs out of
+      # free volumes answers every upload with HTTP 500.
+      - -volume.max=100
       - -dir=/data
-      - -master.volumeSizeLimitMB=256
+      - -master.volumeSizeLimitMB=1024
       - -ip=seaweed
       - -ip.bind=0.0.0.0
     volumes:

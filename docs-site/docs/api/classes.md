@@ -586,6 +586,32 @@ curl -b cookies.txt -X POST \
 Upload limits are deliberate: a test case can carry at most 32 MiB of multipart
 data.
 
+### Limits
+
+Limits resolve per language: the test case's override, then the exercise default,
+then the platform default, field by field.
+
+- `GET /limits` returns the platform defaults for the four per-case limits. The
+  compilation budget is the judge's `JUDGE_DEFAULT_COMPILATION_TIMEOUT` and is not
+  part of the resolution chain.
+- `GET /exercises/{id}/language-limits` returns one entry per language the
+  exercise allows, with the exercise's override, the resolved values and the
+  source of each (`platform`, `exercise` or `case`).
+- `PUT /exercises/{id}/language-limits` replaces the exercise's defaults; a null
+  field inherits the platform value. Its body is the same array the test-case
+  form sends, one entry per allowed language.
+- `GET /exercises/{id}/limit-alerts` returns the unacknowledged limit-failure
+  warnings of the exercise, and
+  `POST /exercises/{id}/limit-alerts/{alertId}/acknowledge` closes one. Each alert
+  carries `cases`, the test cases its failures concentrated in, worst first and
+  numbered the way the exercise page numbers them (`{number, failures}`), so the
+  in-app warning names the same cases as the email.
+
+A test case's create/update body carries `language_limits`, a JSON array of
+`{allowed_file_type_id, cpu_time_limit_seconds, mem_usage_limit_bytes,
+stack_limit_bytes, file_size_limit_bytes}`; a null field inherits and `0` means
+"no limit" for the three byte-valued ones.
+
 ### `POST /exercises/{id}/test-cases/batch`
 
 Creates many cases from one zip. The body is `multipart/form-data`:

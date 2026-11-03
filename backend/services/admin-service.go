@@ -246,21 +246,24 @@ func AdminDeleteUser(ctx context.Context, userID, adminID int) error {
 	}
 
 	objects := make([]storageObject, 0, 8)
+	commitIDs := make([]int64, 0, 8)
 	for _, offeringID := range ownedIDs {
-		keys, err := offeringStorageKeys(ctx, offeringID)
+		keys, offeringCommitIDs, err := offeringStorageKeys(ctx, offeringID)
 		if err != nil {
 			return err
 		}
 		objects = append(objects, keys...)
+		commitIDs = append(commitIDs, offeringCommitIDs...)
 	}
 
 	// The user's own submissions in classes they do not own are cascaded away by
 	// the DELETE below, so their sources have to be collected before the rows go.
-	commitObjects, err := userCommitObjects(ctx, userID)
+	commitObjects, userCommitIDs, err := userCommitObjects(ctx, userID)
 	if err != nil {
 		return err
 	}
 	objects = append(objects, commitObjects...)
+	commitIDs = append(commitIDs, userCommitIDs...)
 
 	result, err := database.DB.ExecContext(ctx,
 		"DELETE FROM users WHERE id = $1", userID,
@@ -289,6 +292,7 @@ func AdminDeleteUser(ctx context.Context, userID, adminID int) error {
 			cache.OfferingExercisesKey(offeringID))
 	}
 	deleteObjectsBestEffort(ctx, objects)
+	deleteCommitOutputsBestEffort(ctx, commitIDs)
 
 	slog.InfoContext(ctx, "user deleted by admin",
 		slog.Int("user_id", userID),
@@ -336,40 +340,49 @@ func ownedOfferingIDs(ctx context.Context, userID int) ([]int64, error) {
 
 /*
 userCommitObjects collects the submitted sources owned by a user. They live in
-the commits bucket, not the files bucket.
+the commits bucket, not the files bucket. The commit IDs come back too: their
+generated files are a prefix in the outputfiles bucket, so they are cleaned up
+per commit instead of as individual keys.
 */
-func userCommitObjects(ctx context.Context, userID int) ([]storageObject, error) {
+func userCommitObjects(
+	ctx context.Context, userID int,
+) ([]storageObject, []int64, error) {
 	rows, err := database.DB.QueryContext(ctx, `
-		SELECT s3_key FROM commits
+		SELECT id, s3_key FROM commits
 		WHERE user_id = $1 AND s3_key IS NOT NULL AND s3_key <> ''`, userID)
 	if err != nil {
 		slog.ErrorContext(ctx, "error fetching submitted sources for deletion",
 			slog.String("error", err.Error()),
 			slog.Int("user_id", userID),
 		)
-		return nil, ErrServer
+		return nil, nil, ErrServer
 	}
 	defer rows.Close()
 
 	objects := make([]storageObject, 0, 8)
+	commitIDs := make([]int64, 0, 8)
 	for rows.Next() {
-		var key string
-		if err := rows.Scan(&key); err != nil {
+		var (
+			commitID int64
+			key      string
+		)
+		if err := rows.Scan(&commitID, &key); err != nil {
 			slog.ErrorContext(ctx, "error scanning submitted source",
 				slog.String("error", err.Error()),
 			)
-			return nil, ErrServer
+			return nil, nil, ErrServer
 		}
 		objects = append(objects, storageObject{bucketCommits, key})
+		commitIDs = append(commitIDs, commitID)
 	}
 	if err := rows.Err(); err != nil {
 		slog.ErrorContext(ctx, "error iterating submitted sources",
 			slog.String("error", err.Error()),
 		)
-		return nil, ErrServer
+		return nil, nil, ErrServer
 	}
 
-	return objects, nil
+	return objects, commitIDs, nil
 }
 
 /*

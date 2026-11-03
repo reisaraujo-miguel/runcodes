@@ -252,9 +252,20 @@ released them for the case.
 
 ### Output files
 
-If your program writes files, the results panel offers **Arquivos gerados**
-(Generated files) with a download of the output archive. The archive contains
-only the files the program produced. Internal monitor reports are excluded.
+If your program writes files, the tab of the case that wrote them offers
+**Arquivos gerados** (Generated files), one download per file. Each tab lists only
+what its own case produced, so the file a test created appears next to that test's
+result. When more than one case writes files, a link downloads all of them as a
+zip.
+
+Only the files the program produced appear; internal monitor reports are
+excluded. A file is offered up to the case's file-size limit, which is also what
+stops a program from writing it. The link appears as soon as that case's file is
+stored; while it is being uploaded, the case's tab shows **Aguardando o envio do
+arquivo…** in its place, without holding up the rest of the results. A case interrupted by a limit or a
+signal offers no file: the program was killed while writing it, so what is on disk
+is a partial file, not a result. Files are kept for a week by default and then
+removed, so download what you need before that.
 
 ## Resubmit, compare and download
 

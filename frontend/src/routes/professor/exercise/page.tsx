@@ -18,6 +18,8 @@ import { AttachedFilesPanel } from "@/components/professor/AttachedFilesPanel";
 import { CompilationFilesPanel } from "@/components/professor/CompilationFilesPanel";
 import { EditExerciseForm } from "@/components/professor/EditExerciseForm";
 import { ExerciseInstructions } from "@/components/professor/ExerciseInstructions";
+import { ExerciseLimitAlerts } from "@/components/professor/ExerciseLimitAlerts";
+import { ExerciseLimitsPanel } from "@/components/professor/ExerciseLimitsPanel";
 import { TestCasesPanel } from "@/components/professor/TestCasesPanel";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -28,13 +30,16 @@ import { deleteExercise, getExercise } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
 import { formatDateTime } from "@/lib/format";
 
-type ExerciseTab = "details" | "tests" | "compilation" | "materials";
+type ExerciseTab = "details" | "tests" | "compilation" | "materials" | "limits";
 
 const DEFAULT_TAB: ExerciseTab = "details";
 
 /** Reads the selected tab from `?tab=`, falling back to the details tab. */
 function parseTab(value: string | null): ExerciseTab {
-  return value === "tests" || value === "compilation" || value === "materials"
+  return value === "tests" ||
+    value === "compilation" ||
+    value === "materials" ||
+    value === "limits"
     ? value
     : DEFAULT_TAB;
 }
@@ -129,6 +134,7 @@ export function ExercisePage() {
     { value: "tests", label: "Testes" },
     { value: "compilation", label: "Compilação" },
     { value: "materials", label: "Materiais" },
+    { value: "limits", label: "Limites" },
   ];
 
   return (
@@ -151,6 +157,8 @@ export function ExercisePage() {
         label="Seções do exercício"
         idPrefix="exercise"
       />
+
+      <ExerciseLimitAlerts exerciseId={current.id} />
 
       <div>
         <div
@@ -260,6 +268,15 @@ export function ExercisePage() {
           hidden={tab !== "materials"}
         >
           <AttachedFilesPanel exerciseId={current.id} />
+        </div>
+
+        <div
+          role="tabpanel"
+          id="exercise-panel-limits"
+          aria-labelledby="exercise-tab-limits"
+          hidden={tab !== "limits"}
+        >
+          <ExerciseLimitsPanel exerciseId={current.id} />
         </div>
       </div>
 

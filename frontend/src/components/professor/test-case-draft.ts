@@ -1,4 +1,9 @@
-import type { NewTestCase, TestCase, TestCasePatch } from "@/lib/api";
+import type {
+  LanguageLimitsPayload,
+  NewTestCase,
+  TestCase,
+  TestCasePatch,
+} from "@/lib/api";
 
 /** The two ways a test-case side may be provided. */
 export const TEXT_INPUT = "text";
@@ -18,11 +23,21 @@ export interface TestCaseDraft {
   showInput: boolean;
   showExpectedOutput: boolean;
   showUserOutput: boolean;
-  cpuTime: string;
-  memLimit: string;
-  stackLimit: string;
-  fileSizeLimit: string;
+  /**
+   * The per-language overrides being edited, keyed by allowed file type id. An
+   * empty input inherits the exercise's default for that language; a language
+   * with no entry in this map has no override of its own.
+   */
+  languageLimits: Record<number, LanguageLimitDraft>;
   extraFiles: File[];
+}
+
+/** One language's four limit inputs, as text ("" = inherit). */
+export interface LanguageLimitDraft {
+  cpu: string;
+  mem: string;
+  stack: string;
+  fileSize: string;
 }
 
 /** A blank draft, used to create a new case and to reset after a creation. */
@@ -37,10 +52,7 @@ export function emptyDraft(): TestCaseDraft {
     showInput: false,
     showExpectedOutput: false,
     showUserOutput: true,
-    cpuTime: "",
-    memLimit: "",
-    stackLimit: "",
-    fileSizeLimit: "",
+    languageLimits: {},
     extraFiles: [],
   };
 }
@@ -57,24 +69,66 @@ export function draftFromTestCase(testCase: TestCase): TestCaseDraft {
     showInput: testCase.show_input,
     showExpectedOutput: testCase.show_expected_output,
     showUserOutput: testCase.show_user_output,
-    cpuTime: limitToInput(testCase.cpu_time_limit_seconds),
-    memLimit: limitToInput(testCase.mem_usage_limit_bytes),
-    stackLimit: limitToInput(testCase.stack_limit_bytes),
-    fileSizeLimit: limitToInput(testCase.file_size_limit_bytes),
+    languageLimits: overridesFromCase(testCase),
     extraFiles: [],
   };
 }
 
-/** Parses a limit field; an empty value means "let the API decide". */
+/** Seeds one editor row per language the case already overrides. */
+function overridesFromCase(
+  testCase: TestCase,
+): Record<number, LanguageLimitDraft> {
+  const rows: Record<number, LanguageLimitDraft> = {};
+  for (const language of testCase.limits) {
+    const overrides = language.overrides;
+    if (
+      overrides.cpu_time_limit_seconds === null &&
+      overrides.mem_usage_limit_bytes === null &&
+      overrides.stack_limit_bytes === null &&
+      overrides.file_size_limit_bytes === null
+    ) {
+      continue;
+    }
+    rows[language.allowed_file_type_id] = {
+      cpu: limitToInput(overrides.cpu_time_limit_seconds),
+      mem: bytesToMiBInput(overrides.mem_usage_limit_bytes),
+      stack: bytesToMiBInput(overrides.stack_limit_bytes),
+      fileSize: bytesToMiBInput(overrides.file_size_limit_bytes),
+    };
+  }
+  return rows;
+}
+
+/** Parses a limit field; an empty value means "inherit". */
 export function parseLimit(value: string): number | undefined {
   if (value.trim() === "") return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
-/** Renders a stored limit as the value of a number input (0 = platform default). */
-export function limitToInput(value: number): string {
-  return Number.isFinite(value) ? String(value) : "";
+/** Renders a stored second limit as the value of a number input. */
+export function limitToInput(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "";
+  return String(value);
+}
+
+const MIB = 1024 * 1024;
+
+/** Renders a stored byte limit in MiB, with at most two decimals. */
+export function bytesToMiBInput(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "";
+  return String(Math.round((value / MIB) * 100) / 100);
+}
+
+/**
+ * Parses a MiB input into bytes. An empty value inherits; a zero is meaningful
+ * and means "no limit".
+ */
+export function parseMiBInput(value: string): number | undefined {
+  if (value.trim() === "") return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return undefined;
+  return Math.round(parsed * MIB);
 }
 
 /** Builds the multipart payload of a new case from the draft. */
@@ -99,7 +153,8 @@ export function draftToNewTestCase(draft: TestCaseDraft): NewTestCase {
     payload.expected_output = draft.outputText;
   }
 
-  applyLimits(payload, draft);
+  const languageLimits = languageLimitsPayload(draft);
+  if (languageLimits.length > 0) payload.language_limits = languageLimits;
 
   if (draft.extraFiles.length > 0) payload.files = draft.extraFiles;
 
@@ -130,7 +185,8 @@ export function draftToPatch(
     patch.expected_output = draft.outputText;
   }
 
-  if (draft.showInput !== current.show_input) patch.show_input = draft.showInput;
+  if (draft.showInput !== current.show_input)
+    patch.show_input = draft.showInput;
   if (draft.showExpectedOutput !== current.show_expected_output) {
     patch.show_expected_output = draft.showExpectedOutput;
   }
@@ -138,37 +194,27 @@ export function draftToPatch(
     patch.show_user_output = draft.showUserOutput;
   }
 
-  const cpu = parseLimit(draft.cpuTime);
-  if (cpu !== undefined && cpu !== current.cpu_time_limit_seconds) {
-    patch.cpu_time_limit_seconds = cpu;
-  }
-  const mem = parseLimit(draft.memLimit);
-  if (mem !== undefined && mem !== current.mem_usage_limit_bytes) {
-    patch.mem_usage_limit_bytes = mem;
-  }
-  const stack = parseLimit(draft.stackLimit);
-  if (stack !== undefined && stack !== current.stack_limit_bytes) {
-    patch.stack_limit_bytes = stack;
-  }
-  const fileSize = parseLimit(draft.fileSizeLimit);
-  if (fileSize !== undefined && fileSize !== current.file_size_limit_bytes) {
-    patch.file_size_limit_bytes = fileSize;
-  }
+  // The editor owns the whole override set, so the patch always carries it: a
+  // cleared input must remove the stored override, which a "changed fields only"
+  // patch could not express.
+  patch.language_limits = languageLimitsPayload(draft);
 
   if (draft.extraFiles.length > 0) patch.files = draft.extraFiles;
 
   return patch;
 }
 
-function applyLimits(payload: NewTestCase, draft: TestCaseDraft): void {
-  const cpu = parseLimit(draft.cpuTime);
-  if (cpu !== undefined) payload.cpu_time_limit_seconds = cpu;
-  const mem = parseLimit(draft.memLimit);
-  if (mem !== undefined) payload.mem_usage_limit_bytes = mem;
-  const stack = parseLimit(draft.stackLimit);
-  if (stack !== undefined) payload.stack_limit_bytes = stack;
-  const fileSize = parseLimit(draft.fileSizeLimit);
-  if (fileSize !== undefined) payload.file_size_limit_bytes = fileSize;
+/** Builds the per-language overrides from the draft's rows. */
+function languageLimitsPayload(draft: TestCaseDraft): LanguageLimitsPayload[] {
+  return Object.entries(draft.languageLimits)
+    .map(([id, row]) => ({
+      allowed_file_type_id: Number(id),
+      cpu_time_limit_seconds: parseLimit(row.cpu) ?? null,
+      mem_usage_limit_bytes: parseMiBInput(row.mem) ?? null,
+      stack_limit_bytes: parseMiBInput(row.stack) ?? null,
+      file_size_limit_bytes: parseMiBInput(row.fileSize) ?? null,
+    }))
+    .filter((row) => Number.isFinite(row.allowed_file_type_id));
 }
 
 /**

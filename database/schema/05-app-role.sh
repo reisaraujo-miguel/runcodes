@@ -76,7 +76,8 @@ GRANT USAGE ON SCHEMA public TO runcodes_judge;
 -- test cases. No sequences: it only updates existing rows.
 GRANT SELECT, UPDATE ON commits TO runcodes_judge;
 GRANT SELECT ON exercises, exercises_test_cases,
-	exercises_test_cases_files, exercises_compilation_files TO runcodes_judge;
+	exercises_test_cases_files, exercises_compilation_files,
+	commit_test_case_limits TO runcodes_judge;
 
 -- Row access, and nothing else: no ownership, and no CREATE on the schema
 -- (which PostgreSQL 15+ stopped granting to PUBLIC too).

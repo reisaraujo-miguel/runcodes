@@ -1,16 +1,19 @@
-// Package storage reads the judge's inputs (submitted source, test-case files
-// and exercise compilation files) from SeaweedFS over the S3 API. The judge is
-// read-only here: artifacts are handed back to the backend through the event
-// stream, never written to S3.
+// Package storage moves the judge's inputs and outputs in and out of SeaweedFS
+// over the S3 API: the submitted source, test-case files and exercise
+// compilation files are read, and the files a submission generates are written
+// back so the backend can serve them to the author.
 package storage
 
 import (
 	"context"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -137,4 +140,55 @@ func (s *S3) FetchCaseFiles(ctx context.Context, caseID int64, files []string, d
 func (s *S3) FetchCompilationFile(ctx context.Context, exerciseID int64, path, dest string) error {
 	key := fmt.Sprintf("compilationfiles/%d/%s", exerciseID, path)
 	return s.download(ctx, s.cfg.FilesBucket(), key, dest)
+}
+
+// UploadGeneratedFile stores one file a submission produced under the commit's
+// prefix in the outputfiles bucket (`<commit_id>/<rel>`) and returns its size.
+//
+// The key keeps the workspace layout the runner collected the file in
+// (`test_<case_id>/<relative>` or `outputfiles/<relative>`), so the backend can
+// present a file's origin from its path alone. rel is built by the judge from a
+// workspace walk, never from user input, but it is still cleaned to a
+// slash-separated relative path before it becomes a key.
+func (s *S3) UploadGeneratedFile(
+	ctx context.Context, commitID int64, rel, src string,
+) (int64, error) {
+	clean := path.Clean(filepath.ToSlash(rel))
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
+		return 0, fmt.Errorf("invalid generated file path %q", rel)
+	}
+
+	f, err := os.Open(src)
+	if err != nil {
+		return 0, fmt.Errorf("open %s: %w", src, err)
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return 0, fmt.Errorf("stat %s: %w", src, err)
+	}
+	if !info.Mode().IsRegular() {
+		return 0, fmt.Errorf("%s is not a regular file", src)
+	}
+
+	// Generated content is arbitrary bytes, so it is stored opaquely; the
+	// backend serves it as a download and never renders it.
+	contentType := mime.TypeByExtension(path.Ext(clean))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	key := fmt.Sprintf("%d/%s", commitID, clean)
+	if _, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:        aws.String(s.cfg.OutputsBucket()),
+		Key:           aws.String(key),
+		Body:          f,
+		ContentLength: aws.Int64(info.Size()),
+		ContentType:   aws.String(contentType),
+	}); err != nil {
+		return 0, fmt.Errorf("put s3://%s/%s: %w", s.cfg.OutputsBucket(), key, err)
+	}
+
+	return info.Size(), nil
 }

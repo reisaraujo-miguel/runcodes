@@ -69,7 +69,7 @@ services:
     restart: always
     command: >-
       server -s3 -s3.config=/etc/seaweedfs/s3.json -dir=/data
-      -volume.max=50 -master.volumeSizeLimitMB=256
+      -volume.max=100 -master.volumeSizeLimitMB=1024
       -ip=127.0.0.1 -ip.bind=0.0.0.0
     environment:
       TZ: ${TZ}

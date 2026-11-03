@@ -111,7 +111,7 @@ func TestReplayBufferIsBoundedByBytes(t *testing.T) {
 	// maxFrames, so only the byte bound can evict anything.
 	payload := strings.Repeat("x", maxTopicBytes/4)
 	for i := 0; i < 8; i++ {
-		h.CaseResult(1, int64(i), 0, 0, 0, "correct", "", payload, "text", "")
+		h.CaseResult(1, int64(i), 0, 0, 0, "correct", "", "", payload, "text", "")
 	}
 
 	sub := h.Subscribe(1, 0)
@@ -208,7 +208,7 @@ func TestCaseResultPayload(t *testing.T) {
 	sub := h.Subscribe(5, 0)
 	defer sub.Cancel()
 
-	h.CaseResult(5, 11, 0.25, 0.5, 1024, "correct", "", "ok", "text", "")
+	h.CaseResult(5, 11, 0.25, 0.5, 1024, "correct", "", "", "ok", "text", "")
 
 	frame := <-sub.Ch
 	data := string(frame.Data)

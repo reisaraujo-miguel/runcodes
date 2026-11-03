@@ -23,13 +23,16 @@ func TestOfferingStorageKeysIncludesTextCases(t *testing.T) {
 	mock.ExpectQuery(`SELECT files.exercise_id, files.path, 'compilation'`).
 		WithArgs(int64(5)).
 		WillReturnRows(sqlmock.NewRows([]string{"exercise_id", "path", "kind"}))
-	mock.ExpectQuery(`SELECT c.s3_key`).
+	mock.ExpectQuery(`SELECT c.id, c.s3_key`).
 		WithArgs(int64(5)).
-		WillReturnRows(sqlmock.NewRows([]string{"s3_key"}))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "s3_key"}))
 
-	keys, err := offeringStorageKeys(context.Background(), 5)
+	keys, commitIDs, err := offeringStorageKeys(context.Background(), 5)
 	if err != nil {
 		t.Fatalf("offeringStorageKeys: %v", err)
+	}
+	if len(commitIDs) != 0 {
+		t.Fatalf("commit IDs = %v, want none", commitIDs)
 	}
 
 	want := map[string]bool{

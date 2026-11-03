@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
 	"strconv"
 	"time"
 
@@ -31,20 +30,14 @@ type RuntimeHealth interface {
 	Ready(ctx context.Context) error
 }
 
-// ArtifactLocator resolves a commit's output archive path.
-type ArtifactLocator interface {
-	ArtifactPath(commitID int64) string
-}
-
 // Server wires the HTTP handlers.
 type Server struct {
-	cfg       *config.Config
-	store     DBHealth
-	runtime   RuntimeHealth
-	artifacts ArtifactLocator
-	hub       *events.Hub
-	wake      func()
-	logger    *slog.Logger
+	cfg     *config.Config
+	store   DBHealth
+	runtime RuntimeHealth
+	hub     *events.Hub
+	wake    func()
+	logger  *slog.Logger
 }
 
 // New builds a Server.
@@ -52,12 +45,11 @@ func New(
 	cfg *config.Config,
 	st DBHealth,
 	runtime RuntimeHealth,
-	artifacts ArtifactLocator,
 	hub *events.Hub,
 	wake func(),
 	logger *slog.Logger,
 ) *Server {
-	return &Server{cfg: cfg, store: st, runtime: runtime, artifacts: artifacts, hub: hub, wake: wake, logger: logger}
+	return &Server{cfg: cfg, store: st, runtime: runtime, hub: hub, wake: wake, logger: logger}
 }
 
 // Router returns the handler. `/healthz` and `/readyz` are public so container
@@ -77,10 +69,6 @@ func (s *Server) Router() http.Handler {
 		r.Use(s.auth)
 		r.Post("/v1/runs/{id}", s.handleWake)
 		r.Get("/v1/runs/{id}/events", s.handleEvents)
-		r.Get("/v1/runs/{id}/output", s.handleOutput)
-		// HEAD lets the backend rehydrate artifact availability without
-		// downloading the archive; ServeContent handles it without a body.
-		r.Head("/v1/runs/{id}/output", s.handleOutput)
 	})
 	return r
 }
@@ -237,39 +225,6 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
-}
-
-// handleOutput serves the output archive of a commit as a downloadable zip file.
-func (s *Server) handleOutput(w http.ResponseWriter, r *http.Request) {
-	id, err := commitID(r)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
-
-	// check if the output archive exists and open it for reading
-	path := s.artifacts.ArtifactPath(id)
-	f, err := os.Open(path)
-	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no output archive"})
-		return
-	}
-	defer f.Close()
-
-	// get the file info to set the correct headers for the response
-	info, err := f.Stat()
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "stat failed"})
-		return
-	}
-
-	// set the response headers to indicate a zip file attachment with the commit ID as the filename
-	name := fmt.Sprintf("%d.zip", id)
-
-	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
-
-	http.ServeContent(w, r, name, info.ModTime(), f)
 }
 
 // commitID extracts and validates the commit ID from the URL parameters.

@@ -8,9 +8,6 @@ fi
 # Leave memory to the judge's cgroup backstop, but bound a single file. The
 # workspace itself has no aggregate quota, so an unbounded file would let a
 # submission fill the host disk.
-monitor_max_fs=268435456 # 256 MiB
-monitor_max_ms=0
-compilation_timeout=60
 
 compile "${compilation_command}" "${pre_compilation_command}" "${post_compilation_command}"
 

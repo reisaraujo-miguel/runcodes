@@ -11,9 +11,8 @@ import (
 	"github.com/runcodes-icmc/judge/internal/config"
 )
 
-// sweepInterval is how often the judge looks for expired archives and orphaned
-// workspaces. Hourly is frequent enough for a 7-day archive retention and cheap
-// enough to ignore.
+// sweepInterval is how often the judge looks for orphaned workspaces. Hourly is
+// cheap enough to ignore and frequent enough to reclaim a crashed run's disk.
 const sweepInterval = time.Hour
 
 // workspaceGrace is added to the maximum run duration before a workspace is
@@ -21,33 +20,28 @@ const sweepInterval = time.Hour
 const workspaceGrace = 5 * time.Minute
 
 /*
-StartSweeper reclaims generated output archives and abandoned workspaces, then
-repeats hourly until ctx is cancelled. The initial sweep also covers whatever a
-previous judge process left behind.
+StartSweeper reclaims abandoned workspaces, then repeats hourly until ctx is
+cancelled. The initial sweep also covers whatever a previous judge process left
+behind.
 
-Workspaces are only removed once they are older than the longest possible run
-(plus a grace period); archives follow the configured ArtifactTTL, where 0 keeps
-them forever.
+A workspace is only removed once it is older than the longest possible run (plus
+a grace period), so a run that is still active is never swept. Generated files
+are uploaded to object storage while the run is in progress, so nothing else
+accumulates in the execution directory.
 */
 func StartSweeper(
 	ctx context.Context, cfg *config.Config, logger *slog.Logger,
 ) {
 	workspaceAge := cfg.MaxRunDuration + workspaceGrace
 	if cfg.KeepWorkspaces {
-		// The operator asked to keep workspaces for inspection; only archives are
-		// swept.
+		// The operator asked to keep workspaces for inspection.
 		workspaceAge = 0
 	}
 
 	sweep := func() {
-		archives, workspaces := sweepLeftovers(
-			cfg.ExecDir, cfg.ArtifactTTL, workspaceAge, time.Now(), logger,
-		)
-		if archives > 0 || workspaces > 0 {
-			logger.Info("judge sweep removed leftovers",
-				"archives", archives,
-				"workspaces", workspaces,
-			)
+		workspaces := sweepLeftovers(cfg.ExecDir, workspaceAge, time.Now(), logger)
+		if workspaces > 0 {
+			logger.Info("judge sweep removed leftovers", "workspaces", workspaces)
 		}
 	}
 
@@ -69,51 +63,46 @@ func StartSweeper(
 }
 
 /*
-sweepLeftovers removes expired output archives and abandoned run directories. It
-returns how many of each were removed. Only regular files and directories are
-touched: the workspace is writable by submissions, so a symlink planted there
-must never make the judge delete something outside ExecDir.
+sweepLeftovers removes abandoned run directories and returns how many it
+removed. Only directories are touched: the workspace is writable by
+submissions, so a symlink planted there must never make the judge delete
+something outside ExecDir.
 */
 func sweepLeftovers(
-	execDir string, artifactTTL, workspaceAge time.Duration,
+	execDir string, workspaceAge time.Duration,
 	now time.Time, logger *slog.Logger,
-) (archives, workspaces int) {
+) (workspaces int) {
+	// Output archives used to be written here and swept by retention. They are
+	// now uploaded to object storage as each case finishes, so the directory is
+	// dead weight on an upgraded host: remove it rather than keep publishing
+	// space for files nothing serves.
 	outputsDir := filepath.Join(execDir, "outputs")
-	if entries, err := os.ReadDir(outputsDir); err == nil {
-		for _, entry := range entries {
-			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".zip") {
-				continue
-			}
-			info, err := entry.Info()
-			if err != nil || !info.Mode().IsRegular() {
-				continue
-			}
-			if artifactTTL > 0 && now.Sub(info.ModTime()) > artifactTTL {
-				if err := os.Remove(filepath.Join(outputsDir, entry.Name())); err != nil {
-					logger.Warn("could not remove expired output archive",
-						"name", entry.Name(), "error", err,
-					)
-					continue
-				}
-				archives++
-			}
+	if _, err := os.Stat(outputsDir); err == nil {
+		if err := os.RemoveAll(outputsDir); err != nil {
+			logger.Warn("could not remove the obsolete output-archive directory",
+				"dir", outputsDir, "error", err,
+			)
 		}
 	}
 
 	if workspaceAge <= 0 {
-		return archives, workspaces
+		return 0
 	}
 
 	entries, err := os.ReadDir(execDir)
 	if err != nil {
-		return archives, workspaces
+		return 0
 	}
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
 		name := entry.Name()
-		if !strings.HasPrefix(name, "commit_") && !strings.HasPrefix(name, "expected_") {
+		// commit_/expected_ are run workspaces; pending_ holds generated files
+		// waiting for an upload that a crashed run never finished.
+		if !strings.HasPrefix(name, "commit_") &&
+			!strings.HasPrefix(name, "expected_") &&
+			!strings.HasPrefix(name, "pending_") {
 			continue
 		}
 		info, err := entry.Info()
@@ -132,5 +121,5 @@ func sweepLeftovers(
 		workspaces++
 	}
 
-	return archives, workspaces
+	return workspaces
 }

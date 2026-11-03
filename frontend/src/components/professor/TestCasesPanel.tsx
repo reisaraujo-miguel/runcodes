@@ -14,6 +14,10 @@ import { Section } from "@/components/app/Section";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
 import { BatchTestCasesDialog } from "@/components/professor/BatchTestCasesDialog";
 import { EditTestCaseForm } from "@/components/professor/EditTestCaseForm";
+import {
+  formatLimitMiB,
+  formatLimitSeconds,
+} from "@/components/professor/language-limits-format";
 import { NewTestCaseDialog } from "@/components/professor/NewTestCaseDialog";
 import {
   testCaseFileKey,
@@ -22,6 +26,13 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -39,7 +50,6 @@ import {
 } from "@/lib/api";
 import { downloadBlob } from "@/lib/download";
 import { errorMessage } from "@/lib/errors";
-import { formatBytes, formatCpuTime, formatLimit } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /** Spells out the ignored root files, counting the ones that do not fit. */
@@ -74,18 +84,19 @@ function VisibilityFlag({ on, label }: { on: boolean; label: string }) {
 /** A one-line, clipped preview of a text value. */
 function TextPreview({ value }: { value: string }) {
   return (
-    <span
+    <div
       title={value}
-      className="block max-w-48 overflow-hidden font-mono text-xs whitespace-pre text-ellipsis"
+      className="max-h-16 max-w-56 overflow-y-auto font-mono text-xs break-words whitespace-pre-wrap"
     >
       {value}
-    </span>
+    </div>
   );
 }
 
 /**
  * Lists an exercise's test cases and hosts the create / edit / delete flows.
- * Editing happens inline, in place of the row being edited.
+ * Editing opens a dialog, so a case with long input does not push the table
+ * around.
  */
 export function TestCasesPanel({ exerciseId }: { exerciseId: number }) {
   const testCases = useAsync(
@@ -239,24 +250,7 @@ export function TestCasesPanel({ exerciseId }: { exerciseId: number }) {
               // Their database id is global and would make a second exercise's
               // first case appear as #2.
               const number = index + 1;
-              return editingId === testCase.id ? (
-                <TableRow key={testCase.id}>
-                  <TableCell colSpan={7}>
-                    <EditTestCaseForm
-                      exerciseId={exerciseId}
-                      testCase={testCase}
-                      number={number}
-                      onCancel={() => {
-                        setEditingId(null);
-                      }}
-                      onSaved={() => {
-                        setEditingId(null);
-                        testCases.reload();
-                      }}
-                    />
-                  </TableCell>
-                </TableRow>
-              ) : (
+              return (
                 <TestRow
                   key={testCase.id}
                   testCase={testCase}
@@ -274,10 +268,49 @@ export function TestCasesPanel({ exerciseId }: { exerciseId: number }) {
     </div>
   );
 
+  const editingCase = list.find((testCase) => testCase.id === editingId);
+  const editingNumber = editingCase ? list.indexOf(editingCase) + 1 : 0;
+
   return (
-    <Section title="Casos de teste" description={description} action={actions}>
-      {content}
-    </Section>
+    <>
+      <Section
+        title="Casos de teste"
+        description={description}
+        action={actions}
+      >
+        {content}
+      </Section>
+
+      {editingCase ? (
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setEditingId(null);
+          }}
+        >
+          <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-4xl">
+            <DialogHeader>
+              <DialogTitle>Editar caso #{String(editingNumber)}</DialogTitle>
+              <DialogDescription>
+                As saídas e os limites mudam neste caso; os demais casos de
+                teste não são afetados.
+              </DialogDescription>
+            </DialogHeader>
+            <EditTestCaseForm
+              exerciseId={exerciseId}
+              testCase={editingCase}
+              onCancel={() => {
+                setEditingId(null);
+              }}
+              onSaved={() => {
+                setEditingId(null);
+                testCases.reload();
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      ) : null}
+    </>
   );
 }
 
@@ -332,19 +365,32 @@ function TestRow({
         </div>
       </TableCell>
       <TableCell>
-        <div className="text-muted-foreground flex flex-col gap-0.5 text-xs whitespace-nowrap">
-          <span>
-            Tempo: {formatLimit(testCase.cpu_time_limit_seconds, formatCpuTime)}
-          </span>
-          <span>
-            Memória: {formatLimit(testCase.mem_usage_limit_bytes, formatBytes)}
-          </span>
-          <span>
-            Pilha: {formatLimit(testCase.stack_limit_bytes, formatBytes)}
-          </span>
-          <span>
-            Arquivo: {formatLimit(testCase.file_size_limit_bytes, formatBytes)}
-          </span>
+        <div className="space-y-1">
+          {testCase.limits.map((language) => {
+            const sources = [
+              language.sources.cpu_time_limit_seconds,
+              language.sources.mem_usage_limit_bytes,
+              language.sources.stack_limit_bytes,
+              language.sources.file_size_limit_bytes,
+            ];
+            const layer = sources.includes("case")
+              ? "caso"
+              : sources.includes("exercise")
+                ? "exercício"
+                : "plataforma";
+            return (
+              <p
+                key={language.allowed_file_type_id}
+                className="text-muted-foreground text-xs whitespace-nowrap"
+              >
+                <span className="text-foreground/80 font-medium">
+                  {language.name}
+                </span>
+                {`: ${formatLimitSeconds(language.limits.cpu_time_limit_seconds)} · ${formatLimitMiB(language.limits.mem_usage_limit_bytes)} · ${formatLimitMiB(language.limits.stack_limit_bytes)} · ${formatLimitMiB(language.limits.file_size_limit_bytes)} `}
+                <span className="text-muted-foreground/80">({layer})</span>
+              </p>
+            );
+          })}
         </div>
       </TableCell>
       <TableCell>

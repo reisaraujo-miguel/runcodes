@@ -133,6 +133,8 @@ func run() error {
 	// deadline email reminders run inside the API process; they are disabled by
 	// configuration when a deployment does not want outgoing mail.
 	services.StartDeadlineNotifier(ctx)
+	services.StartLimitAlertNotifier(ctx)
+	services.StartOutputFileRetention(ctx)
 
 	// Acknowledged operational alerts are pruned after their retention window;
 	// an append-only alert table would otherwise grow for the life of the

@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"encoding/xml"
 	"errors"
 	"io"
 	"net/http"
@@ -12,13 +13,15 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/runcodes-icmc/runcodes/config"
 )
 
 // fakeS3Server is a minimal path-style S3 endpoint used by the storage tests. It
 // implements just the operations storage.go performs: CreateBucket,
-// PutObject, GetObject, HeadObject, DeleteObject and CopyObject.
+// PutObject, GetObject, HeadObject, DeleteObject, CopyObject, ListObjectsV2 and
+// DeleteObjects.
 type fakeS3Server struct {
 	mu      sync.Mutex
 	objects map[string][]byte
@@ -54,6 +57,10 @@ func (f *fakeS3Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 		w.WriteHeader(http.StatusOK)
+	case r.Method == http.MethodGet && r.URL.Query().Get("list-type") == "2":
+		f.listObjects(w, bucket, r.URL.Query().Get("prefix"))
+	case r.Method == http.MethodPost && r.URL.Query().Has("delete"):
+		f.deleteObjects(w, bucket, r.Body)
 	case r.Method == http.MethodGet:
 		data, ok := f.objects[bucket+"/"+key]
 		if !ok {
@@ -89,6 +96,64 @@ func (f *fakeS3Server) copyObject(w http.ResponseWriter, bucket, key, source str
 	_, _ = io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?>`+
 		`<CopyObjectResult><ETag>"etag"</ETag>`+
 		`<LastModified>2024-01-01T00:00:00.000Z</LastModified></CopyObjectResult>`)
+}
+
+// listObjects answers ListObjectsV2 with every key under prefix. Pagination is
+// not modelled: the tests store a handful of objects.
+func (f *fakeS3Server) listObjects(w http.ResponseWriter, bucket, prefix string) {
+	base := bucket + "/"
+
+	var contents strings.Builder
+	count := 0
+	for name, data := range f.objects {
+		key, ok := strings.CutPrefix(name, base)
+		if !ok || !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		contents.WriteString("<Contents><Key>" + xmlEscape(key) + "</Key><Size>" +
+			strconv.Itoa(len(data)) + "</Size>" +
+			"<LastModified>2024-01-01T00:00:00.000Z</LastModified></Contents>")
+		count++
+	}
+
+	w.Header().Set("Content-Type", "application/xml")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?>`+
+		`<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`+
+		`<Name>`+xmlEscape(bucket)+`</Name><Prefix>`+xmlEscape(prefix)+`</Prefix>`+
+		`<KeyCount>`+strconv.Itoa(count)+`</KeyCount><MaxKeys>1000</MaxKeys>`+
+		`<IsTruncated>false</IsTruncated>`+contents.String()+
+		`</ListBucketResult>`)
+}
+
+// deleteObjects answers a multi-object DELETE, removing every key the request
+// named.
+func (f *fakeS3Server) deleteObjects(w http.ResponseWriter, bucket string, body io.Reader) {
+	var request struct {
+		Objects []struct {
+			Key string `xml:"Key"`
+		} `xml:"Object"`
+	}
+	if err := xml.NewDecoder(body).Decode(&request); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	for _, object := range request.Objects {
+		delete(f.objects, bucket+"/"+object.Key)
+	}
+
+	w.Header().Set("Content-Type", "application/xml")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?>`+
+		`<DeleteResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"></DeleteResult>`)
+}
+
+// xmlEscape escapes a value for inclusion in the fake's XML responses.
+func xmlEscape(value string) string {
+	var buf bytes.Buffer
+	_ = xml.EscapeText(&buf, []byte(value))
+	return buf.String()
 }
 
 func (f *fakeS3Server) get(bucket, key string) ([]byte, bool) {
@@ -309,5 +374,124 @@ func TestBackupKeyFor(t *testing.T) {
 	}
 	if first == second {
 		t.Fatalf("expected unique backup keys, both were %q", first)
+	}
+}
+
+func TestOutputFileStorage(t *testing.T) {
+	fake := withFakeS3(t)
+	ctx := context.Background()
+
+	_, buckets, err := Client()
+	if err != nil {
+		t.Fatalf("Client: %v", err)
+	}
+
+	objects := map[string]string{
+		OutputFileKey(7, "test_1/a.txt"):        "alpha",
+		OutputFileKey(7, "test_2/nested/b.txt"): "beta",
+		OutputFileKey(8, "test_1/other.txt"):    "other",
+	}
+	for key, content := range objects {
+		fake.objects[buckets.OutputFiles+"/"+key] = []byte(content)
+	}
+
+	files, err := ListOutputFiles(ctx, 7)
+	if err != nil {
+		t.Fatalf("ListOutputFiles: %v", err)
+	}
+	want := []OutputFile{
+		{Path: "test_1/a.txt", Size: 5},
+		{Path: "test_2/nested/b.txt", Size: 4},
+	}
+	if len(files) != len(want) {
+		t.Fatalf("files = %v, want %v", files, want)
+	}
+	for i, expected := range want {
+		if files[i].Path != expected.Path || files[i].Size != expected.Size {
+			t.Fatalf("files[%d] = %+v, want %+v", i, files[i], expected)
+		}
+	}
+
+	exists, err := OutputFilesExist(ctx, 7)
+	if err != nil || !exists {
+		t.Fatalf("OutputFilesExist(7) = %v, %v", exists, err)
+	}
+	exists, err = OutputFilesExist(ctx, 9)
+	if err != nil || exists {
+		t.Fatalf("OutputFilesExist(9) = %v, %v", exists, err)
+	}
+
+	object, err := GetOutputFile(ctx, 7, "test_1/a.txt")
+	if err != nil {
+		t.Fatalf("GetOutputFile: %v", err)
+	}
+	defer object.Body.Close()
+	data, err := io.ReadAll(object.Body)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if string(data) != "alpha" {
+		t.Fatalf("content = %q, want alpha", data)
+	}
+
+	if _, err := GetOutputFile(ctx, 7, "../8/test_1/other.txt"); !errors.Is(err, ErrObjectNotFound) {
+		t.Fatalf("traversal error = %v, want ErrObjectNotFound", err)
+	}
+	if _, err := GetOutputFile(ctx, 7, "test_1/missing.txt"); !errors.Is(err, ErrObjectNotFound) {
+		t.Fatalf("missing error = %v, want ErrObjectNotFound", err)
+	}
+
+	if err := DeleteCommitOutputs(ctx, 7); err != nil {
+		t.Fatalf("DeleteCommitOutputs: %v", err)
+	}
+	if files, err := ListOutputFiles(ctx, 7); err != nil || len(files) != 0 {
+		t.Fatalf("files after delete = %v, %v", files, err)
+	}
+	// Another commit's files must survive.
+	if files, err := ListOutputFiles(ctx, 8); err != nil || len(files) != 1 {
+		t.Fatalf("files of commit 8 = %v, %v", files, err)
+	}
+}
+
+func TestDeleteExpiredOutputFiles(t *testing.T) {
+	fake := withFakeS3(t)
+	ctx := context.Background()
+
+	_, buckets, err := Client()
+	if err != nil {
+		t.Fatalf("Client: %v", err)
+	}
+
+	objects := []string{
+		OutputFileKey(7, "test_1/a.txt"),
+		OutputFileKey(8, "test_1/b.txt"),
+	}
+	for _, key := range objects {
+		fake.objects[buckets.OutputFiles+"/"+key] = []byte("x")
+	}
+	// An object in another bucket must never be touched by the sweep.
+	fake.objects[buckets.Commits+"/7/main.c"] = []byte("int main(void){}")
+
+	// The fake reports every object as uploaded on 2024-01-01.
+	removed, err := DeleteExpiredOutputFiles(ctx, time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("DeleteExpiredOutputFiles: %v", err)
+	}
+	if removed != 0 {
+		t.Fatalf("removed = %d, want 0 (nothing is older than the cutoff)", removed)
+	}
+
+	removed, err = DeleteExpiredOutputFiles(ctx, time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("DeleteExpiredOutputFiles: %v", err)
+	}
+	if removed != len(objects) {
+		t.Fatalf("removed = %d, want %d", removed, len(objects))
+	}
+	if files, err := ListOutputFiles(ctx, 7); err != nil || len(files) != 0 {
+		t.Fatalf("files after sweep = %v, %v", files, err)
+	}
+	if _, ok := fake.get(buckets.Commits, "7/main.c"); !ok {
+		t.Fatal("the sweep removed an object outside the outputfiles bucket")
 	}
 }

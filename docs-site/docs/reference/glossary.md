@@ -71,8 +71,13 @@ The persisted state (commit, results, artifacts) sent at the start of an SSE
 subscription, so a reload can restore the UI.
 
 **Artifact**
-A generated output archive. `artifact` events and the snapshot advertise it; the
-file itself is served by the judge and proxied by the backend.
+A file the submission generated. The runner collects each case's files under
+`test_<id>/` when the case finishes, and the judge uploads them to the
+`<prefix>-outputfiles` bucket. The judge never serves them: `artifact` events
+(with a `pending`, `ready` or `failed` state) and the snapshot tell the UI when a
+download exists, and the backend lists, streams and zips the files from object
+storage. They expire after `RUNCODES_OUTPUT_FILE_TTL`, and a case hidden from the
+student or interrupted by a limit publishes nothing.
 
 ## Execution
 

@@ -47,6 +47,7 @@ type Event struct {
 	CPUTime        json.Number `json:"cpu_time,omitempty"`
 	WallTime       json.Number `json:"wall_time,omitempty"`
 	MemUsage       *int64      `json:"mem_usage,omitempty"`
+	Reason         string      `json:"reason,omitempty"`
 	StatusMessage  string      `json:"status_message,omitempty"`
 	UserOutput     string      `json:"user_output,omitempty"`
 	UserOutputType string      `json:"user_output_type,omitempty"`
@@ -212,9 +213,11 @@ func persistCaseResult(ctx context.Context, ev *Event) error {
 	if _, err := database.DB.ExecContext(ctx,
 		`INSERT INTO commits_exercise_test_cases_results
 		     (commit_id, exercise_test_case_id, cpu_time, wall_time, mem_usage,
-		      user_output, user_output_type, status, status_message, error_message)
+		      user_output, user_output_type, status, reason, status_message,
+		      error_message)
 		 SELECT $1, $2, $3, $4, $5, $6, $7::input_output_type_t,
-		        $8::commit_exercise_test_case_status_t, $9, $10
+		        $8::commit_exercise_test_case_status_t,
+		        NULLIF($9, '')::case_interruption_reason_t, $10, $11
 		 WHERE EXISTS (
 		     SELECT 1 FROM commits WHERE id = $1 AND `+nonTerminalGuard+`
 		 )
@@ -225,10 +228,11 @@ func persistCaseResult(ctx context.Context, ev *Event) error {
 		     user_output = EXCLUDED.user_output,
 		     user_output_type = EXCLUDED.user_output_type,
 		     status = EXCLUDED.status,
+		     reason = EXCLUDED.reason,
 		     status_message = EXCLUDED.status_message,
 		     error_message = EXCLUDED.error_message`,
 		ev.CommitID, ev.TestCaseID, cpuTime, wallTime, memUsage, ev.UserOutput,
-		userOutputType, ev.Status, ev.StatusMessage, ev.ErrorMessage,
+		userOutputType, ev.Status, ev.Reason, ev.StatusMessage, ev.ErrorMessage,
 	); err != nil {
 		return fmt.Errorf("persisting case_result event: %w", err)
 	}

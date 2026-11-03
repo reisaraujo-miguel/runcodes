@@ -213,8 +213,8 @@ to show the best score while the new run is pending.
 
 - **Code style and comments.** The judge compares output, not source quality.
 - **Standard error.** Warnings on standard error do not fail a correct case.
-- **Output files beyond the compared output.** The output archive is available
-  for download, but it does not change the score.
+- **Output files beyond the compared output.** The files the submission
+  generates are available for download, but they do not change the score.
 - **Submission count.** Recompilations and resubmissions do not produce extra
   credit; only the best score counts.
 - **Timing beyond the limits.** A slower but correct program within the limit

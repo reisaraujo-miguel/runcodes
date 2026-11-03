@@ -4,16 +4,15 @@
 package engine
 
 import (
-	"archive/zip"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/runcodes-icmc/judge/internal/config"
@@ -72,22 +71,25 @@ func (a podmanAdapter) Create(ctx context.Context, rc podman.RunConfig) (Runtime
 
 // Engine holds the collaborators needed to process a commit.
 type Engine struct {
-	cfg    *config.Config
-	store  *store.Store
-	s3     *storage.S3
-	podman ContainerRuntime
-	hub    *events.Hub
-	logger *slog.Logger
+	cfg   *config.Config
+	store *store.Store
+	s3    *storage.S3
+	// outputs publishes the files a submission generated. It is the same object
+	// storage client as s3, behind the small interface the upload path needs.
+	outputs generatedFileStore
+	podman  ContainerRuntime
+	hub     *events.Hub
+	logger  *slog.Logger
 }
 
 // New builds an Engine.
 func New(cfg *config.Config, st *store.Store, s3 *storage.S3, rt ContainerRuntime, hub *events.Hub, logger *slog.Logger) *Engine {
-	return &Engine{cfg: cfg, store: st, s3: s3, podman: rt, hub: hub, logger: logger}
-}
+	engine := &Engine{cfg: cfg, store: st, s3: s3, podman: rt, hub: hub, logger: logger}
+	if s3 != nil {
+		engine.outputs = s3
+	}
 
-// ArtifactPath is where a commit's output archive lives (and is served from).
-func (e *Engine) ArtifactPath(commitID int64) string {
-	return filepath.Join(e.cfg.ExecDir, "outputs", fmt.Sprintf("%d.zip", commitID))
+	return engine
 }
 
 // runOutcome is the result of the container phase.
@@ -98,6 +100,58 @@ type runOutcome struct {
 	compilationMessage string
 	compilationError   string
 	caseResults        []model.CaseResult
+	// streamed holds the cases already graded and published while the suite was
+	// still running, so the final pass neither grades nor publishes them again.
+	streamed *caseStream
+	// missingCollections counts the cases whose image did not collect generated
+	// files. It is reported once per run: see errNoCollectionDir.
+	missingCollections int
+	// publisher uploads the generated files. It is closed by Process after the
+	// terminal event, so the client is not kept waiting for the last upload.
+	publisher *outputPublisher
+}
+
+/*
+caseStream collects the results the judge publishes while the container is still
+running the remaining cases. The judge drives the log stream from one goroutine,
+so a plain map with a mutex is enough; the lock also lets gradeAll read it after
+the run ends without a second path.
+*/
+type caseStream struct {
+	mu      sync.Mutex
+	results map[int64]model.CaseResult
+}
+
+func newCaseStream() *caseStream {
+	return &caseStream{results: make(map[int64]model.CaseResult)}
+}
+
+func (s *caseStream) store(result model.CaseResult) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.results[result.TestCaseID] = result
+}
+
+func (s *caseStream) lookup(testCaseID int64) (model.CaseResult, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result, ok := s.results[testCaseID]
+	return result, ok
+}
+
+// caseDoneID parses `case.done <id> <nonce>`; the nonce is what proves the
+// harness printed the line, since the submission's own output never reaches the
+// container log.
+func caseDoneID(line, nonce string) (int64, bool) {
+	fields := strings.Fields(line)
+	if len(fields) != 3 || fields[0] != "case.done" || fields[2] != nonce {
+		return 0, false
+	}
+	id, err := strconv.ParseInt(fields[1], 10, 64)
+	if err != nil || id <= 0 {
+		return 0, false
+	}
+	return id, true
 }
 
 // Process runs one commit. It never panics out and always publishes a terminal
@@ -181,6 +235,20 @@ func (e *Engine) Process(ctx context.Context, commit *model.Commit) {
 		),
 	)
 	outcome, runErr := e.runContainer(runCtx, commit, ws, timings, logger)
+
+	// The run stops when the container does. Pending uploads are drained after the
+	// terminal event, so a slow object store never keeps the client waiting for a
+	// status the run already has.
+	if outcome.publisher != nil {
+		defer outcome.publisher.Close()
+	}
+	if outcome.missingCollections > 0 {
+		logger.Warn("the runner image did not collect generated files; rebuild the runner images",
+			"image", ws.Language.Image(e.cfg.ImageFormat),
+			"cases", outcome.missingCollections,
+		)
+	}
+
 	if runErr != nil {
 		runSpan.RecordError(runErr)
 		runSpan.SetStatus(codes.Error, "container run failed")
@@ -212,22 +280,32 @@ func (e *Engine) Process(ctx context.Context, commit *model.Commit) {
 		return
 	}
 
-	// Report the results of each test case to the event hub.
+	// Report the results of each test case to the event hub. Cases already
+	// published when their milestone arrived keep their single event.
 	for _, r := range outcome.caseResults {
+		if outcome.streamed != nil {
+			if _, published := outcome.streamed.lookup(r.TestCaseID); published {
+				continue
+			}
+		}
 		e.hub.CaseResult(commit.ID, r.TestCaseID, r.CPUTime, r.WallTime, r.MemUsage,
-			string(r.Status), r.StatusMsg, r.UserOutput, r.OutputType, r.ErrorMessage)
+			string(r.Status), string(r.Reason), r.StatusMsg, r.UserOutput,
+			r.OutputType, r.ErrorMessage)
 	}
 
-	// Build an artifact (zip archive) of the output files, if any, and report its
-	// availability to the event hub. Measure it even when there is nothing to zip:
-	// the phase still tells us the build was attempted.
+	// Publish whatever the submission wrote straight into the runner's output
+	// directory. The per-case files were already uploaded as their cases
+	// finished. Measure the step even when there is nothing to upload: the phase
+	// still tells us it ran.
 	artifactDone := timings.Measure(model.PhaseArtifact)
-	zipPath, artifactErr := e.buildArtifact(commit.ID, ws)
+	uploaded, artifactErr := e.publishRootOutputs(ctx, commit.ID, ws)
 	artifactDone()
 	if artifactErr != nil {
-		logger.Warn("could not build output archive", "error", artifactErr)
-	} else if zipPath != "" {
-		e.hub.Artifact(commit.ID, "output", fmt.Sprintf("/v1/runs/%d/output", commit.ID))
+		logger.Warn("could not upload generated files", "error", artifactErr)
+	}
+	if uploaded > 0 {
+		e.hub.Artifact(commit.ID, "output",
+			fmt.Sprintf("/api/v1/submissions/%d/outputfiles", commit.ID))
 	}
 
 	if outcome.status == model.RunCompilationError {
@@ -439,7 +517,72 @@ func (e *Engine) runContainer(
 	// Report to the event hub that the run phase is now running.
 	e.hub.Status(commit.ID, "running", time.Now())
 
-	if err := e.awaitLine(stream, "run.done", ws.RunNonce, timeout); err != nil {
+	streamed := newCaseStream()
+	outcome.streamed = streamed
+
+	// Uploads run in the background: grading and reading the next milestone must
+	// not wait for a large file to reach object storage.
+	publisher := newOutputPublisher(ctx, e, commit.ID)
+	outcome.publisher = publisher
+
+	onLine := func(line string) {
+		testCaseID, ok := caseDoneID(line, ws.RunNonce)
+		if !ok {
+			return
+		}
+		testCase, found := findTestCase(ws.TestCases, testCaseID)
+		if !found {
+			return
+		}
+		if _, done := streamed.lookup(testCaseID); done {
+			return
+		}
+		result, gradeErr := e.gradeCase(ctx, testCase, ws)
+		if gradeErr != nil {
+			// The final pass grades it again; a case that cannot be graded here
+			// must not take the run down.
+			logger.Warn("could not grade a finished test case while the run continued",
+				"test_case_id", testCaseID,
+				"error", gradeErr,
+			)
+			return
+		}
+		streamed.store(result)
+
+		// The result goes out before the files: it is ready now, and the upload must
+		// not delay it.
+		e.hub.CaseResult(commit.ID, result.TestCaseID, result.CPUTime,
+			result.WallTime, result.MemUsage, string(result.Status),
+			string(result.Reason), result.StatusMsg, result.UserOutput,
+			result.OutputType, result.ErrorMessage)
+
+		// Queue the files this case produced while the suite continues: the
+		// workspace then holds one case's files at most, instead of the whole
+		// suite's, and the student can already download them.
+		if err := e.queueCaseOutputs(publisher, commit.ID, testCase, result, ws); err != nil {
+			if errors.Is(err, errNoCollectionDir) {
+				// Reported once, after the run: logging per case would repeat the
+				// same line for every test in the exercise.
+				outcome.missingCollections++
+			} else {
+				logger.Warn("could not publish a finished case's generated files",
+					"test_case_id", testCaseID,
+					"error", err,
+				)
+			}
+		}
+
+		// The harness removes the case's scratch directory itself, after its
+		// own copies; doing it here too means an older image, or a harness that
+		// died before its cleanup line, cannot leave the workspace growing case
+		// after case until the quota kills the run. Grading already happened:
+		// everything it needs is at the workspace root.
+		if err := os.RemoveAll(filepath.Join(ws.BaseDir, "test_"+strconv.FormatInt(testCaseID, 10))); err != nil {
+			logger.Warn("could not remove a finished case's scratch directory",
+				"test_case_id", testCaseID, "error", err)
+		}
+	}
+	if err := e.awaitLine(stream, "run.done", ws.RunNonce, timeout, onLine); err != nil {
 		return outcome, workspaceAwareError(monitor, err)
 	}
 	timings.Record(model.PhaseRun, time.Since(runStartedAt))
@@ -467,7 +610,7 @@ func (e *Engine) runContainer(
 	}
 
 	gradeDone := timings.Measure(model.PhaseGrade)
-	results, err := e.gradeAll(ctx, commit, ws)
+	results, err := e.gradeAll(ctx, commit, ws, streamed)
 	gradeDone()
 	if err != nil {
 		return outcome, err
@@ -582,204 +725,4 @@ func isInternalOutputFile(name string) bool {
 	default:
 		return false
 	}
-}
-
-// buildArtifact zips the files the submission produced. It returns "" when
-// there is nothing to archive.
-//
-// Two places can contain user output:
-//   - `outputfiles`, where the runner copies its own reports. Those reports are
-//     filtered out; anything else the submission wrote there is kept.
-//   - each case's `test_<id>` working directory, which is also where the source
-//     and test-case files were copied. Files whose path is a known input are
-//     skipped; newly created regular files are archived under `test_<id>/`.
-//
-// The workspace is written by untrusted code, so only regular files are read
-// (never a symlink, which would otherwise publish the contents of any file the
-// judge can read), and the archive stops at MaxArtifactBytes so a submission
-// cannot fill the shared execution directory.
-func (e *Engine) buildArtifact(commitID int64, ws *workspace) (string, error) {
-	baseDir := ws.BaseDir
-	outputDir := filepath.Join(baseDir, "outputfiles")
-
-	type candidate struct {
-		path string
-		name string
-	}
-
-	var (
-		files    []candidate
-		archived int64
-	)
-
-	add := func(path, name string, fi os.FileInfo) error {
-		if archived+fi.Size() > e.cfg.MaxArtifactBytes {
-			return fmt.Errorf("output archive exceeds the %d byte limit", e.cfg.MaxArtifactBytes)
-		}
-		archived += fi.Size()
-		files = append(files, candidate{path: path, name: name})
-		return nil
-	}
-
-	// Files the submission wrote directly into outputfiles. The runner also
-	// copies its own per-case reports and compiler metadata there; those are
-	// internal bookkeeping, not user output.
-	if info, err := os.Stat(outputDir); err == nil && info.IsDir() {
-		err := filepath.Walk(outputDir, func(p string, fi os.FileInfo, openErr error) error {
-			if openErr != nil {
-				return openErr
-			}
-			if fi.IsDir() {
-				return nil
-			}
-			if !fi.Mode().IsRegular() {
-				e.logger.Warn("skipping non-regular output file",
-					"commit_id", commitID, "name", filepath.Base(p))
-				return nil
-			}
-			if isInternalOutputFile(fi.Name()) {
-				return nil
-			}
-			rel, err := filepath.Rel(outputDir, p)
-			if err != nil {
-				return err
-			}
-			return add(p, rel, fi)
-		})
-		if err != nil {
-			return "", err
-		}
-	}
-
-	sourceInputs := inputFiles(ws.SourceDir)
-
-	// Files the submission created while running each test case. The working
-	// directory also contains the source and case files copied in by the runner;
-	// those are inputs, not output.
-	for _, tc := range ws.TestCases {
-		testName := fmt.Sprintf("test_%d", tc.ID)
-		testDir := filepath.Join(baseDir, testName)
-
-		info, err := os.Stat(testDir)
-		if err != nil || !info.IsDir() {
-			continue
-		}
-
-		caseInputs := make(map[string]struct{}, len(tc.Files))
-		for _, name := range tc.Files {
-			caseInputs[filepath.Base(name)] = struct{}{}
-		}
-
-		err = filepath.Walk(testDir, func(p string, fi os.FileInfo, openErr error) error {
-			if openErr != nil {
-				return openErr
-			}
-			if fi.IsDir() {
-				return nil
-			}
-			if !fi.Mode().IsRegular() {
-				e.logger.Warn("skipping non-regular output file",
-					"commit_id", commitID, "name", filepath.Base(p))
-				return nil
-			}
-
-			rel, err := filepath.Rel(testDir, p)
-			if err != nil {
-				return err
-			}
-			if _, ok := sourceInputs[filepath.ToSlash(rel)]; ok {
-				return nil
-			}
-			if _, ok := caseInputs[filepath.Base(rel)]; ok {
-				return nil
-			}
-
-			return add(p, filepath.Join(testName, rel), fi)
-		})
-		if err != nil {
-			return "", err
-		}
-	}
-
-	if len(files) == 0 {
-		return "", nil
-	}
-
-	outputsDir := filepath.Join(e.cfg.ExecDir, "outputs")
-	if err := os.MkdirAll(outputsDir, 0o777); err != nil {
-		return "", err
-	}
-
-	zipPath := filepath.Join(outputsDir, fmt.Sprintf("%d.zip", commitID))
-
-	f, err := os.Create(zipPath)
-	if err != nil {
-		return "", err
-	}
-
-	zw := zip.NewWriter(f)
-
-	cleanup := func() {
-		_ = zw.Close()
-		_ = f.Close()
-		_ = os.Remove(zipPath)
-	}
-
-	for _, file := range files {
-		w, err := zw.Create(filepath.ToSlash(file.name))
-		if err != nil {
-			cleanup()
-			return "", err
-		}
-
-		src, err := openRegular(file.path)
-		if err != nil {
-			cleanup()
-			return "", err
-		}
-
-		_, err = io.Copy(w, src)
-		src.Close()
-		if err != nil {
-			cleanup()
-			return "", err
-		}
-	}
-
-	if err := zw.Close(); err != nil {
-		_ = f.Close()
-		_ = os.Remove(zipPath)
-		return "", err
-	}
-	if err := f.Close(); err != nil {
-		_ = os.Remove(zipPath)
-		return "", err
-	}
-
-	return zipPath, nil
-}
-
-/*
-inputFiles lists the relative paths of the files in the source directory. The
-runner copies these into every test-case working directory, so they must not be
-mistaken for files the submission generated.
-*/
-func inputFiles(dir string) map[string]struct{} {
-	inputs := make(map[string]struct{})
-	if dir == "" {
-		return inputs
-	}
-
-	_ = filepath.Walk(dir, func(p string, fi os.FileInfo, err error) error {
-		if err != nil || fi.IsDir() {
-			return nil
-		}
-		rel, err := filepath.Rel(dir, p)
-		if err == nil {
-			inputs[filepath.ToSlash(rel)] = struct{}{}
-		}
-		return nil
-	})
-
-	return inputs
 }

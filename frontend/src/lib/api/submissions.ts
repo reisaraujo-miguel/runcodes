@@ -82,6 +82,8 @@ export interface SubmissionSnapshotResult {
   user_output: string;
   user_output_type: string;
   status: CaseResultStatus;
+  /** Why an interrupted case was interrupted, when the judge could tell. */
+  reason: string | null;
   status_message: string;
   error_message: string;
 }
@@ -89,6 +91,15 @@ export interface SubmissionSnapshotResult {
 /** A generated file the output download endpoint can serve. */
 export interface SubmissionArtifact {
   kind: string;
+}
+
+/**
+ * One file the submission generated, as listed by the backend. `path` identifies
+ * it inside the submission's output namespace, for example `test_1/saida.txt`.
+ */
+export interface SubmissionOutputFile {
+  path: string;
+  size: number;
 }
 
 export interface SubmissionSnapshotEvent {
@@ -126,17 +137,31 @@ export interface SubmissionCaseResultEvent {
   wall_time?: number;
   mem_usage: number;
   status: CaseResultStatus;
+  reason?: string | null;
   status_message: string;
   user_output: string;
   user_output_type: string;
   error_message: string;
 }
 
+/** State of a test case's generated-file upload, when the judge reports it. */
+export type SubmissionArtifactState = "pending" | "ready" | "failed";
+
 export interface SubmissionArtifactEvent extends SubmissionArtifact {
   type: "artifact";
   commit_id: number;
   seq: number;
   url: string;
+  /**
+   * The case whose files this event is about. Absent on the run-level event that
+   * announces files written outside a case's directory.
+   */
+  test_case_id?: number;
+  /**
+   * `pending` while the files are being uploaded, `ready` when the listing grew,
+   * `failed` when they will not be published. Absent on older judges.
+   */
+  state?: SubmissionArtifactState;
 }
 
 export interface SubmissionFinishedEvent {
@@ -288,11 +313,39 @@ export async function getSubmissionSourceBlob(commitId: number): Promise<Blob> {
 
 /**
  * URL that downloads the generated output archive of a commit. The backend
- * proxies the archive from the judge, so it is reachable from the browser and
- * authenticated by the session cookie.
+ * builds the archive from object storage, so it is reachable from the browser
+ * and authenticated by the session cookie.
  */
 export function submissionOutputUrl(commitId: number): string {
   return `${API_BASE_URL}/api/v1/submissions/${String(commitId)}/output`;
+}
+
+/**
+ * URL that downloads one file a submission generated. Each path segment is
+ * encoded, so a generated name with spaces or slashes in it still addresses the
+ * right object.
+ */
+export function submissionOutputFileUrl(
+  commitId: number,
+  filePath: string,
+): string {
+  const encoded = filePath.split("/").map(encodeURIComponent).join("/");
+
+  return `${API_BASE_URL}/api/v1/submissions/${String(commitId)}/outputfiles/${encoded}`;
+}
+
+/**
+ * Lists the files the submission generated. The judge uploads them while the run
+ * advances, so the list can grow until the run finishes.
+ */
+export async function getSubmissionOutputFiles(
+  commitId: number,
+): Promise<SubmissionOutputFile[]> {
+  const files = await apiGet<SubmissionOutputFile[]>(
+    `/api/v1/submissions/${String(commitId)}/outputfiles`,
+  );
+
+  return Array.isArray(files) ? files : [];
 }
 
 /** Validates a parsed frame and narrows it to a known event. */

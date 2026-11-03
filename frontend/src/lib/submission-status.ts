@@ -33,6 +33,29 @@ const COMMIT_STATUS: Record<CommitStatus, StatusToneValue> = {
   timeout: { label: "Tempo esgotado", tone: "danger" },
 };
 
+const CASE_REASON: Record<string, string> = {
+  timeout: "Tempo limite excedido",
+  cpu_limit: "Limite de CPU excedido",
+  memory_limit: "Limite de memória excedido",
+  stack_limit: "Limite de pilha excedido",
+  file_size_limit: "Limite de tamanho de arquivo excedido",
+  signal: "Encerrado por um sinal",
+  monitor_error: "Falha do monitor de execução",
+  output_error: "Não foi possível ler a saída do caso",
+  server_error: "Falha do servidor de execução",
+};
+
+/**
+ * The reason an interrupted case was interrupted, in the student's language, or
+ * null when the judge could not attribute the failure (a plain non-zero exit).
+ */
+export function caseReasonLabel(
+  reason: string | null | undefined,
+): string | null {
+  if (!reason) return null;
+  return CASE_REASON[reason] ?? null;
+}
+
 const CASE_STATUS: Record<CaseResultStatus, StatusToneValue> = {
   correct: { label: "Correto", tone: "success" },
   bad_formatted_output: { label: "Saída incorreta", tone: "warning" },

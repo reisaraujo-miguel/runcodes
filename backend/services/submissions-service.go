@@ -138,6 +138,15 @@ func CreateSubmission(ctx context.Context, in SubmissionInput) (int64, error) {
 		return 0, ErrServer
 	}
 
+	// Freeze the limits this submission runs under: the judge grades against this
+	// snapshot, so editing the exercise afterwards cannot change a queued run.
+	// The helper reads the exercise and language back from the row it just wrote,
+	// which is what resolves a ghost exercise to the one that owns the cases.
+	if err := SnapshotCommitLimits(ctx, tx, []int64{commitID}); err != nil {
+		deleteSourceBestEffort(ctx, key)
+		return 0, err
+	}
+
 	if err := tx.Commit(); err != nil {
 		slog.ErrorContext(ctx, "failed to commit submission",
 			slog.Int64("commit_id", commitID),

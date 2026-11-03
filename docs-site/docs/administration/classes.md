@@ -119,10 +119,13 @@ Deleting a class removes:
 - the class row;
 - its exercises and test cases;
 - compilation files and attached materials;
-- every submission in the class and its stored source file.
+- every submission in the class and its stored source file;
+- the files those submissions generated, listed by prefix in the
+  `-outputfiles` bucket.
 
-Output archives are not rows in the database; the judge removes them on its own
-artifact retention schedule.
+Generated files are not rows in the database, so they are found by the commit
+prefix rather than by a foreign key: a class whose deletion was interrupted can
+leave them behind, and only the bucket's retention covers that case.
 
 The action cannot be undone. Ask the class owner to export it from **Ferramentas**
 before deleting it. The export contains the course material but not student

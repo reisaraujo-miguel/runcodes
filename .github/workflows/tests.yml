@@ -230,6 +230,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM commits"
           psql -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM exercises"
           psql -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM exercises_test_cases"
+          psql -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM commit_test_case_limits"
 
           # No grant on users.
           if psql -v ON_ERROR_STOP=1 -tAc "SELECT count(*) FROM users" >/dev/null 2>&1; then

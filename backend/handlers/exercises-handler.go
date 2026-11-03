@@ -44,6 +44,7 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, err error) {
 	case errors.Is(err, services.ErrOfferingNotFound),
 		errors.Is(err, services.ErrExerciseNotFound),
 		errors.Is(err, services.ErrTestCaseNotFound),
+		errors.Is(err, services.ErrLimitAlertNotFound),
 		errors.Is(err, services.ErrCompilationFileNotFound),
 		errors.Is(err, services.ErrAttachedFileNotFound),
 		errors.Is(err, services.ErrUserNotFound),
@@ -53,6 +54,7 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, err error) {
 		WriteResponse(w, http.StatusNotFound, models.Error{Message: err.Error()})
 	case errors.Is(err, services.ErrInvalidFileType),
 		errors.Is(err, services.ErrInvalidTestCase),
+		errors.Is(err, services.ErrInvalidLimits),
 		errors.Is(err, services.ErrInvalidExercise),
 		errors.Is(err, services.ErrInvalidMemberRole),
 		errors.Is(err, services.ErrInvalidRole),

@@ -112,11 +112,18 @@ The S3 bucket prefix is `RUNCODES_S3_BUCKET_PREFIX` (default `runcodes`).
 | `<prefix>-cases` | `<case_id>/files/<name>` | extra files for the case |
 | `<prefix>-files` | `compilationfiles/<exercise_id>/<path>` | exercise compilation files |
 | `<prefix>-files` | `attachments/...` | exercise attachments |
-| `<prefix>-outputfiles` | generated archive | output archive metadata (the archive itself is produced on the judge) |
+| `<prefix>-outputfiles` | generated files | the files each submission produced, uploaded by the judge and served by the backend |
 
-The judge reads source and cases, and writes nothing to S3. The backend uploads
-submissions and exercise files; the judge's output archive is proxied through
-the backend.
+The judge reads source and cases and writes the generated files. The backend
+uploads submissions and exercise files, and streams the generated files back to
+their owner.
+
+Generated files are the only bucket that grows with every run that writes output:
+a submission can store up to each case's file-size limit per case. SeaweedFS is
+started with `-volume.max` volumes of `-master.volumeSizeLimitMB` each (100 ×
+1 GiB in Compose), and a store with no free volume answers every upload with
+`500`. Size the volume budget with the host disk and with
+`RUNCODES_OUTPUT_FILE_TTL`, which deletes expired files.
 
 ## Persistent volumes
 
