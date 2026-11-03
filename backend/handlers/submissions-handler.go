@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/runcodes-icmc/runcodes/config"
 	"github.com/runcodes-icmc/runcodes/judge"
 	"github.com/runcodes-icmc/runcodes/models"
 	"github.com/runcodes-icmc/runcodes/services"
@@ -405,6 +406,21 @@ func GetSubmissionOutput(w http.ResponseWriter, r *http.Request) {
 	if len(files) == 0 {
 		WriteResponse(w, http.StatusNotFound,
 			models.Error{Message: "no output was generated for this submission"},
+		)
+		return
+	}
+
+	// The archive is one response built from files the submission chose the size
+	// of, so it is capped as a whole. The listing still serves each file alone.
+	var total int64
+	for _, file := range files {
+		total += file.Size
+	}
+	if limit := config.Get().OutputFiles.MaxArchiveBytes; limit > 0 && total > limit {
+		WriteResponse(w, http.StatusRequestEntityTooLarge,
+			models.Error{
+				Message: "the generated files are too large to download as one archive; download them one by one",
+			},
 		)
 		return
 	}
