@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { ErrorState, LoadingState } from "@/components/app/states";
 import {
   draftFromTestCase,
   draftToPatch,
@@ -11,8 +12,13 @@ import { TestCaseFields } from "@/components/professor/test-case-fields";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { useAsync } from "@/hooks/use-async";
 import { useSubmit } from "@/hooks/use-submit";
-import { updateTestCase, type TestCase } from "@/lib/api";
+import {
+  getExerciseLanguageLimits,
+  updateTestCase,
+  type TestCase,
+} from "@/lib/api";
 
 /**
  * Inline form to edit a test case. The case's input/output types are fixed, so
@@ -23,19 +29,21 @@ import { updateTestCase, type TestCase } from "@/lib/api";
 export function EditTestCaseForm({
   exerciseId,
   testCase,
-  number,
   onSaved,
   onCancel,
 }: {
   exerciseId: number;
   testCase: TestCase;
-  /** 1-based position within the exercise, not the global test case id. */
-  number: number;
   onSaved: (testCase: TestCase) => void;
   onCancel: () => void;
 }) {
   const [draft, setDraft] = useState<TestCaseDraft>(() =>
     draftFromTestCase(testCase),
+  );
+  const languages = useAsync(
+    () => getExerciseLanguageLimits(exerciseId),
+    `exercise-language-limits-${String(exerciseId)}`,
+    "Não foi possível carregar os limites do exercício.",
   );
   const { pending, error, run } = useSubmit(
     "Não foi possível salvar o caso de teste.",
@@ -67,9 +75,7 @@ export function EditTestCaseForm({
   );
 
   return (
-    <div className="bg-muted/40 space-y-4 rounded-lg border p-4">
-      <h3 className="text-sm font-medium">Editar caso #{String(number)}</h3>
-
+    <div className="space-y-4">
       <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-xs">
         <span>
           Entrada: {testCase.input_type === FILE_INPUT ? "Arquivo" : "Texto"}
@@ -87,10 +93,19 @@ export function EditTestCaseForm({
           handleSubmit();
         }}
       >
+        {languages.error ? (
+          <ErrorState
+            description={languages.error}
+            onRetry={languages.reload}
+          />
+        ) : languages.loading && !languages.data ? (
+          <LoadingState label="Carregando as linguagens…" />
+        ) : null}
         <TestCaseFields
           idPrefix={`edit-case-${String(testCase.id)}`}
           draft={draft}
           onChange={update}
+          languages={languages.data ?? []}
           typeSelectors={false}
           inputFileHint={
             testCase.input_type === FILE_INPUT ? keepFileHint : undefined

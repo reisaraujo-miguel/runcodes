@@ -14,7 +14,7 @@ import {
   type TestCaseDraft,
 } from "./test-case-draft";
 
-/** A stored text-in/text-out case, with an unset (0 = default) CPU limit. */
+/** A stored text-in/text-out case that inherits every limit. */
 const textCase: TestCase = {
   id: 1,
   exercise_id: 7,
@@ -25,10 +25,7 @@ const textCase: TestCase = {
   expected_output_type: "text",
   show_expected_output: true,
   show_user_output: true,
-  cpu_time_limit_seconds: 0,
-  mem_usage_limit_bytes: 0,
-  stack_limit_bytes: 0,
-  file_size_limit_bytes: 0,
+  limits: [],
   files: [],
 };
 
@@ -74,14 +71,15 @@ describe("draftToNewTestCase", () => {
     });
   });
 
-  test("includes text, flags and limits when set", () => {
+  test("includes text, flags and the per-language overrides", () => {
     const draft: TestCaseDraft = {
       ...emptyDraft(),
       inputText: "1 2",
       outputText: "3",
       showInput: true,
-      cpuTime: "2",
-      memLimit: "1024",
+      languageLimits: {
+        3: { cpu: "2", mem: "1", stack: "", fileSize: "0" },
+      },
     };
 
     expect(draftToNewTestCase(draft)).toEqual({
@@ -92,8 +90,15 @@ describe("draftToNewTestCase", () => {
       show_user_output: true,
       input: "1 2",
       expected_output: "3",
-      cpu_time_limit_seconds: 2,
-      mem_usage_limit_bytes: 1024,
+      language_limits: [
+        {
+          allowed_file_type_id: 3,
+          cpu_time_limit_seconds: 2,
+          mem_usage_limit_bytes: 1048576,
+          stack_limit_bytes: null,
+          file_size_limit_bytes: 0,
+        },
+      ],
     });
   });
 
@@ -120,30 +125,40 @@ describe("draftToNewTestCase", () => {
 });
 
 describe("draftToPatch", () => {
-  test("produces an empty patch when nothing changed", () => {
-    expect(draftToPatch(draftFromTestCase(textCase), textCase)).toEqual({});
+  test("sends the (empty) override set when nothing changed", () => {
+    expect(draftToPatch(draftFromTestCase(textCase), textCase)).toEqual({
+      language_limits: [],
+    });
   });
 
   test("sends only the fields that differ", () => {
     const draft = { ...draftFromTestCase(textCase), inputText: "9 9" };
-    expect(draftToPatch(draft, textCase)).toEqual({ input: "9 9" });
-  });
-
-  test("includes a changed flag and a changed limit", () => {
-    const draft = {
-      ...draftFromTestCase(textCase),
-      showUserOutput: false,
-      cpuTime: "5",
-    };
     expect(draftToPatch(draft, textCase)).toEqual({
-      show_user_output: false,
-      cpu_time_limit_seconds: 5,
+      input: "9 9",
+      language_limits: [],
     });
   });
 
-  test("treats a 0 limit as unchanged (it means platform default)", () => {
-    const draft = { ...draftFromTestCase(textCase), cpuTime: "0" };
-    expect(draftToPatch(draft, textCase)).toEqual({});
+  test("includes a changed flag and the override set", () => {
+    const draft = {
+      ...draftFromTestCase(textCase),
+      showUserOutput: false,
+      languageLimits: {
+        3: { cpu: "5", mem: "", stack: "", fileSize: "" },
+      },
+    };
+    expect(draftToPatch(draft, textCase)).toEqual({
+      show_user_output: false,
+      language_limits: [
+        {
+          allowed_file_type_id: 3,
+          cpu_time_limit_seconds: 5,
+          mem_usage_limit_bytes: null,
+          stack_limit_bytes: null,
+          file_size_limit_bytes: null,
+        },
+      ],
+    });
   });
 
   test("replaces extra files only when some were picked", () => {

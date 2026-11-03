@@ -181,6 +181,8 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
     compilation,
     results,
     artifacts,
+    artifactVersion,
+    pendingUploads,
     final,
     streamError,
     resetRunState,
@@ -693,6 +695,8 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
             final={final}
             streamError={streamError}
             artifacts={artifacts}
+            artifactVersion={artifactVersion}
+            pendingUploads={pendingUploads}
             testCases={testCases.data ?? []}
             testCasesLoading={testCases.loading}
             testCasesError={testCases.error}

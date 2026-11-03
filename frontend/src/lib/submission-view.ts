@@ -11,6 +11,7 @@ export interface CaseResultView {
   cpuTime: number;
   memUsage: number;
   status: CaseResultStatus;
+  reason: string | null;
   statusMessage: string;
   errorMessage: string;
   userOutput: string;
@@ -39,6 +40,7 @@ export function viewFromSnapshot(
     cpuTime: result.cpu_time,
     memUsage: result.mem_usage,
     status: result.status,
+    reason: result.reason,
     statusMessage: result.status_message,
     errorMessage: result.error_message,
     userOutput: result.user_output,
@@ -54,6 +56,7 @@ export function viewFromEvent(
     cpuTime: event.cpu_time,
     memUsage: event.mem_usage,
     status: event.status,
+    reason: event.reason ?? null,
     statusMessage: event.status_message,
     errorMessage: event.error_message,
     userOutput: event.user_output,

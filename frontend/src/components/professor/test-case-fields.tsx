@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
 
+import { LanguageLimitsTable } from "@/components/professor/LanguageLimitsTable";
 import {
   FILE_INPUT,
   TEXT_INPUT,
+  type LanguageLimitDraft,
   type TestCaseDraft,
 } from "@/components/professor/test-case-draft";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -10,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import type { LanguageLimits } from "@/lib/api";
 
 const TYPE_OPTIONS = [
   { value: TEXT_INPUT, label: "Texto" },
@@ -25,6 +28,7 @@ export function TestCaseFields({
   idPrefix,
   draft,
   onChange,
+  languages,
   typeSelectors = true,
   inputFileHint,
   outputFileHint,
@@ -33,6 +37,8 @@ export function TestCaseFields({
   idPrefix: string;
   draft: TestCaseDraft;
   onChange: (patch: Partial<TestCaseDraft>) => void;
+  /** The exercise's languages, used for the inherited limit values. */
+  languages: readonly LanguageLimits[];
   typeSelectors?: boolean;
   inputFileHint?: ReactNode;
   outputFileHint?: ReactNode;
@@ -144,64 +150,38 @@ export function TestCaseFields({
         {extraFilesHint}
       </div>
 
-      <div className="space-y-2">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor={`${idPrefix}-cpu`}>Tempo limite (s)</Label>
-            <Input
-              id={`${idPrefix}-cpu`}
-              type="number"
-              min="0"
-              step="0.1"
-              value={draft.cpuTime}
-              onChange={(event) => {
-                onChange({ cpuTime: event.target.value });
-              }}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor={`${idPrefix}-mem`}>Limite de memória (bytes)</Label>
-            <Input
-              id={`${idPrefix}-mem`}
-              type="number"
-              min="0"
-              value={draft.memLimit}
-              onChange={(event) => {
-                onChange({ memLimit: event.target.value });
-              }}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor={`${idPrefix}-stack`}>Limite de pilha (bytes)</Label>
-            <Input
-              id={`${idPrefix}-stack`}
-              type="number"
-              min="0"
-              value={draft.stackLimit}
-              onChange={(event) => {
-                onChange({ stackLimit: event.target.value });
-              }}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor={`${idPrefix}-filesize`}>
-              Limite de arquivo (bytes)
-            </Label>
-            <Input
-              id={`${idPrefix}-filesize`}
-              type="number"
-              min="0"
-              value={draft.fileSizeLimit}
-              onChange={(event) => {
-                onChange({ fileSizeLimit: event.target.value });
-              }}
-            />
-          </div>
+      <details className="bg-muted/30 group rounded-lg px-3 py-2">
+        <summary className="cursor-pointer list-none text-sm font-medium select-none [&::-webkit-details-marker]:hidden">
+          Limites por linguagem (opcional)
+        </summary>
+        <div className="space-y-2 pt-3">
+          <p className="text-muted-foreground text-xs">
+            Deixe um campo vazio para herdar o padrão do exercício (ou o da
+            plataforma). Use 0 para não aplicar limite, quando a linguagem
+            permitir.
+          </p>
+          <LanguageLimitsTable
+            languages={languages}
+            values={draft.languageLimits}
+            idPrefix={`${idPrefix}-limit`}
+            onChange={(languageId, field, value) => {
+              const current = draft.languageLimits[languageId] ?? {
+                cpu: "",
+                mem: "",
+                stack: "",
+                fileSize: "",
+              };
+              const row: LanguageLimitDraft = { ...current, [field]: value };
+              onChange({
+                languageLimits: {
+                  ...draft.languageLimits,
+                  [languageId]: row,
+                },
+              });
+            }}
+          />
         </div>
-        <p className="text-muted-foreground text-xs">
-          0 usa o padrão da plataforma.
-        </p>
-      </div>
+      </details>
 
       <div className="flex flex-wrap gap-4">
         <Label htmlFor={`${idPrefix}-show-input`} className="font-normal">

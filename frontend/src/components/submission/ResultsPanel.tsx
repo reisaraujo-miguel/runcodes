@@ -59,6 +59,10 @@ export interface ResultsPanelProps {
   final: FinalSummary | null;
   streamError: string | null;
   artifacts: SubmissionArtifact[];
+  /** Changes when the judge publishes more generated files; see Artifacts. */
+  artifactVersion?: number;
+  /** Cases whose generated files are still being uploaded. */
+  pendingUploads?: number[];
   testCases: TestCase[];
   testCasesLoading: boolean;
   testCasesError: string | null;
@@ -90,6 +94,8 @@ export function ResultsPanel({
   final,
   streamError,
   artifacts,
+  artifactVersion = 0,
+  pendingUploads = [],
   testCases,
   testCasesLoading,
   testCasesError,
@@ -293,6 +299,11 @@ export function ResultsPanel({
                 id={entry.id}
                 number={entry.number}
                 status={entry.result?.status}
+                running={
+                  status === "running" &&
+                  cases.find((candidate) => candidate.result === undefined)
+                    ?.id === entry.id
+                }
                 active={activeCaseId === entry.id}
                 onSelect={() => {
                   setCaseChoice({ commitId, id: entry.id });
@@ -363,8 +374,13 @@ export function ResultsPanel({
             <NoCasesState />
           )}
 
-          {commitId !== null && artifacts.length > 0 ? (
-            <Artifacts commitId={commitId} artifacts={artifacts} />
+          {commitId !== null && activeCase && artifacts.length > 0 ? (
+            <Artifacts
+              commitId={commitId}
+              testCaseId={activeCase.id}
+              pending={pendingUploads.includes(activeCase.id)}
+              refreshKey={`${String(results.length)}:${String(artifactVersion)}`}
+            />
           ) : null}
 
           {compilation?.message && !compilation.error ? (

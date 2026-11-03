@@ -49,6 +49,57 @@ export interface ExercisePayload {
 }
 
 /** A test case as returned by the API. */
+/** The layer a limit was resolved from. */
+export type LimitSource = "platform" | "exercise" | "case";
+
+/** The four limits that apply to one test case under one language. */
+export interface LimitValues {
+  cpu_time_limit_seconds: number;
+  mem_usage_limit_bytes: number;
+  stack_limit_bytes: number;
+  file_size_limit_bytes: number;
+}
+
+/** Which layer supplied each of those limits. */
+export interface LimitSources {
+  cpu_time_limit_seconds: LimitSource;
+  mem_usage_limit_bytes: LimitSource;
+  stack_limit_bytes: LimitSource;
+  file_size_limit_bytes: LimitSource;
+}
+
+/** One layer's values; `null` inherits the layer below. */
+export interface LimitOverrides {
+  cpu_time_limit_seconds: number | null;
+  mem_usage_limit_bytes: number | null;
+  stack_limit_bytes: number | null;
+  file_size_limit_bytes: number | null;
+}
+
+/** The platform-wide defaults, the last layer of the chain. */
+export interface PlatformLimits extends LimitValues {
+  compilation_timeout_seconds: number;
+}
+
+/** One language of an exercise, with its override and the values that apply. */
+export interface LanguageLimits {
+  allowed_file_type_id: number;
+  name: string;
+  extension: string;
+  overrides: LimitOverrides;
+  limits: LimitValues;
+  sources: LimitSources;
+}
+
+/** The per-language overrides sent when saving a test case. */
+export interface LanguageLimitsPayload {
+  allowed_file_type_id: number;
+  cpu_time_limit_seconds?: number | null;
+  mem_usage_limit_bytes?: number | null;
+  stack_limit_bytes?: number | null;
+  file_size_limit_bytes?: number | null;
+}
+
 export interface TestCase {
   id: number;
   exercise_id: number;
@@ -59,10 +110,8 @@ export interface TestCase {
   expected_output_type: string;
   show_expected_output: boolean;
   show_user_output: boolean;
-  cpu_time_limit_seconds: number;
-  mem_usage_limit_bytes: number;
-  stack_limit_bytes: number;
-  file_size_limit_bytes: number;
+  /** Resolved per allowed language, with the source of each value. */
+  limits: LanguageLimits[];
   files: unknown[];
 }
 
@@ -77,10 +126,8 @@ export interface NewTestCase {
   show_input?: boolean;
   show_expected_output?: boolean;
   show_user_output?: boolean;
-  cpu_time_limit_seconds?: number;
-  mem_usage_limit_bytes?: number;
-  stack_limit_bytes?: number;
-  file_size_limit_bytes?: number;
+  /** The whole set of per-language overrides; absent fields inherit. */
+  language_limits?: LanguageLimitsPayload[];
   files?: File[];
 }
 
@@ -189,22 +236,9 @@ function buildTestCaseForm(
     testCase.show_expected_output,
   );
   appendWhenDefined(form, "show_user_output", testCase.show_user_output);
-  appendWhenDefined(
-    form,
-    "cpu_time_limit_seconds",
-    testCase.cpu_time_limit_seconds,
-  );
-  appendWhenDefined(
-    form,
-    "mem_usage_limit_bytes",
-    testCase.mem_usage_limit_bytes,
-  );
-  appendWhenDefined(form, "stack_limit_bytes", testCase.stack_limit_bytes);
-  appendWhenDefined(
-    form,
-    "file_size_limit_bytes",
-    testCase.file_size_limit_bytes,
-  );
+  if (testCase.language_limits) {
+    form.append("language_limits", JSON.stringify(testCase.language_limits));
+  }
   if (testCase.input_file) form.append("input_file", testCase.input_file);
   if (testCase.expected_output_file) {
     form.append("expected_output_file", testCase.expected_output_file);
@@ -252,6 +286,68 @@ export function deleteTestCase(
   );
 }
 
+/** A warning that a language has been failing submissions because of a limit. */
+export interface ExerciseLimitAlert {
+  id: number;
+  exercise_id: number;
+  allowed_file_type_id: number | null;
+  language_name: string | null;
+  limit_name: string;
+  failures: number;
+  window_started_at: string;
+  window_ended_at: string;
+  created_at: string;
+  acknowledged_at?: string | null;
+}
+
+/** The platform-wide default limits. */
+export function getPlatformLimits(): Promise<PlatformLimits> {
+  return apiGet<PlatformLimits>("/api/v1/limits");
+}
+
+/**
+ * The exercise's per-language defaults, with the values that apply when a test
+ * case has no override of its own.
+ */
+export function getExerciseLanguageLimits(
+  exerciseId: number,
+): Promise<LanguageLimits[]> {
+  return apiGet<LanguageLimits[]>(
+    `/api/v1/exercises/${String(exerciseId)}/language-limits`,
+  );
+}
+
+/** Save the exercise's per-language defaults (the whole set). */
+export function replaceExerciseLanguageLimits(
+  exerciseId: number,
+  limits: LanguageLimitsPayload[],
+): Promise<LanguageLimits[]> {
+  return apiPut<LanguageLimits[]>(
+    `/api/v1/exercises/${String(exerciseId)}/language-limits`,
+    limits,
+  );
+}
+
+/** The unacknowledged limit alerts of an exercise. */
+export function getExerciseLimitAlerts(
+  exerciseId: number,
+): Promise<ExerciseLimitAlert[]> {
+  return apiGet<ExerciseLimitAlert[]>(
+    `/api/v1/exercises/${String(exerciseId)}/limit-alerts`,
+  );
+}
+
+/** Mark one limit alert as handled. */
+export function acknowledgeExerciseLimitAlert(
+  exerciseId: number,
+  alertId: number,
+): Promise<void> {
+  return apiPost<undefined>(
+    `/api/v1/exercises/${String(exerciseId)}/limit-alerts/${String(alertId)}/acknowledge`,
+    undefined,
+  );
+}
+
 /** List an exercise's compilation files. */
 export function getCompilationFiles(
   exerciseId: number,
@@ -291,6 +387,7 @@ export interface BatchTestCaseConfig {
   show_input?: boolean;
   show_expected_output?: boolean;
   show_user_output?: boolean;
+  /** Applied as an override for every language the exercise allows. */
   cpu_time_limit_seconds?: number;
   mem_usage_limit_bytes?: number;
   stack_limit_bytes?: number;

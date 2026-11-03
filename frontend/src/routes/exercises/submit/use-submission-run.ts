@@ -6,6 +6,7 @@ import {
   type SubmissionArtifact,
   type SubmissionStatusEvent,
 } from "@/lib/api";
+import { applyArtifactProgress } from "@/lib/artifact-progress";
 import { isTerminalStatus } from "@/lib/submission-status";
 import {
   upsertCaseResult,
@@ -24,6 +25,10 @@ export interface SubmissionRunState {
   compilation: CompilationInfo | null;
   results: CaseResultView[];
   artifacts: SubmissionArtifact[];
+  /** Increments on every artifact event, so the file listing can be re-read. */
+  artifactVersion: number;
+  /** Cases whose generated files are still being uploaded. */
+  pendingUploads: number[];
   final: FinalSummary | null;
   streamError: string | null;
   resetRunState: () => void;
@@ -36,6 +41,11 @@ export function useSubmissionRun(commitId: number | null): SubmissionRunState {
   const [compilation, setCompilation] = useState<CompilationInfo | null>(null);
   const [results, setResults] = useState<CaseResultView[]>([]);
   const [artifacts, setArtifacts] = useState<SubmissionArtifact[]>([]);
+  // artifactVersion changes on every artifact event, including repeats of a kind
+  // the panel already knows: each one means new files are downloadable, so the
+  // listing must be read again.
+  const [artifactVersion, setArtifactVersion] = useState(0);
+  const [pendingUploads, setPendingUploads] = useState<number[]>([]);
   const [final, setFinal] = useState<FinalSummary | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
 
@@ -107,6 +117,10 @@ export function useSubmissionRun(commitId: number | null): SubmissionRunState {
             ? previous
             : [...previous, { kind: event.kind }],
         );
+        setPendingUploads((previous) => applyArtifactProgress(previous, event));
+        // A ready event means the listing grew; a pending one mounts the panel so
+        // the placeholder is visible. Both justify re-reading the listing.
+        setArtifactVersion((version) => version + 1);
       },
       onFinished: (event) => {
         setStreamError(null);
@@ -143,6 +157,8 @@ export function useSubmissionRun(commitId: number | null): SubmissionRunState {
     setCompilation(null);
     setResults([]);
     setArtifacts([]);
+    setArtifactVersion(0);
+    setPendingUploads([]);
     setFinal(null);
     setStreamError(null);
   }
@@ -153,6 +169,8 @@ export function useSubmissionRun(commitId: number | null): SubmissionRunState {
     compilation,
     results,
     artifacts,
+    artifactVersion,
+    pendingUploads,
     final,
     streamError,
     resetRunState,

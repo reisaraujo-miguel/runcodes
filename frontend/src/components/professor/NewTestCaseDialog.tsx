@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { PlusIcon } from "lucide-react";
 
+import { ErrorState, LoadingState } from "@/components/app/states";
 import {
   draftToNewTestCase,
   emptyDraft,
@@ -20,8 +21,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
+import { useAsync } from "@/hooks/use-async";
 import { useSubmit } from "@/hooks/use-submit";
-import { createTestCase, type TestCase } from "@/lib/api";
+import {
+  createTestCase,
+  getExerciseLanguageLimits,
+  type TestCase,
+} from "@/lib/api";
 
 /**
  * Dialog to create test cases one after another, using text or uploaded files
@@ -41,6 +47,11 @@ export function NewTestCaseDialog({
   onCreated: (testCase: TestCase) => void;
 }) {
   const [draft, setDraft] = useState<TestCaseDraft>(emptyDraft);
+  const languages = useAsync(
+    () => getExerciseLanguageLimits(exerciseId),
+    `exercise-language-limits-${String(exerciseId)}`,
+    "Não foi possível carregar os limites do exercício.",
+  );
   const [created, setCreated] = useState(0);
   // The native file inputs keep their value when the draft object is replaced,
   // so the fields are remounted to really clear them for the next case.
@@ -82,7 +93,7 @@ export function NewTestCaseDialog({
         if (!open) onClose();
       }}
     >
-      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Novo caso de teste</DialogTitle>
           <DialogDescription>
@@ -110,12 +121,22 @@ export function NewTestCaseDialog({
             handleSubmit();
           }}
         >
-          <TestCaseFields
-            key={fieldsKey}
-            idPrefix="new-case"
-            draft={draft}
-            onChange={update}
-          />
+          {languages.error ? (
+            <ErrorState
+              description={languages.error}
+              onRetry={languages.reload}
+            />
+          ) : languages.loading && !languages.data ? (
+            <LoadingState label="Carregando as linguagens…" />
+          ) : (
+            <TestCaseFields
+              key={fieldsKey}
+              idPrefix="new-case"
+              draft={draft}
+              onChange={update}
+              languages={languages.data ?? []}
+            />
+          )}
 
           {error ? (
             <Alert variant="destructive">

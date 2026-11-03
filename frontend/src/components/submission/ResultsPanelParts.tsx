@@ -9,18 +9,27 @@ import {
   Loader2Icon,
   LockIcon,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { StatusBadge } from "@/components/app/StatusBadge";
 import type { TestCase } from "@/lib/api/exercises";
 import type {
   CaseResultStatus,
-  SubmissionArtifact,
+  SubmissionOutputFile,
   SubmissionStatusEvent,
 } from "@/lib/api/submissions";
-import { submissionOutputUrl } from "@/lib/api/submissions";
+import {
+  getSubmissionOutputFiles,
+  submissionOutputFileUrl,
+  submissionOutputUrl,
+} from "@/lib/api/submissions";
 import { formatBytes, formatCpuTime } from "@/lib/format";
-import { caseStatus, commitStatus } from "@/lib/submission-status";
+import { filesForTestCase } from "@/lib/output-files";
+import {
+  caseReasonLabel,
+  caseStatus,
+  commitStatus,
+} from "@/lib/submission-status";
 import type { CaseResultView } from "@/lib/submission-view";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +47,7 @@ export function CaseChip({
   id,
   number,
   status,
+  running,
   active,
   onSelect,
 }: {
@@ -45,6 +55,8 @@ export function CaseChip({
   /** 1-based position in the exercise; null when the case was removed. */
   number: number | null;
   status?: CaseResultStatus;
+  /** The suite is running and this is the case being executed. */
+  running?: boolean;
   active: boolean;
   onSelect: () => void;
 }) {
@@ -72,6 +84,15 @@ export function CaseChip({
       )}
     >
       {number === null ? "Caso removido" : `Caso ${String(number)}`}
+      {running && !status ? (
+        <>
+          <span
+            className="bg-primary size-2 animate-pulse rounded-full"
+            aria-hidden
+          />
+          <span className="sr-only">Executando</span>
+        </>
+      ) : null}
       {icon}
       {value ? <span className="sr-only">{value.label}</span> : null}
     </button>
@@ -197,6 +218,11 @@ export function CaseDetail({
           <span className="text-muted-foreground text-[11px] tabular-nums">
             Memória {formatBytes(result.memUsage)}
           </span>
+          {caseReasonLabel(result.reason) ? (
+            <span className="text-destructive min-w-0 text-xs font-medium">
+              {caseReasonLabel(result.reason)}
+            </span>
+          ) : null}
           {result.statusMessage ? (
             <span className="text-muted-foreground min-w-0 text-xs">
               {result.statusMessage}
@@ -346,33 +372,148 @@ export function StreamError({ message }: { message: string }) {
   );
 }
 
+/**
+ * Labels one generated file for display. The tab already identifies the case, so
+ * only the path inside the case is shown: the judge's `test_<id>/` prefix would
+ * repeat the tab's own title.
+ */
+function generatedFileLabel(filePath: string): string {
+  const parts = filePath.split("/");
+  const rest = parts.slice(1);
+  if (rest.length === 0) return parts[0] ?? filePath;
+  if (parts[0] === "outputfiles" || /^test_\d+$/.test(parts[0] ?? "")) {
+    return rest.join("/");
+  }
+
+  return filePath;
+}
+
+/**
+ * The files one test case generated, with a download per file. Each case has its
+ * own tab, so a case shows only what it produced: a file's origin is the
+ * `test_<case id>/` prefix the judge stored it under.
+ *
+ * The listing comes from the API rather than the event stream because the judge
+ * publishes each case's files while the run advances, so it grows until the last
+ * case finishes.
+ */
 export function Artifacts({
   commitId,
-  artifacts,
+  testCaseId,
+  pending,
+  refreshKey,
 }: {
   commitId: number;
-  artifacts: SubmissionArtifact[];
+  /** The case whose tab is open; only its files are listed. */
+  testCaseId: number;
+  /** True while this case's files are still being uploaded. */
+  pending: boolean;
+  /**
+   * Changes when another case's result arrives or new files are published, so the
+   * list follows the run.
+   */
+  refreshKey: string;
 }) {
-  const href = submissionOutputUrl(commitId);
+  const [files, setFiles] = useState<SubmissionOutputFile[]>([]);
+
+  // While this case's upload is in flight, the listing is polled: the ready event
+  // can arrive after the run's terminal event, when the stream is already closed,
+  // and the placeholder must turn into the link by itself.
+  useEffect(() => {
+    let active = true;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    let attempts = 0;
+
+    const read = () => {
+      getSubmissionOutputFiles(commitId)
+        .then((list) => {
+          if (active) setFiles(list);
+        })
+        .catch(() => {
+          // A listing failure leaves the section out; the case's result above is
+          // unaffected.
+        });
+    };
+
+    read();
+
+    if (pending) {
+      // Bounded: a failed upload that never reports back must not poll forever.
+      timer = setInterval(() => {
+        attempts += 1;
+        if (attempts > 30) {
+          if (timer) clearInterval(timer);
+          return;
+        }
+        read();
+      }, 2000);
+    }
+
+    return () => {
+      active = false;
+      if (timer) clearInterval(timer);
+    };
+  }, [commitId, refreshKey, pending]);
+
+  const caseFiles = filesForTestCase(files, testCaseId);
+  if (caseFiles.length === 0) {
+    if (!pending) return null;
+
+    return (
+      <div className="border-t pt-2">
+        <p className="text-muted-foreground mb-1 text-[11px] font-medium">
+          Arquivos gerados
+        </p>
+        <p
+          className="text-muted-foreground inline-flex items-center gap-1.5 text-xs"
+          aria-live="polite"
+        >
+          <Loader2Icon className="size-3.5 animate-spin" aria-hidden />
+          Aguardando o envio do arquivo…
+        </p>
+      </div>
+    );
+  }
+
+  // The zip holds every case's files, so it is only offered when that is more
+  // than this tab already lists.
+  const hasOtherFiles = files.length > caseFiles.length;
 
   return (
     <div className="border-t pt-2">
       <p className="text-muted-foreground mb-1 text-[11px] font-medium">
         Arquivos gerados
       </p>
-      <ul className="flex flex-wrap gap-x-4 gap-y-1">
-        {artifacts.map((artifact) => (
-          <li key={artifact.kind}>
+      <ul className="flex flex-col gap-1">
+        {caseFiles.map((file) => (
+          <li
+            key={file.path}
+            className="flex items-baseline justify-between gap-3"
+          >
             <a
-              href={href}
-              className="text-primary inline-flex items-center gap-1.5 text-xs hover:underline"
+              href={submissionOutputFileUrl(commitId, file.path)}
+              className="text-primary inline-flex min-w-0 items-center gap-1.5 text-xs hover:underline"
             >
-              <DownloadIcon className="size-3.5" aria-hidden />
-              {artifact.kind === "output" ? "Arquivo de saída" : artifact.kind}
+              <DownloadIcon className="size-3.5 shrink-0" aria-hidden />
+              <span className="truncate">
+                {generatedFileLabel(file.path)}
+              </span>
             </a>
+            <span className="text-muted-foreground shrink-0 text-[11px] tabular-nums">
+              {formatBytes(file.size)}
+            </span>
           </li>
         ))}
       </ul>
+      {hasOtherFiles ? (
+        <a
+          href={submissionOutputUrl(commitId)}
+          className="text-muted-foreground hover:text-foreground mt-1.5 inline-flex items-center gap-1.5 text-[11px] hover:underline"
+        >
+          <DownloadIcon className="size-3" aria-hidden />
+          Baixar os arquivos de todos os casos (.zip)
+        </a>
+      ) : null}
     </div>
   );
 }
