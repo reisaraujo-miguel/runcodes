@@ -158,7 +158,8 @@ new class.
 3. Optionally set a new name, description and end date.
 4. Select **Importar turma**.
 
-The import restores the class configuration, exercises, test cases, compilation
+The import restores the class configuration, exercises, test cases, the
+per-language limits (the exercise defaults and every case override), compilation
 files and materials. Students, submissions and grades are deliberately not part
 of the archive. The importer becomes the owner and the new class gets a new
 enrollment code.

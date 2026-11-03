@@ -329,9 +329,10 @@ Owner and co-professors only. These routes act on the whole class.
 
 ### `GET /offerings/{id}/export`
 
-Streams a zip with the class configuration, exercises, test cases, compilation
-files and materials. Submissions, members and grades are excluded. The archive
-can be imported with `POST /offerings/import`.
+Streams a zip with the class configuration, exercises, test cases (including
+their per-language limits), the exercises' per-language default limits,
+compilation files and materials. Submissions, members and grades are excluded.
+The archive can be imported with `POST /offerings/import`.
 
 ### `GET /offerings/{id}/submissions/export`
 
