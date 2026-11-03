@@ -400,6 +400,19 @@ caso3/
 Put an extra file whose name ends in `.in` or `.out` in a `files/` subfolder, so
 the importer does not mistake it for the case input or output.
 
+If you zip the folder that holds the cases instead of selecting the files inside
+it, the whole archive sits inside one extra folder. The importer treats that
+folder as the root, so both layouts above also work wrapped this way:
+
+```text
+meus-casos/
+  1.in
+  1.out
+  2/
+    2.in
+    2.out
+```
+
 Files at the root that are neither `.in` nor `.out` — a README, a notes file —
 are ignored, and the result tells you which ones were left out. Inside a case
 folder nothing is ignored: every other file is an extra case file.
@@ -622,7 +635,7 @@ the test cases themselves.
 | A submission is refused with `422` | the deadline passed for a student, or the exercise has no test cases |
 | A recompilation fails with `503` | the judge is not ready; check with the administrator, then retry |
 | An imported class fails on a file type | the extension is not in the platform catalog; ask an administrator to register it |
-| A batch import fails | a case has no `.in`, no `.out`, more than one of either, a nested folder, or the archive exceeds a limit |
+| A batch import fails | a case has no `.in`, no `.out`, more than one of either, a folder nested inside a case folder, or the archive exceeds a limit |
 | A case is "Interrompido" | see the reason next to the status: timeout, CPU, memory, stack or file-size limit, a signal, or a sandbox failure. Adjust that limit for the student's language in **Limites** |
 | A CSV grade looks different from the table | missing cells are empty in the CSV but count as zero in the class grade; the table shows the best score, while **Baixar submissões** reports the latest |
 | The class email did not arrive | SMTP is misconfigured, or recipients are on a blocked relay; check with the administrator and the server logs |

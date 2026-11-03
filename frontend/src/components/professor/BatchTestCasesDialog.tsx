@@ -123,9 +123,12 @@ export function BatchTestCasesDialog({
             Envie um .zip com os casos. Cada caso é um par <code>.in</code> e{" "}
             <code>.out</code> com o mesmo nome na raiz do arquivo; se o caso
             tiver arquivos extras, coloque o par e os extras em uma pasta com o
-            nome do caso. Arquivos da raiz que não terminam em <code>.in</code>{" "}
-            ou <code>.out</code> são ignorados e listados depois da importação.
-            A configuração abaixo vale para todos os casos do lote.
+            nome do caso. Se o .zip tiver uma única pasta em volta dos casos —
+            por exemplo, ao compactar a pasta em vez dos arquivos —, ela é
+            tratada como a raiz. Arquivos da raiz que não terminam em{" "}
+            <code>.in</code> ou <code>.out</code> são ignorados e listados
+            depois da importação. A configuração abaixo vale para todos os casos
+            do lote.
           </DialogDescription>
         </DialogHeader>
 

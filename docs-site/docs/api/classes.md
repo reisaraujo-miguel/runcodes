@@ -655,10 +655,14 @@ caso4/
   files/notas.in
 ```
 
+If the whole archive sits inside one folder — what happens when you zip the
+folder instead of its files — the importer treats that folder as the root, so
+the layouts above also work wrapped in a single top-level folder.
+
 Root files that are neither `.in` nor `.out` are ignored and listed back in the
 response. A pair with one file missing, two inputs or two outputs for the same
-case, a folder without a pair or a nested folder makes the whole import fail; the
-archive is validated before anything is written.
+case, a folder without a pair or a folder nested inside a case folder makes the
+whole import fail; the archive is validated before anything is written.
 
 Limits: 500 cases, 4000 zip entries, 256 MiB expanded and 32 MiB per file.
 
