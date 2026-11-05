@@ -48,6 +48,7 @@ func TestCreateRoutes(t *testing.T) {
 		"/api/v1/submissions/{id}/output",
 		"/api/v1/submissions/{id}/outputfiles",
 		"/api/v1/submissions/{id}/outputfiles/*",
+		"/api/v1/submissions/{id}/output-events",
 		"/api/v1/submissions/{id}/events",
 		"/api/v1/exercises/{id}/test-cases",
 		"/api/v1/exercises/{id}/test-cases/{caseId}",

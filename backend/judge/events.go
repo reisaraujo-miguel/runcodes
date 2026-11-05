@@ -57,8 +57,10 @@ type Event struct {
 	Phases []EventPhase `json:"phases,omitempty"`
 
 	// artifact
-	Kind string `json:"kind,omitempty"`
-	URL  string `json:"url,omitempty"`
+	Kind          string `json:"kind,omitempty"`
+	URL           string `json:"url,omitempty"`
+	ArtifactState string `json:"state,omitempty"`
+	LimitBytes    *int64 `json:"limit_bytes,omitempty"`
 
 	// alert
 	// Code is the stable identifier of the condition ("startup_timeout");
@@ -121,13 +123,7 @@ func PersistEvent(ctx context.Context, ev *Event) error {
 	case "finished":
 		return persistFinished(ctx, ev)
 	case "artifact":
-		// There is no column for artifacts; the URL is only useful transiently.
-		slog.InfoContext(ctx, "judge artifact available",
-			slog.Int64("commit_id", ev.CommitID),
-			slog.String("kind", ev.Kind),
-			slog.String("url", ev.URL),
-		)
-		return nil
+		return persistArtifact(ctx, ev)
 	case "error":
 		// The judge sends `error` as a diagnostic before the authoritative
 		// `finished` event. Persisting `server_error` here would make that
@@ -180,6 +176,61 @@ func persistCompilation(ctx context.Context, ev *Event) error {
 		compiled, ev.Message, ev.Error, ev.CommitID,
 	); err != nil {
 		return fmt.Errorf("persisting compilation event: %w", err)
+	}
+
+	return nil
+}
+
+/*
+persistArtifact records the state of one test case's generated-file upload. The
+row is what a reloading client reads to explain a missing download; the
+run-level artifact event (files written outside a case's directory) has no case
+and only logs its URL.
+*/
+func persistArtifact(ctx context.Context, ev *Event) error {
+	if ev.TestCaseID == 0 {
+		slog.InfoContext(ctx, "judge artifact available",
+			slog.Int64("commit_id", ev.CommitID),
+			slog.String("kind", ev.Kind),
+			slog.String("url", ev.URL),
+		)
+		return nil
+	}
+
+	switch ev.ArtifactState {
+	case "pending", "ready", "failed":
+	default:
+		// Older judges sent only the state-less run-level event. Do not make the
+		// stream reconnect forever over a field those versions cannot fill.
+		slog.WarnContext(ctx, "ignoring artifact event without a state",
+			slog.Int64("commit_id", ev.CommitID),
+			slog.Int64("test_case_id", ev.TestCaseID),
+		)
+		return nil
+	}
+
+	var reason any
+	if ev.Reason != "" {
+		reason = ev.Reason
+	}
+	var limit any
+	if ev.LimitBytes != nil {
+		limit = *ev.LimitBytes
+	}
+
+	if _, err := database.DB.ExecContext(ctx,
+		`INSERT INTO commit_test_case_artifacts
+		     (commit_id, exercise_test_case_id, state, reason, limit_bytes,
+		      updated_at)
+		 VALUES ($1, $2, $3::commit_artifact_state_t, $4, $5, now())
+		 ON CONFLICT (commit_id, exercise_test_case_id) DO UPDATE SET
+		     state = EXCLUDED.state,
+		     reason = EXCLUDED.reason,
+		     limit_bytes = EXCLUDED.limit_bytes,
+		     updated_at = now()`,
+		ev.CommitID, ev.TestCaseID, ev.ArtifactState, reason, limit,
+	); err != nil {
+		return fmt.Errorf("persisting artifact event: %w", err)
 	}
 
 	return nil

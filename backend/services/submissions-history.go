@@ -19,10 +19,14 @@ func ListMyExerciseSubmissions(
 	ctx context.Context, exerciseID, userID int64,
 ) ([]models.SubmissionSummary, error) {
 	rows, err := database.DB.QueryContext(ctx,
-		`SELECT id, status, num_correct_cases, score, created_at, s3_key
-		 FROM commits
-		 WHERE user_id = $1 AND exercise_id = $2
-		   AND s3_key IS NOT NULL AND s3_key <> ''
+		`SELECT id, number, status, num_correct_cases, score, created_at, s3_key
+		 FROM (
+		     SELECT id, status, num_correct_cases, score, created_at, s3_key,
+		            ROW_NUMBER() OVER (ORDER BY created_at, id) AS number
+		     FROM commits
+		     WHERE user_id = $1 AND exercise_id = $2
+		 ) ranked
+		 WHERE s3_key IS NOT NULL AND s3_key <> ''
 		 ORDER BY created_at DESC, id DESC
 		 LIMIT $3`,
 		userID, exerciseID, SubmissionHistoryLimit,
@@ -44,8 +48,8 @@ func ListMyExerciseSubmissions(
 			key     string
 		)
 		if err := rows.Scan(
-			&summary.ID, &summary.Status, &summary.NumCorrectCases,
-			&summary.Score, &summary.CreatedAt, &key,
+			&summary.ID, &summary.Number, &summary.Status,
+			&summary.NumCorrectCases, &summary.Score, &summary.CreatedAt, &key,
 		); err != nil {
 			slog.ErrorContext(ctx, "error scanning submission summary",
 				slog.Int64("user_id", userID),
@@ -67,6 +71,37 @@ func ListMyExerciseSubmissions(
 	}
 
 	return submissions, nil
+}
+
+/*
+SubmissionNumber returns a commit's 1-based position among the same user's
+submissions to the same exercise. The platform-wide commit id is not a
+submission number: two users' tenth submissions, or one user's tenth submission
+to two exercises, all report 10 here.
+
+The order is the same (created_at, id) order used by the history listing, so a
+displayed number stays stable as new submissions arrive.
+*/
+func SubmissionNumber(ctx context.Context, commitID int64) (int64, error) {
+	var number int64
+	err := database.DB.QueryRowContext(ctx, `
+		SELECT count(*)
+		FROM commits c
+		JOIN commits target ON target.id = $1
+		WHERE c.user_id = target.user_id
+		  AND c.exercise_id = target.exercise_id
+		  AND (c.created_at, c.id) <= (target.created_at, target.id)`,
+		commitID,
+	).Scan(&number)
+	if err != nil {
+		slog.ErrorContext(ctx, "error reading the submission number",
+			slog.Int64("commit_id", commitID),
+			slog.String("error", err.Error()),
+		)
+		return 0, ErrServer
+	}
+
+	return number, nil
 }
 
 // CommitSource is a submitted source file opened for download or restoration.
@@ -163,15 +198,21 @@ func GetCommitSnapshot(ctx context.Context, commitID int64) (*models.Snapshot, e
 	commit := models.Commit{}
 
 	err := database.DB.QueryRowContext(ctx,
-		`SELECT id, user_id, exercise_id, status, num_correct_cases, score,
-		        compiled, compilation_message, compilation_error,
-		        compilation_started, compilation_finished, created_at,
-		        s3_key, ip
-		 FROM commits WHERE id = $1`,
+		`SELECT c.id,
+		        (SELECT count(*)
+		         FROM commits c2
+		         WHERE c2.user_id = c.user_id
+		           AND c2.exercise_id = c.exercise_id
+		           AND (c2.created_at, c2.id) <= (c.created_at, c.id)) AS number,
+		        c.user_id, c.exercise_id, c.status, c.num_correct_cases, c.score,
+		        c.compiled, c.compilation_message, c.compilation_error,
+		        c.compilation_started, c.compilation_finished, c.created_at,
+		        c.s3_key, c.ip
+		 FROM commits c WHERE c.id = $1`,
 		commitID,
 	).Scan(
-		&commit.ID, &commit.UserID, &commit.ExerciseID, &commit.Status,
-		&commit.NumCorrectCases, &commit.Score, &commit.Compiled,
+		&commit.ID, &commit.Number, &commit.UserID, &commit.ExerciseID,
+		&commit.Status, &commit.NumCorrectCases, &commit.Score, &commit.Compiled,
 		&commit.CompilationMessage, &commit.CompilationError,
 		&commit.CompilationStarted, &commit.CompilationFinished,
 		&commit.CreatedAt, &commit.S3Key, &commit.IP,
@@ -235,11 +276,17 @@ func GetCommitSnapshot(ctx context.Context, commitID int64) (*models.Snapshot, e
 		return nil, ErrServer
 	}
 
+	artifacts, err := ListCommitArtifacts(ctx, commitID)
+	if err != nil {
+		return nil, err
+	}
+	SettlePendingArtifacts(commit.Status, artifacts)
+
 	return &models.Snapshot{
 		Type:      "snapshot",
 		Commit:    &commit,
 		Results:   results,
-		Artifacts: []models.SubmissionArtifact{},
+		Artifacts: artifacts,
 	}, nil
 }
 

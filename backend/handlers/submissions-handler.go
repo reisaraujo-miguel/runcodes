@@ -197,8 +197,19 @@ func CreateSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The number is a display convenience: a failure to read it must not reject
+	// a submission that was already queued. The snapshot carries it as well.
+	number, err := services.SubmissionNumber(ctx, commitID)
+	if err != nil {
+		slog.WarnContext(ctx, "could not read the new submission's number",
+			slog.Int64("commit_id", commitID),
+			slog.String("error", err.Error()),
+		)
+	}
+
 	WriteResponse(w, http.StatusCreated, models.CreateSubmissionResponse{
 		CommitID:  commitID,
+		Number:    number,
 		Status:    "queued",
 		EventsURL: "/api/v1/submissions/" + strconv.FormatInt(commitID, 10) + "/events",
 	})
@@ -372,7 +383,14 @@ func visibleOutputFiles(
 		return nil, err
 	}
 
-	return services.VisibleOutputFiles(files, unavailable), nil
+	// Generated paths name the case by its position in the exercise; the hidden
+	// and interrupted rules use the database id. Translate once for the listing.
+	caseIDs, err := services.CommitTestCaseIDs(ctx, commitID)
+	if err != nil {
+		return nil, err
+	}
+
+	return services.VisibleOutputFilesForCases(files, unavailable, caseIDs), nil
 }
 
 /*
@@ -425,10 +443,22 @@ func GetSubmissionOutput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// gets the exercise relative submission number for the filename;
+	// a failure is logged but does not prevent the download, which is the main goal of this endpoint.
+	number, err := services.SubmissionNumber(ctx, commitID)
+	if err != nil {
+		slog.WarnContext(ctx, "could not read the new submission's number",
+			slog.Int64("commit_id", commitID),
+			slog.String("error", err.Error()),
+		)
+
+		number = commitID // fallback to commitID if the submission number cannot be retrieved
+	}
+
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition",
 		fmt.Sprintf("attachment; filename=%q",
-			strconv.FormatInt(commitID, 10)+".zip"),
+			strconv.FormatInt(number, 10)+".zip"),
 	)
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.WriteHeader(http.StatusOK)
@@ -555,7 +585,12 @@ func GetSubmissionOutputFile(w http.ResponseWriter, r *http.Request) {
 		writeServiceError(ctx, w, err)
 		return
 	}
-	if !services.OutputFileVisible(filePath, unavailable) {
+	caseIDs, err := services.CommitTestCaseIDs(ctx, commitID)
+	if err != nil {
+		writeServiceError(ctx, w, err)
+		return
+	}
+	if !services.OutputFileVisibleForCases(filePath, unavailable, caseIDs) {
 		WriteResponse(w, http.StatusNotFound,
 			models.Error{Message: "file not found"},
 		)
@@ -718,12 +753,14 @@ func StreamSubmissionEvents(w http.ResponseWriter, r *http.Request) {
 		services.RedactSnapshotOutput(snapshot, hidden)
 	}
 
-	// Artifact events are transient and never persisted. Ask storage whether the
-	// submission generated any file so a reloading client can show the files
-	// section. The judge uploads each case's files as the run advances, so this
-	// can become true before the finished event. Only the owner can download
-	// them, so do not advertise them on a privileged viewer's snapshot.
-	if owned {
+	// The per-case artifact rows explain a missing download (for example, the
+	// commit's artifact budget ran out). Only the owner can download them, so a
+	// privileged viewer's snapshot does not advertise them. The run-level entry
+	// says at least one file exists, even when the judge never sent a per-case
+	// event for it.
+	if !owned {
+		snapshot.Artifacts = nil
+	} else {
 		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		exists, err := storage.OutputFilesExist(checkCtx, commitID)
 		cancel()

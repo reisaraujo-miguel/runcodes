@@ -5,7 +5,10 @@ import "time"
 // CreateSubmissionResponse is returned when a submission is accepted and
 // queued for judging.
 type CreateSubmissionResponse struct {
-	CommitID  int64  `json:"commit_id"`
+	CommitID int64 `json:"commit_id"`
+	// Number is the caller's 1-based submission position for this exercise.
+	// Omitted when the number could not be read; the snapshot carries it too.
+	Number    int64  `json:"number,omitempty"`
 	Status    string `json:"status"`
 	EventsURL string `json:"events_url"`
 }
@@ -14,7 +17,10 @@ type CreateSubmissionResponse struct {
 // enough metadata to identify and download a past solution without exposing the
 // internal object key.
 type SubmissionSummary struct {
-	ID              int64     `json:"id"`
+	ID int64 `json:"id"`
+	// Number is the 1-based position among this user's submissions to this
+	// exercise, not the platform-wide commit id.
+	Number          int64     `json:"number"`
 	Status          string    `json:"status"`
 	NumCorrectCases int       `json:"num_correct_cases"`
 	Score           float64   `json:"score"`
@@ -26,7 +32,10 @@ type SubmissionSummary struct {
 // the SSE "snapshot" event so a reloading client can render the current state
 // without waiting for new judge events.
 type Commit struct {
-	ID                  int64      `json:"id"`
+	ID int64 `json:"id"`
+	// Number is the 1-based position among this user's submissions to this
+	// exercise, not the platform-wide commit id.
+	Number              int64      `json:"number"`
 	UserID              *int64     `json:"user_id"`
 	ExerciseID          *int64     `json:"exercise_id"`
 	Status              string     `json:"status"`
@@ -60,14 +69,20 @@ type CaseResult struct {
 }
 
 // SubmissionArtifact identifies a generated file the download endpoint can
-// serve for a commit.
+// serve for a commit. The run-level entry (`kind` only) says at least one file
+// exists; a per-case entry carries the state of that case's upload and, when it
+// failed, the reason the download is missing.
 type SubmissionArtifact struct {
-	Kind string `json:"kind"`
+	Kind       string `json:"kind"`
+	TestCaseID *int64 `json:"test_case_id,omitempty"`
+	State      string `json:"state,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+	LimitBytes *int64 `json:"limit_bytes,omitempty"`
 }
 
-// Snapshot is the first SSE event sent to a subscriber. Artifacts are not
-// persisted; the handler rehydrates them from the judge for terminal commits so
-// the files section survives a page reload.
+// Snapshot is the first SSE event sent to a subscriber. Artifact states are
+// persisted as the judge reports them, so the files section survives a page
+// reload and can still explain a failed upload.
 type Snapshot struct {
 	Type      string               `json:"type"`
 	Commit    *Commit              `json:"commit"`
