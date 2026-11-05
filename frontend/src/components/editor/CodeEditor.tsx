@@ -148,7 +148,7 @@ export function CodeEditor({
     <div
       ref={containerRef}
       className={cn(
-        "border-border h-96 overflow-hidden rounded-lg border",
+        "h-96 overflow-hidden rounded-lg border border-border",
         className,
       )}
     />

@@ -173,9 +173,9 @@ export function OfferingGradesPanel({ offeringId }: { offeringId: number }) {
               <TableBody>
                 {data.students.map((student) => (
                   <TableRow key={student.user_id}>
-                    <TableCell className="bg-card sticky left-0 z-10 min-w-56">
+                    <TableCell className="sticky left-0 z-10 min-w-56 bg-card">
                       <p className="font-medium">{student.name}</p>
-                      <p className="text-muted-foreground text-xs">
+                      <p className="text-xs text-muted-foreground">
                         {student.email}
                       </p>
                     </TableCell>
@@ -190,21 +190,21 @@ export function OfferingGradesPanel({ offeringId }: { offeringId: number }) {
                           <span
                             className={cn(
                               cell.score >= 50
-                                ? "text-success font-medium"
-                                : "text-destructive font-medium",
+                                ? "font-medium text-success"
+                                : "font-medium text-destructive",
                             )}
                           >
                             {scoreLabel(cell.score)}
                           </span>
                         )}
                         {cell.submission_count > 1 ? (
-                          <span className="text-muted-foreground block text-[10px]">
+                          <span className="block text-[10px] text-muted-foreground">
                             {cell.submission_count} envios
                           </span>
                         ) : null}
                       </TableCell>
                     ))}
-                    <TableCell className="bg-muted sticky right-0 z-10 text-center font-semibold tabular-nums">
+                    <TableCell className="sticky right-0 z-10 bg-muted text-center font-semibold tabular-nums">
                       {scoreLabel(student.average)}
                     </TableCell>
                   </TableRow>
@@ -221,7 +221,7 @@ export function OfferingGradesPanel({ offeringId }: { offeringId: number }) {
           className="space-y-3"
         >
           {data.exercise_statistics.length === 0 ? (
-            <p className="text-muted-foreground text-sm">
+            <p className="text-sm text-muted-foreground">
               Nenhum exercício para calcular estatísticas.
             </p>
           ) : (
@@ -244,7 +244,7 @@ export function OfferingGradesPanel({ offeringId }: { offeringId: number }) {
                   <TableRow key={statistics.exercise_id}>
                     <TableCell>
                       <p className="font-medium">{statistics.title}</p>
-                      <p className="text-muted-foreground text-xs">
+                      <p className="text-xs text-muted-foreground">
                         Prazo {formatDateTime(statistics.deadline)}
                       </p>
                     </TableCell>

@@ -127,7 +127,7 @@ export function BulletinBoard({
               Mural da turma
             </h2>
           ) : null}
-          <p className="text-muted-foreground text-sm">
+          <p className="text-sm text-muted-foreground">
             Avisos dos professores e monitores, e as dúvidas da turma em cada
             post. Um novo post é enviado por email a todos os alunos
             matriculados.
@@ -167,7 +167,7 @@ export function BulletinBoard({
           }
         />
       ) : (
-        <div className="divide-border divide-y border-t">
+        <div className="divide-y divide-border border-t">
           {posts.map((post) => (
             <PostCard
               key={post.id}
@@ -202,7 +202,7 @@ export function BulletinBoard({
             />
           ))}
           {boardWindowNote(data?.post_count ?? 0, posts.length) ? (
-            <p className="text-muted-foreground text-xs">
+            <p className="text-xs text-muted-foreground">
               {boardWindowNote(data?.post_count ?? 0, posts.length)}
             </p>
           ) : null}
@@ -273,11 +273,11 @@ function PostCard({
             aria-expanded={expanded}
             aria-controls={expanded ? panelId : undefined}
             onClick={onToggle}
-            className="before:absolute before:inset-0 before:content-[''] focus-visible:ring-ring/50 flex cursor-pointer items-start gap-2 rounded-sm text-left focus-visible:ring-2 focus-visible:outline-none"
+            className="flex cursor-pointer items-start gap-2 rounded-sm text-left before:absolute before:inset-0 before:content-[''] focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
           >
             <ChevronRightIcon
               className={cn(
-                "text-muted-foreground mt-0.5 size-4 shrink-0 transition-transform",
+                "mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform",
                 expanded && "rotate-90",
               )}
               aria-hidden
@@ -286,8 +286,8 @@ function PostCard({
           </button>
         </h3>
 
-        <p className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 pl-6 text-xs">
-          <span className="text-foreground/80 font-medium">
+        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 pl-6 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground/80">
             {post.author_name}
           </span>
           <EnrollmentRoleBadge role={post.author_role} />
@@ -298,7 +298,7 @@ function PostCard({
         </p>
 
         {expanded ? null : (
-          <p className="text-muted-foreground mt-1 line-clamp-2 pl-6 text-sm whitespace-pre-line">
+          <p className="mt-1 line-clamp-2 pl-6 text-sm whitespace-pre-line text-muted-foreground">
             {post.body}
           </p>
         )}
@@ -313,12 +313,12 @@ function PostCard({
           {thread.length > 0 ? (
             <div className="flex items-center gap-3 pt-1">
               <h4 className={cn(fieldLabelClass, "shrink-0")}>Comentários</h4>
-              <span className="bg-border h-px flex-1" aria-hidden />
+              <span className="h-px flex-1 bg-border" aria-hidden />
             </div>
           ) : null}
 
           {thread.length > 0 ? (
-            <ol className="divide-border divide-y pl-4">
+            <ol className="divide-y divide-border pl-4">
               {thread.map((comment) => (
                 <li key={comment.id} className="py-3">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -326,20 +326,20 @@ function PostCard({
                       {comment.author_name}
                     </span>
                     <EnrollmentRoleBadge role={comment.author_role} />
-                    <span className="text-muted-foreground text-xs">
+                    <span className="text-xs text-muted-foreground">
                       {formatDateTime(comment.created_at)}
                     </span>
                   </div>
 
                   {comment.replyTo ? (
-                    <div className="border-border mt-2 border-l-2 pl-2.5">
-                      <p className="text-muted-foreground text-xs">
+                    <div className="mt-2 border-l-2 border-border pl-2.5">
+                      <p className="text-xs text-muted-foreground">
                         Em resposta a{" "}
-                        <span className="text-foreground/80 font-medium">
+                        <span className="font-medium text-foreground/80">
                           {comment.replyTo.authorName}
                         </span>
                       </p>
-                      <p className="text-muted-foreground line-clamp-2 text-xs">
+                      <p className="line-clamp-2 text-xs text-muted-foreground">
                         {`“${comment.replyTo.excerpt}”`}
                       </p>
                     </div>
@@ -352,7 +352,7 @@ function PostCard({
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="text-muted-foreground -ml-2 mt-1 h-7 px-2 text-xs"
+                    className="mt-1 -ml-2 h-7 px-2 text-xs text-muted-foreground"
                     onClick={() => {
                       handleReply(comment);
                     }}
@@ -366,20 +366,20 @@ function PostCard({
           ) : null}
 
           <form
-            className="bg-muted/30 space-y-2 rounded-lg p-3"
+            className="space-y-2 rounded-lg bg-muted/30 p-3"
             onSubmit={(event) => {
               event.preventDefault();
               onSubmit();
             }}
           >
             {replyingTo ? (
-              <div className="bg-muted/60 flex items-start justify-between gap-2 rounded-lg px-3 py-2 text-xs">
+              <div className="flex items-start justify-between gap-2 rounded-lg bg-muted/60 px-3 py-2 text-xs">
                 <div className="min-w-0">
                   <p className="font-medium">
                     Respondendo a {replyingTo.authorName}
                   </p>
                   {replyingTo.excerpt ? (
-                    <p className="text-muted-foreground line-clamp-2">
+                    <p className="line-clamp-2 text-muted-foreground">
                       {replyingTo.excerpt}
                     </p>
                   ) : null}
@@ -517,7 +517,7 @@ function PostDialog({
               placeholder="Escreva o aviso para a turma…"
               required
             />
-            <p className="text-muted-foreground text-xs">
+            <p className="text-xs text-muted-foreground">
               A mensagem é enviada como texto simples com uma versão em HTML. Os
               alunos podem comentar o post para tirar dúvidas.
             </p>

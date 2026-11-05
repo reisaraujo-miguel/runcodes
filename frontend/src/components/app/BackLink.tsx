@@ -61,7 +61,7 @@ export function BackLink({
   });
 
   const classes = cn(
-    "text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex items-center gap-1 rounded-sm text-sm font-medium outline-none focus-visible:ring-2",
+    "inline-flex items-center gap-1 rounded-sm text-sm font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
     className,
   );
   const text = label ?? target.label;

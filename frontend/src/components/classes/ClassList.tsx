@@ -43,11 +43,11 @@ function ClassCard({
             ) : null}
           </div>
           {offering.description ? (
-            <p className="text-muted-foreground line-clamp-2 text-sm">
+            <p className="line-clamp-2 text-sm text-muted-foreground">
               {offering.description}
             </p>
           ) : null}
-          <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1.5">
               <UserRoundIcon className="size-3.5" aria-hidden />
               {offering.owner_name}

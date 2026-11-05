@@ -69,11 +69,11 @@ export function ForgotPasswordPage() {
               <MailCheckIcon aria-hidden />
               <AlertDescription>
                 Se houver uma conta para{" "}
-                <span className="text-foreground font-medium">{sentEmail}</span>
+                <span className="font-medium text-foreground">{sentEmail}</span>
                 , enviamos um link para redefinir a senha.
               </AlertDescription>
             </Alert>
-            <p className="text-muted-foreground text-sm">
+            <p className="text-sm text-muted-foreground">
               O link expira em 1 hora e só pode ser usado uma vez. Confira a
               caixa de spam se não encontrar a mensagem.
             </p>
@@ -148,11 +148,11 @@ export function ForgotPasswordPage() {
               ) : null}
               Enviar link de recuperação
             </Button>
-            <p className="text-muted-foreground text-sm">
+            <p className="text-sm text-muted-foreground">
               Lembrou a senha?{" "}
               <Link
                 to="/login"
-                className="text-foreground font-medium underline-offset-4 hover:underline"
+                className="font-medium text-foreground underline-offset-4 hover:underline"
               >
                 Voltar para o login
               </Link>

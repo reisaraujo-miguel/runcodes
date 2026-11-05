@@ -70,17 +70,17 @@ export function LanguageMemoryCard({
         </p>
       </Hint>
 
-      <div className="text-muted-foreground mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
-          <span className="bg-success size-2 rounded-full" aria-hidden />
+          <span className="size-2 rounded-full bg-success" aria-hidden />
           menos memória
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="bg-primary size-2 rounded-full" aria-hidden />
+          <span className="size-2 rounded-full bg-primary" aria-hidden />
           na mediana
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="bg-warning size-2 rounded-full" aria-hidden />
+          <span className="size-2 rounded-full bg-warning" aria-hidden />
           mais memória
         </span>
         <span className="text-muted-foreground/80">
@@ -116,18 +116,18 @@ export function LanguageMemoryCard({
                   <TableCell>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">{language.name}</span>
-                      <code className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-mono text-xs">
+                      <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
                         .{language.extension}
                       </code>
                     </div>
                   </TableCell>
                   <TableCell>
                     {memory.relative === null ? (
-                      <span className="text-muted-foreground text-sm">—</span>
+                      <span className="text-sm text-muted-foreground">—</span>
                     ) : (
                       <div className="flex items-center gap-3">
                         <div
-                          className="bg-muted relative h-2 w-24 shrink-0 overflow-hidden rounded-full"
+                          className="relative h-2 w-24 shrink-0 overflow-hidden rounded-full bg-muted"
                           aria-hidden
                         >
                           <div
@@ -141,7 +141,7 @@ export function LanguageMemoryCard({
                               )}%`,
                             }}
                           />
-                          <div className="bg-foreground/30 absolute inset-y-0 left-1/2 w-px" />
+                          <div className="absolute inset-y-0 left-1/2 w-px bg-foreground/30" />
                         </div>
                         <span
                           className={cn(
@@ -154,18 +154,18 @@ export function LanguageMemoryCard({
                       </div>
                     )}
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-center text-xs tabular-nums">
+                  <TableCell className="text-center text-xs text-muted-foreground tabular-nums">
                     {formatRatioRange(memory.p25, memory.p75)}
                   </TableCell>
                   <TableCell className="text-center">
                     {memory.compared_test_cases === 0 ? (
-                      <span className="text-muted-foreground text-sm">—</span>
+                      <span className="text-sm text-muted-foreground">—</span>
                     ) : (
                       <span
                         className={cn(
                           "tabular-nums",
                           isSmallSample(memory.compared_test_cases) &&
-                            "text-warning font-medium",
+                            "font-medium text-warning",
                         )}
                         title={
                           isSmallSample(memory.compared_test_cases)
@@ -182,7 +182,7 @@ export function LanguageMemoryCard({
                   </TableCell>
                   <TableCell className="text-center text-xs tabular-nums">
                     {formatPercent(memory.coverage)}
-                    <span className="text-muted-foreground block">
+                    <span className="block text-muted-foreground">
                       {formatCount(memory.known_results)}/
                       {formatCount(memory.total_results)}
                     </span>
@@ -195,14 +195,14 @@ export function LanguageMemoryCard({
       )}
 
       {omitted > 0 ? (
-        <p className="text-muted-foreground text-xs">
+        <p className="text-xs text-muted-foreground">
           {formatCount(omitted)}{" "}
           {omitted === 1 ? "linguagem ficou" : "linguagens ficaram"} de fora por
           não ter nenhuma execução com memória conhecida.
         </p>
       ) : null}
 
-      <p className="text-muted-foreground text-xs leading-relaxed">
+      <p className="text-xs leading-relaxed text-muted-foreground">
         Cobertura = resultados de casos de teste com memória medida sobre todos
         os resultados classificados no escopo. Resultados antigos com{" "}
         <code>mem_usage = -1</code> são desconhecidos e não entram no índice.

@@ -68,7 +68,7 @@ export function EditTestCaseForm({
   const storedFiles = testCase.files;
 
   const keepFileHint = (
-    <p className="text-muted-foreground text-xs">
+    <p className="text-xs text-muted-foreground">
       O arquivo atual é mantido se você não selecionar outro. Não é possível
       trocar de texto para arquivo (nem o contrário) depois de criado.
     </p>
@@ -76,7 +76,7 @@ export function EditTestCaseForm({
 
   return (
     <div className="space-y-4">
-      <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-xs">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span>
           Entrada: {testCase.input_type === FILE_INPUT ? "Arquivo" : "Texto"}
         </span>
@@ -116,7 +116,7 @@ export function EditTestCaseForm({
               : undefined
           }
           extraFilesHint={
-            <p className="text-muted-foreground text-xs">
+            <p className="text-xs text-muted-foreground">
               {storedFiles.length > 0
                 ? `Este caso tem ${String(storedFiles.length)} arquivo(s) adicional(is): ${storedFiles
                     .map((file, index) => testCaseFileName(file, index))

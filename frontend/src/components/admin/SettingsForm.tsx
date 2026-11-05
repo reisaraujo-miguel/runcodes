@@ -64,7 +64,7 @@ export function SettingsForm({ settings }: { settings: PlatformSettings }) {
           }}
           required
         />
-        <p className="text-muted-foreground text-sm">
+        <p className="text-sm text-muted-foreground">
           Usado nos termos de uso e nas instruções de reporte de problemas
           exibidas nas páginas de erro.
         </p>
@@ -82,13 +82,13 @@ export function SettingsForm({ settings }: { settings: PlatformSettings }) {
           placeholder="<p>Em caso de dúvidas, escreva para o contato acima.</p>"
         />
         <div className="flex items-center justify-between gap-2">
-          <p className="text-muted-foreground text-sm">
+          <p className="text-sm text-muted-foreground">
             O HTML é renderizado na página de login e sanitizado no navegador
             antes de ser exibido. Deixe vazio para ocultar o aviso.
           </p>
           <span
             className={cn(
-              "text-muted-foreground shrink-0 text-xs tabular-nums",
+              "shrink-0 text-xs text-muted-foreground tabular-nums",
               disclaimer.length > DISCLAIMER_MAX_LENGTH && "text-destructive",
             )}
           >

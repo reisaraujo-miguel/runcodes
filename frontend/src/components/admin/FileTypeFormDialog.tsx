@@ -130,7 +130,7 @@ export function FileTypeFormDialog({
               placeholder="py"
               required
             />
-            <p className="text-muted-foreground text-xs">
+            <p className="text-xs text-muted-foreground">
               Sem o ponto. Extensões compostas são aceitas, como{" "}
               <code>omp.cpp</code>.
             </p>

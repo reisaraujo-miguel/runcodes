@@ -12,7 +12,7 @@ export function GitHubLink({ className }: { className?: string }) {
       to="https://github.com/reisaraujo-miguel/runcodes"
       target="_blank"
       className={cn(
-        "flex items-center  rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+        "flex items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
         className,
       )}
       aria-label="RunCodes — GitHub repository"

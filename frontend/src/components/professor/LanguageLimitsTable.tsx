@@ -49,7 +49,7 @@ export function LanguageLimitsTable({
 }) {
   if (languages.length === 0) {
     return (
-      <p className="text-muted-foreground text-sm">
+      <p className="text-sm text-muted-foreground">
         Nenhuma linguagem permitida neste exercício. Escolha os tipos de arquivo
         aceitos antes de definir limites por linguagem.
       </p>
@@ -84,7 +84,7 @@ export function LanguageLimitsTable({
             <TableRow key={language.allowed_file_type_id}>
               <TableCell>
                 <p className="font-medium">{language.name}</p>
-                <p className="text-muted-foreground text-xs">
+                <p className="text-xs text-muted-foreground">
                   .{language.extension}
                 </p>
               </TableCell>
@@ -130,7 +130,7 @@ export function LanguageLimitsTable({
                   onChange(language.allowed_file_type_id, "fileSize", value);
                 }}
               />
-              <TableCell className="text-muted-foreground text-xs whitespace-nowrap">
+              <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
                 {layer}
               </TableCell>
             </TableRow>

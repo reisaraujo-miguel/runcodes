@@ -73,9 +73,9 @@ function ResendVerification({ email }: { email: string }) {
 
   return (
     <div className="space-y-2 rounded-lg border p-3">
-      <p className="text-muted-foreground text-sm">
+      <p className="text-sm text-muted-foreground">
         Não recebeu? Confira a caixa de spam ou peça um novo link para{" "}
-        <span className="text-foreground font-medium">{email}</span>.
+        <span className="font-medium text-foreground">{email}</span>.
       </p>
       <Button
         type="button"
@@ -90,13 +90,13 @@ function ResendVerification({ email }: { email: string }) {
           : "Reenviar email de verificação"}
       </Button>
       {state === "sent" ? (
-        <p className="text-muted-foreground text-xs">
+        <p className="text-xs text-muted-foreground">
           Se houver uma conta pendente para esse endereço, o link chegará em
           instantes.
         </p>
       ) : null}
       {state === "error" ? (
-        <p className="text-destructive text-xs">
+        <p className="text-xs text-destructive">
           Não foi possível reenviar agora. Tente novamente em instantes.
         </p>
       ) : null}
@@ -174,7 +174,7 @@ function LoginForm() {
               <FieldLabel htmlFor="password">Senha</FieldLabel>
               <Link
                 to="/forgot-password"
-                className="text-muted-foreground hover:text-foreground text-sm font-medium underline-offset-4 hover:underline"
+                className="text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
               >
                 Esqueceu a senha?
               </Link>
@@ -210,11 +210,11 @@ function LoginForm() {
             ) : null}
             Entrar
           </Button>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-sm text-muted-foreground">
             Ainda não tem conta?{" "}
             <Link
               to="?mode=signup"
-              className="text-foreground font-medium underline-offset-4 hover:underline"
+              className="font-medium text-foreground underline-offset-4 hover:underline"
             >
               Cadastre-se
             </Link>
@@ -270,13 +270,13 @@ function SignUpForm() {
             <MailCheckIcon aria-hidden />
             <AlertDescription>
               Enviamos um link de verificação para{" "}
-              <span className="text-foreground font-medium">
+              <span className="font-medium text-foreground">
                 {createdEmail}
               </span>
               . Abra o link para ativar a conta; depois entre com a sua senha.
             </AlertDescription>
           </Alert>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-sm text-muted-foreground">
             O link expira em 24 horas.
           </p>
           <ResendVerification email={createdEmail} />
@@ -372,11 +372,11 @@ function SignUpForm() {
             ) : null}
             Criar conta
           </Button>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-sm text-muted-foreground">
             Já tem uma conta?{" "}
             <Link
               to="/login"
-              className="text-foreground font-medium underline-offset-4 hover:underline"
+              className="font-medium text-foreground underline-offset-4 hover:underline"
             >
               Entrar
             </Link>

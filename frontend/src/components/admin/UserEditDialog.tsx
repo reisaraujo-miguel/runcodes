@@ -117,7 +117,7 @@ export function UserEditDialog({
               required
             />
             {isSelf ? (
-              <p className="text-muted-foreground text-xs">
+              <p className="text-xs text-muted-foreground">
                 Altere o seu próprio email na página de perfil; o painel não
                 pode trocar o endereço da conta que está a administrar.
               </p>
@@ -135,7 +135,7 @@ export function UserEditDialog({
               }}
               placeholder="Opcional"
             />
-            <p className="text-muted-foreground text-xs">
+            <p className="text-xs text-muted-foreground">
               Número que identifica a pessoa na instituição, como a matrícula.
             </p>
           </div>
@@ -157,7 +157,7 @@ export function UserEditDialog({
               ))}
             </Select>
             {isSelf ? (
-              <p className="text-muted-foreground text-xs">
+              <p className="text-xs text-muted-foreground">
                 O papel da sua própria conta não pode ser alterado.
               </p>
             ) : null}
@@ -176,7 +176,7 @@ export function UserEditDialog({
               <Label htmlFor="admin-user-confirmed">Conta confirmada</Label>
             </div>
             {isSelf ? (
-              <p className="text-muted-foreground text-xs">
+              <p className="text-xs text-muted-foreground">
                 A confirmação da sua própria conta não pode ser removida: isso
                 bloquearia o acesso ao painel.
               </p>

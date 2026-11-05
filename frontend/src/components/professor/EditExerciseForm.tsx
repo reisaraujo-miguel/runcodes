@@ -177,7 +177,7 @@ export function EditExerciseForm({
               onTimeChange={setDeadlineTime}
               endOfDay={deadlineEndOfDay}
               onEndOfDayChange={setDeadlineEndOfDay}
-              className="md:border-border md:border-l md:pl-6"
+              className="md:border-l md:border-border md:pl-6"
               required
             />
           </div>

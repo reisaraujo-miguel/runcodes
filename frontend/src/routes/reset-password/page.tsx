@@ -206,11 +206,11 @@ export function ResetPasswordPage() {
               ) : null}
               Redefinir senha
             </Button>
-            <p className="text-muted-foreground text-sm">
+            <p className="text-sm text-muted-foreground">
               O link expirou?{" "}
               <Link
                 to="/forgot-password"
-                className="text-foreground font-medium underline-offset-4 hover:underline"
+                className="font-medium text-foreground underline-offset-4 hover:underline"
               >
                 Peça outro
               </Link>

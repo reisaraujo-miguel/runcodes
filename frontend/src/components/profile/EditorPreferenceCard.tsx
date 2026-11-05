@@ -31,21 +31,21 @@ export function EditorPreferenceCard() {
               <CodeIcon className="size-4" aria-hidden />
               Usar editor de código na página do exercício
             </span>
-            <span className="text-muted-foreground block text-sm">
+            <span className="block text-sm text-muted-foreground">
               Quando ativado, você pode escrever e enviar a solução diretamente
               na página do exercício. Desative para enviar apenas um arquivo.
             </span>
           </span>
           {preference.saving ? (
             <Loader2Icon
-              className="text-muted-foreground mt-1 size-4 animate-spin"
+              className="mt-1 size-4 animate-spin text-muted-foreground"
               aria-label="Salvando preferência"
             />
           ) : null}
         </label>
 
         {preference.error ? (
-          <p className="text-destructive text-sm">{preference.error}</p>
+          <p className="text-sm text-destructive">{preference.error}</p>
         ) : null}
       </div>
     </Section>

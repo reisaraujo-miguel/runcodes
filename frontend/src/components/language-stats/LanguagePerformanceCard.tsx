@@ -73,17 +73,17 @@ export function LanguagePerformanceCard({
         </p>
       </Hint>
 
-      <div className="text-muted-foreground mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
-          <span className="bg-success size-2 rounded-full" aria-hidden />
+          <span className="size-2 rounded-full bg-success" aria-hidden />
           mais rápido
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="bg-primary size-2 rounded-full" aria-hidden />
+          <span className="size-2 rounded-full bg-primary" aria-hidden />
           na mediana
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="bg-warning size-2 rounded-full" aria-hidden />
+          <span className="size-2 rounded-full bg-warning" aria-hidden />
           mais lento
         </span>
         <span className="text-muted-foreground/80">
@@ -108,7 +108,7 @@ export function LanguagePerformanceCard({
               <TableCell>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium">{language.name}</span>
-                  <code className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-mono text-xs">
+                  <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
                     .{language.extension}
                   </code>
                   {language.is_available ? null : (
@@ -118,11 +118,11 @@ export function LanguagePerformanceCard({
               </TableCell>
               <TableCell>
                 {language.relative_cpu === null ? (
-                  <span className="text-muted-foreground text-sm">—</span>
+                  <span className="text-sm text-muted-foreground">—</span>
                 ) : (
                   <div className="flex items-center gap-3">
                     <div
-                      className="bg-muted relative h-2 w-24 shrink-0 overflow-hidden rounded-full"
+                      className="relative h-2 w-24 shrink-0 overflow-hidden rounded-full bg-muted"
                       aria-hidden
                     >
                       <div
@@ -136,7 +136,7 @@ export function LanguagePerformanceCard({
                           )}%`,
                         }}
                       />
-                      <div className="bg-foreground/30 absolute inset-y-0 left-1/2 w-px" />
+                      <div className="absolute inset-y-0 left-1/2 w-px bg-foreground/30" />
                     </div>
                     <span
                       className={cn(
@@ -149,7 +149,7 @@ export function LanguagePerformanceCard({
                   </div>
                 )}
               </TableCell>
-              <TableCell className="text-muted-foreground text-center text-xs tabular-nums">
+              <TableCell className="text-center text-xs text-muted-foreground tabular-nums">
                 {formatRatioRange(
                   language.relative_cpu_p25,
                   language.relative_cpu_p75,
@@ -157,13 +157,13 @@ export function LanguagePerformanceCard({
               </TableCell>
               <TableCell className="text-center">
                 {language.compared_test_cases === 0 ? (
-                  <span className="text-muted-foreground text-sm">—</span>
+                  <span className="text-sm text-muted-foreground">—</span>
                 ) : (
                   <span
                     className={cn(
                       "tabular-nums",
                       isSmallSample(language.compared_test_cases) &&
-                        "text-warning font-medium",
+                        "font-medium text-warning",
                     )}
                     title={
                       isSmallSample(language.compared_test_cases)
@@ -180,7 +180,7 @@ export function LanguagePerformanceCard({
               </TableCell>
               <TableCell className="text-center tabular-nums">
                 {formatCount(language.results)}
-                <span className="text-muted-foreground block text-xs">
+                <span className="block text-xs text-muted-foreground">
                   {formatCount(language.test_cases)}{" "}
                   {language.test_cases === 1 ? "caso" : "casos"}
                 </span>
@@ -190,7 +190,7 @@ export function LanguagePerformanceCard({
         </TableBody>
       </Table>
 
-      <p className="text-muted-foreground text-xs leading-relaxed">
+      <p className="text-xs leading-relaxed text-muted-foreground">
         “Execuções” conta todos os resultados de casos de teste da linguagem;
         “casos comparados” conta só os que entraram no índice. A mediana por
         caso usa os casos comparados, não os exercícios mais pesados

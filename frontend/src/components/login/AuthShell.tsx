@@ -9,7 +9,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
  */
 export function AuthShell({ children }: { children: ReactNode }) {
   return (
-    <div className="bg-muted/40 flex min-h-svh flex-col">
+    <div className="flex min-h-svh flex-col bg-muted/40">
       <header className="flex items-center justify-between p-6">
         <Brand />
         <ThemeToggle />

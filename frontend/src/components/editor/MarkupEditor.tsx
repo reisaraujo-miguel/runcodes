@@ -187,12 +187,12 @@ export function MarkupEditor({
   return (
     <div
       className={cn(
-        "border-border overflow-hidden rounded-xl border",
+        "overflow-hidden rounded-xl border border-border",
         className,
       )}
     >
-      <div className="bg-muted/30 flex items-center justify-between gap-2 border-b px-3 py-1.5">
-        <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs font-medium">
+      <div className="flex items-center justify-between gap-2 border-b bg-muted/30 px-3 py-1.5">
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
           <FormatIcon className="size-3.5" aria-hidden />
           {presentation.label}
         </span>
@@ -239,7 +239,7 @@ export function MarkupEditor({
               <SanitizedHtml source={value} />
             )
           ) : (
-            <p className="text-muted-foreground text-sm">
+            <p className="text-sm text-muted-foreground">
               Nada para visualizar ainda.
             </p>
           )}

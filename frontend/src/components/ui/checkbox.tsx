@@ -15,7 +15,7 @@ function Checkbox({
         // `dark:bg-input/30` it outranks `data-checked:bg-primary` (Tailwind
         // compiles data variants with zero-specificity `:where()`), leaving a
         // dark box under the dark `text-primary-foreground` checkmark.
-        "peer border-input dark:not-data-checked:bg-input/30 data-checked:bg-primary data-checked:text-primary-foreground data-checked:border-primary focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:border-destructive size-4 shrink-0 rounded-[4px] border shadow-xs transition-colors outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50",
+        "peer size-4 shrink-0 rounded-[4px] border border-input shadow-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive dark:not-data-checked:bg-input/30 data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground",
         className,
       )}
       {...props}

@@ -150,12 +150,12 @@ export function TestCaseFields({
         {extraFilesHint}
       </div>
 
-      <details className="bg-muted/30 group rounded-lg px-3 py-2">
+      <details className="group rounded-lg bg-muted/30 px-3 py-2">
         <summary className="cursor-pointer list-none text-sm font-medium select-none [&::-webkit-details-marker]:hidden">
           Limites por linguagem (opcional)
         </summary>
         <div className="space-y-2 pt-3">
-          <p className="text-muted-foreground text-xs">
+          <p className="text-xs text-muted-foreground">
             Deixe um campo vazio para herdar o padrão do exercício (ou o da
             plataforma). Use 0 para não aplicar limite, quando a linguagem
             permitir.

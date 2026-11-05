@@ -176,17 +176,17 @@ export function DockSplitter({
           : { height: DOCK_SPLITTER_SIZE }
       }
       className={cn(
-        "group relative flex shrink-0 touch-none items-center justify-center outline-none transition-colors",
+        "group relative flex shrink-0 touch-none items-center justify-center transition-colors outline-none",
         orientation === "vertical"
           ? "h-full cursor-col-resize"
           : "w-full cursor-row-resize",
-        "hover:bg-primary/5 focus-visible:ring-ring/50 focus-visible:ring-2 data-[dragging=true]:bg-primary/10",
+        "hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-ring/50 data-[dragging=true]:bg-primary/10",
         className,
       )}
     >
       <Icon
         className={cn(
-          "text-muted-foreground size-4 transition-colors",
+          "size-4 text-muted-foreground transition-colors",
           "group-hover:text-primary group-focus-visible:text-primary group-data-[dragging=true]:text-primary",
         )}
         aria-hidden

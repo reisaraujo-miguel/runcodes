@@ -213,11 +213,11 @@ export function ExercisePage() {
               }}
             />
 
-            <div className="border-destructive/30 bg-destructive/5 rounded-xl border border-dashed p-4">
+            <div className="rounded-xl border border-dashed border-destructive/30 bg-destructive/5 p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-1">
                   <p className="font-medium">Excluir exercício</p>
-                  <p className="text-muted-foreground text-sm">
+                  <p className="text-sm text-muted-foreground">
                     O exercício deixa de aparecer para os alunos; os casos de
                     teste, arquivos e submissões são preservados para consulta.
                   </p>

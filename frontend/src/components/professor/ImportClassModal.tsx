@@ -144,7 +144,7 @@ export function ImportClassModal({
               endOfDay={endOfDay}
               onEndOfDayChange={setEndOfDay}
             />
-            <p className="text-muted-foreground text-xs">
+            <p className="text-xs text-muted-foreground">
               Se informado, os prazos dos exercícios são deslocados pelo mesmo
               intervalo. Sem data, o encerramento original é mantido; se ele já
               passou, a turma é criada com seis meses de prazo.

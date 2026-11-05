@@ -119,7 +119,7 @@ export function PasswordForm() {
           />
         </div>
 
-        <p className="text-muted-foreground text-sm">{PASSWORD_HINT}</p>
+        <p className="text-sm text-muted-foreground">{PASSWORD_HINT}</p>
 
         {error ? (
           <Alert variant="destructive">
@@ -137,7 +137,7 @@ export function PasswordForm() {
           Alterar senha
         </Button>
 
-        <p className="text-muted-foreground text-xs">
+        <p className="text-xs text-muted-foreground">
           A sessão atual continua válida até expirar — a nova senha passa a
           valer no próximo login.
         </p>

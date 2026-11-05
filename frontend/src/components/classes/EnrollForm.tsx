@@ -64,7 +64,7 @@ export function EnrollForm({
             Entrar
           </Button>
         </div>
-        <p className="text-muted-foreground text-xs">
+        <p className="text-xs text-muted-foreground">
           Peça o código ao professor da disciplina.
         </p>
       </div>

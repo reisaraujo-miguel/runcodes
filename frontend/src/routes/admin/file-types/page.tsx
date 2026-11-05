@@ -160,7 +160,7 @@ export function AdminFileTypesPage() {
                       {fileType.name}
                     </TableCell>
                     <TableCell>
-                      <code className="bg-muted rounded px-1.5 py-0.5 font-mono text-xs">
+                      <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
                         .{fileType.extension}
                       </code>
                     </TableCell>
