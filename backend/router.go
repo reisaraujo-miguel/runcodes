@@ -86,10 +86,10 @@ func createRoutes(router *chi.Mux) {
 			r.Put("/api/v1/user/profile", handlers.UpdateProfile)
 			r.Put("/api/v1/user/password", handlers.ChangePassword)
 
-			// the caller's own classes and open exercises (home page)
+			// the caller's own classes and exercises, with their progress
 			r.Get("/api/v1/user/offerings", handlers.ListMyOfferings)
 			r.Get("/api/v1/user/offerings/{id}", handlers.GetMyOffering)
-			r.Get("/api/v1/user/exercises", handlers.ListMyOpenExercises)
+			r.Get("/api/v1/user/exercises", handlers.ListMyExercises)
 
 			// Enrollment codes are the class-join secret. Current codes are six
 			// characters and the migration rotates legacy short codes; the route

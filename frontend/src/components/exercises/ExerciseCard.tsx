@@ -1,18 +1,58 @@
-import { ArrowRightIcon, CalendarClockIcon } from "lucide-react";
+import {
+  ArrowRightIcon,
+  CalendarClockIcon,
+  CheckCircle2Icon,
+  CircleDashedIcon,
+  CirclePercentIcon,
+  ClockIcon,
+  EyeIcon,
+  type LucideIcon,
+} from "lucide-react";
 import { NavLink, useLocation } from "react-router";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import type { OpenExercise } from "@/lib/api/enrollments";
+import type { UserExercise } from "@/lib/api/enrollments";
 import { deadlineInfo } from "@/lib/deadline";
+import {
+  exerciseProgress,
+  type ExerciseProgress,
+  type ExerciseProgressState,
+} from "@/lib/exercise-progress";
 import { formatDateTime } from "@/lib/format";
 
-/** A single open exercise, ready to submit to. */
-export function ExerciseCard({ exercise }: { exercise: OpenExercise }) {
+const PROGRESS_VARIANT: Record<
+  ExerciseProgress["tone"],
+  "outline" | "info" | "success" | "warning"
+> = {
+  neutral: "outline",
+  info: "info",
+  success: "success",
+  warning: "warning",
+};
+
+const PROGRESS_ICON: Record<ExerciseProgressState, LucideIcon> = {
+  passed: CheckCircle2Icon,
+  scored: CirclePercentIcon,
+  pending: ClockIcon,
+  submitted: CircleDashedIcon,
+  unsubmitted: CircleDashedIcon,
+};
+
+/**
+ * One exercise in the home and exercises lists. Besides the deadline, the card
+ * states the caller's own progress explicitly — "Sem submissão", a partial
+ * "<score>/100", "Em correção" or a full "100/100" — so a submitted exercise
+ * never looks identical to one that was never opened.
+ */
+export function ExerciseCard({ exercise }: { exercise: UserExercise }) {
   const location = useLocation();
   const origin = `${location.pathname}${location.search}`;
   const deadline = deadlineInfo(exercise.deadline);
+  const progress = exerciseProgress(exercise);
+  const ProgressIcon = PROGRESS_ICON[progress.state];
+  const reviewOnly = progress.passed || !exercise.is_open;
 
   return (
     <Card>
@@ -22,15 +62,21 @@ export function ExerciseCard({ exercise }: { exercise: OpenExercise }) {
             <p className="truncate font-medium">{exercise.title}</p>
             <Badge
               variant={
-                deadline.tone === "neutral"
+                progress.passed
                   ? "outline"
-                  : deadline.tone === "warning"
-                    ? "warning"
-                    : "destructive"
+                  : deadline.tone === "neutral"
+                    ? "outline"
+                    : deadline.tone === "warning"
+                      ? "warning"
+                      : "destructive"
               }
             >
               <CalendarClockIcon />
               {deadline.label}
+            </Badge>
+            <Badge variant={PROGRESS_VARIANT[progress.tone]}>
+              <ProgressIcon />
+              {progress.label}
             </Badge>
           </div>
           <p className="text-muted-foreground text-sm">
@@ -44,9 +90,15 @@ export function ExerciseCard({ exercise }: { exercise: OpenExercise }) {
           <p className="text-muted-foreground text-xs">
             Prazo: {formatDateTime(exercise.deadline)}
           </p>
+          {exercise.last_submission_at ? (
+            <p className="text-muted-foreground text-xs">
+              Última entrega em {formatDateTime(exercise.last_submission_at)}
+            </p>
+          ) : null}
         </div>
         <Button
           className="shrink-0"
+          variant={reviewOnly ? "outline" : "default"}
           render={
             <NavLink
               to={`/exercises/${String(exercise.id)}/submit`}
@@ -54,8 +106,9 @@ export function ExerciseCard({ exercise }: { exercise: OpenExercise }) {
             />
           }
         >
-          Resolver
-          <ArrowRightIcon data-icon="inline-end" />
+          {reviewOnly ? <EyeIcon /> : null}
+          {reviewOnly ? "Ver exercício" : "Resolver"}
+          {reviewOnly ? null : <ArrowRightIcon data-icon="inline-end" />}
         </Button>
       </CardContent>
     </Card>

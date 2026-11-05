@@ -422,18 +422,18 @@ func ListUserOfferings(
 	return offerings, nil
 }
 
-// MaxOpenExercises bounds the home page list so it stays a digest rather than a
-// full history of every class the user ever joined.
-const MaxOpenExercises = 50
-
 /*
-ListUserOpenExercises lists the exercises that are open right now in the
-caller's classes (enrolled or owned): published, not removed, past their open
-date and before their deadline.
+ListUserExercises lists the exercises that have already opened in the caller's
+classes (enrolled or owned) and were not removed, with the caller's own
+submission summary on each one. The list includes both the exercises that are
+still open and those whose deadline has passed, so the exercises page can show
+what is pending and what the student has already completed. The `is_open` flag
+is computed against the database clock, so the client does not have to compare
+its own clock with the deadline.
 */
-func ListUserOpenExercises(
+func ListUserExercises(
 	ctx context.Context, claims map[string]any,
-) ([]models.OpenExercise, error) {
+) ([]models.UserExercise, error) {
 	userID, _, err := claimsUserID(claims)
 	if err != nil {
 		return nil, err
@@ -441,20 +441,37 @@ func ListUserOpenExercises(
 
 	rows, err := database.DB.QueryContext(ctx, `
 		SELECT e.id, e.offering_id, o.name, e.title,
-		       COALESCE(e.description, ''), e.deadline, e.open_date
+		       COALESCE(e.description, ''), e.deadline, e.open_date,
+		       (e.open_date <= now() AND e.deadline >= now()) AS is_open,
+		       progress.submission_count,
+		       progress.last_submission_at,
+		       progress.last_status,
+		       progress.best_score
 		FROM exercises e
 		JOIN offerings o ON o.id = e.offering_id
 		LEFT JOIN enrollments en
 		       ON en.offering_id = o.id AND en.user_id = $1 AND NOT en.banned
+		LEFT JOIN LATERAL (
+			SELECT count(*) AS submission_count,
+			       max(c.created_at) AS last_submission_at,
+			       (array_agg(c.status::text
+			                  ORDER BY c.created_at DESC, c.id DESC))[1]
+			           AS last_status,
+			       max(c.score) FILTER (
+			           WHERE c.status NOT IN (
+			               'pending', 'queued', 'compiling', 'running'
+			           )
+			       ) AS best_score
+			FROM commits c
+			WHERE c.exercise_id = e.id AND c.user_id = $1
+		) progress ON TRUE
 		WHERE e.removed = FALSE
 		  AND e.open_date <= now()
-		  AND e.deadline >= now()
 		  AND (en.user_id IS NOT NULL OR o.owner_id = $1)
-		ORDER BY e.deadline
-		LIMIT $2`, userID, MaxOpenExercises,
+		ORDER BY e.deadline, e.id`, userID,
 	)
 	if err != nil {
-		slog.ErrorContext(ctx, "error fetching user open exercises",
+		slog.ErrorContext(ctx, "error fetching user exercises",
 			slog.Int64("user_id", userID),
 			slog.String("error", err.Error()),
 		)
@@ -462,23 +479,46 @@ func ListUserOpenExercises(
 	}
 	defer rows.Close()
 
-	exercises := make([]models.OpenExercise, 0, 8)
+	exercises := make([]models.UserExercise, 0, 16)
 	for rows.Next() {
-		var exercise models.OpenExercise
+		var (
+			exercise         models.UserExercise
+			lastSubmissionAt sql.NullTime
+			lastStatus       sql.NullString
+			bestScore        sql.NullFloat64
+		)
 		if err := rows.Scan(
 			&exercise.ID, &exercise.OfferingID, &exercise.OfferingName,
 			&exercise.Title, &exercise.Description, &exercise.Deadline,
-			&exercise.OpenDate,
+			&exercise.OpenDate, &exercise.IsOpen,
+			&exercise.SubmissionCount, &lastSubmissionAt, &lastStatus,
+			&bestScore,
 		); err != nil {
-			slog.ErrorContext(ctx, "error scanning user open exercise",
+			slog.ErrorContext(ctx, "error scanning user exercise",
 				slog.String("error", err.Error()),
 			)
 			return nil, ErrServer
 		}
+
+		// Pointers distinguish "no submission yet" from a zero score/status, so
+		// the client can show "Sem submissão" instead of "Nota 0".
+		if lastSubmissionAt.Valid {
+			submittedAt := lastSubmissionAt.Time
+			exercise.LastSubmissionAt = &submittedAt
+		}
+		if lastStatus.Valid {
+			status := lastStatus.String
+			exercise.LastStatus = &status
+		}
+		if bestScore.Valid {
+			score := bestScore.Float64
+			exercise.BestScore = &score
+		}
+
 		exercises = append(exercises, exercise)
 	}
 	if err := rows.Err(); err != nil {
-		slog.ErrorContext(ctx, "error iterating user open exercises",
+		slog.ErrorContext(ctx, "error iterating user exercises",
 			slog.String("error", err.Error()),
 		)
 		return nil, ErrServer

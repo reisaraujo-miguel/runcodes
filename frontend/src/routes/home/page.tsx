@@ -1,5 +1,6 @@
 import {
   BookOpenIcon,
+  CheckCircle2Icon,
   GraduationCapIcon,
   LayoutListIcon,
   TicketIcon,
@@ -16,7 +17,8 @@ import { ExerciseCard } from "@/components/exercises/ExerciseCard";
 import { Button } from "@/components/ui/button";
 import { useAsync } from "@/hooks/use-async";
 import { useAuth } from "@/hooks/use-auth";
-import { getMyOfferings, getMyOpenExercises, unenroll } from "@/lib/api";
+import { getMyExercises, getMyOfferings, unenroll } from "@/lib/api";
+import { pendingExercises } from "@/lib/exercise-progress";
 
 function firstName(name: string): string {
   return name.trim().split(/\s+/)[0] ?? name;
@@ -27,9 +29,12 @@ export function Dashboard() {
   const isStaff = user?.role === "professor" || user?.role === "admin";
 
   const offerings = useAsync(() => getMyOfferings(), "my-offerings");
-  const exercises = useAsync(() => getMyOpenExercises(), "open-exercises");
+  const exercises = useAsync(() => getMyExercises(), "my-exercises");
 
   const classes = offerings.data ?? [];
+  const allExercises = exercises.data ?? [];
+  const pending = pendingExercises(allExercises);
+  const hasOpenExercises = allExercises.some((exercise) => exercise.is_open);
 
   async function handleLeave(offeringId: number) {
     await unenroll(offeringId);
@@ -43,8 +48,8 @@ export function Dashboard() {
         title={`Olá, ${firstName(user?.name ?? "estudante")}`}
         description={
           isStaff
-            ? "Resumo das suas turmas e das entregas abertas."
-            : "Veja o que está para vencer e as suas disciplinas."
+            ? "Resumo das suas turmas e das entregas pendentes."
+            : "Veja o que ainda falta concluir e as suas disciplinas."
         }
         actions={
           isStaff ? (
@@ -61,9 +66,9 @@ export function Dashboard() {
         items={[
           {
             icon: BookOpenIcon,
-            label: "Entregas abertas",
-            value: exercises.loading ? "…" : (exercises.data?.length ?? 0),
-            hint: "Exercícios disponíveis agora",
+            label: "Entregas pendentes",
+            value: exercises.loading ? "…" : pending.length,
+            hint: "Exercícios abertos que faltam concluir",
             tone: "primary",
           },
           {
@@ -96,15 +101,32 @@ export function Dashboard() {
               description={exercises.error}
               onRetry={exercises.reload}
             />
-          ) : (exercises.data?.length ?? 0) === 0 ? (
-            <EmptyState
-              icon={BookOpenIcon}
-              title="Nenhuma entrega aberta"
-              description="Quando um exercício for liberado nas suas turmas, ele aparece aqui."
-            />
+          ) : pending.length === 0 ? (
+            hasOpenExercises ? (
+              <EmptyState
+                icon={CheckCircle2Icon}
+                title="Tudo em dia"
+                description="Você já acertou todos os testes dos exercícios abertos no momento."
+                action={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    render={<NavLink to="/exercises?tab=done" />}
+                  >
+                    Ver concluídos
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                icon={BookOpenIcon}
+                title="Nenhuma entrega aberta"
+                description="Quando um exercício for liberado nas suas turmas, ele aparece aqui."
+              />
+            )
           ) : (
             <div className="space-y-3">
-              {exercises.data?.map((exercise) => (
+              {pending.map((exercise) => (
                 <ExerciseCard key={exercise.id} exercise={exercise} />
               ))}
             </div>

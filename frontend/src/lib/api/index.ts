@@ -26,13 +26,13 @@ export type { PasswordPayload, Profile, ProfilePayload } from "./profile";
 
 export {
   enroll,
+  getMyExercises,
   getMyOffering,
   getMyOfferings,
-  getMyOpenExercises,
   unenroll,
 } from "./enrollments";
 export type {
-  OpenExercise,
+  UserExercise,
   UserOffering,
   UserOfferingDetail,
   UserOfferingExercise,

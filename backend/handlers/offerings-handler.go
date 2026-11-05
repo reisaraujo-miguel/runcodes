@@ -356,10 +356,12 @@ func GetMyOffering(w http.ResponseWriter, r *http.Request) {
 }
 
 /*
-ListMyOpenExercises lists the exercises that are open right now in the classes
-the requesting user belongs to, for the home page.
+ListMyExercises lists the exercises that have already opened in the classes the
+requesting user belongs to, with the user's own submission summary. The home
+page filters this list to what is still open and not fully passed; the
+exercises page splits it into pending and completed exercises.
 */
-func ListMyOpenExercises(w http.ResponseWriter, r *http.Request) {
+func ListMyExercises(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	claims, ok := tokenClaims(w, r)
@@ -367,7 +369,7 @@ func ListMyOpenExercises(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	exercises, err := services.ListUserOpenExercises(ctx, claims)
+	exercises, err := services.ListUserExercises(ctx, claims)
 	if err != nil {
 		writeServiceError(ctx, w, err)
 		return

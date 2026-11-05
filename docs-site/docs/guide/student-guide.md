@@ -102,19 +102,30 @@ class. The page shows the reason returned by the server.
 
 The dashboard shows:
 
-- the number of open exercises returned (up to 50);
+- the number of open exercises you still have to pass;
 - the classes you belong to;
-- **Próximas entregas** (Upcoming deadlines), one card per open exercise;
+- **Próximas entregas** (Upcoming deadlines), one card per open exercise you
+  have not fully passed;
 - a form to join another class.
 
-An exercise card shows its class, deadline, remaining time and a **Resolver**
-(Solve) button that opens the submission workspace.
+An exercise card shows its class, deadline, remaining time and its current
+state: **Sem submissão** (No submission), **Em correção** (Being judged), a
+partial `<score>/100`, or **100/100** once every test case passes. It also has a
+**Resolver** (Solve) button that opens the submission workspace.
 
 ### Exercises page
 
-**Exercícios** (Exercises) lists up to 50 exercises open right now across your
-classes, grouped by class and ordered by deadline. An exercise that has not
-opened yet does not appear here.
+**Exercícios** (Exercises) lists every exercise that has opened in your classes,
+grouped by class and ordered by deadline. The page has two tabs:
+
+- **Em aberto** (Open): exercises that are still open and that you have not fully
+  passed, with their current score or **Sem submissão**;
+- **Concluídos** (Completed): exercises where your best score is 100, including
+  ones whose deadline has already passed.
+
+An exercise that has not opened yet does not appear here. Selecting a tab updates
+the URL (`?tab=open` or `?tab=done`), so a link can open the completed list
+directly.
 
 ### Class page
 
