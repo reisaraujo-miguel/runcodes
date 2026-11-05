@@ -110,6 +110,11 @@ even when the case wrote nothing. An image from before that step leaves no
 directory, and the judge warns once per run that the runner images must be
 rebuilt — the files themselves are gone with the case's scratch directory.
 
+The judge stores a case's files under `test_<number>/`, where `<number>` is the
+case's 1-based position in the exercise, not its platform-wide database id. The
+results panel numbers the cases the same way, and the archive the student
+downloads therefore runs from `test_1` to `test_n` for that exercise.
+
 A case interrupted by a limit or a signal publishes no files. The program was
 killed mid-write, so the collected bytes are a truncated file (exactly at the
 file-size limit, when that is what killed it) and are not a result the student
@@ -127,11 +132,12 @@ program, not for the judge's queue. The queue holds a burst of cases and refuses
 deeper backlogs, and a request never makes the log stream wait: a slow store costs
 that case's download, not the run's progress.
 
-The terminal `finished` event is sent as soon as grading ends, before the upload
-queue drains: a slow store never keeps the run looking unfinished. The uploads
-finish in the background, and the last `ready` events can therefore arrive after
-the stream closed — a client that showed the `pending` placeholder polls the
-listing until the file appears.
+The publisher drains before the terminal `finished` event, so every `ready` and
+`failed` event reaches the client while the stream is still open. The client
+therefore never polls for a late result, and a case whose upload failed can show
+the reason (including a commit that reached `JUDGE_MAX_COMMIT_ARTIFACT_BYTES`)
+instead of a spinner. The extra wait is bounded by the queued uploads; grading
+has already finished by then.
 
 A store that fails does not stall the run either: after three consecutive upload
 failures the judge stops publishing for that commit, logs why and finishes. The

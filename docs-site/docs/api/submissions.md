@@ -29,10 +29,15 @@ Response `201`:
 ```json
 {
   "commit_id": 42,
+  "number": 10,
   "status": "queued",
   "events_url": "/api/v1/submissions/42/events"
 }
 ```
+
+`number` is the caller's 1-based submission position for this exercise, not the
+platform-wide commit id. The same user's tenth submission to another exercise,
+and another user's tenth submission to this one, also report `10`.
 
 | Status | Meaning |
 | --- | --- |
@@ -92,6 +97,7 @@ data: {"type":"snapshot","commit":{...},"results":[...],"artifacts":[...]}
 ```json
 {
   "id": 42,
+  "number": 10,
   "user_id": 7,
   "exercise_id": 15,
   "status": "running",
@@ -125,7 +131,11 @@ data: {"type":"snapshot","commit":{...},"results":[...],"artifacts":[...]}
 ```
 
 `artifacts` contains `{"kind":"output"}` when the submission generated at least
-one file. The files themselves are listed by `GET /submissions/{id}/outputfiles`.
+one file, plus one entry per case whose upload the judge reported. A per-case
+entry carries `test_case_id`, `state` (`pending`, `ready`, `failed`) and, for a
+failure, `reason` and optionally `limit_bytes`. The files themselves are listed
+by `GET /submissions/{id}/outputfiles` or pushed over the output-events
+WebSocket.
 
 ### Live events
 
@@ -135,7 +145,7 @@ one file. The files themselves are listed by `GET /submissions/{id}/outputfiles`
 | `compilation` | `type`, `commit_id`, `seq`, `compiled`, `message`, `error`, `at` |
 | `case_result` | `type`, `commit_id`, `seq`, `test_case_id`, `cpu_time`, `wall_time`, `mem_usage`, `status`, `status_message`, `user_output`, `user_output_type`, `error_message` |
 | `timings` | `type`, `commit_id`, `seq`, `phases[]`; phase names, durations and optional CPU/memory, persisted by the backend |
-| `artifact` | `type`, `commit_id`, `seq`, `kind`, `url`; per-case: `test_case_id`, `state` (`pending`, `ready`, `failed`) |
+| `artifact` | `type`, `commit_id`, `seq`, `kind`, `url`; per-case: `test_case_id`, `state` (`pending`, `ready`, `failed`), `reason` and `limit_bytes` on a failure |
 | `finished` | `type`, `commit_id`, `seq`, `status`, `num_correct_cases`, `score`, `compilation_message`, `compilation_error`, `started_at`, `finished_at` |
 | `error` | `type`, `commit_id`, `seq`, `message`; the stream ends |
 
@@ -196,9 +206,10 @@ Lists the files the submission generated. Owner only.
 - The judge uploads each case's files as soon as that case finishes, so the list
   can grow while the run is still in progress.
 - `path` locates the file inside the submission's output namespace:
-  `test_<case id>/<relative>` for a file a case produced,
+  `test_<case number>/<relative>` for a file a case produced,
   `outputfiles/<relative>` for one written straight into the runner's output
-  directory.
+  directory. The number is the case's 1-based position in the exercise, matching
+  the results panel and the downloaded archive.
 - Internal reports (`compilation.*`, per-case `.output`, `.error`,
   `.monitor_out`, `.monitor_err`) are excluded.
 - A case whose program output the author did not release (`Mostrar saída do
@@ -212,6 +223,37 @@ Lists the files the submission generated. Owner only.
 - `GET /submissions/{id}/output` refuses with `413` when the visible files
   total more than `RUNCODES_OUTPUT_ARCHIVE_MAX_BYTES` (default 256 MiB); the
   per-file endpoint has no such cap.
+
+## `GET /submissions/{id}/output-events` (WebSocket)
+
+Pushes the generated-file listing and the per-case upload states. Owner only;
+the handshake authenticates with the same session cookie as the SSE stream.
+
+Each text frame is a JSON object:
+
+```json
+{
+  "type": "outputfiles",
+  "files": [{"path": "test_1/result.txt", "size": 12}],
+  "artifacts": [
+    {"kind": "output", "test_case_id": 91, "state": "failed",
+     "reason": "commit_artifact_budget_exceeded", "limit_bytes": 268435456}
+  ],
+  "complete": false
+}
+```
+
+- The first frame is the current state.
+- The server sends another frame whenever an `artifact` event changes the state.
+- The last frame has `complete: true`; the server then closes the socket.
+- When the run ends, any still-pending upload is reported as `failed` with
+  reason `upload_interrupted`, so a client never keeps a spinner that can no
+  longer settle.
+- `GET /submissions/{id}/outputfiles` remains available as a one-shot fallback;
+  it returns the same `files` array.
+
+The frontend uses this socket for the results panel's generated-files section
+instead of polling the listing.
 
 ## `GET /submissions/{id}/outputfiles/{path}`
 
@@ -250,6 +292,7 @@ Returns the caller's last 50 submissions for an exercise, newest first.
 [
   {
     "id": 42,
+    "number": 10,
     "status": "completed",
     "num_correct_cases": 5,
     "score": 100,
@@ -259,8 +302,10 @@ Returns the caller's last 50 submissions for an exercise, newest first.
 ]
 ```
 
-`filename` is derived from the S3 key. The list never includes another user's
-submissions.
+`filename` is derived from the S3 key. `number` is the 1-based position among
+this user's submissions to this exercise, ordered by submission time; `id` is
+the platform-wide commit id used by the routes. The list never includes another
+user's submissions.
 
 ## Streaming from JavaScript
 
@@ -289,6 +334,24 @@ while (true) {
 The frontend uses an equivalent parser and reduces the events into the
 submission view. The initial snapshot is enough to restore the page after a
 reload; the live events update it as the run progresses.
+
+The generated-file section uses the output WebSocket:
+
+```js
+const socket = new WebSocket(
+  `${location.origin.replace(/^http/, 'ws')}/api/v1/submissions/${id}/output-events`,
+)
+socket.onmessage = (message) => {
+  const snapshot = JSON.parse(message.data)
+  if (snapshot.type !== 'outputfiles') return
+  renderFiles(snapshot.files, snapshot.artifacts)
+  if (snapshot.complete) socket.close()
+}
+```
+
+The browser sends the session cookie with the handshake. No polling is needed:
+the socket sends the current listing immediately and another frame for every
+artifact event, then a final `complete: true` frame.
 
 ## Related pages
 

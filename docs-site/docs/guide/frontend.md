@@ -64,7 +64,8 @@ documentation site is in English.
   with deadline and submission status.
 - **Submission workspace** — a resizable editor/output layout, language-aware
   syntax highlighting, local drafts, and restore-from-previous-submission. The
-  live SSE stream drives per-case results as they arrive.
+  live SSE stream drives per-case results as they arrive, while a WebSocket pushes
+  the generated-file listing and upload states without polling.
 - **Submission history** — the last 50 submissions for an exercise, with score
   and status, source download and generated files when available.
 - **Class pages** — exercises, deadlines, staff, member list for owners,

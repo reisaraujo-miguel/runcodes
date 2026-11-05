@@ -51,7 +51,7 @@ second stack run on the same machine.
 
 Caddy handles two jobs: it serves the SPA with a client-side-routing fallback,
 and it reverse-proxies `/api/*` to `backend:8443`. That keeps the API same-origin
-(no CORS) and the SSE stream on one connection.
+(no CORS) and the long-lived SSE and WebSocket streams on one connection.
 
 ## Prerequisites
 

@@ -23,8 +23,8 @@ flowchart TD
     Judge["Judge service"]
     Containers["Language containers"]
 
-    Client -->|"HTTPS + SSE"| Caddy
-    Caddy -->|"REST + SSE"| Backend
+    Client -->|"HTTPS + SSE/WS"| Caddy
+    Caddy -->|"REST + SSE/WS"| Backend
     Backend -->|"register commit"| DB
     Backend -->|"upload source"| S3
     Backend -->|"cache · optional"| Redis
@@ -78,9 +78,11 @@ binds to a private node address.
 7. Each test case is run through the monitor with the exercise's limits. The
    judge grades the outputs and streams `status`, `compilation`, `case_result`,
    `artifact` and `finished` events over SSE.
-8. The backend persists every event and relays it to the browser. The stream
+8. The backend persists every event and relays it to the browser. The SSE stream
    starts with a `snapshot` of the persisted state, so a reload reconnects and
-   catches up even after the judge has forgotten the run.
+   catches up even after the judge has forgotten the run. The generated-file
+   listing is pushed over a separate WebSocket, which sends its own snapshot and
+   a final frame when the run ends; the results panel does not poll it.
 
 ```mermaid
 sequenceDiagram
@@ -194,7 +196,7 @@ In both deployment paths, the browser only talks to Caddy:
 | Path | Destination | Purpose |
 | --- | --- | --- |
 | `/` | SPA static files | React application |
-| `/api/*` | backend `:8443` | REST API and SSE |
+| `/api/*` | backend `:8443` | REST API, SSE and WebSocket |
 | `/otel/v1/traces` (four-machine) | collector `:4318` | browser traces only |
 
 Same-origin routing removes CORS from the normal path and means the frontend

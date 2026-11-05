@@ -186,13 +186,19 @@ The event announces generated files. Per-case events carry `test_case_id` and a
 | --- | --- | --- |
 | `pending` | the case generated files and they are being uploaded | show a placeholder where the download link will appear |
 | `ready` | the upload finished and the listing grew | re-read the listing at `url` |
-| `failed` | the upload was refused or failed | clear the placeholder; there will be no link |
+| `failed` | the upload was refused or failed | show the reason; there will be no link |
 
-`pending` is sent while the run is still executing, so the placeholder appears
-with the case result. The terminal `finished` event is sent before the upload
-queue drains, so `ready` can arrive after the stream has closed: a client showing
-a placeholder should poll the listing until the file appears. The run-level event
-(files written outside a case's directory) has no `test_case_id` and no `state`.
+A `failed` event also carries a stable `reason` and, when the reason is about a
+limit, `limit_bytes`. Current reasons are `commit_artifact_budget_exceeded`,
+`file_too_large`, `upload_failed`, `storage_unavailable` and
+`upload_interrupted`.
+
+Files are stored under `test_<number>/`, where `<number>` is the case's 1-based
+position in the exercise (not its database id). The terminal `finished` event is
+sent after the publisher drains, so every `ready` and `failed` event is delivered
+before the stream closes; clients do not poll for late uploads. The run-level
+event (files written outside a case's directory) has no `test_case_id` and no
+`state`.
 
 `timings`:
 
