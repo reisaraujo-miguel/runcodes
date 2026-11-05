@@ -57,6 +57,37 @@ func stubNotifications(t *testing.T) {
 	})
 }
 
+func TestBulletinNotifyGateBoundsAndThrottles(t *testing.T) {
+	gate := &bulletinNotifyGate{
+		slots: make(chan struct{}, 1),
+		last:  make(map[string]time.Time),
+	}
+	now := time.Now()
+
+	if !gate.begin("comment:4:8", now) {
+		t.Fatal("the first comment notification must be accepted")
+	}
+	if gate.begin("comment:4:8", now.Add(time.Second)) {
+		t.Fatal("a second notification inside the cooldown must be refused")
+	}
+	gate.done()
+
+	if !gate.begin("comment:4:8", now.Add(bulletinCommentCooldown)) {
+		t.Fatal("the cooldown must expire")
+	}
+	gate.done()
+
+	// The single slot is occupied: another author must be skipped instead of
+	// spawning an unbounded goroutine.
+	if !gate.begin("", now) {
+		t.Fatal("an idle gate must accept a delivery")
+	}
+	if gate.begin("", now) {
+		t.Fatal("a full gate must refuse a second concurrent delivery")
+	}
+	gate.done()
+}
+
 // expectRelation queues the two queries loadOfferingRelation issues: the class
 // (the cache is off in tests) and the caller's enrollment.
 func expectRelation(
