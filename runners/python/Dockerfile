@@ -1,7 +1,7 @@
 ARG RUNNER_BASE_IMAGE=ghcr.io/runcodes-icmc/runcodes-runner-base:latest
 FROM ${RUNNER_BASE_IMAGE} AS runner-base
 
-FROM python:3.14-slim-trixie
+FROM python:3.15-slim-trixie
 # Load base executables
 COPY --from=runner-base /usr/bin/monitor /usr/bin/monitor
 COPY --from=runner-base /usr/bin/runcodes /usr/bin/runcodes
