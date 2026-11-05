@@ -625,10 +625,10 @@ Creates many cases from one zip. The body is `multipart/form-data`:
 | `show_input` | bool | `true` | applied to every case |
 | `show_expected_output` | bool | `true` | applied to every case |
 | `show_user_output` | bool | `true` | applied to every case |
-| `cpu_time_limit_seconds` | int | `0` | 0 = platform default |
-| `mem_usage_limit_bytes` | int64 | `0` | 0 = platform default |
-| `stack_limit_bytes` | int64 | `0` | 0 = platform default |
-| `file_size_limit_bytes` | int64 | `0` | 0 = platform default |
+| `cpu_time_limit_seconds` | int | — | absent inherits the exercise/platform default; when set, must be positive |
+| `mem_usage_limit_bytes` | int64 | — | absent inherits; `0` = no limit |
+| `stack_limit_bytes` | int64 | — | absent inherits; `0` = no limit |
+| `file_size_limit_bytes` | int64 | — | absent inherits; `0` = no limit |
 
 A case is an `.in` and an `.out` file with the same base name. The pair may sit
 at the root of the archive:
