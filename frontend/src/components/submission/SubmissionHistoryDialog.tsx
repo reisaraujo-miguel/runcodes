@@ -145,7 +145,7 @@ export function SubmissionHistoryDialog({
         </DialogHeader>
 
         {actionError ? (
-          <p role="alert" className="text-destructive text-xs">
+          <p role="alert" className="text-xs text-destructive">
             {actionError}
           </p>
         ) : null}
@@ -165,7 +165,7 @@ export function SubmissionHistoryDialog({
             className="py-8"
           />
         ) : (
-          <ul className="divide-border max-h-[55vh] divide-y overflow-y-auto rounded-lg border">
+          <ul className="max-h-[55vh] divide-y divide-border overflow-y-auto rounded-lg border">
             {list.map((submission) => {
               const language = editorLanguageForFilename(
                 languages,
@@ -181,9 +181,11 @@ export function SubmissionHistoryDialog({
                       {submission.filename}
                     </span>
                     <StatusBadge value={commitStatus(submission.status)} />
-                    <span className="text-muted-foreground text-[11px] tabular-nums">
-                      Submissão #{submission.id} ·{" "}
-                      {formatDateTime(submission.created_at)}
+                    <span className="text-[11px] text-muted-foreground tabular-nums">
+                      {submission.number > 0
+                        ? `Submissão #${String(submission.number)}`
+                        : "Submissão"}{" "}
+                      · {formatDateTime(submission.created_at)}
                     </span>
                     <span className="ml-auto text-xs">
                       {finished ? (
@@ -235,7 +237,7 @@ export function SubmissionHistoryDialog({
                       Restaurar no editor
                     </Button>
                     {!language ? (
-                      <span className="text-muted-foreground text-[11px]">
+                      <span className="text-[11px] text-muted-foreground">
                         Restauração indisponível para este arquivo.
                       </span>
                     ) : null}

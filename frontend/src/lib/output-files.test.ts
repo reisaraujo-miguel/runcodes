@@ -1,22 +1,32 @@
 import { describe, expect, test } from "bun:test";
 
-import { filesForTestCase, outputFileCaseId } from "./output-files";
+import {
+  filesForTestCase,
+  outputFileCaseId,
+  outputFileCaseNumber,
+} from "./output-files";
 
-describe("outputFileCaseId", () => {
-  test("reads the case from the storage prefix", () => {
-    expect(outputFileCaseId("test_1/result.txt")).toBe(1);
-    expect(outputFileCaseId("test_42/nested/dir/out.csv")).toBe(42);
+describe("outputFileCaseNumber", () => {
+  test("reads the exercise-local case number from the storage prefix", () => {
+    expect(outputFileCaseNumber("test_1/result.txt")).toBe(1);
+    expect(outputFileCaseNumber("test_42/nested/dir/out.csv")).toBe(42);
   });
 
   test("returns null for files that belong to no case", () => {
-    expect(outputFileCaseId("outputfiles/explicit.txt")).toBeNull();
-    expect(outputFileCaseId("produced.txt")).toBeNull();
+    expect(outputFileCaseNumber("outputfiles/explicit.txt")).toBeNull();
+    expect(outputFileCaseNumber("produced.txt")).toBeNull();
   });
 
-  test("returns null for a prefix that is not a case id", () => {
-    expect(outputFileCaseId("test_/result.txt")).toBeNull();
-    expect(outputFileCaseId("test_abc/result.txt")).toBeNull();
-    expect(outputFileCaseId("test_0/result.txt")).toBeNull();
+  test("returns null for a prefix that is not a case number", () => {
+    expect(outputFileCaseNumber("test_/result.txt")).toBeNull();
+    expect(outputFileCaseNumber("test_abc/result.txt")).toBeNull();
+    expect(outputFileCaseNumber("test_0/result.txt")).toBeNull();
+  });
+});
+
+describe("outputFileCaseId", () => {
+  test("keeps the old name for the same exercise-local number", () => {
+    expect(outputFileCaseId("test_2/result.txt")).toBe(2);
   });
 });
 

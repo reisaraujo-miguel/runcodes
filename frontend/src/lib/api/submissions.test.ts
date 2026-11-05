@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  parseSubmissionOutputSnapshot,
+  submissionOutputEventsUrl,
   subscribeSubmissionEvents,
   type SubmissionEventHandlers,
 } from "./submissions";
@@ -221,5 +223,60 @@ describe("subscribeSubmissionEvents", () => {
     source.readyState = FakeEventSource.CLOSED;
     source.emitConnectionError();
     expect(connectionErrors).toHaveLength(1);
+  });
+});
+
+describe("submissionOutputEventsUrl", () => {
+  test("uses the WebSocket scheme and the output-events path", () => {
+    const url = new URL(submissionOutputEventsUrl(42));
+
+    expect(url.protocol).toBe("ws:");
+    expect(url.pathname).toBe("/api/v1/submissions/42/output-events");
+  });
+});
+
+describe("parseSubmissionOutputSnapshot", () => {
+  test("accepts files and per-case artifact states", () => {
+    const snapshot = parseSubmissionOutputSnapshot({
+      type: "outputfiles",
+      complete: true,
+      files: [{ path: "test_1/out.txt", size: 12 }],
+      artifacts: [
+        { kind: "output" },
+        {
+          kind: "output",
+          test_case_id: 7,
+          state: "failed",
+          reason: "commit_artifact_budget_exceeded",
+          limit_bytes: 1024,
+        },
+      ],
+    });
+
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.complete).toBe(true);
+    expect(snapshot?.files).toEqual([{ path: "test_1/out.txt", size: 12 }]);
+    expect(snapshot?.artifacts[1]).toEqual({
+      kind: "output",
+      test_case_id: 7,
+      state: "failed",
+      reason: "commit_artifact_budget_exceeded",
+      limit_bytes: 1024,
+    });
+  });
+
+  test("drops malformed entries and unknown event types", () => {
+    expect(
+      parseSubmissionOutputSnapshot({
+        type: "outputfiles",
+        files: [{ path: 1 }, { path: "test_1/a.txt", size: 2 }],
+        artifacts: [{ kind: 1 }, { kind: "output", state: "other" }],
+      }),
+    ).toMatchObject({
+      files: [{ path: "test_1/a.txt", size: 2 }],
+      artifacts: [{ kind: "output" }],
+    });
+
+    expect(parseSubmissionOutputSnapshot({ type: "snapshot" })).toBeNull();
   });
 });

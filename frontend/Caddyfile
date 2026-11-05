@@ -7,16 +7,17 @@
 	route {
 		# Browser hardening. The SPA needs inline styles and the theme bootstrap
 		# script; everything else is served from this origin. connect-src includes
-		# the local browser-telemetry collector used by the observability overlay.
+		# this host's WebSocket schemes (the generated-files push) and the local
+		# browser-telemetry collector used by the observability overlay.
 		header {
 			X-Content-Type-Options "nosniff"
 			X-Frame-Options "SAMEORIGIN"
 			Referrer-Policy "no-referrer"
 			Permissions-Policy "camera=(), microphone=(), geolocation=()"
-			Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' http://localhost:4318; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'"
+			Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws://{http.request.host} wss://{http.request.host} http://localhost:4318; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'"
 		}
 
-		# API and its long-lived SSE stream. The path is preserved
+		# API and its long-lived SSE and WebSocket streams. The path is preserved
 		# (/api/v1/...); buffering is disabled so submission events reach the
 		# browser as they happen.
 		@api path /api/*
