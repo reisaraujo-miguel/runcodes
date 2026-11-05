@@ -235,6 +235,8 @@ CREATE TYPE case_interruption_reason_t AS ENUM (
   'server_error'
 );
 
+CREATE TYPE commit_artifact_state_t AS ENUM ('pending', 'ready', 'failed');
+
 CREATE TABLE commits_exercise_test_cases_results (
   commit_id int NOT NULL REFERENCES commits (id) ON DELETE CASCADE,
   exercise_test_case_id int NOT NULL REFERENCES exercises_test_cases (id) ON DELETE CASCADE,
@@ -255,6 +257,23 @@ CREATE TABLE commits_exercise_test_cases_results (
   reason case_interruption_reason_t,
   status_message text,
   error_message text,
+  PRIMARY KEY (commit_id, exercise_test_case_id)
+);
+
+-- The state of each test case's generated-file upload. The judge publishes the
+-- files case by case; this row lets a reloading client show a pending upload or
+-- explain why a download will never exist (for example, the commit's artifact
+-- budget was reached).
+CREATE TABLE commit_test_case_artifacts (
+  commit_id int NOT NULL REFERENCES commits (id) ON DELETE CASCADE,
+  exercise_test_case_id int NOT NULL REFERENCES exercises_test_cases (id) ON DELETE CASCADE,
+  state commit_artifact_state_t NOT NULL,
+  -- Stable machine-readable reason for a failed upload, e.g.
+  -- commit_artifact_budget_exceeded. NULL while pending or ready.
+  reason text,
+  -- The limit that was reached, when the reason is about one.
+  limit_bytes bigint CHECK (limit_bytes IS NULL OR limit_bytes > 0),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
   PRIMARY KEY (commit_id, exercise_test_case_id)
 );
 
@@ -390,6 +409,10 @@ CREATE INDEX idx_commits_allowed_file_type_id ON commits (allowed_file_type_id);
 -- column each pass scans the whole table. The partial queued index below cannot
 -- serve them.
 CREATE INDEX idx_commits_created_at ON commits (created_at);
+-- Submission numbers count a user's commits within one exercise. The ordering
+-- columns make the history window and the per-commit count use one index.
+CREATE INDEX idx_commits_user_exercise_order
+  ON commits (user_id, exercise_id, created_at, id);
 -- The results PK is (commit_id, exercise_test_case_id): commit_id is covered, the
 -- case id is not.
 CREATE INDEX idx_results_exercise_test_case_id ON commits_exercise_test_cases_results (exercise_test_case_id);
@@ -493,6 +516,11 @@ CREATE POLICY "runcodes_app_only" ON "exercises_allowed_file_types" TO PUBLIC
 
 ALTER TABLE "commits_exercise_test_cases_results" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "runcodes_app_only" ON "commits_exercise_test_cases_results" TO PUBLIC
+  USING (current_user = 'runcodes_app')
+  WITH CHECK (current_user = 'runcodes_app');
+
+ALTER TABLE "commit_test_case_artifacts" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "runcodes_app_only" ON "commit_test_case_artifacts" TO PUBLIC
   USING (current_user = 'runcodes_app')
   WITH CHECK (current_user = 'runcodes_app');
 

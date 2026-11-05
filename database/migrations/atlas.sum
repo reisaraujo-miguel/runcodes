@@ -1,4 +1,4 @@
-h1:wqzSggcFl0TbxZQxZ+J1tw7kzD+bFgOmDut+xFB2pJ4=
+h1:f949lYp/XHM9L15CvRj3Lqo//uJWnK11/ZNUz17GxlY=
 20261020150022_baseline.sql h1:lH82Kx6gK/CEJuhe2Frs4qg8ruVTkzK0fVq2OOCYRTw=
 20261020150023_add_code_editor_preference.sql h1:+O6onQoRPu9aPFE/ARdhA/tDPaZ1a1F0IlHThsnlHlQ=
 20261020160000_add_email_verification_tokens.sql h1:trEVBFEHbF5TltShrpZIN1FmvhdtexcLifl9WXa9ams=
@@ -19,3 +19,5 @@ h1:wqzSggcFl0TbxZQxZ+J1tw7kzD+bFgOmDut+xFB2pJ4=
 20261103030000_backfill_commit_limit_snapshots.sql h1:OTKE6GCZdnDjlo5N0IpJrqRBG32NykV/k2nJBg/CJqc=
 20261103031000_limit_alert_cases.sql h1:548+0uJpzt8Hx+VTlMKv77Ch78FbG6SIu4hyEAOhCKs=
 20261105120000_add_commits_created_at_index.sql h1:IFvvO9NQc8x3kHXsUEuOOsVdE+ZPJ/w7ziglUPfLJu0=
+20261105130000_add_commit_artifacts.sql h1:T+DNE1demCgvzX2+dgXEHJoCAKq/lRf0peJ66m4dALg=
+20261105150000_add_commits_user_exercise_order_index.sql h1:ybolfaPSu4O9m4zRz03i6Xu40hD4AdX48rbKiCrd7To=
