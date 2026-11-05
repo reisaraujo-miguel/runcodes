@@ -385,6 +385,11 @@ CREATE INDEX idx_exercises_test_cases_files_case_id ON exercises_test_cases_file
 CREATE INDEX idx_commits_user_id ON commits (user_id);
 CREATE INDEX idx_commits_exercise_id ON commits (exercise_id);
 CREATE INDEX idx_commits_allowed_file_type_id ON commits (allowed_file_type_id);
+-- The limit-alert aggregation and the statistics/reporting queries filter
+-- commits by created_at over a rolling window; without a plain index on the
+-- column each pass scans the whole table. The partial queued index below cannot
+-- serve them.
+CREATE INDEX idx_commits_created_at ON commits (created_at);
 -- The results PK is (commit_id, exercise_test_case_id): commit_id is covered, the
 -- case id is not.
 CREATE INDEX idx_results_exercise_test_case_id ON commits_exercise_test_cases_results (exercise_test_case_id);
