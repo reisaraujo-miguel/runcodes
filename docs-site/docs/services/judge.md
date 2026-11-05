@@ -370,7 +370,12 @@ the monitor report is the submission's own product, so the judge:
   from a correct answer, so it does not fall back to comparing the output;
 - kills the container's remaining processes after each case and after
   compilation, so a daemonized program cannot rewrite results;
-- stops the container **before** grading;
+- grades and publishes each case as soon as its `case.done` milestone arrives,
+  while the container is still running the rest of the suite. The final pass
+  stops the container before grading any case that was not streamed; a streamed
+  case is read while the container is alive, but it belongs to the same
+  submission, and the harness sweeps the case's remaining processes before
+  printing the milestone;
 - reports a harness that exits non-zero after `run.done` as `server_error`
   instead of grading half-collected outputs.
 
