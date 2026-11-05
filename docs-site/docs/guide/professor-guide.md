@@ -158,7 +158,8 @@ new class.
 3. Optionally set a new name, description and end date.
 4. Select **Importar turma**.
 
-The import restores the class configuration, exercises, test cases, compilation
+The import restores the class configuration, exercises, test cases, the
+per-language limits (the exercise defaults and every case override), compilation
 files and materials. Students, submissions and grades are deliberately not part
 of the archive. The importer becomes the owner and the new class gets a new
 enrollment code.
@@ -424,7 +425,9 @@ is reported by name, and the whole import is refused.
 The form applies one configuration to every case in the batch: input and output
 type, visibility flags and limits. The limits become overrides for every language
 the exercise allows, so a case in the batch starts from the same values as one
-created by hand. Check the values before importing.
+created by hand. Leave a limit empty to inherit the exercise or platform default;
+for memory, stack and file size, `0` means no limit, while a CPU time limit must
+be positive. Check the values before importing.
 
 The archive is validated completely before anything is written. Limits: 500
 cases, 64 MiB compressed, 256 MiB expanded, 32 MiB per file and 4000 zip

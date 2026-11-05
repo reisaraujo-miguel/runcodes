@@ -356,6 +356,12 @@ DeleteExpiredOutputFiles removes the generated files uploaded before cutoff and
 returns how many it scheduled for deletion. Unlike the other buckets, nothing in
 the database references these objects, so age is the only thing that can decide
 what to remove; the caller picks the cutoff from the configured retention.
+
+The bucket is walked page by page and each page's expired keys are deleted
+before the next one is read, so the sweep's memory stays bounded by one listing
+page instead of growing with every object ever uploaded. The walk itself is
+still proportional to the bucket: an object store with a native lifecycle rule
+is the cheaper way to expire this data.
 */
 func DeleteExpiredOutputFiles(ctx context.Context, cutoff time.Time) (int, error) {
 	client, buckets, err := Client()
@@ -367,12 +373,14 @@ func DeleteExpiredOutputFiles(ctx context.Context, cutoff time.Time) (int, error
 		Bucket: aws.String(buckets.OutputFiles),
 	})
 
-	expired := make([]string, 0, 64)
+	removed := 0
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			return 0, fmt.Errorf("listing generated files: %w", err)
+			return removed, fmt.Errorf("listing generated files: %w", err)
 		}
+
+		expired := make([]string, 0, len(page.Contents))
 		for _, obj := range page.Contents {
 			if obj.Key == nil || obj.LastModified == nil {
 				continue
@@ -381,15 +389,16 @@ func DeleteExpiredOutputFiles(ctx context.Context, cutoff time.Time) (int, error
 				expired = append(expired, *obj.Key)
 			}
 		}
+
+		if err := deleteObjectsInBucket(
+			ctx, func(b Buckets) string { return b.OutputFiles }, expired,
+		); err != nil {
+			return removed, err
+		}
+		removed += len(expired)
 	}
 
-	if err := deleteObjectsInBucket(
-		ctx, func(b Buckets) string { return b.OutputFiles }, expired,
-	); err != nil {
-		return 0, err
-	}
-
-	return len(expired), nil
+	return removed, nil
 }
 
 func deleteObjectsInBucket(

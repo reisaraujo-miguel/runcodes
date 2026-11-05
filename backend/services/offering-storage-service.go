@@ -4,10 +4,15 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/runcodes-icmc/runcodes/database"
 	"github.com/runcodes-icmc/runcodes/storage"
 )
+
+// commitOutputCleanupTimeout bounds the detached purge below. Reclaiming a
+// deleted class's generated files is not urgent, but it must not run forever.
+const commitOutputCleanupTimeout = 10 * time.Minute
 
 type storageBucket int
 
@@ -244,16 +249,43 @@ deleteCommitOutputsBestEffort removes the generated files of the given commits.
 Each commit's files are a prefix in the outputfiles bucket, so a failure for one
 commit is logged and the rest still run: a deleted class must not keep paying for
 storage nobody can reach.
+
+The purge runs in the background on a context detached from the request. The rows
+are already gone when it starts, so a client disconnect or a slow object store
+must not abort the cleanup halfway through a large class; the call returns as
+soon as the delete has been accepted. Objects a failed purge leaves behind are
+reclaimed by the retention sweep after the configured TTL.
 */
 func deleteCommitOutputsBestEffort(ctx context.Context, commitIDs []int64) {
-	for _, commitID := range commitIDs {
-		if err := storage.DeleteCommitOutputs(ctx, commitID); err != nil {
-			slog.ErrorContext(ctx, "error deleting generated files",
-				slog.Int64("commit_id", commitID),
-				slog.String("error", err.Error()),
-			)
-		}
+	if len(commitIDs) == 0 {
+		return
 	}
+
+	cleanupCtx, cancel := context.WithTimeout(
+		context.WithoutCancel(ctx), commitOutputCleanupTimeout,
+	)
+	go func() {
+		defer cancel()
+
+		removed, failed := 0, 0
+		for _, commitID := range commitIDs {
+			if err := storage.DeleteCommitOutputs(cleanupCtx, commitID); err != nil {
+				failed++
+				slog.ErrorContext(cleanupCtx, "error deleting generated files",
+					slog.Int64("commit_id", commitID),
+					slog.String("error", err.Error()),
+				)
+				continue
+			}
+			removed++
+		}
+
+		slog.InfoContext(cleanupCtx, "generated files cleanup finished",
+			slog.Int("commits", len(commitIDs)),
+			slog.Int("cleaned", removed),
+			slog.Int("failed", failed),
+		)
+	}()
 }
 
 /*

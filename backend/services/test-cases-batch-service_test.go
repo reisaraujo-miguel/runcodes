@@ -406,6 +406,29 @@ func TestParseBatchTestCaseArchiveRejectsInvalidInput(t *testing.T) {
 	}
 }
 
+func TestBatchLimitOverrides(t *testing.T) {
+	empty := batchLimitOverrides(BatchTestCaseConfig{})
+	if !empty.Empty() {
+		t.Fatalf("an absent limit set must inherit, got %+v", empty)
+	}
+
+	cpu := 2
+	zero := int64(0)
+	overrides := batchLimitOverrides(BatchTestCaseConfig{
+		CPUTimeLimitSeconds: &cpu,
+		MemUsageLimitBytes:  &zero,
+	})
+	if overrides.CPUTimeLimitSeconds == nil || *overrides.CPUTimeLimitSeconds != 2 {
+		t.Fatalf("cpu = %+v, want 2", overrides.CPUTimeLimitSeconds)
+	}
+	if overrides.StackLimitBytes != nil {
+		t.Fatalf("stack = %+v, want nil (inherit)", overrides.StackLimitBytes)
+	}
+	if overrides.MemUsageLimitBytes == nil || *overrides.MemUsageLimitBytes != 0 {
+		t.Fatalf("memory = %+v, want an explicit 0 (no limit)", overrides.MemUsageLimitBytes)
+	}
+}
+
 func TestValidateBatchConfig(t *testing.T) {
 	config := BatchTestCaseConfig{}
 	if err := validateBatchConfig(&config); err != nil {
@@ -415,12 +438,33 @@ func TestValidateBatchConfig(t *testing.T) {
 		t.Fatalf("defaults = %+v", config)
 	}
 
+	negative := int64(-1)
 	config = BatchTestCaseConfig{
 		InputType:          IOTypeText,
 		ExpectedOutputType: IOTypeFile,
-		MemUsageLimitBytes: -1,
+		MemUsageLimitBytes: &negative,
 	}
 	if err := validateBatchConfig(&config); !errors.Is(err, ErrInvalidTestCase) {
 		t.Fatalf("negative limit err = %v, want ErrInvalidTestCase", err)
+	}
+
+	// An explicit 0 is meaningful now: it means "no limit" for byte limits and
+	// must be accepted, while a zero CPU budget has no meaning.
+	zero := int64(0)
+	positive := 3
+	config = BatchTestCaseConfig{
+		CPUTimeLimitSeconds: &positive,
+		MemUsageLimitBytes:  &zero,
+		StackLimitBytes:     &zero,
+		FileSizeLimitBytes:  &zero,
+	}
+	if err := validateBatchConfig(&config); err != nil {
+		t.Fatalf("explicit zero byte limits: %v", err)
+	}
+
+	zeroCPU := 0
+	config = BatchTestCaseConfig{CPUTimeLimitSeconds: &zeroCPU}
+	if err := validateBatchConfig(&config); !errors.Is(err, ErrInvalidTestCase) {
+		t.Fatalf("zero cpu err = %v, want ErrInvalidTestCase", err)
 	}
 }

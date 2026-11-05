@@ -345,6 +345,25 @@ func ReplaceExerciseLanguageLimits(
 		)
 		return nil, ErrServer
 	}
+	if err := InsertExerciseLanguageLimits(ctx, tx, authoringID, in); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, ErrServer
+	}
+
+	return ListExerciseLanguageLimits(ctx, exerciseID, claims)
+}
+
+/*
+InsertExerciseLanguageLimits writes an exercise's per-language defaults that
+were validated by the caller. It is the shared writer for the exercise defaults
+endpoint and the class archive import, which both know the exercise's languages
+already.
+*/
+func InsertExerciseLanguageLimits(
+	ctx context.Context, tx *sql.Tx, exerciseID int64, in []models.LanguageLimits,
+) error {
 	for _, language := range in {
 		if language.Overrides.Empty() {
 			continue
@@ -354,25 +373,21 @@ func ReplaceExerciseLanguageLimits(
 			    (exercise_id, allowed_file_type_id, cpu_time_limit_seconds,
 			     mem_usage_limit_bytes, stack_limit_bytes, file_size_limit_bytes)
 			VALUES ($1, $2, $3, $4, $5, $6)`,
-			authoringID, language.AllowedFileTypeID,
+			exerciseID, language.AllowedFileTypeID,
 			language.Overrides.CPUTimeLimitSeconds,
 			language.Overrides.MemUsageLimitBytes,
 			language.Overrides.StackLimitBytes,
 			language.Overrides.FileSizeLimitBytes,
 		); err != nil {
 			slog.ErrorContext(ctx, "error storing an exercise language limit",
-				slog.Int64("exercise_id", authoringID),
+				slog.Int64("exercise_id", exerciseID),
 				slog.Int64("allowed_file_type_id", language.AllowedFileTypeID),
 				slog.String("error", err.Error()),
 			)
-			return nil, ErrServer
+			return ErrServer
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, ErrServer
-	}
-
-	return ListExerciseLanguageLimits(ctx, exerciseID, claims)
+	return nil
 }
 
 /*

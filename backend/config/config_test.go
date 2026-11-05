@@ -23,6 +23,7 @@ func clearEnv(t *testing.T) {
 		"RUNCODES_JUDGE_STALE_TIMEOUT",
 		"RUNCODES_PUBLIC_URL", "RUNCODES_SMTP_HOST", "RUNCODES_SMTP_PORT",
 		"RUNCODES_SMTP_USERNAME", "RUNCODES_SMTP_PASSWORD",
+		"RUNCODES_OUTPUT_FILE_TTL", "RUNCODES_OUTPUT_ARCHIVE_MAX_BYTES",
 		"RUNCODES_SMTP_FROM",
 	} {
 		t.Setenv(key, "")
@@ -96,6 +97,10 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.OutputFiles.TTL != defaultOutputFileTTL {
 		t.Errorf("OutputFiles.TTL = %s, want %s", cfg.OutputFiles.TTL, defaultOutputFileTTL)
+	}
+	if cfg.OutputFiles.MaxArchiveBytes != defaultOutputArchiveMaxBytes {
+		t.Errorf("OutputFiles.MaxArchiveBytes = %d, want %d",
+			cfg.OutputFiles.MaxArchiveBytes, defaultOutputArchiveMaxBytes)
 	}
 	if cfg.PublicURL != "https://runcodes.example" {
 		t.Errorf("PublicURL = %q", cfg.PublicURL)
@@ -266,6 +271,11 @@ func TestLoadRejectsMalformedValues(t *testing.T) {
 			name:  "negative output file ttl",
 			env:   map[string]string{"RUNCODES_OUTPUT_FILE_TTL": "-1h"},
 			names: "RUNCODES_OUTPUT_FILE_TTL",
+		},
+		{
+			name:  "non-positive output archive cap",
+			env:   map[string]string{"RUNCODES_OUTPUT_ARCHIVE_MAX_BYTES": "0"},
+			names: "RUNCODES_OUTPUT_ARCHIVE_MAX_BYTES",
 		},
 		{
 			name:  "debug mode is not a boolean",

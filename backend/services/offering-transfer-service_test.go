@@ -6,9 +6,15 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/runcodes-icmc/runcodes/models"
 )
 
 func validOfferingManifest() *offeringArchiveManifest {
+	exerciseCPU := 3
+	exerciseMem := int64(64 << 20)
+	caseMem := int64(128 << 20)
+
 	return &offeringArchiveManifest{
 		Format:     offeringArchiveFormat,
 		Version:    offeringArchiveVersion,
@@ -26,6 +32,13 @@ func validOfferingManifest() *offeringArchiveManifest {
 				Deadline:                  time.Date(2026, 12, 1, 23, 59, 0, 0, time.UTC),
 				OpenDate:                  time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC),
 				AllowedFileTypeExtensions: []string{"py"},
+				Limits: []offeringArchiveLimit{
+					{
+						Extension:           "py",
+						CPUTimeLimitSeconds: &exerciseCPU,
+						MemUsageLimitBytes:  &exerciseMem,
+					},
+				},
 				TestCases: []offeringArchiveTestCase{
 					{
 						Input:               "1 2",
@@ -36,7 +49,10 @@ func validOfferingManifest() *offeringArchiveManifest {
 						ShowExpectedOutput:  true,
 						ShowUserOutput:      true,
 						CPUTimeLimitSeconds: 2,
-						Files:               []string{"extra.txt"},
+						Limits: []offeringArchiveLimit{
+							{Extension: "py", MemUsageLimitBytes: &caseMem},
+						},
+						Files: []string{"extra.txt"},
 					},
 				},
 				CompilationFiles: []string{"main.c"},
@@ -76,6 +92,63 @@ func TestParseOfferingArchiveAcceptsExport(t *testing.T) {
 	if len(archive.manifest.Exercises) != 1 ||
 		len(archive.manifest.Exercises[0].TestCases) != 1 {
 		t.Fatalf("manifest = %+v", archive.manifest)
+	}
+}
+
+/*
+A version 1 archive predates the exercise-level limits. It must still import: the
+new fields are optional and the exercises simply inherit the platform defaults.
+*/
+func TestParseOfferingArchiveAcceptsVersionOne(t *testing.T) {
+	manifest := validOfferingManifest()
+	manifest.Version = 1
+	manifest.Exercises[0].Limits = nil
+	manifest.Exercises[0].TestCases[0].Limits = nil
+
+	archive, err := ParseOfferingArchive(zipWith(t, offeringArchiveFiles(t, manifest)))
+	if err != nil {
+		t.Fatalf("ParseOfferingArchive: %v", err)
+	}
+	if archive.manifest.Version != 1 {
+		t.Fatalf("version = %d, want 1", archive.manifest.Version)
+	}
+}
+
+// The archive names languages by extension; the round trip must keep the value
+// and resolve it back to the installation's own catalog id.
+func TestArchiveLimitsRoundTrip(t *testing.T) {
+	cpu := 4
+	overrides := map[int64]models.LimitOverrides{
+		7: {CPUTimeLimitSeconds: &cpu},
+	}
+	languages := []allowedLanguage{
+		{ID: 7, Extension: "py"},
+		{ID: 8, Extension: "c"},
+	}
+
+	rendered := archiveLimits(overrides, languages)
+	if len(rendered) != 1 || rendered[0].Extension != "py" ||
+		rendered[0].CPUTimeLimitSeconds == nil || *rendered[0].CPUTimeLimitSeconds != 4 {
+		t.Fatalf("rendered = %+v", rendered)
+	}
+
+	resolved, err := archiveLimitsByExtension(rendered, []models.LanguageLimits{
+		{AllowedFileTypeID: 7, Extension: "py"},
+		{AllowedFileTypeID: 8, Extension: "c"},
+	})
+	if err != nil {
+		t.Fatalf("archiveLimitsByExtension: %v", err)
+	}
+	if len(resolved) != 1 || resolved[0].AllowedFileTypeID != 7 ||
+		resolved[0].Overrides.CPUTimeLimitSeconds == nil ||
+		*resolved[0].Overrides.CPUTimeLimitSeconds != 4 {
+		t.Fatalf("resolved = %+v", resolved)
+	}
+
+	if _, err := archiveLimitsByExtension(rendered, []models.LanguageLimits{
+		{AllowedFileTypeID: 8, Extension: "c"},
+	}); !errors.Is(err, ErrInvalidTransfer) {
+		t.Fatalf("unknown language err = %v, want ErrInvalidTransfer", err)
 	}
 }
 
@@ -131,6 +204,46 @@ func TestParseOfferingArchiveRejectsBrokenArchives(t *testing.T) {
 			name: "exercise closes before opening",
 			mutate: func(manifest *offeringArchiveManifest, _ map[string]string) {
 				manifest.Exercises[0].Deadline = manifest.Exercises[0].OpenDate.Add(-time.Hour)
+			},
+			wantErr: ErrInvalidTransfer,
+		},
+		{
+			name: "exercise limit for a language the exercise does not allow",
+			mutate: func(manifest *offeringArchiveManifest, _ map[string]string) {
+				manifest.Exercises[0].Limits = []offeringArchiveLimit{{Extension: "rs"}}
+			},
+			wantErr: ErrInvalidTransfer,
+		},
+		{
+			name: "duplicate exercise limit",
+			mutate: func(manifest *offeringArchiveManifest, _ map[string]string) {
+				manifest.Exercises[0].Limits = append(
+					manifest.Exercises[0].Limits,
+					manifest.Exercises[0].Limits[0],
+				)
+			},
+			wantErr: ErrInvalidTransfer,
+		},
+		{
+			name: "exercise limit with a zero cpu budget",
+			mutate: func(manifest *offeringArchiveManifest, _ map[string]string) {
+				zero := 0
+				manifest.Exercises[0].Limits[0].CPUTimeLimitSeconds = &zero
+			},
+			wantErr: ErrInvalidTransfer,
+		},
+		{
+			name: "case limit for a language the exercise does not allow",
+			mutate: func(manifest *offeringArchiveManifest, _ map[string]string) {
+				manifest.Exercises[0].TestCases[0].Limits[0].Extension = "rs"
+			},
+			wantErr: ErrInvalidTransfer,
+		},
+		{
+			name: "case limit with a negative byte value",
+			mutate: func(manifest *offeringArchiveManifest, _ map[string]string) {
+				negative := int64(-1)
+				manifest.Exercises[0].TestCases[0].Limits[0].MemUsageLimitBytes = &negative
 			},
 			wantErr: ErrInvalidTransfer,
 		},

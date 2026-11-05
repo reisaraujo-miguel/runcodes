@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/runcodes-icmc/runcodes/config"
+	"github.com/runcodes-icmc/runcodes/database"
 	"github.com/runcodes-icmc/runcodes/storage"
 )
 
@@ -36,7 +37,9 @@ func StartOutputFileRetention(ctx context.Context) {
 
 		// Sweep once at startup: an instance restarted more often than the
 		// interval would otherwise never delete anything.
-		purgeExpiredOutputFiles(ctx, ttl)
+		database.RunWithBackgroundLock(ctx, "output-retention", func() {
+			purgeExpiredOutputFiles(ctx, ttl)
+		})
 
 		ticker := time.NewTicker(outputRetentionInterval)
 		defer ticker.Stop()
@@ -46,7 +49,9 @@ func StartOutputFileRetention(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				purgeExpiredOutputFiles(ctx, ttl)
+				database.RunWithBackgroundLock(ctx, "output-retention", func() {
+					purgeExpiredOutputFiles(ctx, ttl)
+				})
 			}
 		}
 	}()

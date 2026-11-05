@@ -421,7 +421,41 @@ func UpdateExercise(
 		if err := insertAllowedFileTypes(ctx, tx, exerciseID, *req.AllowedFileTypeIDs); err != nil {
 			return nil, err
 		}
-		ex.AllowedFileTypeIDs = dedupeIDs(*req.AllowedFileTypeIDs)
+		allowedIDs := dedupeIDs(*req.AllowedFileTypeIDs)
+		// Limits are stored per language, so a language removed from the exercise
+		// must lose its overrides too. Keeping them would silently restore limits
+		// nobody remembers setting if the language is allowed again later.
+		//
+		// A ghost exercise is a historical copy of a resubmission; the limits and
+		// the test cases belong to the real exercise it resolves to, so the
+		// cleanup must run against that id rather than the ghost's own.
+		limitsExerciseID := acc.authoringExerciseID()
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM exercise_language_limits
+			WHERE exercise_id = $1 AND allowed_file_type_id <> ALL($2)`,
+			limitsExerciseID, pq.Array(allowedIDs),
+		); err != nil {
+			slog.ErrorContext(ctx, "error clearing the stale exercise language limits",
+				slog.Int64("exercise_id", limitsExerciseID),
+				slog.String("error", err.Error()),
+			)
+			return nil, ErrServer
+		}
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM test_case_language_limits tcl
+			USING exercises_test_cases tc
+			WHERE tcl.exercise_test_case_id = tc.id
+			  AND tc.exercise_id = $1
+			  AND tcl.allowed_file_type_id <> ALL($2)`,
+			limitsExerciseID, pq.Array(allowedIDs),
+		); err != nil {
+			slog.ErrorContext(ctx, "error clearing the stale test case language limits",
+				slog.Int64("exercise_id", limitsExerciseID),
+				slog.String("error", err.Error()),
+			)
+			return nil, ErrServer
+		}
+		ex.AllowedFileTypeIDs = allowedIDs
 	} else {
 		if ex.AllowedFileTypeIDs, err = loadAllowedFileTypeIDs(ctx, exerciseID); err != nil {
 			return nil, err

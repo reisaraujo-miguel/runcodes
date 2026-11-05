@@ -201,7 +201,7 @@ export function BatchTestCasesDialog({
               <Input
                 id="batch-cpu"
                 type="number"
-                min="0"
+                min="1"
                 step="0.1"
                 value={cpuTime}
                 onChange={(event) => {
@@ -247,7 +247,9 @@ export function BatchTestCasesDialog({
             </div>
           </div>
           <p className="text-muted-foreground text-xs">
-            0 usa o padrão da plataforma.
+            Deixe um limite vazio para herdar o padrão do exercício ou da
+            plataforma. Em memória, pilha e tamanho de arquivo, 0 significa sem
+            limite; o tempo de CPU, quando informado, precisa ser positivo.
           </p>
 
           <div className="flex flex-wrap gap-4">

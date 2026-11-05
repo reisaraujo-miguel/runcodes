@@ -612,8 +612,14 @@ is started by main as a background goroutine; the first pass runs immediately so
 a restart does not leave months of history for another day.
 */
 func StartRetention(ctx context.Context) {
+	prune := func() {
+		database.RunWithBackgroundLock(ctx, "alert-retention", func() {
+			pruneAlerts(ctx)
+		})
+	}
+
 	go func() {
-		pruneAlerts(ctx)
+		prune()
 
 		ticker := time.NewTicker(24 * time.Hour)
 		defer ticker.Stop()
@@ -622,7 +628,7 @@ func StartRetention(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				pruneAlerts(ctx)
+				prune()
 			}
 		}
 	}()
@@ -657,8 +663,16 @@ var alertEmails = newCooldown(EmailCooldown, maxTrackedCodes)
 
 /*
 cooldown is a small in-process "not more often than once per window" map, keyed
-by alert code. A distributed deployment would move it to Redis; the backend is a
-single process, and this only has to stop a mail storm.
+by alert code. The durable alert row is deduplicated per (commit, code), so a
+replayed event cannot duplicate a record; this map only protects the mail relay
+from a storm of distinct commits with the same failure.
+
+The map is per process. The periodic sweeps that create alerts are serialized
+with a database advisory lock (database.RunWithBackgroundLock), but if the
+backend is ever run with more than one replica, two of them can still each send
+one email for the same code inside the window. That trade-off is deliberate: a
+durable cross-process cooldown would need a table and another write on the alert
+path, and today the backend is deployed as a single process.
 */
 type cooldown struct {
 	mu     sync.Mutex

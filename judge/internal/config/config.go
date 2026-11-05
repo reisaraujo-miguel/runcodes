@@ -108,6 +108,11 @@ type Config struct {
 	// the case has none. It keeps a submission from publishing an unbounded file
 	// without letting an earlier case's large file suppress a later case's.
 	MaxArtifactBytes int64
+	// MaxCommitArtifactBytes bounds everything one commit may publish. A suite
+	// multiplies the per-case limit by its number of cases, so without this
+	// aggregate cap a single submission can still store an unbounded amount in
+	// object storage (and make the backend's zip endpoint stream it).
+	MaxCommitArtifactBytes int64
 
 	// MaxExtractFileBytes bounds a single entry, MaxExtractBytes the total
 	// expanded size, and MaxExtractEntries the number of entries when unpacking
@@ -229,10 +234,11 @@ func Load() (*Config, error) {
 		ContainerCPUQuota:    envInt64("JUDGE_CONTAINER_CPU_QUOTA", 100000),
 		ContainerTmpfsBytes:  envInt64("JUDGE_CONTAINER_TMPFS_BYTES", 256*1024*1024),
 
-		MaxCompareFileBytes: envInt64("JUDGE_MAX_COMPARE_FILE_BYTES", 16*1024*1024),
-		MaxWorkspaceBytes:   envInt64("JUDGE_MAX_WORKSPACE_BYTES", 1024*1024*1024),
-		MaxWorkspaceEntries: envInt64("JUDGE_MAX_WORKSPACE_ENTRIES", 50_000),
-		MaxArtifactBytes:    envInt64("JUDGE_MAX_ARTIFACT_BYTES", 64*1024*1024),
+		MaxCompareFileBytes:    envInt64("JUDGE_MAX_COMPARE_FILE_BYTES", 16*1024*1024),
+		MaxWorkspaceBytes:      envInt64("JUDGE_MAX_WORKSPACE_BYTES", 1024*1024*1024),
+		MaxWorkspaceEntries:    envInt64("JUDGE_MAX_WORKSPACE_ENTRIES", 50_000),
+		MaxArtifactBytes:       envInt64("JUDGE_MAX_ARTIFACT_BYTES", 64*1024*1024),
+		MaxCommitArtifactBytes: envInt64("JUDGE_MAX_COMMIT_ARTIFACT_BYTES", 256*1024*1024),
 
 		MaxExtractFileBytes: envInt64("JUDGE_MAX_EXTRACT_FILE_BYTES", 64*1024*1024),
 		MaxExtractBytes:     envInt64("JUDGE_MAX_EXTRACT_BYTES", 256*1024*1024),
@@ -344,6 +350,10 @@ func (c *Config) validate() error {
 
 	if c.MaxArtifactBytes <= 0 {
 		return fmt.Errorf("JUDGE_MAX_ARTIFACT_BYTES must be positive")
+	}
+
+	if c.MaxCommitArtifactBytes <= 0 {
+		return fmt.Errorf("JUDGE_MAX_COMMIT_ARTIFACT_BYTES must be positive")
 	}
 
 	if c.MaxRunDuration <= 0 {

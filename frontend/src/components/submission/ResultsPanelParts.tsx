@@ -9,7 +9,7 @@ import {
   Loader2Icon,
   LockIcon,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { StatusBadge } from "@/components/app/StatusBadge";
 import type { TestCase } from "@/lib/api/exercises";
@@ -415,6 +415,18 @@ export function Artifacts({
   refreshKey: string;
 }) {
   const [files, setFiles] = useState<SubmissionOutputFile[]>([]);
+  // The poll below is bounded: a failed upload whose final event was lost must
+  // not leave a spinner running forever. The give-up is recorded against the
+  // poll's own key, so another case, another commit or a pending-state change
+  // shows the placeholder again without a reset effect. It deliberately does not
+  // include `refreshKey`: a refresh is only a read, and must not restart the
+  // timeout.
+  const pollKey = `${String(commitId)}:${pending ? "pending" : "settled"}:${String(testCaseId)}`;
+  const [gaveUpFor, setGaveUpFor] = useState<string | null>(null);
+  const gaveUp = gaveUpFor === pollKey;
+  // The polling effect publishes its latest read here so a refresh from another
+  // case or a new artifact can re-read the listing without recreating the timer.
+  const readRef = useRef<() => void>(() => undefined);
 
   // While this case's upload is in flight, the listing is polled: the ready event
   // can arrive after the run's terminal event, when the stream is already closed,
@@ -434,6 +446,7 @@ export function Artifacts({
           // unaffected.
         });
     };
+    readRef.current = read;
 
     read();
 
@@ -443,6 +456,7 @@ export function Artifacts({
         attempts += 1;
         if (attempts > 30) {
           if (timer) clearInterval(timer);
+          if (active) setGaveUpFor(pollKey);
           return;
         }
         read();
@@ -452,12 +466,25 @@ export function Artifacts({
     return () => {
       active = false;
       if (timer) clearInterval(timer);
+      readRef.current = () => undefined;
     };
-  }, [commitId, refreshKey, pending]);
+  }, [commitId, pending, pollKey]);
+
+  // Another case's result or a new artifact means the listing may have grown.
+  // Treat it as one extra read, not as a new poll: re-creating the poll would
+  // reset its attempts and let a lost failure event spin forever.
+  const firstRefresh = useRef(true);
+  useEffect(() => {
+    if (firstRefresh.current) {
+      firstRefresh.current = false;
+      return;
+    }
+    readRef.current();
+  }, [refreshKey]);
 
   const caseFiles = filesForTestCase(files, testCaseId);
   if (caseFiles.length === 0) {
-    if (!pending) return null;
+    if (!pending || gaveUp) return null;
 
     return (
       <div className="border-t pt-2">

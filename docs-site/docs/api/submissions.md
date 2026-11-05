@@ -209,6 +209,9 @@ Lists the files the submission generated. Owner only.
   result. Its files are excluded the same way.
 - Files are kept for `RUNCODES_OUTPUT_FILE_TTL` (default 168h) after the judge
   uploads them; expired files disappear from the listing.
+- `GET /submissions/{id}/output` refuses with `413` when the visible files
+  total more than `RUNCODES_OUTPUT_ARCHIVE_MAX_BYTES` (default 256 MiB); the
+  per-file endpoint has no such cap.
 
 ## `GET /submissions/{id}/outputfiles/{path}`
 

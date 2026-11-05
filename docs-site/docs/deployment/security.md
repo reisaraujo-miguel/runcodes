@@ -94,8 +94,10 @@ credentials. CI asserts the roles' limits.
   on a bounded volume that is sized and monitored for untrusted output.
 - One persistent mount (the workspace), a non-root user, a zero umask, and a
   harness that deletes `container.config` before running submitted code.
-- The judge stops the container before grading and reads only regular files from
-  the workspace, with expected outputs in a private directory.
+- The judge reads only regular files from the workspace, with expected outputs
+  in a private directory. It streams a case's result as soon as the harness
+  reports the case finished and stops the container before the final grading
+  pass.
 - Leftover containers are pruned at startup; abandoned workspaces and output
   archives older than their retention are swept hourly.
 

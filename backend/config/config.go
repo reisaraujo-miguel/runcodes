@@ -37,6 +37,10 @@ const (
 	// archives: long enough to download after a deadline, short enough that a
 	// term of runs does not stay forever.
 	defaultOutputFileTTL = 7 * 24 * time.Hour
+	// defaultOutputArchiveMaxBytes bounds the zip a submission's files are
+	// downloaded in. The judge caps what one commit publishes; this backstop
+	// covers runs made before that cap existed and a deployment that raised it.
+	defaultOutputArchiveMaxBytes = 256 << 20
 )
 
 // Config holds every tunable of the backend service.
@@ -77,6 +81,11 @@ type OutputFilesConfig struct {
 	// TTL is how long a generated file is kept after the judge uploaded it. 0
 	// disables the sweep and leaves retention to the object store.
 	TTL time.Duration
+	// MaxArchiveBytes bounds the total size of the files served together as a
+	// zip. The per-file downloads have no such cap; this one keeps a submission
+	// that generated many large files from turning one request into an
+	// unbounded stream.
+	MaxArchiveBytes int64
 }
 
 // LimitsConfig is the platform's limit policy: the values a test case inherits
@@ -264,6 +273,15 @@ func Load() (*Config, error) {
 	if outputFileTTL < 0 {
 		return nil, fmt.Errorf("RUNCODES_OUTPUT_FILE_TTL cannot be negative")
 	}
+	outputArchiveMaxBytes, err := envInt(
+		"RUNCODES_OUTPUT_ARCHIVE_MAX_BYTES", defaultOutputArchiveMaxBytes,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if outputArchiveMaxBytes <= 0 {
+		return nil, fmt.Errorf("RUNCODES_OUTPUT_ARCHIVE_MAX_BYTES must be positive")
+	}
 
 	deadlineReminders, err := envBool("RUNCODES_DEADLINE_REMINDERS", true)
 	if err != nil {
@@ -336,7 +354,8 @@ func Load() (*Config, error) {
 			DeadlineReminderInterval: deadlineReminderInterval,
 		},
 		OutputFiles: OutputFilesConfig{
-			TTL: outputFileTTL,
+			TTL:             outputFileTTL,
+			MaxArchiveBytes: int64(outputArchiveMaxBytes),
 		},
 		Limits: LimitsConfig{
 			CPUTimeLimitSeconds: defaultCPULimit,

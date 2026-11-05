@@ -43,10 +43,13 @@ type BatchTestCaseConfig struct {
 	ShowExpectedOutput bool
 	ShowUserOutput     bool
 
-	CPUTimeLimitSeconds int
-	MemUsageLimitBytes  int64
-	StackLimitBytes     int64
-	FileSizeLimitBytes  int64
+	// The four limits are optional. A nil field inherits the exercise or platform
+	// default; on the byte-valued ones an explicit 0 means "no limit", matching
+	// the per-case limits API. The CPU budget, when set, must be positive.
+	CPUTimeLimitSeconds *int
+	MemUsageLimitBytes  *int64
+	StackLimitBytes     *int64
+	FileSizeLimitBytes  *int64
 }
 
 /*
@@ -904,14 +907,15 @@ func CreateTestCasesBatch(
 
 /*
 batchLanguageOverrides turns the batch's shared limits into one override per
-allowed language. A value of zero means "inherit the exercise or platform
-default", so it is left unset rather than stored as a limit.
+allowed language. An absent field inherits the exercise or platform default; an
+explicit 0 on a byte-valued limit means "no limit" and is stored as such, the
+same contract as the per-case limits API.
 */
 func batchLanguageOverrides(
 	ctx context.Context, tx *sql.Tx, exerciseID int64, config BatchTestCaseConfig,
 ) ([]models.LanguageLimits, error) {
-	if config.CPUTimeLimitSeconds <= 0 && config.MemUsageLimitBytes <= 0 &&
-		config.StackLimitBytes <= 0 && config.FileSizeLimitBytes <= 0 {
+	if config.CPUTimeLimitSeconds == nil && config.MemUsageLimitBytes == nil &&
+		config.StackLimitBytes == nil && config.FileSizeLimitBytes == nil {
 		return nil, nil
 	}
 
@@ -919,23 +923,7 @@ func batchLanguageOverrides(
 	if err != nil {
 		return nil, err
 	}
-	override := models.LimitOverrides{}
-	if config.CPUTimeLimitSeconds > 0 {
-		value := config.CPUTimeLimitSeconds
-		override.CPUTimeLimitSeconds = &value
-	}
-	if config.MemUsageLimitBytes > 0 {
-		value := config.MemUsageLimitBytes
-		override.MemUsageLimitBytes = &value
-	}
-	if config.StackLimitBytes > 0 {
-		value := config.StackLimitBytes
-		override.StackLimitBytes = &value
-	}
-	if config.FileSizeLimitBytes > 0 {
-		value := config.FileSizeLimitBytes
-		override.FileSizeLimitBytes = &value
-	}
+	override := batchLimitOverrides(config)
 
 	limits := make([]models.LanguageLimits, 0, len(languages))
 	for _, language := range languages {
@@ -947,6 +935,18 @@ func batchLanguageOverrides(
 		})
 	}
 	return limits, nil
+}
+
+// batchLimitOverrides copies the batch's optional limits into one override set.
+// Nil fields stay nil (inherit); the byte pointers keep an explicit zero, which
+// means "no limit".
+func batchLimitOverrides(config BatchTestCaseConfig) models.LimitOverrides {
+	return models.LimitOverrides{
+		CPUTimeLimitSeconds: config.CPUTimeLimitSeconds,
+		MemUsageLimitBytes:  config.MemUsageLimitBytes,
+		StackLimitBytes:     config.StackLimitBytes,
+		FileSizeLimitBytes:  config.FileSizeLimitBytes,
+	}
 }
 
 func validateBatchConfig(config *BatchTestCaseConfig) error {
@@ -962,11 +962,13 @@ func validateBatchConfig(config *BatchTestCaseConfig) error {
 	if err := validateIOType(config.ExpectedOutputType); err != nil {
 		return err
 	}
-	if config.CPUTimeLimitSeconds < 0 ||
-		config.MemUsageLimitBytes < 0 ||
-		config.StackLimitBytes < 0 ||
-		config.FileSizeLimitBytes < 0 {
-		return fmt.Errorf("%w: limits cannot be negative", ErrInvalidTestCase)
+	if config.CPUTimeLimitSeconds != nil && *config.CPUTimeLimitSeconds <= 0 {
+		return fmt.Errorf("%w: the cpu time limit must be positive", ErrInvalidTestCase)
+	}
+	if (config.MemUsageLimitBytes != nil && *config.MemUsageLimitBytes < 0) ||
+		(config.StackLimitBytes != nil && *config.StackLimitBytes < 0) ||
+		(config.FileSizeLimitBytes != nil && *config.FileSizeLimitBytes < 0) {
+		return fmt.Errorf("%w: byte limits cannot be negative", ErrInvalidTestCase)
 	}
 	return nil
 }

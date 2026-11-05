@@ -129,7 +129,11 @@ func StartLimitAlertNotifier(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				raiseLimitAlerts(ctx)
+				// Only one instance scans the results table at a time; the
+				// cooldown check and the alert insert are not atomic on their own.
+				database.RunWithBackgroundLock(ctx, "limit-alerts", func() {
+					raiseLimitAlerts(ctx)
+				})
 			}
 		}
 	}()
@@ -393,9 +397,11 @@ func sendLimitAlertEmail(
 	windowStart := group.WindowStart.In(time.Local).Format("02/01/2006 15:04")
 	windowEnd := group.WindowEnd.In(time.Local).Format("02/01/2006 15:04")
 
+	// The title is user-provided; a newline would make the mailer reject the
+	// whole message, which would drop the alert's email altogether.
 	subject := fmt.Sprintf(
 		"[RunCodes] Limite de %s pode estar reprovando submissões — %s",
-		limit, title,
+		limit, subjectFragment(title),
 	)
 
 	// Without the cases, a professor cannot tell whether the limit is too tight

@@ -159,10 +159,11 @@ the owner role.
 - **Milestone integrity:** the harness deletes `container.config` before running
   submitted code and prefixes every progress milestone with a nonce, so a
   submission cannot fake `run.done`.
-- **Grading trust:** the judge stops the container before grading, reads expected
-  outputs from a private directory outside the workspace, refuses symlinks, and
-  only reads the monitor report that was renamed into place after the process
-  group was killed.
+- **Grading trust:** the judge streams each case's result as it finishes and
+  stops the container before the final grading pass; it reads expected outputs
+  from a private directory outside the workspace, refuses symlinks, and only
+  reads the monitor report that was renamed into place after the process group
+  was killed.
 
 See [Judge](../services/judge.md) for the full isolation and limits discussion,
 and [Deployment security](../deployment/security.md) for host hardening.

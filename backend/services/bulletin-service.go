@@ -8,6 +8,7 @@ import (
 	"html"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/runcodes-icmc/runcodes/config"
@@ -37,7 +38,82 @@ const (
 	// bulletinEmailTimeout bounds one fan-out. A post to a large class sends one
 	// message per student, so this has to survive a slow relay.
 	bulletinEmailTimeout = 30 * time.Minute
+
+	// bulletinNotifySlots bounds how many notification fan-outs run at once.
+	// Every send is a synchronous SMTP conversation, so an unbounded number of
+	// them can exhaust the process's connections and relay budget.
+	bulletinNotifySlots = 8
+	// bulletinCommentCooldown is the minimum interval between two comment
+	// notification emails from the same author in the same class. The comment is
+	// always stored and visible on the board; only the email is throttled, so one
+	// student cannot flood the staff's inbox.
+	bulletinCommentCooldown = 30 * time.Second
+	// bulletinCooldownEntries bounds the cooldown map. The keys are classroom
+	// scoped, so a busy deployment could otherwise grow it without limit.
+	bulletinCooldownEntries = 512
 )
+
+/*
+bulletinNotifyGate keeps the notification side effects off the request path
+without letting a comment storm create an unbounded number of goroutines or
+emails. A non-empty key is subject to the cooldown; an empty key (a staff post,
+which is already rare) only needs a slot.
+*/
+type bulletinNotifyGate struct {
+	slots chan struct{}
+
+	mu   sync.Mutex
+	last map[string]time.Time
+}
+
+var bulletinNotifications = &bulletinNotifyGate{
+	slots: make(chan struct{}, bulletinNotifySlots),
+	last:  make(map[string]time.Time),
+}
+
+// begin reserves one delivery. It reports false when the cooldown is still
+// active or every slot is busy, in which case the caller skips the email and
+// logs it; the post or comment itself is already stored.
+func (g *bulletinNotifyGate) begin(key string, now time.Time) bool {
+	// The cooldown check, the slot reservation and the timestamp update are one
+	// critical section: two comments from the same author arriving together must
+	// produce one notification, not two.
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if key != "" {
+		if last, ok := g.last[key]; ok && now.Sub(last) < bulletinCommentCooldown {
+			return false
+		}
+		if len(g.last) >= bulletinCooldownEntries {
+			for existing, used := range g.last {
+				if now.Sub(used) >= bulletinCommentCooldown {
+					delete(g.last, existing)
+				}
+			}
+			if len(g.last) >= bulletinCooldownEntries {
+				return false
+			}
+		}
+	}
+
+	select {
+	case g.slots <- struct{}{}:
+	default:
+		return false
+	}
+
+	if key != "" {
+		g.last[key] = now
+	}
+
+	return true
+}
+
+// done releases the slot reserved by begin.
+func (g *bulletinNotifyGate) done() {
+	<-g.slots
+}
 
 /*
 ListOfferingBulletin returns a class's bulletin board: its newest posts, the
@@ -236,7 +312,21 @@ func CreateOfferingPost(
 		slog.Int64("author_id", userID),
 	)
 
-	go publishPostNotification(offeringID, rel.Offering.Name, post)
+	// Capture the hook before the goroutine starts: tests replace this variable,
+	// and the goroutine must run the function the request saw, not whichever one
+	// a later test installs.
+	notifyPost := publishPostNotification
+	if bulletinNotifications.begin("", time.Now()) {
+		go func() {
+			defer bulletinNotifications.done()
+			notifyPost(offeringID, rel.Offering.Name, post)
+		}()
+	} else {
+		slog.WarnContext(ctx, "bulletin post notification skipped: too many deliveries in flight",
+			slog.Int64("offering_id", offeringID),
+			slog.Int64("post_id", post.ID),
+		)
+	}
 
 	return &post, nil
 }
@@ -344,7 +434,24 @@ func CreateBulletinComment(
 		slog.Int64("author_id", userID),
 	)
 
-	go publishCommentNotification(offeringID, rel.Offering.Name, postTitle, comment, parent)
+	// One email per author per short window: a burst of comments is visible on the
+	// board immediately, and the staff is not notified once per line.
+	notifyComment := publishCommentNotification
+	key := fmt.Sprintf("comment:%d:%d", offeringID, userID)
+	if bulletinNotifications.begin(key, time.Now()) {
+		go func() {
+			defer bulletinNotifications.done()
+			notifyComment(
+				offeringID, rel.Offering.Name, postTitle, comment, parent,
+			)
+		}()
+	} else {
+		slog.InfoContext(ctx, "bulletin comment notification suppressed by cooldown or backpressure",
+			slog.Int64("offering_id", offeringID),
+			slog.Int64("post_id", postID),
+			slog.Int64("author_id", userID),
+		)
+	}
 
 	return &comment, nil
 }

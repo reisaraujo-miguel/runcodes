@@ -399,12 +399,15 @@ func (e *Engine) runContainer(
 		timings.Record(model.PhaseStartup, time.Since(startupStartedAt))
 	}
 
-	// The container must be stopped before grading, not after: it runs the
-	// untrusted submission, so while it is alive it can still rewrite the output
-	// files the judge is about to read (and, because the milestones below are
-	// plain log lines, it can claim the execution phase is over and keep running).
-	// stopped tracks whether stopContainer already ran, so the deferred call only
-	// covers the error paths that return before it.
+	// The final grading pass must run after the container is stopped: the
+	// container runs the untrusted submission, so while it is alive it could
+	// still rewrite the output files the judge is about to read (and, because the
+	// milestones below are plain log lines, it can claim the execution phase is
+	// over and keep running). Cases streamed below are graded as their milestone
+	// arrives, while the suite continues, so only the cases that were not
+	// streamed are read in the final pass. `stopped` tracks whether stopContainer
+	// already ran, so the deferred call only covers the error paths that return
+	// before it.
 	var monitor *workspaceMonitor
 	stopped := false
 	defer func() {

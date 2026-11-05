@@ -85,20 +85,6 @@ func boolOrDefault(value *bool, fallback bool) bool {
 	return *value
 }
 
-func intOrDefault(value *int, fallback int) int {
-	if value == nil {
-		return fallback
-	}
-	return *value
-}
-
-func int64OrDefault(value *int64, fallback int64) int64 {
-	if value == nil {
-		return fallback
-	}
-	return *value
-}
-
 /*
 CreateTestCasesBatch handles POST /api/v1/exercises/{id}/test-cases/batch. The
 multipart body carries the archive and the configuration shared by every case in
@@ -190,16 +176,19 @@ func CreateTestCasesBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The limits are passed through as optional values: an absent field inherits
+	// the exercise or platform default, while an explicit 0 is a real override
+	// (no limit) for the byte-valued ones.
 	config := services.BatchTestCaseConfig{
 		InputType:           inputType,
 		ExpectedOutputType:  outputType,
 		ShowInput:           boolOrDefault(showInput, true),
 		ShowExpectedOutput:  boolOrDefault(showOutput, true),
 		ShowUserOutput:      boolOrDefault(showUserOutput, true),
-		CPUTimeLimitSeconds: intOrDefault(cpu, 0),
-		MemUsageLimitBytes:  int64OrDefault(mem, 0),
-		StackLimitBytes:     int64OrDefault(stack, 0),
-		FileSizeLimitBytes:  int64OrDefault(fileSize, 0),
+		CPUTimeLimitSeconds: cpu,
+		MemUsageLimitBytes:  mem,
+		StackLimitBytes:     stack,
+		FileSizeLimitBytes:  fileSize,
 	}
 
 	result, err := services.CreateTestCasesBatch(
