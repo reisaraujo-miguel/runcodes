@@ -238,6 +238,9 @@ func TestFetchTestCasesReadsInlineText(t *testing.T) {
 		t.Fatalf("got %d cases, want 1", len(cases))
 	}
 	tc := cases[0]
+	if tc.Number != 1 {
+		t.Fatalf("Number = %d, want the exercise-local position 1", tc.Number)
+	}
 	if tc.Input != "1 2" || tc.InputType != "text" {
 		t.Fatalf("input = %q/%q", tc.Input, tc.InputType)
 	}

@@ -39,8 +39,12 @@ func baseName(key string) string {
 
 // TestCase mirrors a row of `exercises_test_cases`.
 type TestCase struct {
-	ID                 int64
-	ExerciseID         int64
+	ID         int64
+	ExerciseID int64
+	// Number is the case's 1-based position inside its exercise. IDs are
+	// platform-wide, so the number is what the student sees and what generated
+	// files are named after. Zero means the case was built without one.
+	Number             int
 	InputType          string // "text" | "file"
 	Input              string // inline input for InputType == "text"
 	ExpectedOutputType string // "text" | "file"

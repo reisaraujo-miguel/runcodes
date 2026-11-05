@@ -243,7 +243,16 @@ func (s *Store) FetchTestCases(ctx context.Context, commitID, exerciseID int64) 
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate test cases: %w", err)
-	} else if len(cases) == 0 {
+	}
+
+	// Test-case ids are platform-wide; the student sees each exercise's cases
+	// from 1. Everything user-facing (the results strip and the generated-file
+	// paths) uses this position, while events keep the id for persistence.
+	for i := range cases {
+		cases[i].Number = i + 1
+	}
+
+	if len(cases) == 0 {
 		// The join above drops a case whose snapshot row is missing, and grading
 		// zero cases would report an ungraded run as if the exercise had none. A
 		// commit queued before the snapshot existed (or by a node that predates
