@@ -142,6 +142,19 @@ hour.
 Events are persisted before they are forwarded. The relay is a convenience on
 top of the database, not the source of truth.
 
+## Background jobs
+
+Deadline reminders, the limit-alert aggregation, the acknowledged-alert
+retention and the generated-file retention run inside the API process. The jobs
+that scan or delete shared state take a Postgres advisory lock before each pass
+(`database.RunWithBackgroundLock`), so a second backend replica skips the pass
+instead of duplicating the work.
+
+The alert-email cooldown is the exception: it is an in-process map, so with more
+than one replica an alert of the same code may still generate one email per
+replica inside the cooldown window. The alert row itself is unique per
+`(commit, code)`, so the durable record is never duplicated.
+
 ## Reconciliation
 
 If a judge process dies mid-run, the commit row stays `compiling` or `running`.

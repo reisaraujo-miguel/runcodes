@@ -129,7 +129,11 @@ func StartLimitAlertNotifier(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				raiseLimitAlerts(ctx)
+				// Only one instance scans the results table at a time; the
+				// cooldown check and the alert insert are not atomic on their own.
+				database.RunWithBackgroundLock(ctx, "limit-alerts", func() {
+					raiseLimitAlerts(ctx)
+				})
 			}
 		}
 	}()
