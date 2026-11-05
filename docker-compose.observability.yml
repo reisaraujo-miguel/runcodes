@@ -63,7 +63,7 @@ services:
   # OTLP entry point. Applications send traces, metrics and logs here; it is the
   # only process that talks to Tempo and Loki on the write path.
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.163.2-386
+    image: otel/opentelemetry-collector-contrib:0.164.0
     restart: unless-stopped
     command: ["--config=/etc/otelcol/config.yaml"]
     environment:
@@ -119,7 +119,7 @@ services:
         condition: service_started
 
   alertmanager:
-    image: prom/alertmanager:v0.34.1
+    image: prom/alertmanager:v0.34.2
     restart: unless-stopped
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
@@ -149,7 +149,7 @@ services:
   # Receives Alertmanager webhooks. It is a test fixture, not a notification
   # product; it keeps the last 100 payloads in memory for the smoke test.
   alert-sink:
-    image: python:3.14-slim-trixie
+    image: python:3.15-slim-trixie
     restart: unless-stopped
     command: ["python", "-u", "/app/main.py"]
     user: "65534:65534"
@@ -215,7 +215,7 @@ services:
   # Continuous profiling: Alloy scrapes the Go pprof endpoints and writes to
   # Pyroscope. The pprof listeners are internal-only (:6060, not published).
   pyroscope:
-    image: grafana/pyroscope:2.4.1
+    image: grafana/pyroscope:2.4.2
     restart: unless-stopped
     command:
       - "-config.file=/etc/pyroscope/config.yaml"
@@ -238,7 +238,7 @@ services:
       - runcodes-network
 
   alloy:
-    image: grafana/alloy:v1.21.2
+    image: grafana/alloy:v1.21.3
     restart: unless-stopped
     command:
       - "run"
@@ -265,7 +265,7 @@ services:
         condition: service_started
 
   grafana:
-    image: grafana/grafana:13.2.4
+    image: grafana/grafana:13.3.0
     restart: unless-stopped
     environment:
       TZ: "America/Sao_Paulo"
