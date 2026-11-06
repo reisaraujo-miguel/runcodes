@@ -244,7 +244,9 @@ export function useSubmissionRun(commitId: number | null): SubmissionRunState {
   useEffect(() => {
     if (commitId === null) return;
 
-    let disposed = false;
+    const controller = new AbortController();
+    const { signal } = controller;
+
     let complete = false;
     let attempts = 0;
     let retry: number | undefined;
@@ -252,11 +254,11 @@ export function useSubmissionRun(commitId: number | null): SubmissionRunState {
     receivedOutputSocket.current = false;
 
     const fallBackToFetch = () => {
-      if (!disposed) setOutputFallback(true);
+      if (!signal.aborted) setOutputFallback(true);
     };
 
     const connect = () => {
-      if (disposed) return;
+      if (signal.aborted) return;
       if (typeof WebSocket === "undefined") {
         fallBackToFetch();
         return;
@@ -274,7 +276,7 @@ export function useSubmissionRun(commitId: number | null): SubmissionRunState {
       }
 
       socket.onmessage = (message) => {
-        if (disposed || typeof message.data !== "string") return;
+        if (signal.aborted || typeof message.data !== "string") return;
 
         let parsed: unknown;
         try {
@@ -300,7 +302,7 @@ export function useSubmissionRun(commitId: number | null): SubmissionRunState {
 
       socket.onclose = () => {
         socket = null;
-        if (disposed || complete) return;
+        if (signal.aborted || complete) return;
 
         // A dropped socket is not a reason to poll: retry the push channel a
         // couple of times, then fall back to one read per artifact event.
@@ -316,7 +318,9 @@ export function useSubmissionRun(commitId: number | null): SubmissionRunState {
     connect();
 
     return () => {
-      disposed = true;
+      // `disposed` is local to this effect. The React Compiler analysis inside
+      // oxlint reports the cleanup reassignment as a render-scope mutation.
+      controller.abort();
       if (retry !== undefined) window.clearTimeout(retry);
       socket?.close();
     };
@@ -328,18 +332,19 @@ export function useSubmissionRun(commitId: number | null): SubmissionRunState {
   useEffect(() => {
     if (commitId === null || !outputFallback) return;
 
-    let active = true;
+    const controller = new AbortController();
     getSubmissionOutputFiles(commitId)
       .then((files) => {
         // A socket frame that arrived while this read was in flight is newer.
-        if (active && !receivedOutputSocket.current) setOutputFiles(files);
+        if (!controller.signal.aborted && !receivedOutputSocket.current)
+          setOutputFiles(files);
       })
       .catch(() => {
         // The results themselves are unaffected by a listing failure.
       });
 
     return () => {
-      active = false;
+      controller.abort();
     };
   }, [artifactVersion, commitId, outputFallback]);
 
