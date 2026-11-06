@@ -236,12 +236,17 @@ func (e *Engine) Process(ctx context.Context, commit *model.Commit) {
 	)
 	outcome, runErr := e.runContainer(runCtx, commit, ws, timings, logger)
 
-	// The run stops when the container does. Pending uploads are drained after the
-	// terminal event, so a slow object store never keeps the client waiting for a
-	// status the run already has.
-	if outcome.publisher != nil {
-		defer outcome.publisher.Close()
+	// Drain the artifact uploads before the terminal event. The ready/failed
+	// events then always arrive while the client is still listening, so it never
+	// has to poll the listing for an outcome the stream can no longer deliver.
+	publisher := outcome.publisher
+	closePublisher := func() {
+		if publisher != nil {
+			publisher.Close()
+			publisher = nil
+		}
 	}
+	defer closePublisher()
 	if outcome.missingCollections > 0 {
 		logger.Warn("the runner image did not collect generated files; rebuild the runner images",
 			"image", ws.Language.Image(e.cfg.ImageFormat),
@@ -274,6 +279,7 @@ func (e *Engine) Process(ctx context.Context, commit *model.Commit) {
 		}
 
 		logger.Warn("run failed", "status", status, "error", runErr)
+		closePublisher()
 		e.hub.Error(commit.ID, runErr.Error())
 		e.finish(commit.ID, timings, status, 0, 0,
 			outcome.compilationMessage, outcome.compilationError, startedAt)
@@ -292,6 +298,10 @@ func (e *Engine) Process(ctx context.Context, commit *model.Commit) {
 			string(r.Status), string(r.Reason), r.StatusMsg, r.UserOutput,
 			r.OutputType, r.ErrorMessage)
 	}
+
+	// Every per-case upload finishes before the run's own files and the terminal
+	// event. A late ready event would otherwise be dropped by the hub.
+	closePublisher()
 
 	// Publish whatever the submission wrote straight into the runner's output
 	// directory. The per-case files were already uploaded as their cases

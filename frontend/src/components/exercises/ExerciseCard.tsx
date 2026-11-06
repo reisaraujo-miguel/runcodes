@@ -79,19 +79,19 @@ export function ExerciseCard({ exercise }: { exercise: UserExercise }) {
               {progress.label}
             </Badge>
           </div>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-sm text-muted-foreground">
             {exercise.offering_name}
           </p>
           {exercise.description ? (
-            <p className="text-muted-foreground line-clamp-2 text-sm">
+            <p className="line-clamp-2 text-sm text-muted-foreground">
               {exercise.description}
             </p>
           ) : null}
-          <p className="text-muted-foreground text-xs">
+          <p className="text-xs text-muted-foreground">
             Prazo: {formatDateTime(exercise.deadline)}
           </p>
           {exercise.last_submission_at ? (
-            <p className="text-muted-foreground text-xs">
+            <p className="text-xs text-muted-foreground">
               Última entrega em {formatDateTime(exercise.last_submission_at)}
             </p>
           ) : null}

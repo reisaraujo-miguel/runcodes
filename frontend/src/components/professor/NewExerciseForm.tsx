@@ -134,7 +134,7 @@ export function NewExerciseForm({
               onTimeChange={setDeadlineTime}
               endOfDay={deadlineEndOfDay}
               onEndOfDayChange={setDeadlineEndOfDay}
-              className="md:border-border md:border-l md:pl-6"
+              className="md:border-l md:border-border md:pl-6"
               required
             />
           </div>
@@ -159,7 +159,7 @@ export function NewExerciseForm({
           <div className="space-y-2">
             <div>
               <p className="text-sm font-medium">Instruções do exercício</p>
-              <p className="text-muted-foreground text-xs">
+              <p className="text-xs text-muted-foreground">
                 O enunciado que os alunos veem. Aceita Markdown e será
                 renderizado com essa formatação.
               </p>

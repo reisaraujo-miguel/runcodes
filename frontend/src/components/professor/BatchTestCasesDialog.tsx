@@ -153,7 +153,7 @@ export function BatchTestCasesDialog({
               }}
               required
             />
-            <p className="text-muted-foreground text-xs">
+            <p className="text-xs text-muted-foreground">
               Exemplo: <code>caso1.in</code>, <code>caso1.out</code>,{" "}
               <code>caso2/caso2.in</code>, <code>caso2/caso2.out</code>,{" "}
               <code>caso2/ajuda.txt</code>.
@@ -246,7 +246,7 @@ export function BatchTestCasesDialog({
               />
             </div>
           </div>
-          <p className="text-muted-foreground text-xs">
+          <p className="text-xs text-muted-foreground">
             Deixe um limite vazio para herdar o padrão do exercício ou da
             plataforma. Em memória, pilha e tamanho de arquivo, 0 significa sem
             limite; o tempo de CPU, quando informado, precisa ser positivo.

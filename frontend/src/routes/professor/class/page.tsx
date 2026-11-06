@@ -86,7 +86,7 @@ function EnrollmentCode({ code }: { code: string }) {
 
   if (!code) {
     return (
-      <span className="text-muted-foreground text-sm">
+      <span className="text-sm text-muted-foreground">
         Nenhum código gerado ainda.
       </span>
     );
@@ -106,7 +106,7 @@ function EnrollmentCode({ code }: { code: string }) {
 
   return (
     <span className="flex flex-wrap items-center gap-2">
-      <code className="bg-muted rounded-md px-2 py-1 font-mono text-base tracking-widest">
+      <code className="rounded-md bg-muted px-2 py-1 font-mono text-base tracking-widest">
         {code}
       </code>
       <Button
@@ -334,11 +334,11 @@ export function ClassPage() {
           </dl>
 
           {isOwner ? (
-            <div className="border-destructive/30 bg-destructive/5 rounded-xl border border-dashed p-4">
+            <div className="rounded-xl border border-dashed border-destructive/30 bg-destructive/5 p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-1">
                   <p className="font-medium">Excluir turma</p>
-                  <p className="text-muted-foreground text-sm">
+                  <p className="text-sm text-muted-foreground">
                     Excluir a turma apaga também os exercícios, os casos de
                     teste e as submissões dos alunos. Esta ação não pode ser
                     desfeita.
@@ -363,7 +363,7 @@ export function ClassPage() {
               ) : null}
             </div>
           ) : (
-            <p className="text-muted-foreground text-sm">
+            <p className="text-sm text-muted-foreground">
               Apenas o professor responsável pela turma pode editá-la ou
               excluí-la.
             </p>
@@ -444,15 +444,15 @@ export function ClassPage() {
                         {exercise.title}
                       </p>
                       {exercise.description ? (
-                        <p className="text-muted-foreground line-clamp-1 text-xs">
+                        <p className="line-clamp-1 text-xs text-muted-foreground">
                           {exercise.description}
                         </p>
                       ) : null}
                     </TableCell>
-                    <TableCell className="text-muted-foreground whitespace-nowrap text-xs">
+                    <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
                       {formatDateTime(exercise.open_date)}
                     </TableCell>
-                    <TableCell className="text-muted-foreground whitespace-nowrap text-xs">
+                    <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
                       {formatDateTime(exercise.deadline)}
                     </TableCell>
                     <TableCell>

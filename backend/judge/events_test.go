@@ -50,7 +50,7 @@ func TestPersistEventGuards(t *testing.T) {
 			event: Event{Type: "status", CommitID: 1, Status: "completed"},
 		},
 		{
-			name:  "artifact is not persisted",
+			name:  "run-level artifact needs no row",
 			event: Event{Type: "artifact", CommitID: 1, Kind: "logs", URL: "http://x"},
 		},
 		{
@@ -111,6 +111,42 @@ func TestPersistEventGuards(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+func TestPersistArtifact(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	previous := database.DB
+	database.DB = db
+	t.Cleanup(func() {
+		database.DB = previous
+		db.Close()
+	})
+
+	limit := int64(256 << 20)
+	mock.ExpectExec(`INSERT INTO commit_test_case_artifacts`).
+		WithArgs(
+			int64(7), int64(18), "failed",
+			"commit_artifact_budget_exceeded", limit,
+		).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	err = PersistEvent(context.Background(), &Event{
+		Type:          "artifact",
+		CommitID:      7,
+		TestCaseID:    18,
+		ArtifactState: "failed",
+		Reason:        "commit_artifact_budget_exceeded",
+		LimitBytes:    &limit,
+	})
+	if err != nil {
+		t.Fatalf("PersistEvent: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -24,7 +24,7 @@ export function List({
     <div
       role="list"
       aria-label={ariaLabel}
-      className={cn("divide-border divide-y border-t", className)}
+      className={cn("divide-y divide-border border-t", className)}
     >
       {children}
     </div>
@@ -56,14 +56,14 @@ export function ListRow({
       <div className="flex min-w-0 items-start gap-3">
         {Icon ? (
           <Icon
-            className="text-muted-foreground mt-0.5 size-4 shrink-0"
+            className="mt-0.5 size-4 shrink-0 text-muted-foreground"
             aria-hidden
           />
         ) : null}
         <div className="min-w-0 space-y-0.5">
           <p className="text-sm font-medium">{title}</p>
           {description ? (
-            <p className="text-muted-foreground text-sm">{description}</p>
+            <p className="text-sm text-muted-foreground">{description}</p>
           ) : null}
         </div>
       </div>

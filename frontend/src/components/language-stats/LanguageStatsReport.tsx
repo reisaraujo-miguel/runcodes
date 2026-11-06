@@ -228,7 +228,7 @@ export function LanguageStatsReport({
         </Section>
       </div>
 
-      <p className="text-muted-foreground text-xs">
+      <p className="text-xs text-muted-foreground">
         Relatório calculado em {formatDateTime(data.generated_at)}. O resultado
         fica em cache por até um minuto; envios novos podem levar até um minuto
         para aparecer.

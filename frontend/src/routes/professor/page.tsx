@@ -43,13 +43,13 @@ function ClassCard({ offering }: { offering: ManagedOffering }) {
             </Badge>
           </div>
           {offering.description ? (
-            <p className="text-muted-foreground line-clamp-2 text-sm">
+            <p className="line-clamp-2 text-sm text-muted-foreground">
               {offering.description}
             </p>
           ) : null}
         </div>
 
-        <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1.5">
             <UsersIcon className="size-3.5" aria-hidden />
             {countLabel(offering.member_count, "aluno", "alunos")}
@@ -72,15 +72,15 @@ function ClassCard({ offering }: { offering: ManagedOffering }) {
           </Badge>
         </div>
 
-        <div className="bg-muted/50 flex items-center justify-between gap-2 rounded-lg px-3 py-2">
+        <div className="flex items-center justify-between gap-2 rounded-lg bg-muted/50 px-3 py-2">
           <div className="min-w-0">
-            <p className="text-muted-foreground text-xs">Código de matrícula</p>
+            <p className="text-xs text-muted-foreground">Código de matrícula</p>
             <code className="font-mono text-sm tracking-widest">
               {offering.enrollment_code}
             </code>
           </div>
           <TicketIcon
-            className="text-muted-foreground size-4 shrink-0"
+            className="size-4 shrink-0 text-muted-foreground"
             aria-hidden
           />
         </div>

@@ -120,9 +120,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // the first paint is never an empty page.
   if (loading) {
     return (
-      <div className="bg-background flex min-h-svh items-center justify-center">
+      <div className="flex min-h-svh items-center justify-center bg-background">
         <Spinner
-          className="text-muted-foreground size-6"
+          className="size-6 text-muted-foreground"
           label="Verificando a sessão"
         />
       </div>

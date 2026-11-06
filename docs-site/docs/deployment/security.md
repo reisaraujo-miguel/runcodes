@@ -56,8 +56,9 @@ Caddy adds a Content Security Policy, `X-Content-Type-Options: nosniff`,
 Permissions Policy to every response. Same-origin framing is retained so the
 statement PDF can render in its iframe; cross-origin framing is refused. The
 policy allows inline styles and the small inline theme script the SPA needs. Its
-`connect-src` includes the default local browser collector; if you build the
-frontend with a different external OTLP origin, add that origin to the Caddy
+`connect-src` includes this host's `ws://` and `wss://` origins for the
+generated-files WebSocket and the default local browser collector; if you build
+the frontend with a different external OTLP origin, add that origin to the Caddy
 policy as well.
 
 ### Authorization

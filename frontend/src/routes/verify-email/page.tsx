@@ -80,7 +80,7 @@ export function VerifyEmailPage() {
         </CardHeader>
         <CardContent>
           {state.status === "verifying" ? (
-            <div className="text-muted-foreground flex items-center gap-3 text-sm">
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
               <Spinner className="size-5" label="Verificando o seu email" />
               Verificando o seu email…
             </div>

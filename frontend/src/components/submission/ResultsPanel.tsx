@@ -12,6 +12,7 @@ import type { TestCase } from "@/lib/api/exercises";
 import type {
   CommitStatus,
   SubmissionArtifact,
+  SubmissionOutputFile,
   SubmissionStatusEvent,
 } from "@/lib/api/submissions";
 import { formatBytes, formatCpuTime } from "@/lib/format";
@@ -28,6 +29,7 @@ import type {
 import { testCaseNumbers } from "@/lib/test-case-numbering";
 import { cn } from "@/lib/utils";
 
+import type { ArtifactStatus } from "@/lib/artifact-progress";
 import {
   Artifacts,
   CaseChip,
@@ -52,6 +54,8 @@ interface CaseEntry {
 
 export interface ResultsPanelProps {
   commitId: number | null;
+  /** 1-based submission position for this exercise; null until it is known. */
+  submissionNumber?: number | null;
   status: CommitStatus;
   history: SubmissionStatusEvent[];
   compilation: CompilationInfo | null;
@@ -59,8 +63,10 @@ export interface ResultsPanelProps {
   final: FinalSummary | null;
   streamError: string | null;
   artifacts: SubmissionArtifact[];
-  /** Changes when the judge publishes more generated files; see Artifacts. */
-  artifactVersion?: number;
+  /** Upload state of each case that generated files. */
+  artifactStatuses?: ReadonlyMap<number, ArtifactStatus>;
+  /** Generated files pushed by the output-files WebSocket. */
+  outputFiles?: SubmissionOutputFile[];
   /** Cases whose generated files are still being uploaded. */
   pendingUploads?: number[];
   testCases: TestCase[];
@@ -87,6 +93,7 @@ export interface ResultsPanelProps {
  */
 export function ResultsPanel({
   commitId,
+  submissionNumber = null,
   status,
   history,
   compilation,
@@ -94,7 +101,8 @@ export function ResultsPanel({
   final,
   streamError,
   artifacts,
-  artifactVersion = 0,
+  artifactStatuses = new Map(),
+  outputFiles = [],
   pendingUploads = [],
   testCases,
   testCasesLoading,
@@ -223,10 +231,27 @@ export function ResultsPanel({
   );
   const showResources = hasSubmission && results.length > 0;
 
+  const activeArtifactStatus =
+    activeCase === null ? undefined : artifactStatuses.get(activeCase.id);
+  const activeArtifactPending =
+    activeCase !== null &&
+    (activeArtifactStatus?.state === "pending" ||
+      pendingUploads.includes(activeCase.id));
+  const showArtifacts =
+    activeCase !== null &&
+    (artifacts.length > 0 ||
+      outputFiles.length > 0 ||
+      activeArtifactStatus !== undefined ||
+      activeArtifactPending);
+
+  const submissionLabel =
+    submissionNumber === null
+      ? "Submissão"
+      : `Submissão #${String(submissionNumber)}`;
   const liveMessage =
     commitId === null
       ? ""
-      : `Submissão ${String(commitId)}: ${overall.label}.${
+      : `${submissionLabel}: ${overall.label}.${
           final
             ? ` Nota ${final.score.toFixed(2)}, ${String(final.numCorrectCases)} casos corretos.`
             : ""
@@ -237,21 +262,21 @@ export function ResultsPanel({
       aria-busy={pending}
       aria-labelledby="results-panel-title"
       className={cn(
-        "bg-card flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border",
+        "flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border bg-card",
         className,
       )}
     >
       <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
         <h2
           id="results-panel-title"
-          className="text-foreground text-xs font-semibold"
+          className="text-xs font-semibold text-foreground"
         >
           Resultados
         </h2>
         <div className="ml-auto flex items-center gap-1">
           {hasSubmission ? (
-            <span className="text-muted-foreground hidden text-[11px] tabular-nums sm:inline">
-              Submissão #{String(commitId)}
+            <span className="hidden text-[11px] text-muted-foreground tabular-nums sm:inline">
+              {submissionLabel}
             </span>
           ) : null}
           {onToggleCollapsed ? (
@@ -318,7 +343,7 @@ export function ResultsPanel({
               correct={correctCases}
             />
           ) : (
-            <span className="text-muted-foreground shrink-0 text-[11px] tabular-nums">
+            <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
               {String(totalCases)} {totalCases === 1 ? "caso" : "casos"}
             </span>
           )}
@@ -350,11 +375,11 @@ export function ResultsPanel({
           ) : null}
 
           {historyError ? (
-            <p className="text-destructive text-xs">{historyError}</p>
+            <p className="text-xs text-destructive">{historyError}</p>
           ) : null}
 
           {testCasesError ? (
-            <p className="text-destructive text-xs">
+            <p className="text-xs text-destructive">
               Não foi possível carregar os casos de teste: {testCasesError}
             </p>
           ) : null}
@@ -374,12 +399,13 @@ export function ResultsPanel({
             <NoCasesState />
           )}
 
-          {commitId !== null && activeCase && artifacts.length > 0 ? (
+          {commitId !== null && activeCase && showArtifacts ? (
             <Artifacts
               commitId={commitId}
-              testCaseId={activeCase.id}
-              pending={pendingUploads.includes(activeCase.id)}
-              refreshKey={`${String(results.length)}:${String(artifactVersion)}`}
+              testCaseNumber={activeCase.number ?? activeCase.id}
+              files={outputFiles}
+              pending={activeArtifactPending}
+              status={activeArtifactStatus}
             />
           ) : null}
 
@@ -395,7 +421,7 @@ export function ResultsPanel({
         {actionError ? (
           <p
             aria-live="polite"
-            className="text-destructive px-2 pt-1.5 text-xs"
+            className="px-2 pt-1.5 text-xs text-destructive"
           >
             {actionError}
           </p>
@@ -404,19 +430,19 @@ export function ResultsPanel({
           <div className="flex min-w-0 items-center gap-2">
             {pending ? (
               <Loader2Icon
-                className="text-muted-foreground size-3.5 animate-spin"
+                className="size-3.5 animate-spin text-muted-foreground"
                 aria-hidden
               />
             ) : null}
             {hasSubmission ? (
               <StatusBadge value={overall} />
             ) : historyLoading ? (
-              <span className="text-muted-foreground flex items-center gap-1.5 text-[11px]">
+              <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                 <Loader2Icon className="size-3 animate-spin" aria-hidden />
                 Verificando submissões…
               </span>
             ) : (
-              <span className="text-muted-foreground text-[11px]">
+              <span className="text-[11px] text-muted-foreground">
                 {historyError
                   ? "Submissões anteriores indisponíveis"
                   : "Nenhum envio ainda"}
@@ -424,15 +450,15 @@ export function ResultsPanel({
             )}
             {final ? (
               <span className="flex items-baseline gap-1">
-                <span className="text-muted-foreground text-[11px]">Nota</span>
-                <span className="text-foreground text-xs font-semibold tabular-nums">
+                <span className="text-[11px] text-muted-foreground">Nota</span>
+                <span className="text-xs font-semibold text-foreground tabular-nums">
                   {final.score.toFixed(2)}
                 </span>
               </span>
             ) : null}
             {showResources ? (
               <span
-                className="text-muted-foreground hidden items-center gap-2 text-[11px] tabular-nums sm:flex"
+                className="hidden items-center gap-2 text-[11px] text-muted-foreground tabular-nums sm:flex"
                 title={`CPU total ${formatCpuTime(totalCpuTime)}; maior memória entre os casos ${formatBytes(peakMemory)}`}
               >
                 <span>CPU {formatCpuTime(totalCpuTime)}</span>

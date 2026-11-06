@@ -71,18 +71,18 @@ export function ClassExerciseCard({
           </div>
 
           {exercise.description ? (
-            <p className="text-muted-foreground line-clamp-2 text-sm">
+            <p className="line-clamp-2 text-sm text-muted-foreground">
               {exercise.description}
             </p>
           ) : null}
 
-          <p className="text-muted-foreground text-xs">
+          <p className="text-xs text-muted-foreground">
             Abertura: {formatDateTime(exercise.open_date)}
             {" · "}
             Prazo: {formatDateTime(exercise.deadline)}
           </p>
           {exercise.last_submission_at ? (
-            <p className="text-muted-foreground text-xs">
+            <p className="text-xs text-muted-foreground">
               Última entrega em {formatDateTime(exercise.last_submission_at)}
             </p>
           ) : null}
@@ -90,7 +90,7 @@ export function ClassExerciseCard({
 
         <div className="flex shrink-0 items-center gap-3 sm:flex-col sm:items-end">
           <div className="text-right">
-            <p className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
+            <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
               Melhor nota
             </p>
             <p className="text-xl leading-tight font-semibold tabular-nums">
@@ -98,7 +98,7 @@ export function ClassExerciseCard({
                 ? exercise.best_score.toFixed(2)
                 : "—"}
             </p>
-            <p className="text-muted-foreground text-[11px]">{scoreHint}</p>
+            <p className="text-[11px] text-muted-foreground">{scoreHint}</p>
           </div>
 
           <Button

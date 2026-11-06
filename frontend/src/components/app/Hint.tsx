@@ -23,7 +23,7 @@ export function Hint({
 }) {
   return (
     <details className={cn("group text-sm", className)}>
-      <summary className="text-muted-foreground hover:text-foreground flex w-fit cursor-pointer list-none items-center gap-1.5 select-none [&::-webkit-details-marker]:hidden">
+      <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 text-muted-foreground select-none hover:text-foreground [&::-webkit-details-marker]:hidden">
         <InfoIcon className="size-4 shrink-0" aria-hidden />
         <span>{summary}</span>
         <ChevronDownIcon
@@ -31,7 +31,7 @@ export function Hint({
           aria-hidden
         />
       </summary>
-      <div className="text-muted-foreground mt-2 max-w-3xl space-y-2 leading-relaxed">
+      <div className="mt-2 max-w-3xl space-y-2 leading-relaxed text-muted-foreground">
         {children}
       </div>
     </details>

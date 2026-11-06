@@ -87,7 +87,7 @@ export function ExerciseLimitsPanel({ exerciseId }: { exerciseId: number }) {
             onSaved={limits.reload}
           />
         ) : (
-          <p className="text-muted-foreground text-sm">Carregando…</p>
+          <p className="text-sm text-muted-foreground">Carregando…</p>
         )}
       </div>
     </Section>
@@ -158,7 +158,7 @@ function ExerciseLimitsEditor({
       ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-muted-foreground text-xs">
+        <p className="text-xs text-muted-foreground">
           Campos vazios usam o padrão da plataforma, mostrado como placeholder.
         </p>
         <Button size="sm" disabled={pending} onClick={handleSave}>

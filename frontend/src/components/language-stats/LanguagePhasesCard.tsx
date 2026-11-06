@@ -109,7 +109,7 @@ export function LanguagePhasesCard({
                 <TableCell>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{language.name}</span>
-                    <code className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-mono text-xs">
+                    <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
                       .{language.extension}
                     </code>
                   </div>
@@ -154,7 +154,7 @@ export function LanguagePhasesCard({
         </TableBody>
       </Table>
 
-      <p className="text-muted-foreground text-xs leading-relaxed">
+      <p className="text-xs leading-relaxed text-muted-foreground">
         A porcentagem é a cobertura: execuções com a fase medida sobre as
         execuções classificadas no escopo. Submissões antigas não têm fases e
         aparecem como “sem dados”. O tempo de compilação vem do monitor, não da
@@ -175,14 +175,14 @@ function PhaseCell({
   detail?: string;
 }) {
   if (!applies) {
-    return <span className="text-muted-foreground text-xs">não se aplica</span>;
+    return <span className="text-xs text-muted-foreground">não se aplica</span>;
   }
   if (stat?.median_seconds == null) {
     return (
       <div className="space-y-0.5">
-        <p className="text-muted-foreground text-xs">sem dados</p>
+        <p className="text-xs text-muted-foreground">sem dados</p>
         {detail ? (
-          <p className="text-muted-foreground text-[11px]">{detail}</p>
+          <p className="text-[11px] text-muted-foreground">{detail}</p>
         ) : null}
       </div>
     );
@@ -193,11 +193,11 @@ function PhaseCell({
       <p className="font-medium tabular-nums">
         {formatDuration(stat.median_seconds)}
       </p>
-      <p className="text-muted-foreground text-[11px] tabular-nums">
+      <p className="text-[11px] text-muted-foreground tabular-nums">
         {formatCount(stat.samples)} amostras · {formatPercent(stat.coverage)}
       </p>
       {detail ? (
-        <p className="text-muted-foreground text-[11px]">{detail}</p>
+        <p className="text-[11px] text-muted-foreground">{detail}</p>
       ) : null}
     </div>
   );

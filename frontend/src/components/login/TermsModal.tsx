@@ -35,7 +35,7 @@ export function TermsModal({ isOpen, onClose }: TermsModalProps) {
         if (!open) onClose();
       }}
     >
-      <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="text-2xl">Termos de Uso</DialogTitle>
           <DialogDescription>
@@ -43,14 +43,14 @@ export function TermsModal({ isOpen, onClose }: TermsModalProps) {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3 text-sm [&_h3]:mt-4 [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_a]:underline">
+        <div className="space-y-3 text-sm [&_a]:underline [&_h3]:mt-4 [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5">
           <h3 className="font-bold">1. Aceitação dos Termos</h3>
           <p>
             Ao acessar e utilizar o RunCodes, você concorda com estes Termos de
             Uso.
           </p>
 
-          <h3 className="font-bold pt-4">2. Registros de Visitação</h3>
+          <h3 className="pt-4 font-bold">2. Registros de Visitação</h3>
           <p>
             Para fornecer serviços melhores a todos os nossos usuários, quando
             há um acesso ao site RunCodes, são registradas as seguintes
@@ -62,7 +62,7 @@ export function TermsModal({ isOpen, onClose }: TermsModalProps) {
             usuais na visitação de diversos sites da Internet.
           </p>
 
-          <h3 className="font-bold pt-4">
+          <h3 className="pt-4 font-bold">
             3. Do teor dos dados e programas submetidos:
           </h3>
           <p>
@@ -77,14 +77,14 @@ export function TermsModal({ isOpen, onClose }: TermsModalProps) {
             RunCodes.
           </p>
 
-          <h3 className="font-bold pt-4">4. Sobre correção automática:</h3>
+          <h3 className="pt-4 font-bold">4. Sobre correção automática:</h3>
           <p>
             Ao se tornar um usuário do RunCodes você autoriza e concorda com a
             correção automática de qualquer programa ou dado submetido ao nosso
             sistema.
           </p>
 
-          <h3 className="font-bold pt-4">5. Sobre verificação de plágio:</h3>
+          <h3 className="pt-4 font-bold">5. Sobre verificação de plágio:</h3>
           <p>
             Ao se tornar um usuário do RunCodes você autoriza e concorda com a
             verificação de plágio, isto é, comparação de seus programas ou
@@ -94,7 +94,7 @@ export function TermsModal({ isOpen, onClose }: TermsModalProps) {
             submissões de terceiros.
           </p>
 
-          <h3 className="font-bold pt-4">6. Política de cookies:</h3>
+          <h3 className="pt-4 font-bold">6. Política de cookies:</h3>
           <p>
             O site RunCodes utiliza cookies. Esses cookies são utilizados para
             distinguir os usuários do site. A utilização desses cookies permite
@@ -106,14 +106,14 @@ export function TermsModal({ isOpen, onClose }: TermsModalProps) {
             de privacidade do PiWik e Google Analytics.
           </p>
 
-          <h3 className="font-bold pt-4">7. Segurança das informações:</h3>
+          <h3 className="pt-4 font-bold">7. Segurança das informações:</h3>
           <p>
             Utilizamos criptografia SSL para proteger o RunCodes e nossos
             usuários com o objetivo de evitar acessos, alterações e destruição
             de informações que detemos.
           </p>
 
-          <h3 className="font-bold pt-4">8. Alterações:</h3>
+          <h3 className="pt-4 font-bold">8. Alterações:</h3>
           <p>
             Nossa Política de Privacidade pode ser alterada de tempos em tempos.
             Nós não reduziremos seus direitos nesta Política de Privacidade sem
@@ -125,37 +125,37 @@ export function TermsModal({ isOpen, onClose }: TermsModalProps) {
             desta Política de Privacidade arquivadas para você visualizá-las.
           </p>
 
-          <h3 className="font-bold pt-4">9. Questões legais:</h3>
+          <h3 className="pt-4 font-bold">9. Questões legais:</h3>
           <p>
             Para dirimir eventuais conflitos relativos a esta política, as
             partes elegem o fórum da comarcar de São Carlos, São Paulo, Brasil e
             excluem qualquer outro por mais privilegiado que seja.
           </p>
 
-          <h3 className="font-bold pt-4">10. Conduta do Usuário</h3>
+          <h3 className="pt-4 font-bold">10. Conduta do Usuário</h3>
           <p>Você concorda em não:</p>
-          <ul className="list-disc list-inside">
+          <ul className="list-inside list-disc">
             <li>Tentar burlar o sistema de correção automática</li>
             <li>Compartilhar soluções que violem a política acadêmica</li>
             <li>Utilizar o serviço para atividades ilegais ou maliciosas</li>
             <li>Interferir no funcionamento normal do sistema</li>
           </ul>
 
-          <h3 className="font-bold pt-4">11. Propriedade Intelectual</h3>
+          <h3 className="pt-4 font-bold">11. Propriedade Intelectual</h3>
           <p>
             O código fonte submetido permanece de propriedade do usuário, mas o
             RunCodes tem o direito de armazenar e processar as submissões para
             fins de correção e análise.
           </p>
 
-          <h3 className="font-bold pt-4">12. Limitação de Responsabilidade</h3>
+          <h3 className="pt-4 font-bold">12. Limitação de Responsabilidade</h3>
           <p>
             O RunCodes não se responsabiliza por perdas ou danos resultantes do
             uso do serviço. O serviço é fornecido "como está" sem garantias de
             qualquer tipo.
           </p>
 
-          <h3 className="font-bold pt-4">13. Contato</h3>
+          <h3 className="pt-4 font-bold">13. Contato</h3>
           <p>
             Em caso de dúvidas sobre estes termos, entre em contato através do
             email{" "}

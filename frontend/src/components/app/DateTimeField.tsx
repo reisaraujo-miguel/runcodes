@@ -73,7 +73,7 @@ export function DateTimeField({
 
       {onEndOfDayChange ? (
         <Label
-          className="text-muted-foreground gap-2 text-xs font-normal"
+          className="gap-2 text-xs font-normal text-muted-foreground"
           htmlFor={`${id}-end-of-day`}
         >
           <Checkbox
@@ -89,7 +89,7 @@ export function DateTimeField({
       ) : null}
 
       {description ? (
-        <p className="text-muted-foreground text-xs">{description}</p>
+        <p className="text-xs text-muted-foreground">{description}</p>
       ) : null}
     </div>
   );

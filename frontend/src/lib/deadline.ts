@@ -43,7 +43,9 @@ export function deadlineInfo(deadline: string, now = Date.now()): DeadlineInfo {
   }
 
   return {
-    label: new Date(time).toLocaleDateString(undefined, { dateStyle: "medium" }),
+    label: new Date(time).toLocaleDateString(undefined, {
+      dateStyle: "medium",
+    }),
     tone: "neutral",
     expired: false,
   };

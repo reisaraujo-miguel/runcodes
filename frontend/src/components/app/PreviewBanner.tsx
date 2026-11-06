@@ -21,10 +21,10 @@ export function PreviewBanner() {
   return (
     <div
       role="status"
-      className="border-info/40 bg-info/10 mb-6 flex flex-col gap-3 rounded-xl border p-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+      className="mb-6 flex flex-col gap-3 rounded-xl border border-info/40 bg-info/10 p-3 text-sm sm:flex-row sm:items-center sm:justify-between"
     >
       <p className="flex items-start gap-2">
-        <EyeIcon className="text-info mt-0.5 size-4 shrink-0" aria-hidden />
+        <EyeIcon className="mt-0.5 size-4 shrink-0 text-info" aria-hidden />
         <span>
           Você está visualizando a plataforma como{" "}
           <strong className="font-medium">
@@ -34,7 +34,7 @@ export function PreviewBanner() {
           administrativo não pode ser acessado enquanto a pré-visualização
           estiver ativa.
           {error ? (
-            <span className="text-destructive mt-1 block">{error}</span>
+            <span className="mt-1 block text-destructive">{error}</span>
           ) : null}
         </span>
       </p>

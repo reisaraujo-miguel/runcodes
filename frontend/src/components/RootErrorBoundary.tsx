@@ -42,7 +42,7 @@ function ContactEmailLink({ email }: { email: string }) {
   return (
     <a
       href={`mailto:${email}`}
-      className="text-primary font-medium underline underline-offset-4"
+      className="font-medium text-primary underline underline-offset-4"
     >
       {email}
     </a>
@@ -75,7 +75,7 @@ export function RootErrorBoundary() {
           </CardHeader>
           <CardContent className="space-y-4">
             {contactEmail ? (
-              <p className="text-muted-foreground text-sm">
+              <p className="text-sm text-muted-foreground">
                 Se você chegou aqui por um link que deveria funcionar, avise a
                 equipe pelo email <ContactEmailLink email={contactEmail} />.
               </p>
@@ -138,13 +138,13 @@ export function RootErrorBoundary() {
             <summary className="cursor-pointer font-medium select-none">
               Detalhes técnicos
             </summary>
-            <pre className="mt-3 max-h-64 overflow-auto font-mono text-muted-foreground whitespace-pre-wrap">
+            <pre className="mt-3 max-h-64 overflow-auto font-mono whitespace-pre-wrap text-muted-foreground">
               {stack}
             </pre>
           </details>
 
           {contactEmail ? (
-            <p className="text-muted-foreground text-sm">
+            <p className="text-sm text-muted-foreground">
               Se o problema persistir, copie as informações do erro e envie para{" "}
               <ContactEmailLink email={contactEmail} />.
             </p>

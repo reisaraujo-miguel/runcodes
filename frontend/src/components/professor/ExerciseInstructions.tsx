@@ -72,7 +72,7 @@ export function ExerciseInstructions({
             <FileTextIcon className="size-4 text-primary" aria-hidden />
             Instruções do exercício
           </h2>
-          <p className="text-muted-foreground mt-1 text-sm">
+          <p className="mt-1 text-sm text-muted-foreground">
             É o enunciado que o aluno vê ao abrir o exercício. Aceita Markdown —
             títulos, listas, ênfases, links e blocos de código — e será
             renderizado com essa formatação.

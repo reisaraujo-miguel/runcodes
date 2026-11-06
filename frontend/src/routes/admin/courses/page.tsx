@@ -167,11 +167,11 @@ export function AdminCoursesPage() {
                       <TableCell>
                         <p className="font-medium">{offering.name}</p>
                         {offering.description ? (
-                          <p className="text-muted-foreground text-xs">
+                          <p className="text-xs text-muted-foreground">
                             {offering.description}
                           </p>
                         ) : null}
-                        <p className="text-muted-foreground text-xs">
+                        <p className="text-xs text-muted-foreground">
                           #{offering.id}
                         </p>
                       </TableCell>
@@ -183,7 +183,7 @@ export function AdminCoursesPage() {
                         ) : (
                           <>
                             <p>{offering.owner_name || "—"}</p>
-                            <p className="text-muted-foreground text-xs">
+                            <p className="text-xs text-muted-foreground">
                               {offering.owner_email || "—"}
                             </p>
                           </>
@@ -256,7 +256,7 @@ export function AdminCoursesPage() {
               </Table>
 
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-muted-foreground text-sm">
+                <p className="text-sm text-muted-foreground">
                   {list.items.length} turma(s) exibida(s).
                 </p>
                 {list.hasMore ? (

@@ -188,7 +188,7 @@ export function OfferingPage() {
               >
                 Exercícios
               </h2>
-              <p className="text-muted-foreground text-sm">
+              <p className="text-sm text-muted-foreground">
                 Acompanhe seus prazos, entregas e notas nesta turma.
               </p>
             </div>
@@ -218,7 +218,7 @@ export function OfferingPage() {
 
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p
-                    className="text-muted-foreground text-xs"
+                    className="text-xs text-muted-foreground"
                     aria-live="polite"
                   >
                     {visible.length} de {exercises.length} exercício
@@ -227,7 +227,7 @@ export function OfferingPage() {
                   <div className="flex items-center gap-2">
                     <Label
                       htmlFor="class-exercise-sort"
-                      className="text-muted-foreground text-xs whitespace-nowrap"
+                      className="text-xs whitespace-nowrap text-muted-foreground"
                     >
                       Ordenar por
                     </Label>
@@ -325,10 +325,10 @@ export function OfferingPage() {
                     aria-valuemin={0}
                     aria-valuemax={100}
                     aria-valuenow={progress}
-                    className="bg-muted h-2 overflow-hidden rounded-full"
+                    className="h-2 overflow-hidden rounded-full bg-muted"
                   >
                     <div
-                      className="bg-primary h-full rounded-full"
+                      className="h-full rounded-full bg-primary"
                       style={{ width: `${String(progress)}%` }}
                     />
                   </div>

@@ -148,7 +148,7 @@ function ProfileFields({
               autoComplete="current-password"
               required
             />
-            <p className="text-muted-foreground text-xs">
+            <p className="text-xs text-muted-foreground">
               Necessária para confirmar a troca de email.
             </p>
           </div>
@@ -164,7 +164,7 @@ function ProfileFields({
             }}
             placeholder="Ex.: 12345678"
           />
-          <p className="text-muted-foreground text-xs">
+          <p className="text-xs text-muted-foreground">
             Número que identifica você na instituição, como a matrícula.
             Opcional.
           </p>

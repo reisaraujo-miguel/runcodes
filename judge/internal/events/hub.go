@@ -345,6 +345,9 @@ type TimingsPayload struct {
 //   - `state: "failed"` — the upload was refused or failed, so there will be no
 //     link for that case.
 //
+// A failed event also carries the reason and, for the commit budget, the limit
+// that was reached, so the client can say why there is no download.
+//
 // The run-level event (files written outside a case's directory) has no case and
 // no state.
 type ArtifactPayload struct {
@@ -353,6 +356,8 @@ type ArtifactPayload struct {
 	URL        string `json:"url"`
 	TestCaseID int64  `json:"test_case_id,omitempty"`
 	State      string `json:"state,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+	LimitBytes int64  `json:"limit_bytes,omitempty"`
 }
 
 // FinishedPayload is the terminal `finished` event.
@@ -485,11 +490,47 @@ func (h *Hub) ArtifactCase(id, testCaseID int64, state, kind, url string) {
 	})
 }
 
+// ArtifactCaseFailed publishes a failed per-case `artifact` event with the
+// reason there is no download. limitBytes is only meaningful for a commit-budget
+// failure; other reasons pass zero.
+func (h *Hub) ArtifactCaseFailed(
+	id, testCaseID int64, reason string, limitBytes int64, kind, url string,
+) {
+	h.publish(id, NameArtifact, &ArtifactPayload{
+		basePayload: basePayload{Type: NameArtifact, CommitID: id},
+		Kind:        kind,
+		URL:         url,
+		TestCaseID:  testCaseID,
+		State:       ArtifactFailed,
+		Reason:      reason,
+		LimitBytes:  limitBytes,
+	})
+}
+
 // Artifact states, as sent on a per-case `artifact` event.
 const (
 	ArtifactPending = "pending"
 	ArtifactReady   = "ready"
 	ArtifactFailed  = "failed"
+)
+
+// Artifact failure reasons. They are stable wire values; the frontend turns them
+// into the sentence shown in place of the download link.
+const (
+	// ArtifactReasonBudgetExceeded: the commit published its total byte budget,
+	// so this case's files were not stored.
+	ArtifactReasonBudgetExceeded = "commit_artifact_budget_exceeded"
+	// ArtifactReasonUploadFailed: object storage rejected or lost the upload.
+	ArtifactReasonUploadFailed = "upload_failed"
+	// ArtifactReasonStorageUnavailable: the publisher refused the upload before
+	// it started (a full queue or a degraded store).
+	ArtifactReasonStorageUnavailable = "storage_unavailable"
+	// ArtifactReasonFileTooLarge: every file exceeded the case's own limit, so
+	// nothing could be published.
+	ArtifactReasonFileTooLarge = "file_too_large"
+	// ArtifactReasonUploadInterrupted: the backend knows the upload was pending
+	// when the run ended, so it will never finish.
+	ArtifactReasonUploadInterrupted = "upload_interrupted"
 )
 
 // Finished publishes the terminal `finished` event for a commit, including the final status, score,

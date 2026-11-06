@@ -18,7 +18,7 @@ export function LoadingState({
   return (
     <div
       className={cn(
-        "text-muted-foreground flex flex-col items-center justify-center gap-3 py-16 text-sm",
+        "flex flex-col items-center justify-center gap-3 py-16 text-sm text-muted-foreground",
         className,
       )}
     >
@@ -76,19 +76,19 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "border-border flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed px-6 py-12 text-center",
+        "flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border px-6 py-12 text-center",
         className,
       )}
     >
       {Icon ? (
-        <div className="bg-muted text-muted-foreground flex size-11 items-center justify-center rounded-full">
+        <div className="flex size-11 items-center justify-center rounded-full bg-muted text-muted-foreground">
           <Icon className="size-5" aria-hidden />
         </div>
       ) : null}
       <div className="space-y-1">
         <p className="font-medium">{title}</p>
         {description ? (
-          <p className="text-muted-foreground mx-auto max-w-sm text-sm">
+          <p className="mx-auto max-w-sm text-sm text-muted-foreground">
             {description}
           </p>
         ) : null}

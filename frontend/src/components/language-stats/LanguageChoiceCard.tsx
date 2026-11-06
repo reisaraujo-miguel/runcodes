@@ -42,7 +42,7 @@ export function LanguageChoiceCard({
               <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <span className="truncate font-medium">{language.name}</span>
-                  <code className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-mono text-xs">
+                  <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
                     .{language.extension}
                   </code>
                   <Badge
@@ -65,18 +65,18 @@ export function LanguageChoiceCard({
               </div>
 
               <div
-                className="bg-muted h-2 overflow-hidden rounded-full"
+                className="h-2 overflow-hidden rounded-full bg-muted"
                 aria-hidden
               >
                 <div
-                  className="bg-primary h-full rounded-full"
+                  className="h-full rounded-full bg-primary"
                   style={{
                     width: `${String(language.submission_share)}%`,
                   }}
                 />
               </div>
 
-              <p className="text-muted-foreground text-xs leading-relaxed">
+              <p className="text-xs leading-relaxed text-muted-foreground">
                 {formatCount(language.students)}{" "}
                 {language.students === 1 ? "aluno" : "alunos"} ·{" "}
                 {formatCount(language.exercises_chosen)}{" "}
@@ -95,7 +95,7 @@ export function LanguageChoiceCard({
       )}
 
       {unclassifiedSubmissions > 0 ? (
-        <p className="text-muted-foreground text-xs leading-relaxed">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           {formatCount(unclassifiedSubmissions)}{" "}
           {unclassifiedSubmissions === 1
             ? "submissão não pôde ser classificada"
@@ -106,7 +106,7 @@ export function LanguageChoiceCard({
         </p>
       ) : null}
 
-      <p className="text-muted-foreground text-xs">
+      <p className="text-xs text-muted-foreground">
         Total classificado: {formatCount(classifiedSubmissions)}{" "}
         {classifiedSubmissions === 1 ? "submissão" : "submissões"}.
       </p>

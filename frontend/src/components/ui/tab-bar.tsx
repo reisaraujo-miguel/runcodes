@@ -98,9 +98,9 @@ export function TabBar<T extends string>({
                   onChange(item.value);
                 }}
                 className={cn(
-                  "focus-visible:ring-ring/50 relative inline-flex items-center gap-1.5 px-3 text-xs font-medium whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset",
+                  "relative inline-flex items-center gap-1.5 px-3 text-xs font-medium whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset",
                   active
-                    ? "text-foreground after:bg-primary after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full after:content-['']"
+                    ? "text-foreground after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full after:bg-primary after:content-['']"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >

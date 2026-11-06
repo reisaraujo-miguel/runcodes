@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/runcodes-icmc/runcodes/models"
 	"github.com/runcodes-icmc/runcodes/storage"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
@@ -29,6 +30,75 @@ func TestOutputFileTestCaseID(t *testing.T) {
 		if got := OutputFileTestCaseID(tt.path); got != tt.want {
 			t.Errorf("OutputFileTestCaseID(%q) = %d, want %d", tt.path, got, tt.want)
 		}
+	}
+}
+
+func TestResolveOutputFileTestCaseID(t *testing.T) {
+	// The generated path uses the exercise position, not the database id.
+	caseIDs := []int64{7, 9}
+
+	tests := []struct {
+		path string
+		want int64
+		ok   bool
+	}{
+		{"test_1/result.txt", 7, true},
+		{"test_2/nested/out.csv", 9, true},
+		{"outputfiles/explicit.txt", 0, true},
+		{"test_3/result.txt", 0, false},
+		{"test_0/result.txt", 0, true},
+	}
+
+	for _, tt := range tests {
+		got, ok := ResolveOutputFileTestCaseID(tt.path, caseIDs)
+		if got != tt.want || ok != tt.ok {
+			t.Errorf("ResolveOutputFileTestCaseID(%q) = (%d, %v), want (%d, %v)",
+				tt.path, got, ok, tt.want, tt.ok)
+		}
+	}
+}
+
+func TestVisibleOutputFilesForCases(t *testing.T) {
+	files := []storage.OutputFile{
+		{Path: "test_1/visible.txt"},
+		{Path: "test_2/hidden.txt"},
+		{Path: "test_3/unknown.txt"},
+		{Path: "outputfiles/explicit.txt"},
+	}
+
+	// Case 1 is visible, case 2 is hidden, and case 3 does not exist.
+	got := VisibleOutputFilesForCases(
+		files, map[int64]struct{}{9: {}}, []int64{7, 9},
+	)
+	want := []string{"test_1/visible.txt", "outputfiles/explicit.txt"}
+	if len(got) != len(want) {
+		t.Fatalf("files = %v, want %v", got, want)
+	}
+	for i, path := range want {
+		if got[i].Path != path {
+			t.Fatalf("files[%d] = %q, want %q", i, got[i].Path, path)
+		}
+	}
+}
+
+func TestSettlePendingArtifacts(t *testing.T) {
+	other := int64(11)
+	artifacts := []models.SubmissionArtifact{
+		{Kind: "output", TestCaseID: &other, State: "pending"},
+		{Kind: "output", TestCaseID: &other, State: "ready"},
+	}
+
+	SettlePendingArtifacts("running", artifacts)
+	if artifacts[0].State != "pending" {
+		t.Fatal("a live run must keep its pending upload")
+	}
+
+	SettlePendingArtifacts("completed", artifacts)
+	if artifacts[0].State != "failed" || artifacts[0].Reason != "upload_interrupted" {
+		t.Fatalf("pending artifact = %+v, want interrupted failure", artifacts[0])
+	}
+	if artifacts[1].State != "ready" {
+		t.Fatal("a settled artifact must not change")
 	}
 }
 

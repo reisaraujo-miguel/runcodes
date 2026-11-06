@@ -61,8 +61,9 @@ use concurrently: the bytes are reserved before an upload and released when the
 upload fails.
 */
 type artifactBudget struct {
-	limit int64
-	used  atomic.Int64
+	limit     int64
+	used      atomic.Int64
+	exhausted atomic.Bool
 }
 
 // newArtifactBudget returns the budget of one run. A zero limit disables it.
@@ -71,6 +72,8 @@ func newArtifactBudget(limit int64) *artifactBudget {
 }
 
 // reserve claims n bytes, reporting whether the commit had room left for them.
+// A refusal marks the budget exhausted, which lets the publisher stop announcing
+// uploads it already knows will never fit.
 func (b *artifactBudget) reserve(n int64) bool {
 	if b == nil || b.limit <= 0 || n <= 0 {
 		return true
@@ -79,6 +82,7 @@ func (b *artifactBudget) reserve(n int64) bool {
 	for {
 		used := b.used.Load()
 		if used > b.limit-n {
+			b.exhausted.Store(true)
 			return false
 		}
 		if b.used.CompareAndSwap(used, used+n) {
@@ -88,11 +92,28 @@ func (b *artifactBudget) reserve(n int64) bool {
 }
 
 // release gives back bytes reserved for an upload that did not reach storage.
+// If the released bytes leave room again, the budget is no longer exhausted: an
+// upload error is not the same thing as the commit having published its fill.
 func (b *artifactBudget) release(n int64) {
 	if b == nil || b.limit <= 0 || n <= 0 {
 		return
 	}
-	b.used.Add(-n)
+
+	if b.used.Add(-n) < b.limit {
+		b.exhausted.Store(false)
+	}
+}
+
+// isExhausted reports whether the commit has published its fill or a
+// reservation has already failed. The remaining cases of the run are then
+// refused with that reason instead of being queued for an upload that cannot
+// fit.
+func (b *artifactBudget) isExhausted() bool {
+	if b == nil || b.limit <= 0 {
+		return false
+	}
+
+	return b.exhausted.Load() || b.used.Load() >= b.limit
 }
 
 // caseOutputDir is the directory the runner collects one test case's files in.
@@ -206,7 +227,8 @@ type publishRequest struct {
 
 /*
 publishGeneratedFiles uploads the files described by req and then removes the
-request's directory. It returns how many files were uploaded.
+request's directory. It returns how many files were uploaded, how many uploads
+failed, and whether the commit's artifact budget refused at least one file.
 
 Each file is bounded on its own by the limit of the case it belongs to, and the
 run's files also share the commit's budget (req.Budget): the per-case bound alone
@@ -218,14 +240,14 @@ artifact that could not be published.
 */
 func (e *Engine) publishGeneratedFiles(
 	ctx context.Context, commitID int64, req publishRequest,
-) (uploaded, failed int, err error) {
+) (uploaded, failed int, budgetExceeded bool, err error) {
 	if e.outputs == nil {
-		return 0, 0, fmt.Errorf("no object storage configured for generated files")
+		return 0, 0, false, fmt.Errorf("no object storage configured for generated files")
 	}
 
 	files, err := collectGeneratedFiles(req.Dir, req.SkipDir)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, false, err
 	}
 
 	for _, file := range files {
@@ -242,6 +264,7 @@ func (e *Engine) publishGeneratedFiles(
 			continue
 		}
 		if !req.Budget.reserve(file.Size) {
+			budgetExceeded = true
 			e.logger.Warn("generated files exceeded the commit's budget; not published",
 				"commit_id", commitID,
 				"path", req.Prefix+"/"+file.Path,
@@ -285,7 +308,7 @@ func (e *Engine) publishGeneratedFiles(
 		)
 	}
 
-	return uploaded, failed, nil
+	return uploaded, failed, budgetExceeded, nil
 }
 
 /*
@@ -334,11 +357,27 @@ func (e *Engine) casePublishRequest(
 
 	return publishRequest{
 		Dir:          dir,
-		Prefix:       "test_" + strconv.FormatInt(testCase.ID, 10),
+		Prefix:       caseOutputPrefix(testCase),
 		TestCaseID:   testCase.ID,
 		MaxFileBytes: e.caseFileLimit(testCase),
 		Budget:       ws.ArtifactBudget,
 	}, true, nil
+}
+
+/*
+caseOutputPrefix is the stored directory for one case's files. It uses the
+case's position inside the exercise, not its platform-wide id, so the files a
+student downloads are named test_1 .. test_n consistently with the results
+panel. A case built without a number (tests and older callers) falls back to its
+id.
+*/
+func caseOutputPrefix(testCase model.TestCase) string {
+	number := testCase.Number
+	if number <= 0 {
+		number = int(testCase.ID)
+	}
+
+	return "test_" + strconv.Itoa(number)
 }
 
 /*
@@ -370,6 +409,19 @@ func (e *Engine) queueCaseOutputs(
 		return err
 	}
 
+	// A previous case already used the commit's whole budget. Queueing this
+	// upload would only make the client wait for files that cannot be stored, so
+	// say now why they are unavailable and drop them.
+	if req.Budget.isExhausted() {
+		if err := os.RemoveAll(req.Dir); err != nil {
+			e.logger.Warn("could not remove files past the commit's budget",
+				"commit_id", commitID, "dir", req.Dir, "error", err,
+			)
+		}
+		publisher.AnnounceBudgetExceeded(testCase.ID, req.Budget.limit)
+		return nil
+	}
+
 	// Move the files out of the run's workspace before queueing: a rename on the
 	// same filesystem is instant, and the queued bytes then stop competing with the
 	// program for the run's workspace quota. A failed rename is not fatal; the
@@ -389,8 +441,8 @@ func (e *Engine) queueCaseOutputs(
 	}
 
 	// Announce before queueing: the client shows an upload placeholder where the
-	// download link will appear, and keeps polling for it even after the run
-	// finishes, when late ready events can no longer be delivered.
+	// download link will appear. The publisher drains before the terminal event,
+	// so the ready or failed event always reaches the client.
 	publisher.AnnouncePending(testCase.ID)
 
 	if publisher.Submit(req) {
@@ -398,9 +450,10 @@ func (e *Engine) queueCaseOutputs(
 	}
 
 	// The upload was refused: the queue is full (storage is slower than the suite)
-	// or the store failed repeatedly. The placeholder is cleared, the files are
-	// dropped and the run continues.
-	publisher.AnnounceFailed(testCase.ID)
+	// or the store failed repeatedly. The placeholder is cleared with the reason,
+	// the files are dropped and the run continues.
+	publisher.AnnounceFailedWithReason(testCase.ID,
+		events.ArtifactReasonStorageUnavailable, 0)
 	e.logger.Debug("dropping a finished case's generated files",
 		"commit_id", commitID, "test_case_id", testCase.ID,
 	)
@@ -451,7 +504,7 @@ func (e *Engine) publishRootOutputs(
 		Budget: ws.ArtifactBudget,
 	}
 
-	uploaded, _, err := e.publishGeneratedFiles(ctx, commitID, req)
+	uploaded, _, _, err := e.publishGeneratedFiles(ctx, commitID, req)
 	return uploaded, err
 }
 
@@ -479,6 +532,9 @@ type outputPublisher struct {
 	// sending on a closed channel panics.
 	mu     sync.Mutex
 	closed bool
+	// closeOnce makes Close idempotent: the run closes the publisher before its
+	// terminal event and again from the deferred cleanup.
+	closeOnce sync.Once
 }
 
 // outputPublishWorkers is how many uploads run at once. A suite of cases that each
@@ -525,7 +581,7 @@ func (p *outputPublisher) worker() {
 	defer p.wg.Done()
 
 	for req := range p.tasks {
-		uploaded, failed, err := p.engine.publishGeneratedFiles(p.ctx, p.commitID, req)
+		uploaded, failed, budgetExceeded, err := p.engine.publishGeneratedFiles(p.ctx, p.commitID, req)
 		if err != nil {
 			p.engine.logger.Warn("could not publish generated files",
 				"commit_id", p.commitID,
@@ -534,24 +590,35 @@ func (p *outputPublisher) worker() {
 			)
 			p.recordFailure(1)
 			// The client was told to wait for this case's files, so it must be
-			// told the upload will not happen; otherwise its placeholder spins
-			// until the listing poll gives up.
-			p.engine.hub.ArtifactCase(p.commitID, req.TestCaseID,
-				events.ArtifactFailed, "output", p.listingURL())
+			// told the upload will not happen.
+			p.engine.hub.ArtifactCaseFailed(p.commitID, req.TestCaseID,
+				events.ArtifactReasonUploadFailed, 0, "output", p.listingURL())
+			continue
+		}
+		if budgetExceeded && uploaded == 0 {
+			// No byte of this case fit the commit's remaining budget. The
+			// placeholder becomes the reason, and the next cases are refused
+			// before they are queued.
+			limit := int64(0)
+			if req.Budget != nil {
+				limit = req.Budget.limit
+			}
+			p.engine.hub.ArtifactCaseFailed(p.commitID, req.TestCaseID,
+				events.ArtifactReasonBudgetExceeded, limit, "output", p.listingURL())
 			continue
 		}
 		if failed > 0 {
 			p.recordFailure(int32(failed))
-			p.engine.hub.ArtifactCase(p.commitID, req.TestCaseID,
-				events.ArtifactFailed, "output", p.listingURL())
+			p.engine.hub.ArtifactCaseFailed(p.commitID, req.TestCaseID,
+				events.ArtifactReasonUploadFailed, 0, "output", p.listingURL())
 			continue
 		}
 		p.failures.Store(0)
 		if uploaded == 0 {
 			// Nothing was stored (every file was larger than the case allows, for
 			// example), so the placeholder must not keep spinning.
-			p.engine.hub.ArtifactCase(p.commitID, req.TestCaseID,
-				events.ArtifactFailed, "output", p.listingURL())
+			p.engine.hub.ArtifactCaseFailed(p.commitID, req.TestCaseID,
+				events.ArtifactReasonFileTooLarge, 0, "output", p.listingURL())
 			continue
 		}
 
@@ -588,11 +655,21 @@ func (p *outputPublisher) AnnouncePending(testCaseID int64) {
 		events.ArtifactPending, "output", p.listingURL())
 }
 
-// AnnounceFailed tells the client that a case's files will not be published, so
-// its upload placeholder does not stay on screen.
-func (p *outputPublisher) AnnounceFailed(testCaseID int64) {
-	p.engine.hub.ArtifactCase(p.commitID, testCaseID,
-		events.ArtifactFailed, "output", p.listingURL())
+// AnnounceFailedWithReason tells the client that a case's files will not be
+// published, and why, so its upload placeholder does not stay on screen and the
+// panel can explain the missing download.
+func (p *outputPublisher) AnnounceFailedWithReason(
+	testCaseID int64, reason string, limitBytes int64,
+) {
+	p.engine.hub.ArtifactCaseFailed(p.commitID, testCaseID,
+		reason, limitBytes, "output", p.listingURL())
+}
+
+// AnnounceBudgetExceeded announces that this case's files did not fit the
+// commit's total artifact budget.
+func (p *outputPublisher) AnnounceBudgetExceeded(testCaseID, limitBytes int64) {
+	p.AnnounceFailedWithReason(testCaseID,
+		events.ArtifactReasonBudgetExceeded, limitBytes)
 }
 
 // listingURL is where the client reads the commit's generated files.
@@ -634,20 +711,22 @@ func (p *outputPublisher) Submit(req publishRequest) bool {
 // files were published. The pending area of the run is removed afterwards, so a
 // finished run leaves nothing behind even when an upload was abandoned.
 func (p *outputPublisher) Close() int {
-	p.mu.Lock()
-	p.closed = true
-	close(p.tasks)
-	p.mu.Unlock()
+	p.closeOnce.Do(func() {
+		p.mu.Lock()
+		p.closed = true
+		close(p.tasks)
+		p.mu.Unlock()
 
-	p.wg.Wait()
+		p.wg.Wait()
 
-	pending := filepath.Join(p.engine.cfg.ExecDir,
-		"pending_"+strconv.FormatInt(p.commitID, 10))
-	if err := os.RemoveAll(pending); err != nil {
-		p.engine.logger.Warn("could not remove the pending upload directory",
-			"commit_id", p.commitID, "dir", pending, "error", err,
-		)
-	}
+		pending := filepath.Join(p.engine.cfg.ExecDir,
+			"pending_"+strconv.FormatInt(p.commitID, 10))
+		if err := os.RemoveAll(pending); err != nil {
+			p.engine.logger.Warn("could not remove the pending upload directory",
+				"commit_id", p.commitID, "dir", pending, "error", err,
+			)
+		}
+	})
 
 	return int(p.files.Load())
 }

@@ -161,7 +161,7 @@ export function AdminUsersPage() {
                       <TableRow key={user.id}>
                         <TableCell>
                           <p className="font-medium">{user.name}</p>
-                          <p className="text-muted-foreground text-xs">
+                          <p className="text-xs text-muted-foreground">
                             {isSelf ? "Você · " : ""}#{user.id}
                           </p>
                         </TableCell>
@@ -219,7 +219,7 @@ export function AdminUsersPage() {
               </Table>
 
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-muted-foreground text-sm">
+                <p className="text-sm text-muted-foreground">
                   {list.items.length} usuário(s) exibido(s).
                 </p>
                 {list.hasMore ? (

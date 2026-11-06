@@ -28,21 +28,21 @@ export function AboutSection() {
         <h1 className="text-3xl font-semibold tracking-tight text-balance lg:text-4xl">
           Bem-vinde ao RunCodes
         </h1>
-        <p className="text-muted-foreground text-lg text-balance">
+        <p className="text-lg text-balance text-muted-foreground">
           Um sistema de submissão e correção automática de exercícios de
           programação, com suporte a diversas linguagens como C/C++, Python,
           Java, Haskell e Go.
         </p>
       </div>
 
-      <p className="text-muted-foreground text-sm">
+      <p className="text-sm text-muted-foreground">
         Ao navegar no RunCodes você concorda com os{" "}
         <button
           type="button"
           onClick={() => {
             setIsTermsModalOpen(true);
           }}
-          className="text-foreground font-medium hover:underline underline-offset-4"
+          className="font-medium text-foreground underline-offset-4 hover:underline"
         >
           termos de uso
         </button>
@@ -51,7 +51,7 @@ export function AboutSection() {
 
       {hasContactDisclaimer ? (
         <p
-          className="text-muted-foreground text-sm [&_a]:text-foreground [&_a]:hover:underline"
+          className="text-sm text-muted-foreground [&_a]:text-foreground [&_a]:hover:underline"
           // Content is sanitized with DOMPurify before being inserted.
           // eslint-disable-next-line react-dom/no-dangerously-set-innerhtml
           dangerouslySetInnerHTML={{ __html: sanitizedContactDisclaimer }}

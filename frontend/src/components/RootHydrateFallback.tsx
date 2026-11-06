@@ -8,9 +8,9 @@ import { Spinner } from "@/components/ui/spinner";
  */
 export function RootHydrateFallback() {
   return (
-    <div className="bg-background flex min-h-svh flex-col items-center justify-center gap-6">
+    <div className="flex min-h-svh flex-col items-center justify-center gap-6 bg-background">
       <Brand />
-      <Spinner className="text-muted-foreground size-6" label="Carregando" />
+      <Spinner className="size-6 text-muted-foreground" label="Carregando" />
     </div>
   );
 }

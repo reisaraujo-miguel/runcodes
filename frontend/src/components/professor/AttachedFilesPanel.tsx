@@ -110,7 +110,7 @@ export function AttachedFilesPanel({ exerciseId }: { exerciseId: number }) {
           description="Anexe o enunciado ou arquivos de apoio para os alunos."
         />
       ) : (
-        <ul className="divide-border divide-y rounded-lg border">
+        <ul className="divide-y divide-border rounded-lg border">
           {list.map((file) => (
             <li
               key={file.id}
@@ -121,12 +121,12 @@ export function AttachedFilesPanel({ exerciseId }: { exerciseId: number }) {
                   href={attachedFileDownloadUrl(exerciseId, file.id)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-primary block truncate font-mono text-sm hover:underline"
+                  className="block truncate font-mono text-sm text-primary hover:underline"
                 >
                   {file.filename}
                 </a>
                 {file.path ? (
-                  <p className="text-muted-foreground truncate text-xs">
+                  <p className="truncate text-xs text-muted-foreground">
                     {file.path}
                   </p>
                 ) : null}

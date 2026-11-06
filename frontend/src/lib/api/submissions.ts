@@ -42,6 +42,8 @@ export type CaseResultStatus =
 /** Response returned by `POST /api/v1/submissions`. */
 export interface QueuedSubmission {
   commit_id: number;
+  /** 1-based submission position for this exercise; absent from older backends. */
+  number?: number;
   status: "queued";
   events_url: string;
 }
@@ -49,6 +51,11 @@ export interface QueuedSubmission {
 /** One entry in the caller's submission history for an exercise. */
 export interface SubmissionSummary {
   id: number;
+  /**
+   * 1-based position among this user's submissions to this exercise. It is not
+   * the platform-wide commit id.
+   */
+  number: number;
   status: CommitStatus;
   num_correct_cases: number;
   score: number;
@@ -60,6 +67,8 @@ export interface SubmissionSummary {
 /** The commit state carried by the first `snapshot` frame. */
 export interface SubmissionCommit {
   id: number;
+  /** 1-based position among this user's submissions to this exercise. */
+  number?: number;
   status: CommitStatus;
   num_correct_cases: number;
   score: number;
@@ -91,6 +100,23 @@ export interface SubmissionSnapshotResult {
 /** A generated file the output download endpoint can serve. */
 export interface SubmissionArtifact {
   kind: string;
+  /** The case whose upload this entry describes; absent for the run-level entry. */
+  test_case_id?: number;
+  /** `pending` while uploading, `ready` when stored, `failed` when it will not be. */
+  state?: SubmissionArtifactState;
+  /** Machine-readable failure reason, e.g. `commit_artifact_budget_exceeded`. */
+  reason?: string;
+  /** The limit that was reached, when the failure reason is about one. */
+  limit_bytes?: number;
+}
+
+/** One frame of the generated-files WebSocket. */
+export interface SubmissionOutputSnapshot {
+  type: "outputfiles";
+  files: SubmissionOutputFile[];
+  artifacts: SubmissionArtifact[];
+  /** True on the last frame, after which the server closes the socket. */
+  complete: boolean;
 }
 
 /**
@@ -106,7 +132,10 @@ export interface SubmissionSnapshotEvent {
   type: "snapshot";
   commit: SubmissionCommit;
   results: SubmissionSnapshotResult[];
-  /** Absent from older backends; empty when no archive exists. */
+  /**
+   * Run-level and per-case artifact states. Absent from older backends and
+   * empty when the submission generated nothing.
+   */
   artifacts?: SubmissionArtifact[];
 }
 
@@ -336,7 +365,8 @@ export function submissionOutputFileUrl(
 
 /**
  * Lists the files the submission generated. The judge uploads them while the run
- * advances, so the list can grow until the run finishes.
+ * advances, so the list can grow until the run finishes. The results panel uses
+ * the output-events WebSocket instead; this is the one-shot fallback.
  */
 export async function getSubmissionOutputFiles(
   commitId: number,
@@ -346,6 +376,86 @@ export async function getSubmissionOutputFiles(
   );
 
   return Array.isArray(files) ? files : [];
+}
+
+/** Absolute base for the API, falling back to the page origin. */
+function websocketApiBase(): string {
+  if (API_BASE_URL) {
+    const base = new URL(
+      API_BASE_URL,
+      typeof window !== "undefined"
+        ? window.location.origin
+        : "http://localhost",
+    );
+    return `${base.origin}${base.pathname.replace(/\/$/, "")}`;
+  }
+
+  if (typeof window !== "undefined") return window.location.origin;
+  return "http://localhost";
+}
+
+/**
+ * WebSocket URL that pushes the generated-file listing and upload states for a
+ * commit. The cookie authenticates the handshake, like the SSE stream.
+ */
+export function submissionOutputEventsUrl(commitId: number): string {
+  const target = new URL(
+    `${websocketApiBase()}/api/v1/submissions/${String(commitId)}/output-events`,
+  );
+  target.protocol = target.protocol === "https:" ? "wss:" : "ws:";
+
+  return target.toString();
+}
+
+/** Validates a WebSocket frame and narrows it to the output-files snapshot. */
+export function parseSubmissionOutputSnapshot(
+  value: unknown,
+): SubmissionOutputSnapshot | null {
+  if (!isRecord(value) || value.type !== "outputfiles") return null;
+
+  const files: SubmissionOutputFile[] = [];
+  if (Array.isArray(value.files)) {
+    for (const file of value.files) {
+      if (
+        isRecord(file) &&
+        typeof file.path === "string" &&
+        typeof file.size === "number"
+      ) {
+        files.push({ path: file.path, size: file.size });
+      }
+    }
+  }
+
+  const artifacts: SubmissionArtifact[] = [];
+  if (Array.isArray(value.artifacts)) {
+    for (const artifact of value.artifacts) {
+      if (!isRecord(artifact) || typeof artifact.kind !== "string") continue;
+
+      const entry: SubmissionArtifact = { kind: artifact.kind };
+      if (typeof artifact.test_case_id === "number") {
+        entry.test_case_id = artifact.test_case_id;
+      }
+      if (
+        artifact.state === "pending" ||
+        artifact.state === "ready" ||
+        artifact.state === "failed"
+      ) {
+        entry.state = artifact.state;
+      }
+      if (typeof artifact.reason === "string") entry.reason = artifact.reason;
+      if (typeof artifact.limit_bytes === "number") {
+        entry.limit_bytes = artifact.limit_bytes;
+      }
+      artifacts.push(entry);
+    }
+  }
+
+  return {
+    type: "outputfiles",
+    files,
+    artifacts,
+    complete: value.complete === true,
+  };
 }
 
 /** Validates a parsed frame and narrows it to a known event. */

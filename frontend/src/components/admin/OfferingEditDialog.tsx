@@ -166,12 +166,12 @@ export function OfferingEditDialog({
                 placeholder="Email ou identificação institucional"
                 autoComplete="off"
               />
-              <p className="text-muted-foreground text-xs">
+              <p className="text-xs text-muted-foreground">
                 Deixe em branco para manter. Informe o email ou a identificação
                 institucional (como a matrícula) de um professor ou
                 administrador; o ID interno da conta não é usado.
               </p>
-              <p className="text-muted-foreground text-xs">
+              <p className="text-xs text-muted-foreground">
                 Responsável atual:{" "}
                 {offering.owner_id === null
                   ? "sem responsável"

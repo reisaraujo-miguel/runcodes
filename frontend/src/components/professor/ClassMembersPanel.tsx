@@ -106,7 +106,7 @@ export function ClassMembersPanel({
   if (!isOwner) {
     return (
       <Section title="Participantes" description={description}>
-        <p className="text-muted-foreground text-sm">
+        <p className="text-sm text-muted-foreground">
           Apenas o professor responsável pela turma pode gerenciar os
           participantes.
         </p>
@@ -236,7 +236,7 @@ export function ClassMembersPanel({
                 <TableRow key={member.user_id}>
                   <TableCell>
                     <p className="font-medium">{member.name}</p>
-                    <p className="text-muted-foreground text-xs break-all">
+                    <p className="text-xs break-all text-muted-foreground">
                       {member.email}
                     </p>
                   </TableCell>
@@ -253,7 +253,7 @@ export function ClassMembersPanel({
                   </TableCell>
                   <TableCell>
                     {isResponsible ? (
-                      <p className="text-muted-foreground text-right text-xs">
+                      <p className="text-right text-xs text-muted-foreground">
                         O responsável não pode ser alterado.
                       </p>
                     ) : (
@@ -316,7 +316,7 @@ export function ClassMembersPanel({
                       </div>
                     )}
                     {rowError ? (
-                      <p className="text-destructive mt-2 text-right text-xs">
+                      <p className="mt-2 text-right text-xs text-destructive">
                         {rowError}
                       </p>
                     ) : null}

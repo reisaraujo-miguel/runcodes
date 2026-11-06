@@ -54,7 +54,7 @@ export function StatStrip({
               {value}
             </dd>
             {hint ? (
-              <p className="text-muted-foreground text-xs">{hint}</p>
+              <p className="text-xs text-muted-foreground">{hint}</p>
             ) : null}
           </div>
         </div>

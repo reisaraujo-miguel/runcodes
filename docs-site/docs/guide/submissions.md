@@ -49,6 +49,11 @@ Staff (class owner or co-professor) can submit to their own exercises without
 being enrolled and after the deadline: the deadline is a rule for graded
 students.
 
+The UI labels a run with the caller's **submission number for that exercise**,
+not the platform-wide commit id: user A's tenth submission to exercise B, user
+A's tenth submission to exercise C and user B's tenth submission to exercise D
+are all shown as "Submissão #10".
+
 ## Following a submission
 
 `GET /api/v1/submissions/{id}/events` is an SSE stream. It requires the commit
@@ -83,7 +88,7 @@ handled by JavaScript.
 | `status` | judge claims or starts the run | `status`: `compiling` or `running` |
 | `compilation` | compilation ends | `compiled`, `message`, `error` |
 | `case_result` | each test case ends | `test_case_id`, `status`, `cpu_time`, `user_output`, diagnostics |
-| `artifact` | the submission generated files | `kind: "output"` |
+| `artifact` | the submission generated files | `kind: "output"`; per-case `test_case_id`, `state`, and `reason`/`limit_bytes` on failure |
 | `finished` | run finishes | terminal `status`, `num_correct_cases`, `score`, timestamps |
 | `error` | unexpected stream-side failure | `message`; the stream ends |
 
@@ -129,6 +134,7 @@ the only source.
 | `GET /api/v1/exercises/{id}/submissions` | the caller's last 50 submissions for an exercise, newest first |
 | `GET /api/v1/submissions/{id}/source` | download the original source; restores it into the editor |
 | `GET /api/v1/submissions/{id}/outputfiles` | list the files the submission produced |
+| `GET /api/v1/submissions/{id}/output-events` | WebSocket with the file listing and upload states |
 | `GET /api/v1/submissions/{id}/outputfiles/{path}` | download one generated file |
 | `GET /api/v1/submissions/{id}/output` | download all of them as a zip |
 
@@ -137,10 +143,16 @@ user's commit both answer `404`, so the API never discloses that a commit exists
 The file list is empty when the submission wrote nothing; internal monitor and
 per-case reports are excluded, and so are the files of a case whose program
 output the author did not release. The judge uploads each case's files to object
-storage as soon as that case finishes, so the list can grow while the run is
-still in progress, and the zip is built from those objects on request. Files are
-deleted once they pass `RUNCODES_OUTPUT_FILE_TTL` (168 hours by default). The
-browser never needs the judge's internal address.
+storage as soon as that case finishes, and stores them under
+`test_<case number>/`, where the number is the case's 1-based position in the
+exercise. The zip therefore runs from `test_1` to `test_n` for that exercise.
+
+The results panel follows the listing over the `output-events` WebSocket instead
+of polling. A failed upload arrives with a stable reason, so the panel can say
+why a case has no download — for example because the commit reached
+`JUDGE_MAX_COMMIT_ARTIFACT_BYTES`. The zip is built from those objects on
+request. Files are deleted once they pass `RUNCODES_OUTPUT_FILE_TTL` (168 hours
+by default). The browser never needs the judge's internal address.
 
 ## Failure handling
 

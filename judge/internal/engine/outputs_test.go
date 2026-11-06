@@ -84,7 +84,7 @@ func publishTest(
 		return 0, err
 	}
 
-	uploaded, _, err := engine.publishGeneratedFiles(context.Background(), commitID, req)
+	uploaded, _, _, err := engine.publishGeneratedFiles(context.Background(), commitID, req)
 	return uploaded, err
 }
 
@@ -162,6 +162,112 @@ func TestPublishCaseOutputs(t *testing.T) {
 	// The local copy is gone, so the workspace is bounded by the current case.
 	if _, err := os.Stat(filepath.Join(ws.BaseDir, "outputfiles", "case_11")); !os.IsNotExist(err) {
 		t.Fatalf("expected the collection directory to be removed, stat error: %v", err)
+	}
+}
+
+// The stored path uses the case's position in the exercise, not its
+// platform-wide database id, so a downloaded archive is numbered 1..n.
+func TestPublishCaseOutputsUsesTheExerciseCaseNumber(t *testing.T) {
+	engine, store, ws := newOutputEngine(t)
+
+	writeWorkspaceFile(t, ws.BaseDir, "outputfiles/case_11/hello.txt", "hello")
+
+	testCase := model.TestCase{ID: 11, Number: 2, FileSizeLimit: 64}
+	uploaded, err := publishTest(t, engine, 7, testCase,
+		model.CaseResult{Status: model.CaseCorrect}, ws)
+	if err != nil {
+		t.Fatalf("publishCaseOutputs: %v", err)
+	}
+	if uploaded != 1 {
+		t.Fatalf("uploaded = %d, want 1", uploaded)
+	}
+	if _, ok := store.uploaded["test_2/hello.txt"]; !ok {
+		t.Fatalf("uploaded = %v, want test_2/hello.txt", store.uploaded)
+	}
+	if _, ok := store.uploaded["test_11/hello.txt"]; ok {
+		t.Fatal("the database id must not name the exercise-local file")
+	}
+}
+
+func TestQueueCaseOutputsExplainsTheCommitBudget(t *testing.T) {
+	engine, store, ws := newOutputEngine(t)
+	engine.hub = events.New(time.Minute)
+	// The case's only file is larger than the whole commit budget.
+	ws.ArtifactBudget = newArtifactBudget(4)
+
+	writeWorkspaceFile(t, ws.BaseDir, "outputfiles/case_5/partial.bin", "12345")
+
+	sub := engine.hub.Subscribe(7, 0)
+	defer sub.Cancel()
+
+	publisher := newOutputPublisher(context.Background(), engine, 7)
+	if err := engine.queueCaseOutputs(
+		publisher, 7,
+		model.TestCase{ID: 5, FileSizeLimit: 64, ShowUserOutput: true},
+		model.CaseResult{Status: model.CaseCorrect},
+		ws,
+	); err != nil {
+		t.Fatalf("queueCaseOutputs: %v", err)
+	}
+	publisher.Close()
+
+	frames := artifactEvents(sub)
+	if len(frames) != 2 {
+		t.Fatalf("artifact events = %d, want 2: %v", len(frames), frames)
+	}
+	if got := frames[1]["state"]; got != events.ArtifactFailed {
+		t.Fatalf("second state = %v, want failed", got)
+	}
+	if got := frames[1]["reason"]; got != events.ArtifactReasonBudgetExceeded {
+		t.Fatalf("reason = %v, want %s", got, events.ArtifactReasonBudgetExceeded)
+	}
+	if got := frames[1]["limit_bytes"]; got != float64(4) {
+		t.Fatalf("limit_bytes = %v, want 4", got)
+	}
+	if len(store.uploaded) != 0 {
+		t.Fatalf("uploaded = %v, want nothing", store.uploaded)
+	}
+}
+
+func TestQueueCaseOutputsRefusesTheNextCaseAfterTheBudget(t *testing.T) {
+	engine, store, ws := newOutputEngine(t)
+	engine.hub = events.New(time.Minute)
+	ws.ArtifactBudget = newArtifactBudget(4)
+	if !ws.ArtifactBudget.reserve(4) {
+		t.Fatal("could not fill the test budget")
+	}
+
+	writeWorkspaceFile(t, ws.BaseDir, "outputfiles/case_6/a.txt", "anything")
+
+	sub := engine.hub.Subscribe(7, 0)
+	defer sub.Cancel()
+
+	publisher := newOutputPublisher(context.Background(), engine, 7)
+	if err := engine.queueCaseOutputs(
+		publisher, 7,
+		model.TestCase{ID: 6, FileSizeLimit: 64, ShowUserOutput: true},
+		model.CaseResult{Status: model.CaseCorrect},
+		ws,
+	); err != nil {
+		t.Fatalf("queueCaseOutputs: %v", err)
+	}
+	publisher.Close()
+
+	frames := artifactEvents(sub)
+	if len(frames) != 1 {
+		t.Fatalf("artifact events = %d, want one failure: %v", len(frames), frames)
+	}
+	if got := frames[0]["state"]; got != events.ArtifactFailed {
+		t.Fatalf("state = %v, want failed", got)
+	}
+	if got := frames[0]["reason"]; got != events.ArtifactReasonBudgetExceeded {
+		t.Fatalf("reason = %v, want %s", got, events.ArtifactReasonBudgetExceeded)
+	}
+	if len(store.uploaded) != 0 {
+		t.Fatalf("uploaded = %v, want nothing", store.uploaded)
+	}
+	if _, err := os.Stat(filepath.Join(ws.BaseDir, "outputfiles", "case_6")); !os.IsNotExist(err) {
+		t.Fatalf("the refused case's files were kept, stat error: %v", err)
 	}
 }
 

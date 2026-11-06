@@ -127,7 +127,7 @@ export function CompilationFilesPanel({ exerciseId }: { exerciseId: number }) {
           description="Envie os arquivos auxiliares que a compilação das soluções precisa."
         />
       ) : (
-        <ul className="divide-border divide-y rounded-lg border">
+        <ul className="divide-y divide-border rounded-lg border">
           {list.map((file) => {
             const path = filePath(file);
             return (
@@ -138,7 +138,7 @@ export function CompilationFilesPanel({ exerciseId }: { exerciseId: number }) {
                 <div className="min-w-0">
                   <p className="truncate font-mono text-sm">{fileName(file)}</p>
                   {path ? (
-                    <p className="text-muted-foreground truncate text-xs">
+                    <p className="truncate text-xs text-muted-foreground">
                       {path}
                     </p>
                   ) : null}

@@ -114,6 +114,8 @@ func createRoutes(router *chi.Mux) {
 			r.Get("/api/v1/submissions/{id}/output", handlers.GetSubmissionOutput)
 			r.Get("/api/v1/submissions/{id}/outputfiles",
 				handlers.ListSubmissionOutputFiles)
+			r.Get("/api/v1/submissions/{id}/output-events",
+				handlers.StreamSubmissionOutputEvents)
 			r.Get("/api/v1/submissions/{id}/outputfiles/*",
 				handlers.GetSubmissionOutputFile)
 			r.Get("/api/v1/exercises/{id}/submissions", handlers.ListSubmissionHistory)

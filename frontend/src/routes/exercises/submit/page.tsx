@@ -167,6 +167,12 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
   const [submittedCommitId, setSubmittedCommitId] = useState<number | null>(
     null,
   );
+  // The create response already carries the per-exercise number, so the label
+  // can be right before the first snapshot arrives.
+  const [submittedNumber, setSubmittedNumber] = useState<{
+    commitId: number;
+    number: number;
+  } | null>(null);
   // A submission made here wins; otherwise the page opens on the newest
   // submission the server knows about, even when this tab stored none.
   const commitId = initialCommitId(
@@ -177,16 +183,25 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
   );
   const {
     status,
+    submissionNumber,
     history,
     compilation,
     results,
     artifacts,
-    artifactVersion,
+    artifactStatuses,
+    outputFiles,
     pendingUploads,
     final,
     streamError,
     resetRunState,
   } = useSubmissionRun(commitId);
+
+  const knownSubmissionNumber =
+    submissionNumber ??
+    (submittedNumber?.commitId === commitId ? submittedNumber.number : null) ??
+    latestSubmission.data?.find((submission) => submission.id === commitId)
+      ?.number ??
+    null;
 
   const allowedFileTypes = useMemo(
     () => resolveAllowedFileTypes(exercise.data, allowedTypes.data ?? []),
@@ -316,6 +331,11 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
       storeCommit(exercise.data.id, queued.commit_id);
       resetRunState();
       setSubmittedCommitId(queued.commit_id);
+      setSubmittedNumber(
+        typeof queued.number === "number" && queued.number > 0
+          ? { commitId: queued.commit_id, number: queued.number }
+          : null,
+      );
     } catch (error) {
       setSubmitError(submitErrorMessage(error));
     } finally {
@@ -399,9 +419,9 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
         <BackLink
           to="/exercises"
           icon={<ArrowLeftIcon className="size-3.5" aria-hidden />}
-          className="hover:text-foreground shrink-0 text-xs"
+          className="shrink-0 text-xs hover:text-foreground"
         />
-        <span className="bg-border hidden h-4 w-px sm:block" aria-hidden />
+        <span className="hidden h-4 w-px bg-border sm:block" aria-hidden />
         <h1 className="min-w-0 text-lg font-semibold tracking-tight text-balance">
           {current.title}
         </h1>
@@ -416,7 +436,7 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
         >
           {info.label}
         </Badge>
-        <span className="text-muted-foreground order-last flex w-full items-center gap-1.5 text-xs sm:order-0 sm:ml-auto sm:w-auto">
+        <span className="order-last flex w-full items-center gap-1.5 text-xs text-muted-foreground sm:order-0 sm:ml-auto sm:w-auto">
           <CalendarClockIcon className="size-3.5 shrink-0" aria-hidden />
           Prazo: {formatDateTime(current.deadline)}
         </span>
@@ -466,7 +486,7 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
             showVerticalSplitter ? "xl:gap-0" : "xl:gap-3",
           )}
         >
-          <section className="bg-card flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border xl:basis-0 xl:grow-(--editor-grow)">
+          <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border bg-card xl:grow-(--editor-grow) xl:basis-0">
             <form
               id={FORM_ID}
               className="flex min-h-0 flex-col xl:flex-1"
@@ -474,7 +494,7 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
             >
               <div className="flex min-h-11 shrink-0 flex-wrap items-center gap-2 border-b px-2 py-1.5">
                 {editorAvailable ? (
-                  <div className="bg-muted/50 flex shrink-0 items-center rounded-md border p-0.5">
+                  <div className="flex shrink-0 items-center rounded-md border bg-muted/50 p-0.5">
                     <Button
                       type="button"
                       size="xs"
@@ -513,7 +533,7 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
                     </Button>
                   </div>
                 ) : (
-                  <p className="text-muted-foreground shrink-0 px-1 text-xs font-medium">
+                  <p className="shrink-0 px-1 text-xs font-medium text-muted-foreground">
                     Arquivo da solução
                   </p>
                 )}
@@ -528,9 +548,9 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
                         setFilenameDraft(null);
                       }}
                       className={cn(
-                        "border-border/70 h-7 w-auto min-w-28 max-w-40 cursor-pointer rounded-md bg-transparent px-2 py-0 text-xs shadow-none",
-                        compactToolbar && "w-24 min-w-24 max-w-24",
-                        iconOnlyToolbar && "w-20 min-w-20 max-w-20",
+                        "h-7 w-auto max-w-40 min-w-28 cursor-pointer rounded-md border-border/70 bg-transparent px-2 py-0 text-xs shadow-none",
+                        compactToolbar && "w-24 max-w-24 min-w-24",
+                        iconOnlyToolbar && "w-20 max-w-20 min-w-20",
                       )}
                     >
                       {languages.map((language) => (
@@ -541,7 +561,7 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
                     </Select>
                     <div className="flex items-center gap-1.5">
                       <FileCode2Icon
-                        className="text-muted-foreground size-3.5 shrink-0"
+                        className="size-3.5 shrink-0 text-muted-foreground"
                         aria-hidden
                       />
                       <Input
@@ -552,7 +572,7 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
                           rememberEffectiveLanguage();
                         }}
                         className={cn(
-                          "border-border/70 h-7 w-36 rounded-md bg-transparent px-2 py-0 font-mono text-xs shadow-none",
+                          "h-7 w-36 rounded-md border-border/70 bg-transparent px-2 py-0 font-mono text-xs shadow-none",
                           compactToolbar && "w-24",
                           iconOnlyToolbar && "w-20",
                         )}
@@ -567,7 +587,7 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
                     <span
                       title={selectedFile.name}
                       className={cn(
-                        "text-muted-foreground min-w-0 truncate text-[11px]",
+                        "min-w-0 truncate text-[11px] text-muted-foreground",
                         compactToolbar ? "max-w-24" : "max-w-48",
                       )}
                     >
@@ -603,8 +623,8 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
               {effectiveMode === "editor" &&
               codeDraft.status === "error" &&
               codeDraft.error ? (
-                <div className="border-destructive/30 bg-destructive/10 border-b px-3 py-1.5">
-                  <p className="text-destructive flex items-start gap-1.5 text-xs">
+                <div className="border-b border-destructive/30 bg-destructive/10 px-3 py-1.5">
+                  <p className="flex items-start gap-1.5 text-xs text-destructive">
                     <CircleAlertIcon
                       className="mt-px size-3.5 shrink-0"
                       aria-hidden
@@ -617,9 +637,9 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
               {fileError ? (
                 <div
                   aria-live="polite"
-                  className="border-destructive/30 bg-destructive/10 border-b px-3 py-1.5"
+                  className="border-b border-destructive/30 bg-destructive/10 px-3 py-1.5"
                 >
-                  <p className="text-destructive flex items-start gap-1.5 text-xs">
+                  <p className="flex items-start gap-1.5 text-xs text-destructive">
                     <CircleAlertIcon
                       className="mt-px size-3.5 shrink-0"
                       aria-hidden
@@ -634,7 +654,7 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
                   fallback={
                     <div
                       aria-hidden
-                      className="bg-muted/30 h-80 w-full xl:h-auto xl:min-h-0 xl:flex-1"
+                      className="h-80 w-full bg-muted/30 xl:h-auto xl:min-h-0 xl:flex-1"
                     />
                   }
                 >
@@ -647,14 +667,14 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
                 </Suspense>
               ) : (
                 <div className="flex min-h-64 flex-1 flex-col items-center justify-center gap-3 px-6 py-8 text-center xl:min-h-0">
-                  <div className="bg-muted text-muted-foreground flex size-10 items-center justify-center rounded-full">
+                  <div className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
                     <FileUpIcon className="size-5" aria-hidden />
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm font-medium">
                       Envie o arquivo da sua solução
                     </p>
-                    <p className="text-muted-foreground text-xs">
+                    <p className="text-xs text-muted-foreground">
                       {allowedExtensions
                         ? `Tipos aceitos: ${allowedExtensions.join(", ")}`
                         : "Nenhuma restrição de tipo configurada neste exercício."}
@@ -666,7 +686,7 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
                     accept={allowedExtensions?.join(",")}
                     onChange={handleFileChange}
                     aria-label="Arquivo da solução"
-                    className="bg-background h-auto max-w-sm cursor-pointer py-1.5 text-xs file:mr-3 file:text-xs"
+                    className="h-auto max-w-sm cursor-pointer bg-background py-1.5 text-xs file:mr-3 file:text-xs"
                   />
                 </div>
               )}
@@ -688,6 +708,7 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
 
           <ResultsPanel
             commitId={commitId}
+            submissionNumber={knownSubmissionNumber}
             status={status}
             history={history}
             compilation={compilation}
@@ -695,7 +716,8 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
             final={final}
             streamError={streamError}
             artifacts={artifacts}
-            artifactVersion={artifactVersion}
+            artifactStatuses={artifactStatuses}
+            outputFiles={outputFiles}
             pendingUploads={pendingUploads}
             testCases={testCases.data ?? []}
             testCasesLoading={testCases.loading}
@@ -709,8 +731,8 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
             className={cn(
               "xl:mt-auto",
               resultsCollapsed
-                ? "xl:basis-auto xl:grow-0 xl:shrink-0"
-                : "xl:basis-0 xl:grow-(--results-grow)",
+                ? "xl:shrink-0 xl:grow-0 xl:basis-auto"
+                : "xl:grow-(--results-grow) xl:basis-0",
             )}
           />
         </div>
@@ -738,7 +760,11 @@ function SubmitView({ exerciseId }: { exerciseId: string | undefined }) {
           pendingRestore ? (
             <>
               O rascunho atual do editor será perdido e substituído pelo código
-              da submissão #{pendingRestore.submission.id}, enviada em{" "}
+              da submissão
+              {pendingRestore.submission.number > 0
+                ? ` #${String(pendingRestore.submission.number)}`
+                : " anterior"}
+              , enviada em{" "}
               {formatDateTime(pendingRestore.submission.created_at)}. Esta ação
               é irreversível.
             </>

@@ -68,7 +68,7 @@ flowchart TB
         ObsExporters["node / blackbox exporters"]
     end
 
-    User -->|"HTTPS + SSE"| Caddy
+    User -->|"HTTPS + SSE/WS"| Caddy
     Caddy -->|"/api/*"| Backend
     Caddy -->|"/otel/v1/traces"| Collector
     Backend -->|SQL| PG

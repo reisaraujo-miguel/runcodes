@@ -9,7 +9,7 @@ import {
   Loader2Icon,
   LockIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { StatusBadge } from "@/components/app/StatusBadge";
 import type { TestCase } from "@/lib/api/exercises";
@@ -19,10 +19,13 @@ import type {
   SubmissionStatusEvent,
 } from "@/lib/api/submissions";
 import {
-  getSubmissionOutputFiles,
   submissionOutputFileUrl,
   submissionOutputUrl,
 } from "@/lib/api/submissions";
+import {
+  artifactUnavailableMessage,
+  type ArtifactStatus,
+} from "@/lib/artifact-progress";
 import { formatBytes, formatCpuTime } from "@/lib/format";
 import { filesForTestCase } from "@/lib/output-files";
 import {
@@ -63,11 +66,11 @@ export function CaseChip({
   const value = status ? caseStatus(status) : null;
   const icon =
     status === "correct" ? (
-      <CheckCircle2Icon className="text-success size-3.5" aria-hidden />
+      <CheckCircle2Icon className="size-3.5 text-success" aria-hidden />
     ) : status === "killed_with_signal" ? (
-      <CircleXIcon className="text-destructive size-3.5" aria-hidden />
+      <CircleXIcon className="size-3.5 text-destructive" aria-hidden />
     ) : status === "bad_formatted_output" ? (
-      <CircleAlertIcon className="text-warning size-3.5" aria-hidden />
+      <CircleAlertIcon className="size-3.5 text-warning" aria-hidden />
     ) : null;
 
   return (
@@ -77,17 +80,17 @@ export function CaseChip({
       aria-pressed={active}
       onClick={onSelect}
       className={cn(
-        "focus-visible:ring-ring/50 inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border px-2 text-xs font-medium tabular-nums transition-colors outline-none focus-visible:ring-2",
+        "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border px-2 text-xs font-medium tabular-nums transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
         active
           ? "border-primary/50 bg-primary/10 text-primary"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground border-transparent",
+          : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
       )}
     >
       {number === null ? "Caso removido" : `Caso ${String(number)}`}
       {running && !status ? (
         <>
           <span
-            className="bg-primary size-2 animate-pulse rounded-full"
+            className="size-2 animate-pulse rounded-full bg-primary"
             aria-hidden
           />
           <span className="sr-only">Executando</span>
@@ -119,7 +122,7 @@ export function CaseProgress({
     >
       <div
         aria-hidden
-        className="bg-muted flex h-1.5 w-12 items-center gap-px overflow-hidden rounded-full sm:w-16"
+        className="flex h-1.5 w-12 items-center gap-px overflow-hidden rounded-full bg-muted sm:w-16"
       >
         {results.map((result) => (
           <span
@@ -133,11 +136,11 @@ export function CaseProgress({
         {pendingCases > 0 ? (
           <span
             style={{ flexGrow: pendingCases }}
-            className="bg-muted-foreground/25 h-full min-w-0 basis-0"
+            className="h-full min-w-0 basis-0 bg-muted-foreground/25"
           />
         ) : null}
       </div>
-      <span className="text-muted-foreground text-[11px] tabular-nums">
+      <span className="text-[11px] text-muted-foreground tabular-nums">
         {String(correct)}/{String(total)}
       </span>
     </div>
@@ -160,16 +163,16 @@ function CaseField({
 }) {
   return (
     <div className={cn("min-w-0", className)}>
-      <p className="text-muted-foreground mb-1 text-xs font-medium">{label}</p>
+      <p className="mb-1 text-xs font-medium text-muted-foreground">{label}</p>
       {value === null ? (
-        <div className="border-border text-muted-foreground flex min-h-9 items-start gap-1.5 rounded-md border border-dashed px-2.5 py-2 text-xs">
+        <div className="flex min-h-9 items-start gap-1.5 rounded-md border border-dashed border-border px-2.5 py-2 text-xs text-muted-foreground">
           <LockIcon className="mt-px size-3.5 shrink-0" aria-hidden />
           <span>{unavailable}</span>
         </div>
       ) : (
         <pre
           className={cn(
-            "border-border bg-muted/50 max-h-40 overflow-auto rounded-md border px-2.5 py-2 font-mono text-xs leading-relaxed wrap-break-word whitespace-pre-wrap",
+            "max-h-40 overflow-auto rounded-md border border-border bg-muted/50 px-2.5 py-2 font-mono text-xs leading-relaxed wrap-break-word whitespace-pre-wrap",
             tone === "danger" &&
               "border-destructive/30 bg-destructive/10 text-destructive",
           )}
@@ -212,19 +215,19 @@ export function CaseDetail({
       {result ? (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <StatusBadge value={caseStatus(result.status)} />
-          <span className="text-muted-foreground text-[11px] tabular-nums">
+          <span className="text-[11px] text-muted-foreground tabular-nums">
             CPU {formatCpuTime(result.cpuTime)}
           </span>
-          <span className="text-muted-foreground text-[11px] tabular-nums">
+          <span className="text-[11px] text-muted-foreground tabular-nums">
             Memória {formatBytes(result.memUsage)}
           </span>
           {caseReasonLabel(result.reason) ? (
-            <span className="text-destructive min-w-0 text-xs font-medium">
+            <span className="min-w-0 text-xs font-medium text-destructive">
               {caseReasonLabel(result.reason)}
             </span>
           ) : null}
           {result.statusMessage ? (
-            <span className="text-muted-foreground min-w-0 text-xs">
+            <span className="min-w-0 text-xs text-muted-foreground">
               {result.statusMessage}
             </span>
           ) : null}
@@ -268,7 +271,7 @@ export function CaseDetail({
           tone={result.status === "correct" ? undefined : "danger"}
         />
       ) : (
-        <p className="text-muted-foreground flex items-start gap-1.5 text-xs">
+        <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
           {pending ? (
             <Loader2Icon
               className="mt-px size-3.5 shrink-0 animate-spin"
@@ -286,12 +289,12 @@ export function CaseDetail({
       )}
 
       {result?.errorMessage ? (
-        <pre className="border-destructive/30 bg-destructive/10 text-destructive max-h-40 overflow-auto rounded-md border px-2.5 py-2 font-mono text-xs leading-relaxed wrap-break-word whitespace-pre-wrap">
+        <pre className="max-h-40 overflow-auto rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-2 font-mono text-xs leading-relaxed wrap-break-word whitespace-pre-wrap text-destructive">
           {result.errorMessage}
         </pre>
       ) : null}
 
-      <p className="text-muted-foreground text-[11px]">
+      <p className="text-[11px] text-muted-foreground">
         O professor escolhe quais casos e detalhes ficam disponíveis para
         consulta.
       </p>
@@ -301,9 +304,9 @@ export function CaseDetail({
 
 export function NoCasesState() {
   return (
-    <div className="text-muted-foreground flex min-h-24 flex-col items-center justify-center gap-1.5 py-4 text-center">
+    <div className="flex min-h-24 flex-col items-center justify-center gap-1.5 py-4 text-center text-muted-foreground">
       <ListChecksIcon className="size-5" aria-hidden />
-      <p className="text-foreground text-sm font-medium">
+      <p className="text-sm font-medium text-foreground">
         Nenhum caso liberado
       </p>
       <p className="max-w-xs text-xs">
@@ -317,7 +320,7 @@ export function PendingState() {
   return (
     <div
       role="status"
-      className="text-muted-foreground flex min-h-24 flex-col items-center justify-center gap-2 py-4 text-center"
+      className="flex min-h-24 flex-col items-center justify-center gap-2 py-4 text-center text-muted-foreground"
     >
       <Loader2Icon className="size-4 animate-spin" aria-hidden />
       <p className="text-xs">
@@ -330,11 +333,11 @@ export function PendingState() {
 export function CompilationError({ message }: { message: string }) {
   return (
     <div className="space-y-1.5">
-      <p className="text-destructive flex items-center gap-1.5 text-xs font-medium">
+      <p className="flex items-center gap-1.5 text-xs font-medium text-destructive">
         <CircleAlertIcon className="size-3.5 shrink-0" aria-hidden />
         Erro de compilação
       </p>
-      <pre className="border-destructive/30 bg-destructive/10 text-destructive max-h-40 overflow-auto rounded-md border px-2.5 py-2 font-mono text-xs leading-relaxed wrap-break-word whitespace-pre-wrap">
+      <pre className="max-h-40 overflow-auto rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-2 font-mono text-xs leading-relaxed wrap-break-word whitespace-pre-wrap text-destructive">
         {message}
       </pre>
     </div>
@@ -345,7 +348,7 @@ export function InlineNotice({ children }: { children: ReactNode }) {
   return (
     <p
       role="alert"
-      className="border-destructive/30 bg-destructive/10 text-destructive flex items-start gap-1.5 rounded-md border px-2.5 py-1.5 text-xs"
+      className="flex items-start gap-1.5 rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive"
     >
       <CircleAlertIcon className="mt-px size-3.5 shrink-0" aria-hidden />
       <span>{children}</span>
@@ -355,16 +358,16 @@ export function InlineNotice({ children }: { children: ReactNode }) {
 
 export function StreamError({ message }: { message: string }) {
   return (
-    <div className="border-destructive/30 bg-destructive/10 rounded-md border px-2.5 py-1.5">
-      <p className="text-destructive flex items-center gap-1.5 text-xs font-medium">
+    <div className="rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-1.5">
+      <p className="flex items-center gap-1.5 text-xs font-medium text-destructive">
         <CircleAlertIcon className="size-3.5 shrink-0" aria-hidden />
         Falha na transmissão dos resultados
       </p>
       <details className="mt-1">
-        <summary className="text-muted-foreground hover:text-foreground cursor-pointer text-[11px] select-none">
+        <summary className="cursor-pointer text-[11px] text-muted-foreground select-none hover:text-foreground">
           Ver detalhes
         </summary>
-        <p className="text-muted-foreground mt-1 text-[11px] wrap-break-word">
+        <p className="mt-1 text-[11px] wrap-break-word text-muted-foreground">
           {message} Recarregue a página para ver o estado atual.
         </p>
       </details>
@@ -391,108 +394,55 @@ function generatedFileLabel(filePath: string): string {
 /**
  * The files one test case generated, with a download per file. Each case has its
  * own tab, so a case shows only what it produced: a file's origin is the
- * `test_<case id>/` prefix the judge stored it under.
+ * `test_<case number>/` prefix the judge stored it under.
  *
- * The listing comes from the API rather than the event stream because the judge
- * publishes each case's files while the run advances, so it grows until the last
- * case finishes.
+ * The listing is pushed by the output-files WebSocket. When an upload fails, the
+ * section shows why there is no download instead of a spinner.
  */
 export function Artifacts({
   commitId,
-  testCaseId,
+  testCaseNumber,
+  files,
   pending,
-  refreshKey,
+  status,
 }: {
   commitId: number;
-  /** The case whose tab is open; only its files are listed. */
-  testCaseId: number;
+  /** The case's 1-based position in the exercise. */
+  testCaseNumber: number;
+  /** Every generated file of the commit, as pushed by the WebSocket. */
+  files: readonly SubmissionOutputFile[];
   /** True while this case's files are still being uploaded. */
   pending: boolean;
-  /**
-   * Changes when another case's result arrives or new files are published, so the
-   * list follows the run.
-   */
-  refreshKey: string;
+  /** The upload outcome, when the judge has reported one. */
+  status?: ArtifactStatus;
 }) {
-  const [files, setFiles] = useState<SubmissionOutputFile[]>([]);
-  // The poll below is bounded: a failed upload whose final event was lost must
-  // not leave a spinner running forever. The give-up is recorded against the
-  // poll's own key, so another case, another commit or a pending-state change
-  // shows the placeholder again without a reset effect. It deliberately does not
-  // include `refreshKey`: a refresh is only a read, and must not restart the
-  // timeout.
-  const pollKey = `${String(commitId)}:${pending ? "pending" : "settled"}:${String(testCaseId)}`;
-  const [gaveUpFor, setGaveUpFor] = useState<string | null>(null);
-  const gaveUp = gaveUpFor === pollKey;
-  // The polling effect publishes its latest read here so a refresh from another
-  // case or a new artifact can re-read the listing without recreating the timer.
-  const readRef = useRef<() => void>(() => undefined);
-
-  // While this case's upload is in flight, the listing is polled: the ready event
-  // can arrive after the run's terminal event, when the stream is already closed,
-  // and the placeholder must turn into the link by itself.
-  useEffect(() => {
-    let active = true;
-    let timer: ReturnType<typeof setInterval> | undefined;
-    let attempts = 0;
-
-    const read = () => {
-      getSubmissionOutputFiles(commitId)
-        .then((list) => {
-          if (active) setFiles(list);
-        })
-        .catch(() => {
-          // A listing failure leaves the section out; the case's result above is
-          // unaffected.
-        });
-    };
-    readRef.current = read;
-
-    read();
-
-    if (pending) {
-      // Bounded: a failed upload that never reports back must not poll forever.
-      timer = setInterval(() => {
-        attempts += 1;
-        if (attempts > 30) {
-          if (timer) clearInterval(timer);
-          if (active) setGaveUpFor(pollKey);
-          return;
-        }
-        read();
-      }, 2000);
-    }
-
-    return () => {
-      active = false;
-      if (timer) clearInterval(timer);
-      readRef.current = () => undefined;
-    };
-  }, [commitId, pending, pollKey]);
-
-  // Another case's result or a new artifact means the listing may have grown.
-  // Treat it as one extra read, not as a new poll: re-creating the poll would
-  // reset its attempts and let a lost failure event spin forever.
-  const firstRefresh = useRef(true);
-  useEffect(() => {
-    if (firstRefresh.current) {
-      firstRefresh.current = false;
-      return;
-    }
-    readRef.current();
-  }, [refreshKey]);
-
-  const caseFiles = filesForTestCase(files, testCaseId);
+  const caseFiles = filesForTestCase(files, testCaseNumber);
   if (caseFiles.length === 0) {
-    if (!pending || gaveUp) return null;
+    const unavailable = artifactUnavailableMessage(status);
+    if (unavailable) {
+      return (
+        <div className="border-t pt-2">
+          <p className="mb-1 text-[11px] font-medium text-muted-foreground">
+            Arquivos gerados
+          </p>
+          <p
+            className="text-xs wrap-break-word text-muted-foreground"
+            aria-live="polite"
+          >
+            {unavailable}
+          </p>
+        </div>
+      );
+    }
+    if (!pending) return null;
 
     return (
       <div className="border-t pt-2">
-        <p className="text-muted-foreground mb-1 text-[11px] font-medium">
+        <p className="mb-1 text-[11px] font-medium text-muted-foreground">
           Arquivos gerados
         </p>
         <p
-          className="text-muted-foreground inline-flex items-center gap-1.5 text-xs"
+          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
           aria-live="polite"
         >
           <Loader2Icon className="size-3.5 animate-spin" aria-hidden />
@@ -508,7 +458,7 @@ export function Artifacts({
 
   return (
     <div className="border-t pt-2">
-      <p className="text-muted-foreground mb-1 text-[11px] font-medium">
+      <p className="mb-1 text-[11px] font-medium text-muted-foreground">
         Arquivos gerados
       </p>
       <ul className="flex flex-col gap-1">
@@ -519,14 +469,12 @@ export function Artifacts({
           >
             <a
               href={submissionOutputFileUrl(commitId, file.path)}
-              className="text-primary inline-flex min-w-0 items-center gap-1.5 text-xs hover:underline"
+              className="inline-flex min-w-0 items-center gap-1.5 text-xs text-primary hover:underline"
             >
               <DownloadIcon className="size-3.5 shrink-0" aria-hidden />
-              <span className="truncate">
-                {generatedFileLabel(file.path)}
-              </span>
+              <span className="truncate">{generatedFileLabel(file.path)}</span>
             </a>
-            <span className="text-muted-foreground shrink-0 text-[11px] tabular-nums">
+            <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
               {formatBytes(file.size)}
             </span>
           </li>
@@ -535,7 +483,7 @@ export function Artifacts({
       {hasOtherFiles ? (
         <a
           href={submissionOutputUrl(commitId)}
-          className="text-muted-foreground hover:text-foreground mt-1.5 inline-flex items-center gap-1.5 text-[11px] hover:underline"
+          className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground hover:underline"
         >
           <DownloadIcon className="size-3" aria-hidden />
           Baixar os arquivos de todos os casos (.zip)
@@ -548,14 +496,14 @@ export function Artifacts({
 export function CompilationMessage({ message }: { message: string }) {
   return (
     <details className="group border-t pt-2">
-      <summary className="text-muted-foreground hover:text-foreground flex cursor-pointer list-none items-center gap-1.5 text-[11px] select-none [&::-webkit-details-marker]:hidden">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[11px] text-muted-foreground select-none hover:text-foreground [&::-webkit-details-marker]:hidden">
         <ChevronDownIcon
           className="size-3 transition-transform group-open:rotate-180"
           aria-hidden
         />
         Mensagem da compilação
       </summary>
-      <pre className="bg-muted mt-2 max-h-40 overflow-auto rounded-md px-2.5 py-2 font-mono text-xs leading-relaxed wrap-break-word whitespace-pre-wrap">
+      <pre className="mt-2 max-h-40 overflow-auto rounded-md bg-muted px-2.5 py-2 font-mono text-xs leading-relaxed wrap-break-word whitespace-pre-wrap">
         {message}
       </pre>
     </details>
@@ -565,7 +513,7 @@ export function CompilationMessage({ message }: { message: string }) {
 export function RunHistory({ history }: { history: SubmissionStatusEvent[] }) {
   return (
     <details className="group border-t pt-2">
-      <summary className="text-muted-foreground hover:text-foreground flex cursor-pointer list-none items-center gap-1.5 text-[11px] select-none [&::-webkit-details-marker]:hidden">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[11px] text-muted-foreground select-none hover:text-foreground [&::-webkit-details-marker]:hidden">
         <HistoryIcon className="size-3.5" aria-hidden />
         Andamento da correção
         <ChevronDownIcon
@@ -582,7 +530,7 @@ export function RunHistory({ history }: { history: SubmissionStatusEvent[] }) {
             <span className="text-muted-foreground">
               {commitStatus(event.status).label}
             </span>
-            <span className="text-muted-foreground font-mono tabular-nums">
+            <span className="font-mono text-muted-foreground tabular-nums">
               {formatEventTime(event.at)}
             </span>
           </li>
