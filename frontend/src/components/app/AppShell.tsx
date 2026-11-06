@@ -73,7 +73,7 @@ function SidebarNav({
       {sections.map((section, index) => (
         <div key={section.label ?? `section-${String(index)}`}>
           {section.label && !collapsed ? (
-            <p className="text-muted-foreground px-3 pb-2 text-xs font-semibold tracking-wider uppercase">
+            <p className="px-3 pb-2 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
               {section.label}
             </p>
           ) : null}
@@ -90,7 +90,7 @@ function SidebarNav({
                   className={({ isActive }) =>
                     cn(
                       "flex items-center gap-3 rounded-lg text-sm font-medium transition-colors",
-                      collapsed ? "justify-center px-2 py-2" : "px-3 py-2",
+                      collapsed ? "justify-center p-2" : "px-3 py-2",
                       isActive
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -123,11 +123,11 @@ function SidebarBody({
   onNavigate?: () => void;
 }) {
   return (
-    <div className="bg-sidebar flex h-full flex-col">
+    <div className="flex h-full flex-col bg-sidebar">
       <div
         className={cn(
           "flex h-16 items-center border-b",
-          collapsed ? "justify-center px-2" : "justify-between px-5 gap-4",
+          collapsed ? "justify-center px-2" : "justify-between gap-4 px-5",
         )}
       >
         {collapsed ? null : <Brand />}
@@ -138,7 +138,7 @@ function SidebarBody({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="text-muted-foreground shrink-0"
+                  className="shrink-0 text-muted-foreground"
                   aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
                   onClick={onToggleCollapsed}
                 />
@@ -199,10 +199,10 @@ export function AppShell() {
   }, [collapsed]);
 
   return (
-    <div className="bg-muted/30 min-h-svh">
+    <div className="min-h-svh bg-muted/30">
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:bg-background focus:ring-ring focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-md focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:ring-2"
+        className="sr-only focus:top-4 focus:left-4 focus:z-50 focus:size-auto focus:overflow-visible focus:rounded-md focus:bg-background focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:whitespace-normal focus:ring-2 focus:ring-ring focus:[clip:auto]"
       >
         Pular para o conteúdo
       </a>
@@ -228,7 +228,7 @@ export function AppShell() {
           id="mobile-navigation"
           side="left"
           showCloseButton={false}
-          className="bg-sidebar w-72 gap-0 p-0"
+          className="w-72 gap-0 bg-sidebar p-0"
         >
           <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
           <SidebarBody
@@ -246,7 +246,7 @@ export function AppShell() {
           collapsed ? "lg:pl-16" : "lg:pl-64",
         )}
       >
-        <header className="bg-background/80 sticky top-0 z-30 flex h-16 items-center gap-2 border-b px-4 backdrop-blur lg:hidden">
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur lg:hidden">
           <Button
             variant="ghost"
             size="icon"
@@ -261,7 +261,7 @@ export function AppShell() {
             <MenuIcon />
           </Button>
           <Brand />
-          <div className="ml-auto flex gap-2 items-center">
+          <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />
             <GitHubLink />
           </div>
@@ -273,8 +273,8 @@ export function AppShell() {
           className={cn(
             "w-full",
             workspaceLayout
-              ? "px-4 py-4 xl:flex xl:h-svh xl:flex-col xl:overflow-hidden xl:px-6"
-              : "mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8",
+              ? "p-4 xl:flex xl:h-svh xl:flex-col xl:overflow-hidden xl:px-6"
+              : "mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:p-8",
           )}
         >
           <PreviewBanner />

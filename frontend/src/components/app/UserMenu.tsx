@@ -56,8 +56,8 @@ export function UserMenu({
         aria-label={collapsed ? user.name : undefined}
         title={collapsed ? user.name : undefined}
         className={cn(
-          "hover:bg-accent data-open:bg-accent flex w-full items-center rounded-lg text-left outline-none transition-colors",
-          collapsed ? "justify-center py-2" : "gap-3 px-2 py-2",
+          "flex w-full items-center rounded-lg text-left transition-colors outline-none hover:bg-accent data-open:bg-accent",
+          collapsed ? "justify-center py-2" : "gap-3 p-2",
           className,
         )}
       >
@@ -67,7 +67,7 @@ export function UserMenu({
         {collapsed ? null : (
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{user.name}</p>
-            <p className="text-muted-foreground truncate text-xs">
+            <p className="truncate text-xs text-muted-foreground">
               {user.email}
             </p>
           </div>
@@ -131,7 +131,7 @@ export function UserMenu({
         ) : null}
 
         {preview.error ? (
-          <DropdownMenuLabel className="text-destructive text-xs font-normal whitespace-normal">
+          <DropdownMenuLabel className="text-xs font-normal whitespace-normal text-destructive">
             {preview.error}
           </DropdownMenuLabel>
         ) : null}

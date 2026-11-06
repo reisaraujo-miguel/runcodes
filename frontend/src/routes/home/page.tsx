@@ -9,8 +9,8 @@ import { NavLink } from "react-router";
 
 import { PageHeader } from "@/components/app/PageHeader";
 import { Section } from "@/components/app/Section";
-import { StatStrip } from "@/components/app/StatStrip";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
+import { StatStrip } from "@/components/app/StatStrip";
 import { ClassList } from "@/components/classes/ClassList";
 import { EnrollForm } from "@/components/classes/EnrollForm";
 import { ExerciseCard } from "@/components/exercises/ExerciseCard";

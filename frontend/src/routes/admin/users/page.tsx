@@ -2,8 +2,8 @@ import { useState, type SubmitEvent } from "react";
 
 import { PencilIcon, SearchIcon, Trash2Icon, UsersIcon } from "lucide-react";
 
-import { UserEditDialog } from "@/components/admin/UserEditDialog";
 import { useAdminList } from "@/components/admin/use-admin-list";
+import { UserEditDialog } from "@/components/admin/UserEditDialog";
 import { ConfirmButton } from "@/components/app/ConfirmDialog";
 import { PageHeader } from "@/components/app/PageHeader";
 import { PlatformRoleBadge } from "@/components/app/RoleBadge";

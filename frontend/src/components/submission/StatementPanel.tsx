@@ -64,7 +64,7 @@ export function StatementPanel({
   return (
     <section
       className={cn(
-        "bg-card flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border",
+        "flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border bg-card",
         className,
       )}
     >
@@ -104,7 +104,7 @@ export function StatementPanel({
         >
           <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
             <FileTextIcon
-              className="text-muted-foreground size-3.5 shrink-0"
+              className="size-3.5 shrink-0 text-muted-foreground"
               aria-hidden
             />
             <p className="min-w-0 flex-1 truncate font-mono text-xs">
@@ -114,7 +114,7 @@ export function StatementPanel({
               href={attachedFileDownloadUrl(exerciseId, primaryPdf.id)}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-primary inline-flex shrink-0 items-center gap-1 text-xs font-medium hover:underline"
+              className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-primary hover:underline"
             >
               Abrir
               <ExternalLinkIcon className="size-3" aria-hidden />
@@ -140,23 +140,23 @@ export function StatementPanel({
             description.trim() ? (
               <Markdown>{description}</Markdown>
             ) : (
-              <p className="text-muted-foreground text-sm">
+              <p className="text-sm text-muted-foreground">
                 Este exercício não possui descrição em texto.
               </p>
             )
           ) : materialsLoading ? (
             <LoadingState label="Carregando materiais…" className="py-8" />
           ) : materialsError ? (
-            <p className="text-destructive text-xs">
+            <p className="text-xs text-destructive">
               Não foi possível carregar os materiais: {materialsError}
             </p>
           ) : materials.length === 0 ? (
-            <div className="text-muted-foreground flex items-start gap-2 text-sm">
+            <div className="flex items-start gap-2 text-sm text-muted-foreground">
               <PaperclipIcon className="mt-0.5 size-4 shrink-0" aria-hidden />
               <p>Nenhum material anexado a este exercício.</p>
             </div>
           ) : (
-            <ul className="divide-border divide-y">
+            <ul className="divide-y divide-border">
               {materials.map((file) => {
                 const isPdf = extensionOf(file.filename) === ".pdf";
                 return (
@@ -165,9 +165,9 @@ export function StatementPanel({
                       href={attachedFileDownloadUrl(exerciseId, file.id)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="hover:bg-muted/60 group -mx-2 flex items-center gap-2.5 rounded-md px-2 py-2"
+                      className="group -mx-2 flex items-center gap-2.5 rounded-md p-2 hover:bg-muted/60"
                     >
-                      <span className="bg-muted text-muted-foreground flex size-7 shrink-0 items-center justify-center rounded-md">
+                      <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
                         {isPdf ? (
                           <FileTextIcon className="size-3.5" aria-hidden />
                         ) : (
@@ -178,7 +178,7 @@ export function StatementPanel({
                         {file.filename}
                       </span>
                       <ExternalLinkIcon
-                        className="text-muted-foreground size-3.5 shrink-0"
+                        className="size-3.5 shrink-0 text-muted-foreground"
                         aria-hidden
                       />
                     </a>
@@ -196,7 +196,7 @@ export function StatementPanel({
           onClick={onToggleCollapsed}
           title="Expandir enunciado"
           aria-label="Expandir enunciado"
-          className="text-muted-foreground hover:bg-muted/40 hover:text-foreground focus-visible:ring-ring/50 hidden h-full min-h-0 w-full flex-1 flex-col items-center gap-4 py-3 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset xl:flex"
+          className="hidden size-full min-h-0 flex-1 flex-col items-center gap-4 py-3 text-muted-foreground transition-colors outline-none hover:bg-muted/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset xl:flex"
         >
           <PanelLeftOpenIcon className="size-5" aria-hidden />
           <span className="text-[11px] font-medium [writing-mode:vertical-rl]">

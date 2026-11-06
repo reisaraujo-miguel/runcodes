@@ -15,12 +15,12 @@ import { TabBar, type TabBarItem } from "@/components/ui/tab-bar";
 import type { LanguageStatistics } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 
+import { formatCount } from "./language-stats";
 import { LanguageAllowanceCard } from "./LanguageAllowanceCard";
 import { LanguageChoiceCard } from "./LanguageChoiceCard";
 import { LanguageMemoryCard } from "./LanguageMemoryCard";
 import { LanguagePerformanceCard } from "./LanguagePerformanceCard";
 import { LanguagePhasesCard } from "./LanguagePhasesCard";
-import { formatCount } from "./language-stats";
 
 type ReportTab = "choice" | "allowance" | "cpu" | "memory" | "phases";
 

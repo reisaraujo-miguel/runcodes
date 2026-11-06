@@ -2,11 +2,11 @@ import "./index.css";
 // Applies the stored/system theme to <html> before React renders anything.
 import "@/lib/theme";
 
-import { AuthProvider } from "@/components/AuthProvider.tsx";
-import { browserTelemetryConfig } from "@/lib/telemetry/config";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider } from "react-router";
+import { AuthProvider } from "@/components/AuthProvider.tsx";
+import { browserTelemetryConfig } from "@/lib/telemetry/config";
 import { router } from "./routes";
 
 async function bootstrap() {

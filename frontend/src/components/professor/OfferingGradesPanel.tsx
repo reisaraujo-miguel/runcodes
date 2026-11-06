@@ -9,8 +9,8 @@ import {
 } from "lucide-react";
 
 import { Section } from "@/components/app/Section";
-import { StatStrip } from "@/components/app/StatStrip";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
+import { StatStrip } from "@/components/app/StatStrip";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

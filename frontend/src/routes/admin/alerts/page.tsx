@@ -165,19 +165,19 @@ export function AdminAlertsPage() {
                       <SeverityBadge severity={alert.severity} />
                     </TableCell>
                     <TableCell className="align-top">
-                      <code className="bg-muted rounded px-1.5 py-0.5 font-mono text-xs">
+                      <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
                         {alert.code}
                       </code>
                     </TableCell>
                     <TableCell className="max-w-md align-top">
                       <p className="leading-snug">{alert.message}</p>
                       {alert.details ? (
-                        <p className="text-muted-foreground mt-1 font-mono text-[11px] break-words">
+                        <p className="mt-1 font-mono text-[11px] wrap-break-word text-muted-foreground">
                           {alertDetailLine(alert.details)}
                         </p>
                       ) : null}
                       {alert.acknowledged_at ? (
-                        <p className="text-muted-foreground mt-1 text-[11px]">
+                        <p className="mt-1 text-[11px] text-muted-foreground">
                           Reconhecido
                           {alert.acknowledged_by_name
                             ? ` por ${alert.acknowledged_by_name}`
@@ -194,7 +194,7 @@ export function AdminAlertsPage() {
                     </TableCell>
                     <TableCell className="pr-4 text-right align-top">
                       {alert.acknowledged_at ? (
-                        <span className="text-muted-foreground text-xs">
+                        <span className="text-xs text-muted-foreground">
                           Reconhecido
                         </span>
                       ) : (
@@ -216,7 +216,7 @@ export function AdminAlertsPage() {
               </TableBody>
             </Table>
             {alerts.length >= ALERT_PAGE_LIMIT ? (
-              <p className="text-muted-foreground px-4 pt-3 text-xs">
+              <p className="px-4 pt-3 text-xs text-muted-foreground">
                 Mostrando os {ALERT_PAGE_LIMIT} alertas mais recentes. Reconheça
                 os mais antigos para vê-los sair da lista.
               </p>

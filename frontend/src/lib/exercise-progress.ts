@@ -6,7 +6,11 @@ export const PASSING_SCORE = 100;
 
 /** What the caller has done on an exercise, from their own point of view. */
 export type ExerciseProgressState =
-  "passed" | "scored" | "pending" | "submitted" | "unsubmitted";
+  | "passed"
+  | "scored"
+  | "pending"
+  | "submitted"
+  | "unsubmitted";
 
 export interface ExerciseProgress {
   state: ExerciseProgressState;

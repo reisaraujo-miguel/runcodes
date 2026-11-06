@@ -37,7 +37,9 @@ export type FinishedStatus = Extract<
 
 /** Per-test-case result, mirroring the backend's case status enum. */
 export type CaseResultStatus =
-  "correct" | "bad_formatted_output" | "killed_with_signal";
+  | "correct"
+  | "bad_formatted_output"
+  | "killed_with_signal";
 
 /** Response returned by `POST /api/v1/submissions`. */
 export interface QueuedSubmission {

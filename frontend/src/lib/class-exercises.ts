@@ -6,7 +6,10 @@ export type ClassExerciseFilter = "all" | "open" | "unsubmitted" | "graded";
 
 /** How the visible exercises are ordered. */
 export type ClassExerciseSort =
-  "deadline" | "score-desc" | "score-asc" | "recent";
+  | "deadline"
+  | "score-desc"
+  | "score-asc"
+  | "recent";
 
 /** Aggregate progress for one class, shown next to the exercise list. */
 export interface ClassExerciseSummary {

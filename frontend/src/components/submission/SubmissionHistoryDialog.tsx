@@ -1,8 +1,8 @@
 import { DownloadIcon, HistoryIcon, RotateCcwIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { StatusBadge } from "@/components/app/StatusBadge";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/states";
+import { StatusBadge } from "@/components/app/StatusBadge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
