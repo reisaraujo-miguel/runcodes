@@ -316,7 +316,7 @@ export function ResultsPanel({
             ref={caseStripRef}
             role="group"
             aria-label="Casos de teste"
-            className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain [scrollbar-color:var(--border)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-track]:bg-transparent"
+            className="flex min-w-0 flex-1 [scrollbar-width:thin] [scrollbar-color:var(--border)_transparent] items-center gap-1 overflow-x-auto overscroll-x-contain [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-track]:bg-transparent"
           >
             {cases.map((entry) => (
               <CaseChip

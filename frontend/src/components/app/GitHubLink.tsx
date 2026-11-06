@@ -1,5 +1,5 @@
-import { cn } from "@/lib/utils";
 import { NavLink } from "react-router";
+import { cn } from "@/lib/utils";
 
 import GitHubLogo from "@/assets/svg-icons/github.svg?react";
 

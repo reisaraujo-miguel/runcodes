@@ -86,7 +86,7 @@ function TextPreview({ value }: { value: string }) {
   return (
     <div
       title={value}
-      className="max-h-16 max-w-56 overflow-y-auto font-mono text-xs break-words whitespace-pre-wrap"
+      className="max-h-16 max-w-56 overflow-y-auto font-mono text-xs wrap-break-word whitespace-pre-wrap"
     >
       {value}
     </div>
@@ -381,9 +381,9 @@ function TestRow({
             return (
               <p
                 key={language.allowed_file_type_id}
-                className="text-muted-foreground text-xs whitespace-nowrap"
+                className="text-xs whitespace-nowrap text-muted-foreground"
               >
-                <span className="text-foreground/80 font-medium">
+                <span className="font-medium text-foreground/80">
                   {language.name}
                 </span>
                 {`: ${formatLimitSeconds(language.limits.cpu_time_limit_seconds)} · ${formatLimitMiB(language.limits.mem_usage_limit_bytes)} · ${formatLimitMiB(language.limits.stack_limit_bytes)} · ${formatLimitMiB(language.limits.file_size_limit_bytes)} `}
@@ -395,7 +395,7 @@ function TestRow({
       </TableCell>
       <TableCell>
         {files.length === 0 ? (
-          <span className="text-muted-foreground text-xs">Nenhum</span>
+          <span className="text-xs text-muted-foreground">Nenhum</span>
         ) : (
           <details>
             <summary className="cursor-pointer text-xs select-none">

@@ -238,11 +238,11 @@
 }
 
 .markdown-body code {
-  @apply bg-muted rounded px-1 py-0.5 font-mono text-[0.85em];
+  @apply rounded bg-muted px-1 py-0.5 font-mono text-[0.85em];
 }
 
 .markdown-body pre {
-  @apply bg-muted overflow-x-auto rounded-lg p-3;
+  @apply overflow-x-auto rounded-lg bg-muted p-3;
 }
 
 .markdown-body pre code {
@@ -250,11 +250,11 @@
 }
 
 .markdown-body blockquote {
-  @apply border-border text-muted-foreground border-l-2 pl-4 italic;
+  @apply border-l-2 border-border pl-4 text-muted-foreground italic;
 }
 
 .markdown-body hr {
-  @apply border-border my-5;
+  @apply my-5 border-border;
 }
 
 .markdown-body table {
@@ -263,7 +263,7 @@
 
 .markdown-body th,
 .markdown-body td {
-  @apply border-border border px-3 py-1.5 text-left;
+  @apply border border-border px-3 py-1.5 text-left;
 }
 
 .markdown-body th {

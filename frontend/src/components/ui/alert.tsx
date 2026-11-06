@@ -61,7 +61,7 @@ function Alert({
           onClick={() => {
             setVisible(false);
           }}
-          className="text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 absolute top-2 right-2 rounded p-1 transition-colors outline-none focus-visible:ring-2"
+          className="absolute top-2 right-2 rounded p-1 text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
         >
           <XIcon className="size-3.5" aria-hidden />
         </button>
@@ -91,7 +91,7 @@ function AlertDescription({
     <div
       data-slot="alert-description"
       className={cn(
-        "text-muted-foreground col-start-2 grid justify-items-start gap-1 text-sm [&_p]:leading-relaxed",
+        "col-start-2 grid justify-items-start gap-1 text-sm text-muted-foreground [&_p]:leading-relaxed",
         className,
       )}
       {...props}

@@ -1,8 +1,8 @@
+import fs, { type Dirent } from "node:fs";
+import path from "path";
 import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
-import fs, { type Dirent } from "node:fs";
-import path from "path";
 import { optimize, type Config as SvgoConfig } from "svgo";
 import { defineConfig, type Plugin } from "vite";
 import svgr from "vite-plugin-svgr";

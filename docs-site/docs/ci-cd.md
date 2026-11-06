@@ -58,7 +58,8 @@ covered by the podman unit tests.
 ### Frontend (Bun)
 
 - `bun install --frozen-lockfile` (Bun pinned to the lockfile version);
-- ESLint;
+- Oxfmt formatting check;
+- Oxlint;
 - SVG optimization check;
 - `bun test`;
 - production build.

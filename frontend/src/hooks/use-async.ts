@@ -65,6 +65,9 @@ export function useAsync<T>(
       });
 
     return () => {
+      // `cancelled` is local to this effect. The React Compiler analysis inside
+      // oxlint reports the cleanup reassignment as a render-scope mutation.
+      // oxlint-disable-next-line react/immutability
       cancelled = true;
     };
   }, [token, fallbackError]);
