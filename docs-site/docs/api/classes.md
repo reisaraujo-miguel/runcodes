@@ -64,8 +64,10 @@ enrollment code.
 
 ### `GET /user/exercises`
 
-Exercises open **right now** in the caller's classes, ordered by deadline. The
-list is capped at 50 entries. Returns an array of:
+Exercises that have already opened in the caller's classes, ordered by deadline.
+The list includes exercises whose deadline has passed, so completed work stays
+visible. Each entry carries the caller's submission summary and an `is_open` flag
+computed by the server. Returns an array of:
 
 ```json
 {
@@ -75,9 +77,16 @@ list is capped at 50 entries. Returns an array of:
   "title": "Hello, world",
   "description": "…",
   "deadline": "2026-03-20T23:59:59-03:00",
-  "open_date": "2026-03-01T00:00:00-03:00"
+  "open_date": "2026-03-01T00:00:00-03:00",
+  "is_open": false,
+  "submission_count": 3,
+  "last_submission_at": "2026-03-10T14:22:01Z",
+  "last_status": "completed",
+  "best_score": 100
 }
 ```
+
+An exercise that has not opened yet does not appear here.
 
 ### `POST /offerings/enroll`
 

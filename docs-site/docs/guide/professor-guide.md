@@ -236,7 +236,8 @@ files immediately.
 - Students cannot submit after the deadline. Owners and co-professors can, so
   staff can test the exercise before and after releasing it.
 - The class page shows the exercise to enrolled students according to these
-  rules; the dashboard and **Exercícios** list only what is open right now.
+  rules; the dashboard lists only open exercises the student has not fully
+  passed, and **Exercícios** separates pending from completed exercises.
 
 ### Allowed file types
 

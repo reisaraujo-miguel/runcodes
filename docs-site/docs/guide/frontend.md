@@ -35,8 +35,8 @@ browser sees one origin and no CORS.
 | `/verify-email` | public | consumes the email verification link |
 | `/forgot-password` | public | requests a password recovery link |
 | `/reset-password` | public | consumes the recovery link and sets a new password |
-| `/` | signed in | dashboard of open exercises and classes |
-| `/exercises` | signed in | exercises across the caller's classes |
+| `/` | signed in | dashboard of pending open exercises and classes |
+| `/exercises` | signed in | pending and completed exercises across the caller's classes |
 | `/exercises/:exerciseId/submit` | signed in | full-width submission workspace with editor |
 | `/classes` | signed in | the caller's classes |
 | `/classes/:offeringId` | signed in | class detail and exercise progress |

@@ -44,8 +44,12 @@ export interface UserOfferingDetail {
   exercises: UserOfferingExercise[];
 }
 
-/** An exercise of one of the caller's classes that is open right now. */
-export interface OpenExercise {
+/**
+ * One exercise of the caller's classes that has already opened, with their own
+ * submission summary. Closed exercises are included so completed work stays
+ * visible after the deadline; `is_open` is computed by the server.
+ */
+export interface UserExercise {
   id: number;
   offering_id: number;
   offering_name: string;
@@ -53,6 +57,14 @@ export interface OpenExercise {
   description: string;
   deadline: string;
   open_date: string;
+  /** True while the exercise still accepts submissions. */
+  is_open: boolean;
+  /** How many submissions the caller made for this exercise. */
+  submission_count: number;
+  last_submission_at: string | null;
+  last_status: CommitStatus | null;
+  /** Best score among graded submissions; null until one is graded. */
+  best_score: number | null;
 }
 
 /** Join a class with the enrollment code its professor shared. */
@@ -80,7 +92,10 @@ export function getMyOffering(id: number): Promise<UserOfferingDetail> {
   return apiGet<UserOfferingDetail>(`/api/v1/user/offerings/${String(id)}`);
 }
 
-/** List the exercises that are open right now across the caller's classes. */
-export function getMyOpenExercises(): Promise<OpenExercise[]> {
-  return apiGet<OpenExercise[]>("/api/v1/user/exercises");
+/**
+ * List every exercise that has opened across the caller's classes, including
+ * the ones whose deadline has passed, with their own progress on each.
+ */
+export function getMyExercises(): Promise<UserExercise[]> {
+  return apiGet<UserExercise[]>("/api/v1/user/exercises");
 }

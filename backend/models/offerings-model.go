@@ -61,16 +61,23 @@ type Enrollment struct {
 	IsOwner     bool      `json:"is_owner"`
 }
 
-// OpenExercise is an exercise of one of the caller's classes that is currently
-// open, as listed by GET /api/v1/user/exercises.
-type OpenExercise struct {
-	ID           int64     `json:"id"`
-	OfferingID   int64     `json:"offering_id"`
-	OfferingName string    `json:"offering_name"`
-	Title        string    `json:"title"`
-	Description  string    `json:"description"`
-	Deadline     time.Time `json:"deadline"`
-	OpenDate     time.Time `json:"open_date"`
+// UserExercise is one exercise of one of the caller's classes that has already
+// opened, as listed by GET /api/v1/user/exercises. It carries the caller's own
+// submission summary and whether the exercise is still open, so the home and
+// exercises pages can separate what is pending from what has been completed.
+type UserExercise struct {
+	ID               int64      `json:"id"`
+	OfferingID       int64      `json:"offering_id"`
+	OfferingName     string     `json:"offering_name"`
+	Title            string     `json:"title"`
+	Description      string     `json:"description"`
+	Deadline         time.Time  `json:"deadline"`
+	OpenDate         time.Time  `json:"open_date"`
+	IsOpen           bool       `json:"is_open"`
+	SubmissionCount  int64      `json:"submission_count"`
+	LastSubmissionAt *time.Time `json:"last_submission_at"`
+	LastStatus       *string    `json:"last_status"`
+	BestScore        *float64   `json:"best_score"`
 }
 
 // UserOfferingDetail is the caller's own view of one class: the class

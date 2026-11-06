@@ -78,7 +78,7 @@ The full endpoint reference starts at [API](../api/index.md).
 | --- | --- | --- |
 | Public | signup, login, verify email, resend, password recovery, public settings | anyone |
 | Session | auth, refresh, logout | signed in |
-| Self-service | profile, password, my classes, open exercises | signed in + confirmed |
+| Self-service | profile, password, my classes, my exercises with progress | signed in + confirmed |
 | Submissions | create, events, source, output, history | signed in + confirmed |
 | Authoring | exercises, test cases, compilation/attached files | staff of the class |
 | Class management | list, create, edit, delete, members | professor/admin; owner for edit/delete/members |

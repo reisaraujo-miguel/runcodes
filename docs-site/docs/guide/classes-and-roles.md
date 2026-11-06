@@ -109,8 +109,11 @@ Each exercise has an `open_date` and a `deadline`.
 - `removed` hides an exercise from students without deleting its history;
   `ghost` is retained from the legacy model.
 
-The `GET /api/v1/user/exercises` endpoint returns up to 50 exercises currently
-open in the caller's classes, which is what the home dashboard uses.
+The `GET /api/v1/user/exercises` endpoint returns the exercises that have
+already opened in the caller's classes, together with the caller's submission
+summary and an `is_open` flag. The home dashboard uses it to list only what is
+open and not fully passed; the exercises page splits the same list into pending
+and completed exercises, keeping completed work after the deadline.
 
 ## Exercise authoring
 
