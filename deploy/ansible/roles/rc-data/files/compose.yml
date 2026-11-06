@@ -24,12 +24,6 @@ services:
       # Only used by the first-deployment admin bootstrap task. The script is
       # read inside the container, not executed on the host.
       - ../../bootstrap/bootstrap-admin.sh:/bootstrap/bootstrap-admin.sh:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 30s
     shm_size: 256mb
     mem_limit: ${DB_MEM_LIMIT}
     networks:
@@ -54,11 +48,6 @@ services:
       - "${PRIVATE_IP}:6379:6379"
     volumes:
       - redis-data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -qx PONG"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
     mem_limit: ${REDIS_MEM_LIMIT}
     networks:
       - data

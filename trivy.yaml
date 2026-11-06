@@ -32,6 +32,8 @@ scan:
   skip-dirs:
     - .git
     - node_modules
+    - .cache
+    - frontend/.cache
 
 vulnerability:
   # Keep reporting vulnerabilities that have no fixed version available yet.
