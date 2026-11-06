@@ -4,7 +4,7 @@
 FROM golang:1.27.3-alpine3.24 AS gosu-builder
 
 RUN apk add --no-cache git && \
-  git clone --depth 1 --branch 1.20 https://github.com/tianon/gosu.git /gosu
+    git clone --depth 1 --branch 1.20 https://github.com/tianon/gosu.git /gosu
 
 WORKDIR /gosu
 
@@ -27,9 +27,6 @@ COPY schema/04-change-password.sh /docker-entrypoint-initdb.d/04-change-password
 COPY schema/05-app-role.sh /docker-entrypoint-initdb.d/05-app-role.sh
 
 RUN chmod +x /docker-entrypoint-initdb.d/04-change-password.sh \
-  /docker-entrypoint-initdb.d/05-app-role.sh
+    /docker-entrypoint-initdb.d/05-app-role.sh
 
 USER postgres
-
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=5 \
-  CMD pg_isready -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" || exit 1

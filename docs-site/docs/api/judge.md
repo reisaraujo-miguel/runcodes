@@ -27,20 +27,19 @@ If no token is configured, the judge **fails closed**: every `/v1` request gets
 `503` with an explanatory body. A local-only instance can opt out with
 `JUDGE_ALLOW_INSECURE=true`, which logs a warning at startup.
 
-| Status | Meaning |
-| --- | --- |
-| `200` | success |
-| `202` | wake accepted |
-| `401` | missing or invalid bearer token |
-| `503` | no token configured (or readiness failed) |
+| Status | Meaning                                   |
+| ------ | ----------------------------------------- |
+| `200`  | success                                   |
+| `202`  | wake accepted                             |
+| `401`  | missing or invalid bearer token           |
+| `503`  | no token configured (or readiness failed) |
 
 `/healthz` and `/readyz` are public so container health checks and the backend
 can probe them.
 
 ## `GET /healthz`
 
-Process liveness. Returns `200` with `text/plain` body `ok`. It checks nothing
-else; it is what the container `HEALTHCHECK` uses.
+Process liveness. Returns `200` with `text/plain` body `ok`. It checks nothing else.
 
 ## `GET /readyz`
 
@@ -86,8 +85,8 @@ Returns `202 Accepted`. The endpoint does not verify that the commit exists.
 A replayable SSE stream for one commit, consumed by the backend and relayed to
 the browser.
 
-| Query | Meaning |
-| --- | --- |
+| Query  | Meaning                                                       |
+| ------ | ------------------------------------------------------------- |
 | `from` | resume after the given per-commit sequence number (default 0) |
 
 Response headers are the same as the backend's SSE endpoint
@@ -182,11 +181,11 @@ expose a readable memory controller. The monitor samples the container cgroup
 The event announces generated files. Per-case events carry `test_case_id` and a
 `state`:
 
-| State | Meaning | Client |
-| --- | --- | --- |
+| State     | Meaning                                              | Client                                                 |
+| --------- | ---------------------------------------------------- | ------------------------------------------------------ |
 | `pending` | the case generated files and they are being uploaded | show a placeholder where the download link will appear |
-| `ready` | the upload finished and the listing grew | re-read the listing at `url` |
-| `failed` | the upload was refused or failed | show the reason; there will be no link |
+| `ready`   | the upload finished and the listing grew             | re-read the listing at `url`                           |
+| `failed`  | the upload was refused or failed                     | show the reason; there will be no link                 |
 
 A `failed` event also carries a stable `reason` and, when the reason is about a
 limit, `limit_bytes`. Current reasons are `commit_artifact_budget_exceeded`,
@@ -319,10 +318,10 @@ The judge does not serve the submission's output files. It uploads them to the
 `<prefix>-outputfiles` bucket as the run advances, and the backend lists and
 streams them for the author:
 
-| Event | Stored key |
-| --- | --- |
+| Event                      | Stored key                                |
+| -------------------------- | ----------------------------------------- |
 | a case reports `case.done` | `<commit>/test_<case id>/<relative path>` |
-| the run ends | `<commit>/outputfiles/<relative path>` |
+| the run ends               | `<commit>/outputfiles/<relative path>`    |
 
 The files are moved out of the workspace, so only the current case's files are on
 disk at any moment. Each file is bounded by the case's own file-size limit, which
@@ -338,13 +337,13 @@ followed.
 
 ## Contract with the backend
 
-| Direction | Mechanism | Durability |
-| --- | --- | --- |
-| backend → judge | `POST /v1/runs/{id}` wake | best effort; the queue is durable |
-| backend → judge | `GET /readyz` before a submission | required |
+| Direction       | Mechanism                                       | Durability                                       |
+| --------------- | ----------------------------------------------- | ------------------------------------------------ |
+| backend → judge | `POST /v1/runs/{id}` wake                       | best effort; the queue is durable                |
+| backend → judge | `GET /readyz` before a submission               | required                                         |
 | judge → backend | `GET /v1/runs/{id}/events` (backend subscribes) | replayable in memory for `JUDGE_EVENT_RETENTION` |
-| backend → judge | `GET`/`HEAD /v1/runs/{id}/output` | file on the judge host |
-| both | PostgreSQL `commits` row | durable |
+| backend → judge | `GET`/`HEAD /v1/runs/{id}/output`               | file on the judge host                           |
+| both            | PostgreSQL `commits` row                        | durable                                          |
 
 The judge writes **only the claim** to `commits`. Every other write is the
 backend's. This split is what lets the judge be replaced or scaled without

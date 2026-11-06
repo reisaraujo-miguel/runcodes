@@ -21,7 +21,7 @@ import (
 )
 
 func createRoutes(router *chi.Mux) {
-	// unauthenticated liveness probe (Docker HEALTHCHECK / orchestrators)
+	// unauthenticated liveness probe (orchestrators)
 	router.Get("/healthz", handlers.Health)
 
 	// readiness probe: the database is required, the judge is reported but does

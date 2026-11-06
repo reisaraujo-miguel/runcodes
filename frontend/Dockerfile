@@ -39,15 +39,15 @@ RUN bun -b run build
 FROM caddy:2.11.7-builder-alpine AS caddy-builder
 
 RUN CGO_ENABLED=0 xcaddy build v2.11.7 \
-  --replace golang.org/x/net=golang.org/x/net@v0.60.0 \
-  --replace github.com/go-jose/go-jose/v4=github.com/go-jose/go-jose/v4@v4.1.6 \
-  --output /usr/bin/caddy
+    --replace golang.org/x/net=golang.org/x/net@v0.60.0 \
+    --replace github.com/go-jose/go-jose/v4=github.com/go-jose/go-jose/v4@v4.1.6 \
+    --output /usr/bin/caddy
 
 FROM alpine:3.24 AS dist
 
 RUN apk add --no-cache ca-certificates libcap && \
-  addgroup -S caddy && adduser -S caddy -G caddy && \
-  mkdir -p /data /config && chown caddy:caddy /data /config
+    addgroup -S caddy && adduser -S caddy -G caddy && \
+    mkdir -p /data /config && chown caddy:caddy /data /config
 
 COPY --from=caddy-builder /usr/bin/caddy /usr/bin/caddy
 
@@ -63,15 +63,12 @@ COPY --from=builder /app/dist /usr/share/caddy
 COPY Caddyfile /etc/caddy/Caddyfile
 
 ENV CADDY_VERSION=v2.11.7 \
-  XDG_CONFIG_HOME=/config \
-  XDG_DATA_HOME=/data
+    XDG_CONFIG_HOME=/config \
+    XDG_DATA_HOME=/data
 
 EXPOSE 80
 EXPOSE 443
 EXPOSE 2019
-
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD wget -q -O /dev/null "http://127.0.0.1:2019/config/" || exit 1
 
 ENTRYPOINT ["caddy"]
 CMD ["run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
