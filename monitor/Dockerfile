@@ -18,6 +18,6 @@ COPY --from=builder /build/monitor /usr/bin/monitor
 # its own, so it carries a non-root user like they do (see
 # runners/base/Dockerfile).
 RUN groupadd --system runcodes && \
-  useradd --system --gid runcodes --no-create-home --home-dir /root --shell /bin/bash runcodes
+    useradd --system --gid runcodes --no-create-home --home-dir /root --shell /bin/bash runcodes
 
 USER runcodes
