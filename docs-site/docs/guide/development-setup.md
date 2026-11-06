@@ -275,7 +275,7 @@ Run the checks for the service you changed. The full matrix is in
 (cd judge && make test && make vet)
 
 # Frontend
-(cd frontend && bun run lint && bun run check-svg && bun test && bun run build)
+(cd frontend && bun run format:check && bun run lint && bun run check-svg && bun test && bun run build)
 
 # Monitor and harness
 ./monitor/test/monitor.test.sh

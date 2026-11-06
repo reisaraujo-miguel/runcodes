@@ -36,7 +36,7 @@ covers dependencies, the observability overlay and each service's commands.
 | --- | --- |
 | Backend | `cd backend && gofmt -l . && go vet ./... && go test -race ./...` |
 | Judge | `cd judge && make test` |
-| Frontend | `cd frontend && bun run lint && bun run check-svg && bun test && bun run build` |
+| Frontend | `cd frontend && bun run format:check && bun run lint && bun run check-svg && bun test && bun run build` |
 | Monitor & harness | `./monitor/test/monitor.test.sh && ./runners/test/harness.test.sh` |
 | Docs site | `cd docs-site && npm ci && npm run build` |
 

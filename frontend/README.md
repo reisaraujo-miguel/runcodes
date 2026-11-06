@@ -22,6 +22,7 @@ Caddy.
 ## Check
 
 ```bash
+bun run format:check
 bun run lint
 bun run check-svg
 bun test

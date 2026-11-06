@@ -36,7 +36,7 @@ Pull requests are expected to keep the test suite green:
 | --- | --- |
 | Backend | `cd backend && gofmt -l . && go vet ./... && go test -race ./...` |
 | Judge | `cd judge && make test` (uses the Podman build tags) |
-| Frontend | `cd frontend && bun run lint && bun run check-svg && bun test && bun run build` |
+| Frontend | `cd frontend && bun run format:check && bun run lint && bun run check-svg && bun test && bun run build` |
 | Monitor & harness | `./monitor/test/monitor.test.sh && ./runners/test/harness.test.sh` |
 | Database | apply the schema and assert the app role; CI does this |
 | Docs site | `cd docs-site && npm run build` |
@@ -149,8 +149,9 @@ A new judge against old images logs nonce-less milestones and times out.
 
 - Go: `gofmt` and `go vet` are enforced in CI. Keep handlers thin and business
   logic in services.
-- TypeScript/React: ESLint and the existing component conventions. Run
-  `bun run lint`.
+- TypeScript/React: Oxlint and the existing component conventions. Run
+  `bun run lint`; apply formatting with `bun run format` (checked by Oxfmt in
+  CI).
 - SQL: keep `schema/02-schema.sql` as the desired state; migrations are
   forward-only.
 - Shell: the harness tests and observability scripts are checked by CI.

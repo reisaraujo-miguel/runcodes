@@ -139,7 +139,9 @@ bun install
 bun run dev        # Vite dev server on http://localhost:5173
 bun run build      # type-check and production build
 bun run preview    # preview the production build
-bun run lint       # ESLint
+bun run lint       # Oxlint
+bun run format     # format with Oxfmt
+bun run format:check # check formatting without writing
 bun test           # unit tests
 ```
 
