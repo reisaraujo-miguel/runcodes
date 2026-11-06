@@ -58,6 +58,27 @@ func CommitTestCaseIDs(ctx context.Context, commitID int64) ([]int64, error) {
 }
 
 /*
+CommitExerciseTitle returns the title of the exercise that produced the commit.
+This is used to name the zip file when downloading a submission.
+*/
+func CommitExerciseTitle(ctx context.Context, commitID int64) (string, error) {
+	var title string
+	err := database.DB.QueryRowContext(ctx, `
+		SELECT e.title
+		FROM commits c
+		JOIN exercises e ON e.id = c.exercise_id
+		WHERE c.id = $1`, commitID).Scan(&title)
+	if err != nil {
+		slog.ErrorContext(ctx, "error fetching the commit's exercise title",
+			slog.Int64("commit_id", commitID),
+			slog.String("error", err.Error()),
+		)
+		return "", ErrServer
+	}
+	return title, nil
+}
+
+/*
 ListCommitArtifacts returns the upload state of each test case that produced
 generated files. The rows are written from the judge's artifact events before
 they are relayed, so a snapshot can explain a missing download after a reload.

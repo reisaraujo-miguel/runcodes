@@ -455,10 +455,19 @@ func GetSubmissionOutput(w http.ResponseWriter, r *http.Request) {
 		number = commitID // fallback to commitID if the submission number cannot be retrieved
 	}
 
+	title, err := services.CommitExerciseTitle(ctx, commitID)
+	if err != nil {
+		slog.WarnContext(ctx, "could not read the commit's exercise title",
+			slog.Int64("commit_id", commitID),
+			slog.String("error", err.Error()),
+		)
+		title = "submission"
+	}
+
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition",
 		fmt.Sprintf("attachment; filename=%q",
-			strconv.FormatInt(number, 10)+".zip"),
+			title+"_"+strconv.FormatInt(number, 10)+".zip"),
 	)
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.WriteHeader(http.StatusOK)
