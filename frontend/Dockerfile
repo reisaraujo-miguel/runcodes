@@ -31,22 +31,24 @@ RUN bun install --frozen-lockfile
 COPY . .
 RUN bun -b run build
 
-# The published caddy:2.11.7-alpine binary was compiled with an older Go
+# The published caddy:2.11.9-alpine binary was compiled with an older Go
 # toolchain and an x/net version with a known HTTP/2 DoS. Rebuild the same
 # Caddy release with the current Go toolchain, the fixed x/net and the fixed
 # go-jose v4. Caddy still links go-jose v3 through its internal PKI/ACME server;
 # upstream has no fixed v3 release, so that finding is scoped in .trivyignore.yaml.
-FROM caddy:2.11.7-builder-alpine AS caddy-builder
+FROM caddy:2.11.9-builder-alpine AS caddy-builder
 
-RUN CGO_ENABLED=0 xcaddy build v2.11.7 \
-    --replace golang.org/x/net=golang.org/x/net@v0.60.0 \
-    --replace github.com/go-jose/go-jose/v4=github.com/go-jose/go-jose/v4@v4.1.6 \
+RUN CGO_ENABLED=0 xcaddy build v2.11.9 \
+    --replace golang.org/x/net=golang.org/x/net@v0.62.0 \
+    --replace github.com/go-jose/go-jose/v4=github.com/go-jose/go-jose/v4@v4.1.9 \
+    --replace golang.org/x/crypto=golang.org/x/crypto@v0.58.1-0.20261009181718-2f1f834330b2 \
     --output /usr/bin/caddy
 
 FROM alpine:3.24 AS dist
 
-RUN apk add --no-cache ca-certificates libcap && \
-    addgroup -S caddy && adduser -S caddy -G caddy && \
+RUN apk add --no-cache ca-certificates libcap zlib=1.4-r0
+
+RUN addgroup -S caddy && adduser -S caddy -G caddy && \
     mkdir -p /data /config && chown caddy:caddy /data /config
 
 COPY --from=caddy-builder /usr/bin/caddy /usr/bin/caddy
@@ -62,7 +64,7 @@ COPY --from=builder /app/dist /usr/share/caddy
 
 COPY Caddyfile /etc/caddy/Caddyfile
 
-ENV CADDY_VERSION=v2.11.7 \
+ENV CADDY_VERSION=v2.11.9 \
     XDG_CONFIG_HOME=/config \
     XDG_DATA_HOME=/data
 

@@ -7,7 +7,7 @@ FROM python:3.15-slim-trixie AS builder
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install essential build tools
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
