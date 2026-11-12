@@ -47,15 +47,16 @@ export function useAsync<T>(
   const token = `${String(key)}#${String(nonce)}`;
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
 
     loadRef
       .current()
       .then((data) => {
-        if (!cancelled) setSettled({ token, data, error: null });
+        if (!controller.signal.aborted)
+          setSettled({ token, data, error: null });
       })
       .catch((error: unknown) => {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setSettled({
             token,
             data: null,
@@ -65,10 +66,7 @@ export function useAsync<T>(
       });
 
     return () => {
-      // `cancelled` is local to this effect. The React Compiler analysis inside
-      // oxlint reports the cleanup reassignment as a render-scope mutation.
-      // oxlint-disable-next-line react/immutability
-      cancelled = true;
+      controller.abort();
     };
   }, [token, fallbackError]);
 
