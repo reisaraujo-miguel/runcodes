@@ -1,7 +1,7 @@
 ARG RUNNER_BASE_IMAGE=ghcr.io/runcodes-icmc/runcodes-runner-base:latest
 FROM ${RUNNER_BASE_IMAGE} AS runner-base
 
-FROM fedora:44
+FROM fedora:45
 # fedora <3
 
 # Load base executables
