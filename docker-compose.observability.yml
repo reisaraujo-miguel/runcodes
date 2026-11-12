@@ -63,7 +63,7 @@ services:
   # OTLP entry point. Applications send traces, metrics and logs here; it is the
   # only process that talks to Tempo and Loki on the write path.
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.164.0
+    image: otel/opentelemetry-collector-contrib:0.165.0
     restart: unless-stopped
     command: ["--config=/etc/otelcol/config.yaml"]
     environment:
@@ -91,7 +91,7 @@ services:
         condition: service_started
 
   prometheus:
-    image: prom/prometheus:v3.15.1
+    image: prom/prometheus:v3.16.0
     restart: unless-stopped
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -205,7 +205,7 @@ services:
   # Continuous profiling: Alloy scrapes the Go pprof endpoints and writes to
   # Pyroscope. The pprof listeners are internal-only (:6060, not published).
   pyroscope:
-    image: grafana/pyroscope:2.4.2
+    image: grafana/pyroscope:2.4.3
     restart: unless-stopped
     command:
       - "-config.file=/etc/pyroscope/config.yaml"
@@ -344,7 +344,7 @@ services:
         condition: service_started
 
   redis-exporter:
-    image: oliver006/redis_exporter:v1.96.0
+    image: oliver006/redis_exporter:v1.97.0
     restart: unless-stopped
     environment:
       TZ: "America/Sao_Paulo"
