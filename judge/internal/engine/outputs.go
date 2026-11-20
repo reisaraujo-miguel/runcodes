@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/runcodes-icmc/judge/internal/events"
 	"github.com/runcodes-icmc/judge/internal/model"
@@ -61,9 +62,8 @@ use concurrently: the bytes are reserved before an upload and released when the
 upload fails.
 */
 type artifactBudget struct {
-	limit     int64
-	used      atomic.Int64
-	exhausted atomic.Bool
+	limit int64
+	used  atomic.Int64
 }
 
 // newArtifactBudget returns the budget of one run. A zero limit disables it.
@@ -72,8 +72,6 @@ func newArtifactBudget(limit int64) *artifactBudget {
 }
 
 // reserve claims n bytes, reporting whether the commit had room left for them.
-// A refusal marks the budget exhausted, which lets the publisher stop announcing
-// uploads it already knows will never fit.
 func (b *artifactBudget) reserve(n int64) bool {
 	if b == nil || b.limit <= 0 || n <= 0 {
 		return true
@@ -82,7 +80,6 @@ func (b *artifactBudget) reserve(n int64) bool {
 	for {
 		used := b.used.Load()
 		if used > b.limit-n {
-			b.exhausted.Store(true)
 			return false
 		}
 		if b.used.CompareAndSwap(used, used+n) {
@@ -92,29 +89,30 @@ func (b *artifactBudget) reserve(n int64) bool {
 }
 
 // release gives back bytes reserved for an upload that did not reach storage.
-// If the released bytes leave room again, the budget is no longer exhausted: an
-// upload error is not the same thing as the commit having published its fill.
 func (b *artifactBudget) release(n int64) {
 	if b == nil || b.limit <= 0 || n <= 0 {
 		return
 	}
 
-	if b.used.Add(-n) < b.limit {
-		b.exhausted.Store(false)
-	}
+	b.used.Add(-n)
 }
 
-// isExhausted reports whether the commit has published its fill or a
-// reservation has already failed. The remaining cases of the run are then
-// refused with that reason instead of being queued for an upload that cannot
-// fit.
+// isExhausted reports whether every byte of the commit's budget is reserved.
+// Only then are the remaining cases refused up front: refusing them because one
+// file did not fit would drop files that still have room.
 func (b *artifactBudget) isExhausted() bool {
 	if b == nil || b.limit <= 0 {
 		return false
 	}
 
-	return b.exhausted.Load() || b.used.Load() >= b.limit
+	return b.used.Load() >= b.limit
 }
+
+// outputCasePrefix names the stored directory of one case's generated files.
+// The `v2` segment marks the frozen exercise-local case number: an older judge
+// stored `test_<case id>`, and the backend still resolves those objects by id,
+// so the two namespaces must stay distinguishable.
+const outputCasePrefix = "test_v2_"
 
 // caseOutputDir is the directory the runner collects one test case's files in.
 func caseOutputDir(caseID int64) string {
@@ -226,9 +224,20 @@ type publishRequest struct {
 }
 
 /*
+publishResult reports what happened to one case's files. The counters are kept
+apart so the publisher can name the reason a download is missing instead of
+guessing from "nothing was uploaded".
+*/
+type publishResult struct {
+	uploaded      int
+	failed        int
+	tooLarge      int
+	budgetSkipped int
+}
+
+/*
 publishGeneratedFiles uploads the files described by req and then removes the
-request's directory. It returns how many files were uploaded, how many uploads
-failed, and whether the commit's artifact budget refused at least one file.
+request's directory.
 
 Each file is bounded on its own by the limit of the case it belongs to, and the
 run's files also share the commit's budget (req.Budget): the per-case bound alone
@@ -240,14 +249,16 @@ artifact that could not be published.
 */
 func (e *Engine) publishGeneratedFiles(
 	ctx context.Context, commitID int64, req publishRequest,
-) (uploaded, failed int, budgetExceeded bool, err error) {
+) (publishResult, error) {
+	var result publishResult
+
 	if e.outputs == nil {
-		return 0, 0, false, fmt.Errorf("no object storage configured for generated files")
+		return result, fmt.Errorf("no object storage configured for generated files")
 	}
 
 	files, err := collectGeneratedFiles(req.Dir, req.SkipDir)
 	if err != nil {
-		return 0, 0, false, err
+		return result, err
 	}
 
 	for _, file := range files {
@@ -261,10 +272,11 @@ func (e *Engine) publishGeneratedFiles(
 				"size_bytes", file.Size,
 				"limit_bytes", req.MaxFileBytes,
 			)
+			result.tooLarge++
 			continue
 		}
 		if !req.Budget.reserve(file.Size) {
-			budgetExceeded = true
+			result.budgetSkipped++
 			e.logger.Warn("generated files exceeded the commit's budget; not published",
 				"commit_id", commitID,
 				"path", req.Prefix+"/"+file.Path,
@@ -290,12 +302,12 @@ func (e *Engine) publishGeneratedFiles(
 				"path", rel,
 				"error", err,
 			)
-			failed++
+			result.failed++
 			continue
 		}
 
 		_ = size
-		uploaded++
+		result.uploaded++
 	}
 
 	// The files are in storage now, so the local copy only costs workspace. It is
@@ -308,7 +320,7 @@ func (e *Engine) publishGeneratedFiles(
 		)
 	}
 
-	return uploaded, failed, budgetExceeded, nil
+	return result, nil
 }
 
 /*
@@ -377,7 +389,7 @@ func caseOutputPrefix(testCase model.TestCase) string {
 		number = int(testCase.ID)
 	}
 
-	return "test_" + strconv.Itoa(number)
+	return outputCasePrefix + strconv.Itoa(number)
 }
 
 /*
@@ -441,8 +453,9 @@ func (e *Engine) queueCaseOutputs(
 	}
 
 	// Announce before queueing: the client shows an upload placeholder where the
-	// download link will appear. The publisher drains before the terminal event,
-	// so the ready or failed event always reaches the client.
+	// download link will appear. The publisher is drained before the terminal
+	// event, so the ready or failed event is sent while the client is still
+	// subscribed (a subscriber that stops reading can still miss it).
 	publisher.AnnouncePending(testCase.ID)
 
 	if publisher.Submit(req) {
@@ -504,8 +517,8 @@ func (e *Engine) publishRootOutputs(
 		Budget: ws.ArtifactBudget,
 	}
 
-	uploaded, _, _, err := e.publishGeneratedFiles(ctx, commitID, req)
-	return uploaded, err
+	result, err := e.publishGeneratedFiles(ctx, commitID, req)
+	return result.uploaded, err
 }
 
 /*
@@ -517,11 +530,15 @@ the stream moving, and the files of one case are uploaded while the following
 cases run.
 */
 type outputPublisher struct {
-	engine   *Engine
-	ctx      context.Context
-	commitID int64
-	tasks    chan publishRequest
-	wg       sync.WaitGroup
+	engine *Engine
+	// ctx is cancelled when the drain deadline passes, so an object store that
+	// stops answering cannot hold the terminal event open.
+	ctx          context.Context
+	cancel       context.CancelFunc
+	drainTimeout time.Duration
+	commitID     int64
+	tasks        chan publishRequest
+	wg           sync.WaitGroup
 	// files counts the uploaded files across all workers.
 	files atomic.Int64
 	// failures counts consecutive upload failures, and degraded stops trying once
@@ -551,6 +568,12 @@ const outputPublishWorkers = 4
 // than held: the download is lost, the run is not delayed.
 const outputPublishQueue = 8
 
+// outputDrainTimeout bounds how long the run waits for queued uploads before its
+// terminal event. The verdict is already known at that point; a store that hangs
+// must not delay it, and the backend settles whatever is still pending as
+// interrupted.
+const outputDrainTimeout = 30 * time.Second
+
 // outputPublishFailureLimit is how many uploads may fail in a row before the run
 // stops trying. A store that is down would otherwise cost one failed upload per
 // case, each with its own retries, and delay the end of the run by seconds per
@@ -561,11 +584,14 @@ const outputPublishFailureLimit = 3
 func newOutputPublisher(
 	ctx context.Context, engine *Engine, commitID int64,
 ) *outputPublisher {
+	flow, cancel := context.WithCancel(ctx)
 	p := &outputPublisher{
-		engine:   engine,
-		ctx:      ctx,
-		commitID: commitID,
-		tasks:    make(chan publishRequest, outputPublishQueue),
+		engine:       engine,
+		ctx:          flow,
+		cancel:       cancel,
+		drainTimeout: outputDrainTimeout,
+		commitID:     commitID,
+		tasks:        make(chan publishRequest, outputPublishQueue),
 	}
 
 	p.wg.Add(outputPublishWorkers)
@@ -581,7 +607,7 @@ func (p *outputPublisher) worker() {
 	defer p.wg.Done()
 
 	for req := range p.tasks {
-		uploaded, failed, budgetExceeded, err := p.engine.publishGeneratedFiles(p.ctx, p.commitID, req)
+		result, err := p.engine.publishGeneratedFiles(p.ctx, p.commitID, req)
 		if err != nil {
 			p.engine.logger.Warn("could not publish generated files",
 				"commit_id", p.commitID,
@@ -595,34 +621,35 @@ func (p *outputPublisher) worker() {
 				events.ArtifactReasonUploadFailed, 0, "output", p.listingURL())
 			continue
 		}
-		if budgetExceeded && uploaded == 0 {
-			// No byte of this case fit the commit's remaining budget. The
-			// placeholder becomes the reason, and the next cases are refused
-			// before they are queued.
-			limit := int64(0)
-			if req.Budget != nil {
-				limit = req.Budget.limit
-			}
-			p.engine.hub.ArtifactCaseFailed(p.commitID, req.TestCaseID,
-				events.ArtifactReasonBudgetExceeded, limit, "output", p.listingURL())
-			continue
-		}
-		if failed > 0 {
-			p.recordFailure(int32(failed))
+		if result.failed > 0 {
+			// A storage error is the more actionable cause, even when a file was
+			// also skipped for size or budget.
+			p.recordFailure(int32(result.failed))
 			p.engine.hub.ArtifactCaseFailed(p.commitID, req.TestCaseID,
 				events.ArtifactReasonUploadFailed, 0, "output", p.listingURL())
 			continue
 		}
-		p.failures.Store(0)
-		if uploaded == 0 {
-			// Nothing was stored (every file was larger than the case allows, for
-			// example), so the placeholder must not keep spinning.
+		if result.uploaded == 0 {
+			// Nothing was stored, so the placeholder must not keep spinning and
+			// the panel must name the real reason.
+			reason := events.ArtifactReasonNothingToPublish
+			limit := int64(0)
+			switch {
+			case result.budgetSkipped > 0:
+				reason = events.ArtifactReasonBudgetExceeded
+				if req.Budget != nil {
+					limit = req.Budget.limit
+				}
+			case result.tooLarge > 0:
+				reason = events.ArtifactReasonFileTooLarge
+			}
 			p.engine.hub.ArtifactCaseFailed(p.commitID, req.TestCaseID,
-				events.ArtifactReasonFileTooLarge, 0, "output", p.listingURL())
+				reason, limit, "output", p.listingURL())
 			continue
 		}
+		p.failures.Store(0)
 
-		p.files.Add(int64(uploaded))
+		p.files.Add(int64(result.uploaded))
 
 		// Tell the client this case's files are stored: it replaces the upload
 		// placeholder with the download link. The event is sent per case, not once
@@ -710,6 +737,10 @@ func (p *outputPublisher) Submit(req publishRequest) bool {
 // Close stops the workers, waits for the queued uploads and returns how many
 // files were published. The pending area of the run is removed afterwards, so a
 // finished run leaves nothing behind even when an upload was abandoned.
+//
+// The wait is bounded by drainTimeout: when it passes, the in-flight uploads are
+// cancelled and removed in the background. The cases they belonged to stay
+// pending, and the backend settles them as interrupted at the terminal event.
 func (p *outputPublisher) Close() int {
 	p.closeOnce.Do(func() {
 		p.mu.Lock()
@@ -717,16 +748,42 @@ func (p *outputPublisher) Close() int {
 		close(p.tasks)
 		p.mu.Unlock()
 
-		p.wg.Wait()
+		drained := make(chan struct{})
+		go func() {
+			p.wg.Wait()
+			close(drained)
+		}()
 
 		pending := filepath.Join(p.engine.cfg.ExecDir,
 			"pending_"+strconv.FormatInt(p.commitID, 10))
-		if err := os.RemoveAll(pending); err != nil {
-			p.engine.logger.Warn("could not remove the pending upload directory",
-				"commit_id", p.commitID, "dir", pending, "error", err,
+
+		select {
+		case <-drained:
+			p.cancel()
+			p.removePending(pending)
+		case <-time.After(p.drainTimeout):
+			p.engine.logger.Warn(
+				"uploads did not drain before the terminal event; cancelling them",
+				"commit_id", p.commitID,
+				"drain_timeout", p.drainTimeout,
 			)
+			p.cancel()
+			go func() {
+				<-drained
+				p.removePending(pending)
+			}()
 		}
 	})
 
 	return int(p.files.Load())
+}
+
+// removePending deletes the run's staging area. A failed removal is not fatal:
+// the sweeper reclaims the directory of a run that never finished.
+func (p *outputPublisher) removePending(dir string) {
+	if err := os.RemoveAll(dir); err != nil {
+		p.engine.logger.Warn("could not remove the pending upload directory",
+			"commit_id", p.commitID, "dir", dir, "error", err,
+		)
+	}
 }

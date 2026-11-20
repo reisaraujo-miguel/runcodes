@@ -104,6 +104,11 @@ export interface SubmissionArtifact {
   kind: string;
   /** The case whose upload this entry describes; absent for the run-level entry. */
   test_case_id?: number;
+  /**
+   * The case's frozen 1-based position in the exercise, the number the
+   * generated-file paths use. Absent on the run-level entry.
+   */
+  number?: number;
   /** `pending` while uploading, `ready` when stored, `failed` when it will not be. */
   state?: SubmissionArtifactState;
   /** Machine-readable failure reason, e.g. `commit_artifact_budget_exceeded`. */
@@ -437,6 +442,9 @@ export function parseSubmissionOutputSnapshot(
       if (typeof artifact.test_case_id === "number") {
         entry.test_case_id = artifact.test_case_id;
       }
+      if (typeof artifact.number === "number") {
+        entry.number = artifact.number;
+      }
       if (
         artifact.state === "pending" ||
         artifact.state === "ready" ||
@@ -460,20 +468,55 @@ export function parseSubmissionOutputSnapshot(
   };
 }
 
-/** Validates a parsed frame and narrows it to a known event. */
+/**
+ * Validates a parsed frame and narrows it to a known event. Only the fields a
+ * handler dereferences are checked: a malformed frame must be dropped before it
+ * reaches the UI, since the stream cannot be retried by reloading the page.
+ */
 function parseSubmissionEvent(value: unknown): SubmissionEvent | null {
   if (!isRecord(value) || typeof value.type !== "string") {
     return null;
   }
+
   switch (value.type) {
     case "snapshot":
-    case "status":
-    case "compilation":
-    case "case_result":
-    case "artifact":
-    case "finished":
-    case "error":
+      if (
+        !isRecord(value.commit) ||
+        typeof value.commit.status !== "string" ||
+        !Array.isArray(value.results)
+      ) {
+        return null;
+      }
       return value as unknown as SubmissionEvent;
+    case "status":
+      return typeof value.status === "string"
+        ? (value as unknown as SubmissionEvent)
+        : null;
+    case "compilation":
+      return typeof value.compiled === "boolean"
+        ? (value as unknown as SubmissionEvent)
+        : null;
+    case "case_result":
+      return typeof value.test_case_id === "number" &&
+        typeof value.status === "string"
+        ? (value as unknown as SubmissionEvent)
+        : null;
+    case "artifact":
+      return typeof value.kind === "string" &&
+        (value.test_case_id === undefined ||
+          typeof value.test_case_id === "number")
+        ? (value as unknown as SubmissionEvent)
+        : null;
+    case "finished":
+      return typeof value.status === "string" &&
+        typeof value.num_correct_cases === "number" &&
+        typeof value.score === "number"
+        ? (value as unknown as SubmissionEvent)
+        : null;
+    case "error":
+      return typeof value.message === "string"
+        ? (value as unknown as SubmissionEvent)
+        : null;
     default:
       return null;
   }

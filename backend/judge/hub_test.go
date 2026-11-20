@@ -2,6 +2,7 @@ package judge
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -33,5 +34,25 @@ func TestErrorEventDoesNotTerminateHub(t *testing.T) {
 		}
 	default:
 		t.Fatal("error frame was not broadcast")
+	}
+}
+
+// TestSubscribeCapsTheFanOut makes sure one commit's hub cannot be fanned out
+// without bound: each subscriber costs a buffered channel and frame formatting.
+func TestSubscribeCapsTheFanOut(t *testing.T) {
+	hub := &Hub{
+		commitID: 1,
+		subs:     make(map[chan []byte]struct{}),
+	}
+
+	for i := 0; i < maxHubSubscribers; i++ {
+		ch := make(chan []byte, 1)
+		if err := hub.subscribe(ch); err != nil {
+			t.Fatalf("subscribe #%d: %v", i+1, err)
+		}
+	}
+
+	if err := hub.subscribe(make(chan []byte, 1)); !errors.Is(err, ErrTooManySubscribers) {
+		t.Fatalf("err = %v, want ErrTooManySubscribers", err)
 	}
 }

@@ -127,10 +127,17 @@ updates:
       prefix: "chore(actions)"
 
   # --- DOCKER COMPOSE SCRIPTS ---
-  # The compose file at the root is the only one; the backend used to carry a
-  # second, per-service copy.
+  # The root files are the development stack; deploy/ carries the single-host and
+  # the four-host (Ansible) copies. They are not generated from one another, so
+  # every directory has to be watched or the deployments drift silently.
   - package-ecosystem: "docker-compose"
-    directory: "/"
+    directories:
+      - "/"
+      - "/deploy/compose"
+      - "/deploy/ansible/roles/rc-compute/files"
+      - "/deploy/ansible/roles/rc-data/files"
+      - "/deploy/ansible/roles/rc-edge/files"
+      - "/deploy/ansible/roles/rc-observability/files"
     schedule:
       interval: "weekly"
     groups:

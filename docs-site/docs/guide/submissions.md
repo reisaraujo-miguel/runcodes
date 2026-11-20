@@ -144,8 +144,9 @@ The file list is empty when the submission wrote nothing; internal monitor and
 per-case reports are excluded, and so are the files of a case whose program
 output the author did not release. The judge uploads each case's files to object
 storage as soon as that case finishes, and stores them under
-`test_<case number>/`, where the number is the case's 1-based position in the
-exercise. The zip therefore runs from `test_1` to `test_n` for that exercise.
+`test_v2_<case number>/`, where the number is the case's 1-based position in the
+exercise, frozen when the submission was queued. The zip therefore runs from
+`test_v2_1` to `test_v2_n` for that exercise.
 
 The results panel follows the listing over the `output-events` WebSocket instead
 of polling. A failed upload arrives with a stable reason, so the panel can say

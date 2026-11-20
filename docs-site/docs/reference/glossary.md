@@ -72,7 +72,7 @@ subscription, so a reload can restore the UI.
 
 **Artifact**
 A file the submission generated. The runner collects each case's files under
-`test_<id>/` when the case finishes, and the judge uploads them to the
+`test_v2_<case number>/` when the case finishes, and the judge uploads them to the
 `<prefix>-outputfiles` bucket. The judge never serves them: `artifact` events
 (with a `pending`, `ready` or `failed` state) and the snapshot tell the UI when a
 download exists, and the backend lists, streams and zips the files from object

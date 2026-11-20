@@ -233,6 +233,13 @@ export function ResultsPanel({
 
   const activeArtifactStatus =
     activeCase === null ? undefined : artifactStatuses.get(activeCase.id);
+  // The artifact row carries the number frozen with the submission, which is
+  // what the generated-file paths use even if a case was deleted afterwards.
+  const activeArtifactNumber =
+    activeCase === null
+      ? undefined
+      : artifacts.find((artifact) => artifact.test_case_id === activeCase.id)
+          ?.number;
   const activeArtifactPending =
     activeCase !== null &&
     (activeArtifactStatus?.state === "pending" ||
@@ -402,7 +409,10 @@ export function ResultsPanel({
           {commitId !== null && activeCase && showArtifacts ? (
             <Artifacts
               commitId={commitId}
-              testCaseNumber={activeCase.number ?? activeCase.id}
+              testCase={{
+                id: activeCase.id,
+                number: activeArtifactNumber ?? activeCase.number,
+              }}
               files={outputFiles}
               pending={activeArtifactPending}
               status={activeArtifactStatus}

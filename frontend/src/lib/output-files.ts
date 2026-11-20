@@ -1,40 +1,52 @@
 /**
- * Generated files are stored under the test case that produced them
- * (`test_<case number>/<relative path>`); files written straight into the
- * runner's output directory have no case (`outputfiles/<relative path>`). The
- * number is the case's 1-based position in the exercise, matching the results
- * panel. The results panel shows one case at a time, so it needs to split the
- * listing along that path prefix.
+ * Generated files live under the test case that produced them. The current
+ * judge stores them as `test_v2_<case number>/<relative path>`, where the number
+ * is the case's frozen 1-based position in the exercise; an older judge stored
+ * `test_<case id>/<relative path>`. A file written straight into the runner's
+ * output directory has no case (`outputfiles/<relative path>`). The results
+ * panel shows one case at a time, so it needs to split the listing along that
+ * path prefix.
  */
 
-const casePrefix = /^test_(\d+)\//;
+const currentCasePrefix = /^test_v2_(\d+)\//;
+const legacyCasePrefix = /^test_(\d+)\//;
+
+function positiveInteger(match: RegExpExecArray | null): number | null {
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isSafeInteger(value) && value > 0 ? value : null;
+}
 
 /**
- * Returns the case number a generated file belongs to, or null when it belongs
- * to the submission as a whole.
+ * Returns the case number a generated file belongs to, for a path in the
+ * current `test_v2_<number>/` namespace; null for a legacy path or a file that
+ * belongs to the submission as a whole.
  */
 export function outputFileCaseNumber(filePath: string): number | null {
-  const match = casePrefix.exec(filePath);
-  if (!match) return null;
-
-  const caseNumber = Number(match[1]);
-  return Number.isSafeInteger(caseNumber) && caseNumber > 0 ? caseNumber : null;
+  return positiveInteger(currentCasePrefix.exec(filePath));
 }
 
 /**
- * Backwards-compatible name for `outputFileCaseNumber`. The value is the
- * exercise-local number, not the database id.
+ * Returns the platform-wide case id a generated file belongs to, for a path in
+ * the legacy `test_<case id>/` namespace; null for the current namespace or a
+ * file that belongs to the submission as a whole.
  */
-export function outputFileCaseId(filePath: string): number | null {
-  return outputFileCaseNumber(filePath);
+export function outputFileLegacyCaseId(filePath: string): number | null {
+  return positiveInteger(legacyCasePrefix.exec(filePath));
 }
 
-/** Keeps only the files one test case produced, in their original order. */
+/**
+ * Keeps only the files one test case produced, in their original order. The
+ * current namespace matches the case's frozen number; a legacy file matches its
+ * database id, which is what its directory names.
+ */
 export function filesForTestCase<T extends { path: string }>(
   files: readonly T[],
-  testCaseNumber: number,
+  testCase: { id: number; number: number | null },
 ): T[] {
-  return files.filter(
-    (file) => outputFileCaseNumber(file.path) === testCaseNumber,
-  );
+  return files.filter((file) => {
+    const number = outputFileCaseNumber(file.path);
+    if (number !== null) return number === testCase.number;
+    return outputFileLegacyCaseId(file.path) === testCase.id;
+  });
 }

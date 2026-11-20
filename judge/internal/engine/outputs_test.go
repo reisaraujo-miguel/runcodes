@@ -84,8 +84,8 @@ func publishTest(
 		return 0, err
 	}
 
-	uploaded, _, _, err := engine.publishGeneratedFiles(context.Background(), commitID, req)
-	return uploaded, err
+	published, err := engine.publishGeneratedFiles(context.Background(), commitID, req)
+	return published.uploaded, err
 }
 
 // writeWorkspaceFile creates a file under the workspace, making its parents.
@@ -147,8 +147,8 @@ func TestPublishCaseOutputs(t *testing.T) {
 	}
 
 	want := map[string]string{
-		"test_11/hello.txt":         "hello",
-		"test_11/nested/result.txt": "nested",
+		"test_v2_11/hello.txt":         "hello",
+		"test_v2_11/nested/result.txt": "nested",
 	}
 	if len(store.uploaded) != len(want) {
 		t.Fatalf("uploaded = %v, want %v", store.uploaded, want)
@@ -181,10 +181,10 @@ func TestPublishCaseOutputsUsesTheExerciseCaseNumber(t *testing.T) {
 	if uploaded != 1 {
 		t.Fatalf("uploaded = %d, want 1", uploaded)
 	}
-	if _, ok := store.uploaded["test_2/hello.txt"]; !ok {
+	if _, ok := store.uploaded["test_v2_2/hello.txt"]; !ok {
 		t.Fatalf("uploaded = %v, want test_2/hello.txt", store.uploaded)
 	}
-	if _, ok := store.uploaded["test_11/hello.txt"]; ok {
+	if _, ok := store.uploaded["test_v2_11/hello.txt"]; ok {
 		t.Fatal("the database id must not name the exercise-local file")
 	}
 }
@@ -271,6 +271,173 @@ func TestQueueCaseOutputsRefusesTheNextCaseAfterTheBudget(t *testing.T) {
 	}
 }
 
+// A file that does not fit the remaining budget is skipped on its own: it must
+// not make the files of the following cases unpublishable while bytes are left.
+func TestQueueCaseOutputsKeepsPublishingAfterAFileDoesNotFit(t *testing.T) {
+	engine, store, ws := newOutputEngine(t)
+	engine.hub = events.New(time.Minute)
+	ws.ArtifactBudget = newArtifactBudget(10)
+	if !ws.ArtifactBudget.reserve(6) {
+		t.Fatal("could not reserve the test budget")
+	}
+
+	// 8 bytes do not fit the 4 that are left; 2 bytes do.
+	writeWorkspaceFile(t, ws.BaseDir, "outputfiles/case_5/big.bin", "12345678")
+	writeWorkspaceFile(t, ws.BaseDir, "outputfiles/case_6/small.bin", "12")
+
+	sub := engine.hub.Subscribe(7, 0)
+	defer sub.Cancel()
+
+	publisher := newOutputPublisher(context.Background(), engine, 7)
+	for _, testCase := range []model.TestCase{
+		{ID: 5, FileSizeLimit: 64, ShowUserOutput: true},
+		{ID: 6, FileSizeLimit: 64, ShowUserOutput: true},
+	} {
+		if err := engine.queueCaseOutputs(publisher, 7, testCase,
+			model.CaseResult{Status: model.CaseCorrect}, ws); err != nil {
+			t.Fatalf("queueCaseOutputs(case %d): %v", testCase.ID, err)
+		}
+	}
+	publisher.Close()
+
+	if _, ok := store.uploaded["test_v2_6/small.bin"]; !ok {
+		t.Fatalf("uploaded = %v, want the later case's small file", store.uploaded)
+	}
+	if _, ok := store.uploaded["test_v2_5/big.bin"]; ok {
+		t.Fatal("a file that does not fit the remaining budget must not be published")
+	}
+
+	frames := artifactEvents(sub)
+	if len(frames) != 4 {
+		t.Fatalf("artifact events = %d, want 4: %v", len(frames), frames)
+	}
+
+	// The two cases upload concurrently, so match the frames by case instead of
+	// by position.
+	last := map[float64]map[string]any{}
+	for _, frame := range frames {
+		if id, ok := frame["test_case_id"].(float64); ok {
+			last[id] = frame
+		}
+	}
+	if got := last[5]["reason"]; got != events.ArtifactReasonBudgetExceeded {
+		t.Fatalf("case 5 failure reason = %v, want %s", got, events.ArtifactReasonBudgetExceeded)
+	}
+	if got := last[6]["state"]; got != events.ArtifactReady {
+		t.Fatalf("case 6 final state = %v, want %s", got, events.ArtifactReady)
+	}
+}
+
+// A collection directory with no regular file has nothing to publish; the
+// reason must say so instead of blaming the file-size limit.
+func TestQueueCaseOutputsExplainsAnEmptyCollection(t *testing.T) {
+	engine, store, ws := newOutputEngine(t)
+	engine.hub = events.New(time.Minute)
+
+	secret := filepath.Join(t.TempDir(), "secret.txt")
+	if err := os.WriteFile(secret, []byte("secret"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	dir := filepath.Join(ws.BaseDir, "outputfiles", "case_7")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.Symlink(secret, filepath.Join(dir, "link.txt")); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	sub := engine.hub.Subscribe(7, 0)
+	defer sub.Cancel()
+
+	publisher := newOutputPublisher(context.Background(), engine, 7)
+	if err := engine.queueCaseOutputs(
+		publisher, 7,
+		model.TestCase{ID: 7, FileSizeLimit: 64, ShowUserOutput: true},
+		model.CaseResult{Status: model.CaseCorrect},
+		ws,
+	); err != nil {
+		t.Fatalf("queueCaseOutputs: %v", err)
+	}
+	publisher.Close()
+
+	if len(store.uploaded) != 0 {
+		t.Fatalf("uploaded = %v, want nothing", store.uploaded)
+	}
+	frames := artifactEvents(sub)
+	if len(frames) != 2 {
+		t.Fatalf("artifact events = %d, want 2: %v", len(frames), frames)
+	}
+	if got := frames[1]["state"]; got != events.ArtifactFailed {
+		t.Fatalf("second state = %v, want failed", got)
+	}
+	if got := frames[1]["reason"]; got != events.ArtifactReasonNothingToPublish {
+		t.Fatalf("reason = %v, want %s", got, events.ArtifactReasonNothingToPublish)
+	}
+}
+
+// A store that stops answering must not hold the terminal event: Close gives up
+// after its drain deadline, cancels the uploads and returns.
+func TestPublisherCloseIsBoundedByTheDrainDeadline(t *testing.T) {
+	engine, _, ws := newOutputEngine(t)
+	engine.hub = events.New(time.Minute)
+	store := &stalledOutputStore{
+		started:   make(chan struct{}),
+		cancelled: make(chan struct{}),
+	}
+	engine.outputs = store
+
+	writeWorkspaceFile(t, ws.BaseDir, "outputfiles/case_9/a.txt", "hello")
+
+	publisher := newOutputPublisher(context.Background(), engine, 7)
+	publisher.drainTimeout = 50 * time.Millisecond
+
+	if err := engine.queueCaseOutputs(
+		publisher, 7,
+		model.TestCase{ID: 9, FileSizeLimit: 64, ShowUserOutput: true},
+		model.CaseResult{Status: model.CaseCorrect},
+		ws,
+	); err != nil {
+		t.Fatalf("queueCaseOutputs: %v", err)
+	}
+
+	select {
+	case <-store.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the upload never started")
+	}
+
+	started := time.Now()
+	publisher.Close()
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Fatalf("Close blocked for %s past its drain deadline", elapsed)
+	}
+
+	// The upload observed the cancellation.
+	select {
+	case <-store.cancelled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the in-flight upload was not cancelled")
+	}
+}
+
+// stalledOutputStore blocks every upload until its context is cancelled, which
+// is what the drain deadline does to in-flight uploads.
+type stalledOutputStore struct {
+	startOnce  sync.Once
+	started    chan struct{}
+	cancelOnce sync.Once
+	cancelled  chan struct{}
+}
+
+func (b *stalledOutputStore) UploadGeneratedFile(
+	ctx context.Context, _ int64, _, _ string,
+) (int64, error) {
+	b.startOnce.Do(func() { close(b.started) })
+	<-ctx.Done()
+	b.cancelOnce.Do(func() { close(b.cancelled) })
+	return 0, ctx.Err()
+}
+
 func TestPublishRootOutputs(t *testing.T) {
 	engine, store, ws := newOutputEngine(t)
 
@@ -323,10 +490,10 @@ func TestPublishGeneratedFilesSkipsSymlinks(t *testing.T) {
 	if uploaded != 1 {
 		t.Fatalf("uploaded = %d, want 1", uploaded)
 	}
-	if _, ok := store.uploaded["test_4/link.txt"]; ok {
+	if _, ok := store.uploaded["test_v2_4/link.txt"]; ok {
 		t.Fatal("a symlink must not be published")
 	}
-	if got := store.uploaded["test_4/real.txt"]; got != "real" {
+	if got := store.uploaded["test_v2_4/real.txt"]; got != "real" {
 		t.Fatalf("real.txt = %q, want real", got)
 	}
 }
@@ -346,10 +513,10 @@ func TestPublishGeneratedFilesRespectsTheCaseLimit(t *testing.T) {
 	if uploaded != 1 {
 		t.Fatalf("uploaded = %d, want 1", uploaded)
 	}
-	if _, ok := store.uploaded["test_5/fits.bin"]; !ok {
+	if _, ok := store.uploaded["test_v2_5/fits.bin"]; !ok {
 		t.Fatal("a file exactly at the case limit must be published")
 	}
-	if _, ok := store.uploaded["test_5/too_big.bin"]; ok {
+	if _, ok := store.uploaded["test_v2_5/too_big.bin"]; ok {
 		t.Fatal("a file past the case limit must not be published")
 	}
 }
@@ -372,10 +539,10 @@ func TestPublishGeneratedFilesRespectsTheCommitBudget(t *testing.T) {
 	if uploaded != 1 {
 		t.Fatalf("uploaded = %d, want 1", uploaded)
 	}
-	if _, ok := store.uploaded["test_8/first.bin"]; !ok {
+	if _, ok := store.uploaded["test_v2_8/first.bin"]; !ok {
 		t.Fatal("the first file fits in the commit budget and must be published")
 	}
-	if _, ok := store.uploaded["test_8/second.bin"]; ok {
+	if _, ok := store.uploaded["test_v2_8/second.bin"]; ok {
 		t.Fatal("a file past the commit budget must not be published")
 	}
 }
@@ -420,7 +587,7 @@ func TestPublishGeneratedFilesWithoutALimitUsesTheCeiling(t *testing.T) {
 	if uploaded != 1 {
 		t.Fatalf("uploaded = %d, want 1", uploaded)
 	}
-	if _, ok := store.uploaded["test_6/too_big.bin"]; ok {
+	if _, ok := store.uploaded["test_v2_6/too_big.bin"]; ok {
 		t.Fatal("a case without a limit must still respect the platform ceiling")
 	}
 }
@@ -447,10 +614,10 @@ func TestPublishCaseOutputsDoesNotShareALimitAcrossCases(t *testing.T) {
 		t.Fatalf("case 2: uploaded = %d, err = %v; want 1, nil", uploaded, err)
 	}
 
-	if _, ok := store.uploaded["test_1/first.bin"]; !ok {
+	if _, ok := store.uploaded["test_v2_1/first.bin"]; !ok {
 		t.Fatal("case 1's file was not published")
 	}
-	if _, ok := store.uploaded["test_2/second.bin"]; !ok {
+	if _, ok := store.uploaded["test_v2_2/second.bin"]; !ok {
 		t.Fatal("case 2's file was not published after case 1 used more bytes")
 	}
 }

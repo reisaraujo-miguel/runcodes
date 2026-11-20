@@ -81,9 +81,10 @@ func AttachmentKey(exerciseID int64, filename string) string {
 /*
 OutputFileKey is the S3 key of a file the submission generated, in the
 outputfiles bucket (`<commit_id>/<path>`). The path keeps the workspace layout
-the judge collected from: `test_<case_id>/<relative>` for a file a test case
-produced, `outputfiles/<relative>` for one written directly to the runner's
-output directory.
+the judge collected from: `test_v2_<case number>/<relative>` for a file a test
+case produced, `outputfiles/<relative>` for one written directly to the runner's
+output directory. An older judge stored `test_<case id>/<relative>`; the
+resolver still reads those keys by id.
 */
 func OutputFileKey(commitID int64, filePath string) string {
 	return fmt.Sprintf("%d/%s", commitID, filePath)

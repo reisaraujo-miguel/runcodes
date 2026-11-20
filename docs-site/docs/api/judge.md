@@ -34,8 +34,9 @@ If no token is configured, the judge **fails closed**: every `/v1` request gets
 | `401`  | missing or invalid bearer token           |
 | `503`  | no token configured (or readiness failed) |
 
-`/healthz` and `/readyz` are public so container health checks and the backend
-can probe them.
+`/healthz` and `/readyz` are public so orchestrators, the blackbox exporter and
+the backend can probe them. The judge image is `scratch` and does not implement a
+Docker `HEALTHCHECK`; Compose reports the container as running, not as healthy.
 
 ## `GET /healthz`
 
@@ -320,7 +321,7 @@ streams them for the author:
 
 | Event                      | Stored key                                |
 | -------------------------- | ----------------------------------------- |
-| a case reports `case.done` | `<commit>/test_<case id>/<relative path>` |
+| a case reports `case.done` | `<commit>/test_v2_<case number>/<relative path>` |
 | the run ends               | `<commit>/outputfiles/<relative path>`    |
 
 The files are moved out of the workspace, so only the current case's files are on

@@ -215,31 +215,45 @@ func TestFetchTestCasesReadsInlineText(t *testing.T) {
 	mock.ExpectQuery(`SELECT tc.id, tc.exercise_id`).
 		WithArgs(int64(3), int64(9)).
 		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "exercise_id", "input_type", "input",
+			"id", "exercise_id", "case_number", "input_type", "input",
 			"expected_output_type", "expected_output",
 			"show_input", "show_expected_output", "show_user_output",
 			"cpu_time_limit_seconds", "mem_usage_limit_bytes",
 			"stack_limit_bytes", "file_size_limit_bytes",
 		}).AddRow(
-			int64(11), int64(3), "text", "1 2",
+			int64(11), int64(3), 7, "text", "1 2",
 			"text", "3",
 			true, true, false,
 			2, int64(67108864), int64(1048576), int64(2097152),
+		).AddRow(
+			int64(42), int64(3), 2, "text", "4 5",
+			"text", "9",
+			true, true, true,
+			1, int64(33554432), int64(524288), int64(1048576),
 		))
+	// The per-case file listing is returned in the order of the ids above, so
+	// the second case's row belongs to the second id.
 	mock.ExpectQuery(`SELECT exercise_test_case_id, path`).
 		WithArgs(sqlmock.AnyArg()).
-		WillReturnRows(sqlmock.NewRows([]string{"exercise_test_case_id", "path"}))
+		WillReturnRows(sqlmock.NewRows([]string{"exercise_test_case_id", "path"}).
+			AddRow(int64(11), "entrada.txt").
+			AddRow(int64(42), "entrada2.txt"))
 
 	cases, err := NewWithDB(db).FetchTestCases(context.Background(), 9, 3)
 	if err != nil {
 		t.Fatalf("FetchTestCases: %v", err)
 	}
-	if len(cases) != 1 {
-		t.Fatalf("got %d cases, want 1", len(cases))
+	if len(cases) != 2 {
+		t.Fatalf("got %d cases, want 2", len(cases))
 	}
 	tc := cases[0]
-	if tc.Number != 1 {
-		t.Fatalf("Number = %d, want the exercise-local position 1", tc.Number)
+	if tc.Number != 7 {
+		t.Fatalf("Number = %d, want the number frozen in the snapshot (7)", tc.Number)
+	}
+	// The numbers are frozen, not derived from the ids or the row order: the
+	// second case keeps the number the backend assigned when it was queued.
+	if cases[1].Number != 2 {
+		t.Fatalf("second Number = %d, want the frozen number 2", cases[1].Number)
 	}
 	if tc.Input != "1 2" || tc.InputType != "text" {
 		t.Fatalf("input = %q/%q", tc.Input, tc.InputType)
@@ -265,7 +279,7 @@ func TestFetchTestCasesRefusesACommitWithoutItsLimitSnapshot(t *testing.T) {
 	mock.ExpectQuery(`SELECT tc.id, tc.exercise_id`).
 		WithArgs(int64(3), int64(9)).
 		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "exercise_id", "input_type", "input",
+			"id", "exercise_id", "case_number", "input_type", "input",
 			"expected_output_type", "expected_output",
 			"show_input", "show_expected_output", "show_user_output",
 			"cpu_time_limit_seconds", "mem_usage_limit_bytes",

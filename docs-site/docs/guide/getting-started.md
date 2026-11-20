@@ -203,7 +203,10 @@ The socket probably did not exist when the container was created, or
 ```bash
 systemctl --user status podman.socket
 podman compose up -d --force-recreate judge
-podman compose exec judge ls -l /run/podman/podman.sock   # must be 's'
+# The judge image is scratch (no shell), so check the mount from the host:
+podman inspect -f '{{range .Mounts}}{{.Destination}} {{.Source}}{{"\n"}}{{end}}' \
+  $(podman compose ps -q judge) | grep podman.sock
+stat -c '%F' "${PODMAN_SOCKET:-/run/user/1000/podman/podman.sock}"   # socket
 curl -s http://localhost:9000/readyz
 ```
 

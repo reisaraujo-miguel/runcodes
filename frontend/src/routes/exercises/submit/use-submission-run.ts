@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   getSubmissionOutputFiles,
-  parseSubmissionOutputSnapshot,
   submissionOutputEventsUrl,
   subscribeSubmissionEvents,
   type CommitStatus,
@@ -15,6 +14,7 @@ import {
   pendingUploads as pendingUploadsFrom,
   type ArtifactStatus,
 } from "@/lib/artifact-progress";
+import { connectOutputFilesChannel } from "@/lib/output-files-channel";
 import { isTerminalStatus } from "@/lib/submission-status";
 import {
   upsertCaseResult,
@@ -229,9 +229,10 @@ export function useSubmissionRun(commitId: number | null): SubmissionRunState {
         setStreamError(
           "Não foi possível obter os resultados em tempo real. Recarregue a página para tentar novamente.",
         );
-        // The output socket can still report a real outcome; until it does, do
-        // not leave a spinner that no event can settle.
-        setArtifactStatuses(settlePendingStatuses);
+        // A dropped results stream does not mean the uploads were interrupted:
+        // the run may still be going, and the output socket can still report
+        // every upload's outcome. Leave the placeholders pending and let the
+        // finished or failed frame settle them.
       },
     });
 
@@ -244,50 +245,17 @@ export function useSubmissionRun(commitId: number | null): SubmissionRunState {
   useEffect(() => {
     if (commitId === null) return;
 
-    const controller = new AbortController();
-    const { signal } = controller;
-
-    let complete = false;
-    let attempts = 0;
-    let retry: number | undefined;
-    let socket: WebSocket | null = null;
     receivedOutputSocket.current = false;
 
-    const fallBackToFetch = () => {
-      if (!signal.aborted) setOutputFallback(true);
-    };
-
-    const connect = () => {
-      if (signal.aborted) return;
-      if (typeof WebSocket === "undefined") {
-        fallBackToFetch();
-        return;
-      }
-
-      // A new attempt has not delivered a snapshot yet, so a failed reconnect
-      // must fall back to the one-shot listing rather than trust the previous
-      // socket's state.
-      receivedOutputSocket.current = false;
-      try {
-        socket = new WebSocket(submissionOutputEventsUrl(commitId));
-      } catch {
-        fallBackToFetch();
-        return;
-      }
-
-      socket.onmessage = (message) => {
-        if (signal.aborted || typeof message.data !== "string") return;
-
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(message.data);
-        } catch {
-          return;
-        }
-
-        const snapshot = parseSubmissionOutputSnapshot(parsed);
-        if (!snapshot) return;
-
+    const channel = connectOutputFilesChannel({
+      url: submissionOutputEventsUrl(commitId),
+      onConnect: () => {
+        // A new attempt has not delivered a snapshot yet, so a failed reconnect
+        // must fall back to the one-shot listing rather than trust the previous
+        // socket's state.
+        receivedOutputSocket.current = false;
+      },
+      onFrame: (snapshot) => {
         receivedOutputSocket.current = true;
         setOutputFallback(false);
         setOutputFiles(snapshot.files);
@@ -297,32 +265,14 @@ export function useSubmissionRun(commitId: number | null): SubmissionRunState {
         setArtifactStatuses((previous) =>
           mergeStatuses(previous, snapshot.artifacts),
         );
-        if (snapshot.complete) complete = true;
-      };
-
-      socket.onclose = () => {
-        socket = null;
-        if (signal.aborted || complete) return;
-
-        // A dropped socket is not a reason to poll: retry the push channel a
-        // couple of times, then fall back to one read per artifact event.
-        if (attempts >= 2) {
-          fallBackToFetch();
-          return;
-        }
-        attempts += 1;
-        retry = window.setTimeout(connect, attempts * 1000);
-      };
-    };
-
-    connect();
+      },
+      onFallback: () => {
+        setOutputFallback(true);
+      },
+    });
 
     return () => {
-      // `disposed` is local to this effect. The React Compiler analysis inside
-      // oxlint reports the cleanup reassignment as a render-scope mutation.
-      controller.abort();
-      if (retry !== undefined) window.clearTimeout(retry);
-      socket?.close();
+      channel.close();
     };
   }, [commitId]);
 
@@ -332,19 +282,20 @@ export function useSubmissionRun(commitId: number | null): SubmissionRunState {
   useEffect(() => {
     if (commitId === null || !outputFallback) return;
 
-    const controller = new AbortController();
+    // The request itself has no cancellation hook; the flag only stops a late
+    // result from overwriting state after unmount.
+    let cancelled = false;
     getSubmissionOutputFiles(commitId)
       .then((files) => {
         // A socket frame that arrived while this read was in flight is newer.
-        if (!controller.signal.aborted && !receivedOutputSocket.current)
-          setOutputFiles(files);
+        if (!cancelled && !receivedOutputSocket.current) setOutputFiles(files);
       })
       .catch(() => {
         // The results themselves are unaffected by a listing failure.
       });
 
     return () => {
-      controller.abort();
+      cancelled = true;
     };
   }, [artifactVersion, commitId, outputFallback]);
 

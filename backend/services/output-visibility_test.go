@@ -10,47 +10,78 @@ import (
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 )
 
-func TestOutputFileTestCaseID(t *testing.T) {
+func TestOutputFileCaseNumber(t *testing.T) {
 	tests := []struct {
 		path string
 		want int64
 	}{
-		{"test_1/result.txt", 1},
-		{"test_42/nested/dir/out.csv", 42},
+		{"test_v2_1/result.txt", 1},
+		{"test_v2_42/nested/dir/out.csv", 42},
+		{"outputfiles/explicit.txt", 0},
+		{"produced.txt", 0},
+		{"test_v2_/result.txt", 0},
+		{"test_v2_abc/result.txt", 0},
+		{"test_v2_0/result.txt", 0},
+		{"other/1/result.txt", 0},
+		{"", 0},
+		// The legacy namespace carries an id, never a position.
+		{"test_1/result.txt", 0},
+	}
+
+	for _, tt := range tests {
+		if got := OutputFileCaseNumber(tt.path); got != tt.want {
+			t.Errorf("OutputFileCaseNumber(%q) = %d, want %d", tt.path, got, tt.want)
+		}
+	}
+}
+
+func TestOutputFileLegacyTestCaseID(t *testing.T) {
+	tests := []struct {
+		path string
+		want int64
+	}{
+		{"test_101/result.txt", 101},
+		{"test_7/nested/out.csv", 7},
 		{"outputfiles/explicit.txt", 0},
 		{"produced.txt", 0},
 		{"test_/result.txt", 0},
 		{"test_abc/result.txt", 0},
 		{"test_0/result.txt", 0},
-		{"other/1/result.txt", 0},
+		// The current namespace is not an id.
+		{"test_v2_3/result.txt", 0},
 		{"", 0},
 	}
 
 	for _, tt := range tests {
-		if got := OutputFileTestCaseID(tt.path); got != tt.want {
-			t.Errorf("OutputFileTestCaseID(%q) = %d, want %d", tt.path, got, tt.want)
+		if got := OutputFileLegacyTestCaseID(tt.path); got != tt.want {
+			t.Errorf("OutputFileLegacyTestCaseID(%q) = %d, want %d", tt.path, got, tt.want)
 		}
 	}
 }
 
 func TestResolveOutputFileTestCaseID(t *testing.T) {
-	// The generated path uses the exercise position, not the database id.
-	caseIDs := []int64{7, 9}
+	// The generated path uses the frozen exercise number, not the database id,
+	// and the ids are deliberately non-contiguous.
+	index := NewCommitCaseIndex(map[int]int64{1: 101, 2: 102})
 
 	tests := []struct {
 		path string
 		want int64
 		ok   bool
 	}{
-		{"test_1/result.txt", 7, true},
-		{"test_2/nested/out.csv", 9, true},
+		{"test_v2_1/result.txt", 101, true},
+		{"test_v2_2/nested/out.csv", 102, true},
 		{"outputfiles/explicit.txt", 0, true},
-		{"test_3/result.txt", 0, false},
-		{"test_0/result.txt", 0, true},
+		{"test_v2_3/result.txt", 0, false},
+		// A legacy object is resolved by id, which is what its directory names.
+		{"test_101/result.txt", 101, true},
+		// A small legacy id is not mistaken for a position.
+		{"test_1/result.txt", 0, false},
+		{"test_999/result.txt", 0, false},
 	}
 
 	for _, tt := range tests {
-		got, ok := ResolveOutputFileTestCaseID(tt.path, caseIDs)
+		got, ok := ResolveOutputFileTestCaseID(tt.path, index)
 		if got != tt.want || ok != tt.ok {
 			t.Errorf("ResolveOutputFileTestCaseID(%q) = (%d, %v), want (%d, %v)",
 				tt.path, got, ok, tt.want, tt.ok)
@@ -60,17 +91,26 @@ func TestResolveOutputFileTestCaseID(t *testing.T) {
 
 func TestVisibleOutputFilesForCases(t *testing.T) {
 	files := []storage.OutputFile{
-		{Path: "test_1/visible.txt"},
-		{Path: "test_2/hidden.txt"},
-		{Path: "test_3/unknown.txt"},
+		{Path: "test_v2_1/visible.txt"},
+		{Path: "test_v2_2/hidden.txt"},
+		{Path: "test_v2_3/unknown.txt"},
+		{Path: "test_102/legacy-hidden.txt"},
+		{Path: "test_101/legacy-visible.txt"},
+		{Path: "test_1/foreign.txt"},
 		{Path: "outputfiles/explicit.txt"},
 	}
 
-	// Case 1 is visible, case 2 is hidden, and case 3 does not exist.
+	// Case 1 (id 101) is visible, case 2 (id 102) is hidden, and case 3 does
+	// not exist. The legacy paths follow the same rule through their id.
+	index := NewCommitCaseIndex(map[int]int64{1: 101, 2: 102})
 	got := VisibleOutputFilesForCases(
-		files, map[int64]struct{}{9: {}}, []int64{7, 9},
+		files, map[int64]struct{}{102: {}}, index,
 	)
-	want := []string{"test_1/visible.txt", "outputfiles/explicit.txt"}
+	want := []string{
+		"test_v2_1/visible.txt",
+		"test_101/legacy-visible.txt",
+		"outputfiles/explicit.txt",
+	}
 	if len(got) != len(want) {
 		t.Fatalf("files = %v, want %v", got, want)
 	}
@@ -99,50 +139,6 @@ func TestSettlePendingArtifacts(t *testing.T) {
 	}
 	if artifacts[1].State != "ready" {
 		t.Fatal("a settled artifact must not change")
-	}
-}
-
-func TestOutputFileVisible(t *testing.T) {
-	hidden := map[int64]struct{}{3: {}, 7: {}}
-
-	visible := []string{"test_1/result.txt", "outputfiles/explicit.txt", "produced.txt"}
-	for _, path := range visible {
-		if !OutputFileVisible(path, hidden) {
-			t.Errorf("OutputFileVisible(%q) = false, want true", path)
-		}
-	}
-
-	hiddenPaths := []string{"test_3/result.txt", "test_7/nested/out.csv"}
-	for _, path := range hiddenPaths {
-		if OutputFileVisible(path, hidden) {
-			t.Errorf("OutputFileVisible(%q) = true, want false", path)
-		}
-	}
-}
-
-func TestVisibleOutputFiles(t *testing.T) {
-	files := []storage.OutputFile{
-		{Path: "test_1/result.txt"},
-		{Path: "test_3/secret.txt"},
-		{Path: "outputfiles/explicit.txt"},
-		{Path: "test_7/nested/out.csv"},
-	}
-
-	got := VisibleOutputFiles(files, map[int64]struct{}{3: {}, 7: {}})
-	want := []string{"test_1/result.txt", "outputfiles/explicit.txt"}
-	if len(got) != len(want) {
-		t.Fatalf("files = %v, want %v", got, want)
-	}
-	for i, path := range want {
-		if got[i].Path != path {
-			t.Fatalf("files[%d] = %q, want %q", i, got[i].Path, path)
-		}
-	}
-
-	// A commit with no hidden case keeps the listing untouched.
-	all := VisibleOutputFiles(files, nil)
-	if len(all) != len(files) {
-		t.Fatalf("files with no hidden case = %v, want all", all)
 	}
 }
 

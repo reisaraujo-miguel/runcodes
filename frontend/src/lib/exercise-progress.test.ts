@@ -5,6 +5,7 @@ import type { UserExercise } from "@/lib/api";
 import {
   completedExercises,
   exerciseProgress,
+  expiredExercises,
   formatScore,
   hasPassed,
   pendingExercises,
@@ -114,6 +115,17 @@ describe("exercise lists", () => {
     ];
 
     expect(pendingExercises(items).map((item) => item.id)).toEqual([1, 2]);
+  });
+
+  test("expired holds closed exercises that were not passed", () => {
+    const items = [
+      exercise({ id: 1, is_open: false, best_score: null }),
+      exercise({ id: 2, is_open: false, best_score: 40 }),
+      exercise({ id: 3, is_open: false, best_score: 100 }),
+      exercise({ id: 4, is_open: true, best_score: null }),
+    ];
+
+    expect(expiredExercises(items).map((item) => item.id)).toEqual([1, 2]);
   });
 
   test("completed holds passed exercises even after the deadline", () => {

@@ -528,6 +528,9 @@ const (
 	// ArtifactReasonFileTooLarge: every file exceeded the case's own limit, so
 	// nothing could be published.
 	ArtifactReasonFileTooLarge = "file_too_large"
+	// ArtifactReasonNothingToPublish: the collection directory held no regular
+	// file to publish (only directories, symlinks or special files).
+	ArtifactReasonNothingToPublish = "nothing_to_publish"
 	// ArtifactReasonUploadInterrupted: the backend knows the upload was pending
 	// when the run ended, so it will never finish.
 	ArtifactReasonUploadInterrupted = "upload_interrupted"

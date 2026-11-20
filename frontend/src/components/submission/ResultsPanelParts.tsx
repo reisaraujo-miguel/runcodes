@@ -394,21 +394,22 @@ function generatedFileLabel(filePath: string): string {
 /**
  * The files one test case generated, with a download per file. Each case has its
  * own tab, so a case shows only what it produced: a file's origin is the
- * `test_<case number>/` prefix the judge stored it under.
+ * `test_v2_<case number>/` prefix the judge stored it under, or the older
+ * `test_<case id>/` one.
  *
  * The listing is pushed by the output-files WebSocket. When an upload fails, the
  * section shows why there is no download instead of a spinner.
  */
 export function Artifacts({
   commitId,
-  testCaseNumber,
+  testCase,
   files,
   pending,
   status,
 }: {
   commitId: number;
-  /** The case's 1-based position in the exercise. */
-  testCaseNumber: number;
+  /** The case's database id and its frozen 1-based exercise position. */
+  testCase: { id: number; number: number | null };
   /** Every generated file of the commit, as pushed by the WebSocket. */
   files: readonly SubmissionOutputFile[];
   /** True while this case's files are still being uploaded. */
@@ -416,7 +417,7 @@ export function Artifacts({
   /** The upload outcome, when the judge has reported one. */
   status?: ArtifactStatus;
 }) {
-  const caseFiles = filesForTestCase(files, testCaseNumber);
+  const caseFiles = filesForTestCase(files, testCase);
   if (caseFiles.length === 0) {
     const unavailable = artifactUnavailableMessage(status);
     if (unavailable) {

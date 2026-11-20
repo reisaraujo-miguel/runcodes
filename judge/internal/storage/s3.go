@@ -146,10 +146,10 @@ func (s *S3) FetchCompilationFile(ctx context.Context, exerciseID int64, path, d
 // prefix in the outputfiles bucket (`<commit_id>/<rel>`) and returns its size.
 //
 // The key keeps the workspace layout the runner collected the file in
-// (`test_<case_id>/<relative>` or `outputfiles/<relative>`), so the backend can
-// present a file's origin from its path alone. rel is built by the judge from a
-// workspace walk, never from user input, but it is still cleaned to a
-// slash-separated relative path before it becomes a key.
+// (`test_v2_<case number>/<relative>` or `outputfiles/<relative>`), so the
+// backend can present a file's origin from its path alone. rel is built by the
+// judge from a workspace walk, never from user input, but it is still cleaned
+// to a slash-separated relative path before it becomes a key.
 func (s *S3) UploadGeneratedFile(
 	ctx context.Context, commitID int64, rel, src string,
 ) (int64, error) {

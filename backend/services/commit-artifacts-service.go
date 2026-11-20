@@ -11,50 +11,85 @@ import (
 )
 
 /*
-Generated-file paths name a case by its position inside the exercise
-(`test_<number>/...`). The database, including the hidden-output rules, uses the
-platform-wide test-case id. CommitTestCaseIDs returns the ids in that numbering
-order, so the two representations can be translated without a query per file.
+CommitCaseIndex is a commit's frozen test-case numbering. Generated-file paths
+name a case by that number (`test_v2_<number>/...`), while the results, the
+artifact rows and the hidden-output rules use the platform-wide test-case id.
+The number is frozen in the commit's limit snapshot when it is queued, so
+deleting a test case later does not renumber the files of a stored run.
 */
-func CommitTestCaseIDs(ctx context.Context, commitID int64) ([]int64, error) {
+type CommitCaseIndex struct {
+	numberToID map[int]int64
+	ids        map[int64]struct{}
+}
+
+// NewCommitCaseIndex builds an index from a frozen number -> id map. It exists
+// so tests and callers that already hold the snapshot need no query.
+func NewCommitCaseIndex(numberToID map[int]int64) CommitCaseIndex {
+	index := CommitCaseIndex{
+		numberToID: make(map[int]int64, len(numberToID)),
+		ids:        make(map[int64]struct{}, len(numberToID)),
+	}
+	for number, id := range numberToID {
+		index.numberToID[number] = id
+		index.ids[id] = struct{}{}
+	}
+
+	return index
+}
+
+// IDForNumber resolves the frozen case number a generated file names.
+func (i CommitCaseIndex) IDForNumber(number int) (int64, bool) {
+	id, ok := i.numberToID[number]
+	return id, ok
+}
+
+// HasID reports whether the case belongs to the commit at all.
+func (i CommitCaseIndex) HasID(id int64) bool {
+	_, ok := i.ids[id]
+	return ok
+}
+
+/*
+LoadCommitCaseIndex reads the numbering frozen in the commit's limit snapshot.
+Deleting a test case removes its row but leaves the other numbers untouched, so
+a stored file keeps pointing at the case that produced it.
+*/
+func LoadCommitCaseIndex(
+	ctx context.Context, commitID int64,
+) (CommitCaseIndex, error) {
 	rows, err := database.DB.QueryContext(ctx, `
-		SELECT tc.id
-		FROM commits c
-		JOIN exercises e ON e.id = c.exercise_id
-		JOIN commit_test_case_limits cl ON cl.commit_id = c.id
-		JOIN exercises_test_cases tc
-		  ON tc.id = cl.exercise_test_case_id
-		 AND tc.exercise_id =
-		     CASE WHEN e.ghost AND e.real_id IS NOT NULL
-		          THEN e.real_id ELSE e.id END
-		WHERE c.id = $1
-		ORDER BY tc.id`, commitID)
+		SELECT case_number, exercise_test_case_id
+		FROM commit_test_case_limits
+		WHERE commit_id = $1`, commitID)
 	if err != nil {
-		slog.ErrorContext(ctx, "error fetching the commit's test cases",
+		slog.ErrorContext(ctx, "error fetching the commit's case numbering",
 			slog.Int64("commit_id", commitID),
 			slog.String("error", err.Error()),
 		)
-		return nil, ErrServer
+		return CommitCaseIndex{}, ErrServer
 	}
 	defer rows.Close()
 
-	ids := make([]int64, 0, 8)
+	pairs := make(map[int]int64, 8)
 	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			slog.ErrorContext(ctx, "error scanning a commit test case",
+		var (
+			number int
+			id     int64
+		)
+		if err := rows.Scan(&number, &id); err != nil {
+			slog.ErrorContext(ctx, "error scanning a commit case number",
 				slog.Int64("commit_id", commitID),
 				slog.String("error", err.Error()),
 			)
-			return nil, ErrServer
+			return CommitCaseIndex{}, ErrServer
 		}
-		ids = append(ids, id)
+		pairs[number] = id
 	}
 	if err := rows.Err(); err != nil {
-		return nil, ErrServer
+		return CommitCaseIndex{}, ErrServer
 	}
 
-	return ids, nil
+	return NewCommitCaseIndex(pairs), nil
 }
 
 /*
@@ -87,10 +122,14 @@ func ListCommitArtifacts(
 	ctx context.Context, commitID int64,
 ) ([]models.SubmissionArtifact, error) {
 	rows, err := database.DB.QueryContext(ctx, `
-		SELECT exercise_test_case_id, state::text, reason, limit_bytes
-		FROM commit_test_case_artifacts
-		WHERE commit_id = $1
-		ORDER BY exercise_test_case_id`, commitID)
+		SELECT a.exercise_test_case_id, a.state::text, a.reason,
+		       a.limit_bytes, cl.case_number
+		FROM commit_test_case_artifacts a
+		LEFT JOIN commit_test_case_limits cl
+		  ON cl.commit_id = a.commit_id
+		 AND cl.exercise_test_case_id = a.exercise_test_case_id
+		WHERE a.commit_id = $1
+		ORDER BY a.exercise_test_case_id`, commitID)
 	if err != nil {
 		slog.ErrorContext(ctx, "error fetching the commit's artifacts",
 			slog.Int64("commit_id", commitID),
@@ -107,8 +146,9 @@ func ListCommitArtifacts(
 			state  string
 			reason sql.NullString
 			limit  sql.NullInt64
+			number sql.NullInt64
 		)
-		if err := rows.Scan(&id, &state, &reason, &limit); err != nil {
+		if err := rows.Scan(&id, &state, &reason, &limit, &number); err != nil {
 			slog.ErrorContext(ctx, "error scanning a commit artifact",
 				slog.Int64("commit_id", commitID),
 				slog.String("error", err.Error()),
@@ -128,6 +168,10 @@ func ListCommitArtifacts(
 		if limit.Valid {
 			value := limit.Int64
 			artifact.LimitBytes = &value
+		}
+		if number.Valid {
+			value := number.Int64
+			artifact.Number = &value
 		}
 		artifacts = append(artifacts, artifact)
 	}

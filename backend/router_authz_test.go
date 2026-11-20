@@ -311,3 +311,79 @@ func TestStudentCannotPostToTheBulletinBoard(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// studentSessionRequest signs a student session and attaches it as the cookie
+// the middleware reads.
+func studentSessionRequest(t *testing.T, method, path string) *http.Request {
+	t.Helper()
+
+	request := httptest.NewRequest(method, path, nil)
+	request.AddCookie(&http.Cookie{
+		Name:  "jwt",
+		Value: signedSession(t, 7, "student", 1),
+	})
+
+	return request
+}
+
+func expectStudentSession(mock sqlmock.Sqlmock) {
+	mock.ExpectQuery(`SELECT confirmed, role::text, token_version FROM users`).
+		WithArgs(7).
+		WillReturnRows(sqlmock.NewRows(
+			[]string{"confirmed", "role", "token_version"},
+		).AddRow(true, "student", 1))
+}
+
+// The generated-files socket is owner-only. Authentication is enforced before
+// the handler runs, so an anonymous client never reaches the commit lookup.
+func TestOutputEventsRequiresAuthentication(t *testing.T) {
+	router := newAuthzRouter(t)
+
+	request := httptest.NewRequest(http.MethodGet,
+		"/api/v1/submissions/42/output-events", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
+	}
+}
+
+// A commit that belongs to someone else is answered exactly like a missing one,
+// so the endpoint never discloses that another user's submission exists.
+func TestOutputEventsRejectsAForeignCommit(t *testing.T) {
+	router := newAuthzRouter(t)
+	mock := newAuthzDB(t)
+	expectStudentSession(mock)
+	mock.ExpectQuery(`SELECT id FROM commits WHERE id = \$1 AND user_id = \$2`).
+		WithArgs(int64(42), int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
+
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, studentSessionRequest(t, http.MethodGet,
+		"/api/v1/submissions/42/output-events"))
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOutputEventsRejectsAnInvalidId(t *testing.T) {
+	router := newAuthzRouter(t)
+	mock := newAuthzDB(t)
+	expectStudentSession(mock)
+
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, studentSessionRequest(t, http.MethodGet,
+		"/api/v1/submissions/not-a-number/output-events"))
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -289,10 +289,12 @@ func listUserOfferingExercises(
 			       (array_agg(c.status::text
 			                  ORDER BY c.created_at DESC, c.id DESC))[1]
 			           AS last_status,
+			       -- Only a graded run has a score. compilation_error,
+			       -- server_error, timeout and plagiarism keep the column's
+			       -- default 0, and counting that as a result would show a
+			       -- submission that never ran as "0/100".
 			       max(c.score) FILTER (
-			           WHERE c.status NOT IN (
-			               'pending', 'queued', 'compiling', 'running'
-			           )
+			           WHERE c.status IN ('completed', 'uncompleted')
 			       ) AS best_score
 			FROM commits c
 			WHERE c.exercise_id = e.id AND c.user_id = $2
@@ -423,6 +425,13 @@ func ListUserOfferings(
 }
 
 /*
+MaxUserExercises bounds the list so one long-lived account cannot make the home
+and exercises pages fetch its whole history. The order is by deadline, so the
+cap drops the oldest closed exercises first.
+*/
+const MaxUserExercises = 200
+
+/*
 ListUserExercises lists the exercises that have already opened in the caller's
 classes (enrolled or owned) and were not removed, with the caller's own
 submission summary on each one. The list includes both the exercises that are
@@ -457,10 +466,12 @@ func ListUserExercises(
 			       (array_agg(c.status::text
 			                  ORDER BY c.created_at DESC, c.id DESC))[1]
 			           AS last_status,
+			       -- Only a graded run has a score. compilation_error,
+			       -- server_error, timeout and plagiarism keep the column's
+			       -- default 0, and counting that as a result would show a
+			       -- submission that never ran as "0/100".
 			       max(c.score) FILTER (
-			           WHERE c.status NOT IN (
-			               'pending', 'queued', 'compiling', 'running'
-			           )
+			           WHERE c.status IN ('completed', 'uncompleted')
 			       ) AS best_score
 			FROM commits c
 			WHERE c.exercise_id = e.id AND c.user_id = $1
@@ -468,7 +479,8 @@ func ListUserExercises(
 		WHERE e.removed = FALSE
 		  AND e.open_date <= now()
 		  AND (en.user_id IS NOT NULL OR o.owner_id = $1)
-		ORDER BY e.deadline, e.id`, userID,
+		ORDER BY e.deadline, e.id
+		LIMIT $2`, userID, MaxUserExercises,
 	)
 	if err != nil {
 		slog.ErrorContext(ctx, "error fetching user exercises",

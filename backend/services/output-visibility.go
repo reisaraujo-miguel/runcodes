@@ -16,23 +16,27 @@ the redaction in the results panel is protecting.
 */
 
 // outputCasePrefix marks the files one test case produced:
-// `test_<case number>/...`. The number is the case's 1-based position in the
-// exercise, not its platform-wide id.
-const outputCasePrefix = "test_"
+// `test_v2_<case number>/...`. The number is the case's frozen 1-based position
+// in the exercise (commit_test_case_limits.case_number), not its platform-wide
+// id. The `v2` segment distinguishes this namespace from the legacy one below.
+const outputCasePrefix = "test_v2_"
 
-/*
-OutputFileCaseNumber returns the case number a generated file came from. It
-returns 0 for a file written straight into the runner's output directory
-(`outputfiles/...`), which belongs to the submission as a whole rather than to one
-case.
-*/
-func OutputFileCaseNumber(filePath string) int64 {
-	prefix, _, found := strings.Cut(filePath, "/")
-	if !found || !strings.HasPrefix(prefix, outputCasePrefix) {
+// legacyOutputCasePrefix marks the files written before the numbering was
+// frozen, when the judge named the directory with the platform-wide case id:
+// `test_<case id>/...`. Those objects keep their meaning, so the resolver reads
+// them as ids instead of misreading the id as a position.
+const legacyOutputCasePrefix = "test_"
+
+// caseDirNumber parses `<prefix><positive integer>/<rest>` and returns the
+// integer. It returns 0 for a run-level file (no case directory) and for a
+// prefix whose segment is not a positive integer.
+func caseDirNumber(filePath, prefix string) int64 {
+	first, _, found := strings.Cut(filePath, "/")
+	if !found || !strings.HasPrefix(first, prefix) {
 		return 0
 	}
 
-	number, err := strconv.ParseInt(strings.TrimPrefix(prefix, outputCasePrefix), 10, 64)
+	number, err := strconv.ParseInt(strings.TrimPrefix(first, prefix), 10, 64)
 	if err != nil || number <= 0 {
 		return 0
 	}
@@ -40,58 +44,64 @@ func OutputFileCaseNumber(filePath string) int64 {
 	return number
 }
 
-// OutputFileTestCaseID is kept for callers that only need the numeric prefix.
-// The value is the exercise-local number; use ResolveOutputFileTestCaseID to
-// turn it into a database id.
-func OutputFileTestCaseID(filePath string) int64 {
-	return OutputFileCaseNumber(filePath)
+/*
+OutputFileCaseNumber returns the case number a generated file came from, for a
+path in the current `test_v2_<number>/...` form. It returns 0 for a run-level
+file (written straight into the runner's output directory) and for a legacy
+path, which carries an id instead.
+*/
+func OutputFileCaseNumber(filePath string) int64 {
+	return caseDirNumber(filePath, outputCasePrefix)
 }
 
 /*
-ResolveOutputFileTestCaseID maps a generated file's case number to the
-platform-wide test-case id. caseIDs is the exercise order returned by
-CommitTestCaseIDs. A file outside a case directory resolves to 0; a file whose
-number has no case (a deleted case, or a path written by another version) is
+OutputFileLegacyTestCaseID returns the platform-wide test-case id a generated
+file came from, for a path in the legacy `test_<case id>/...` form. It returns 0
+for the current form and for a run-level file.
+*/
+func OutputFileLegacyTestCaseID(filePath string) int64 {
+	if OutputFileCaseNumber(filePath) != 0 {
+		return 0
+	}
+
+	return caseDirNumber(filePath, legacyOutputCasePrefix)
+}
+
+/*
+ResolveOutputFileTestCaseID maps a generated file's path to the platform-wide
+test-case id, using the commit's frozen numbering (CommitCaseIndex). A run-level
+file resolves to 0; a file whose case no longer belongs to the commit is
 reported as unknown and must not be served.
 */
-func ResolveOutputFileTestCaseID(filePath string, caseIDs []int64) (int64, bool) {
-	number := OutputFileCaseNumber(filePath)
-	if number == 0 {
-		return 0, true
+func ResolveOutputFileTestCaseID(
+	filePath string, index CommitCaseIndex,
+) (int64, bool) {
+	if number := OutputFileCaseNumber(filePath); number != 0 {
+		return index.IDForNumber(int(number))
 	}
 
-	index := number - 1
-	if index < 0 || index >= int64(len(caseIDs)) {
-		return 0, false
+	if id := OutputFileLegacyTestCaseID(filePath); id != 0 {
+		if !index.HasID(id) {
+			return 0, false
+		}
+		return id, true
 	}
 
-	return caseIDs[index], true
+	return 0, true
 }
 
 /*
 OutputFileVisibleForCases reports whether a generated file may be shown to the
 student. A file that belongs to no case is always visible; a case's file follows
-the case's `show_user_output`, resolved through the exercise's case order.
+the case's `show_user_output`, resolved through the commit's frozen numbering.
 */
 func OutputFileVisibleForCases(
-	filePath string, hidden map[int64]struct{}, caseIDs []int64,
+	filePath string, hidden map[int64]struct{}, index CommitCaseIndex,
 ) bool {
-	caseID, ok := ResolveOutputFileTestCaseID(filePath, caseIDs)
+	caseID, ok := ResolveOutputFileTestCaseID(filePath, index)
 	if !ok {
 		return false
 	}
-	if caseID == 0 {
-		return true
-	}
-
-	_, isHidden := hidden[caseID]
-	return !isHidden
-}
-
-// OutputFileVisible is the id-based form kept for tests and callers that
-// already hold a resolved case id.
-func OutputFileVisible(filePath string, hidden map[int64]struct{}) bool {
-	caseID := OutputFileCaseNumber(filePath)
 	if caseID == 0 {
 		return true
 	}
@@ -105,29 +115,11 @@ VisibleOutputFilesForCases drops the files produced by cases whose output the
 author did not release. The order of the listing is preserved.
 */
 func VisibleOutputFilesForCases(
-	files []storage.OutputFile, hidden map[int64]struct{}, caseIDs []int64,
+	files []storage.OutputFile, hidden map[int64]struct{}, index CommitCaseIndex,
 ) []storage.OutputFile {
 	visible := make([]storage.OutputFile, 0, len(files))
 	for _, file := range files {
-		if OutputFileVisibleForCases(file.Path, hidden, caseIDs) {
-			visible = append(visible, file)
-		}
-	}
-
-	return visible
-}
-
-// VisibleOutputFiles is the id-based form kept for compatibility.
-func VisibleOutputFiles(
-	files []storage.OutputFile, hidden map[int64]struct{},
-) []storage.OutputFile {
-	if len(hidden) == 0 {
-		return files
-	}
-
-	visible := make([]storage.OutputFile, 0, len(files))
-	for _, file := range files {
-		if OutputFileVisible(file.Path, hidden) {
+		if OutputFileVisibleForCases(file.Path, hidden, index) {
 			visible = append(visible, file)
 		}
 	}

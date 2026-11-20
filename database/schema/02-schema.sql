@@ -212,13 +212,21 @@ CREATE TABLE commits (
 CREATE TABLE commit_test_case_limits (
   commit_id int NOT NULL REFERENCES commits (id) ON DELETE CASCADE,
   exercise_test_case_id int NOT NULL REFERENCES exercises_test_cases (id) ON DELETE CASCADE,
+  -- The case's 1-based position in the exercise, frozen when the commit is
+  -- queued. Generated files are named after it. Deriving the position from the
+  -- live rows instead would renumber the remaining cases as soon as a test case
+  -- is deleted, and a stored file would then be attributed to another case --
+  -- including that case's hidden-output rule.
+  case_number int NOT NULL,
   -- The limits resolved for the language of this commit when it was queued, so
   -- grading never depends on a configuration edited after the submission.
   cpu_time_limit_seconds int NOT NULL,
   mem_usage_limit_bytes bigint NOT NULL,
   stack_limit_bytes bigint NOT NULL,
   file_size_limit_bytes bigint NOT NULL,
-  PRIMARY KEY (commit_id, exercise_test_case_id)
+  PRIMARY KEY (commit_id, exercise_test_case_id),
+  UNIQUE (commit_id, case_number),
+  CHECK (case_number > 0)
 );
 
 CREATE TYPE commit_exercise_test_case_status_t AS ENUM ('killed_with_signal', 'correct', 'bad_formatted_output');
@@ -416,6 +424,10 @@ CREATE INDEX idx_commits_user_exercise_order
 -- The results PK is (commit_id, exercise_test_case_id): commit_id is covered, the
 -- case id is not.
 CREATE INDEX idx_results_exercise_test_case_id ON commits_exercise_test_cases_results (exercise_test_case_id);
+-- The artifact table's PK covers commit_id only, and deleting a test case
+-- cascades through this foreign key, so the case id needs its own index.
+CREATE INDEX idx_commit_test_case_artifacts_case_id
+  ON commit_test_case_artifacts (exercise_test_case_id);
 -- The statistics pivot filters by phase and joins by commit; the PK covers the
 -- commit lookup, so only the phase needs its own index.
 CREATE INDEX idx_commit_phase_timings_phase ON commit_phase_timings (phase);

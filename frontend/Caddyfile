@@ -14,7 +14,7 @@
 			X-Frame-Options "SAMEORIGIN"
 			Referrer-Policy "no-referrer"
 			Permissions-Policy "camera=(), microphone=(), geolocation=()"
-			Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws://{http.request.host} wss://{http.request.host} http://localhost:4318; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'"
+			Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws://{http.request.hostport} wss://{http.request.hostport} http://localhost:4318; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'"
 		}
 
 		# API and its long-lived SSE and WebSocket streams. The path is preserved

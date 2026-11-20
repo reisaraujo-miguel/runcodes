@@ -18,8 +18,9 @@ FROM scratch AS runner
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /app/judge /app/judge
 
-# Runs as the host UID/GID by default (see docker-compose) so it can reach the
-# rootless podman socket and the shared exec directory.
+# The image defaults to a numeric unprivileged user (no /etc/passwd is needed).
+# Compose overrides it with the host UID/GID -- or root, by default -- because
+# the judge must reach the rootless podman socket and the shared exec directory.
 USER 10001:10001
 
 WORKDIR /app/

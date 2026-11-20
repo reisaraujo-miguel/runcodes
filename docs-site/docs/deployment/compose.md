@@ -250,14 +250,19 @@ podman compose ps
 podman compose logs -f --tail=100 judge
 podman compose logs -f backend
 podman compose restart backend
-podman compose exec judge id          # root inside the namespace
+
+# The backend and judge images have no shell (scratch), so inspect them from the
+# host instead of exec-ing into them:
+podman inspect -f '{{.Config.User}}' $(podman compose ps -q judge)   # 0:0
+podman inspect -f '{{range .Mounts}}{{.Destination}} <- {{.Source}}{{"\n"}}{{end}}' \
+  $(podman compose ps -q judge)   # the podman socket must be a bind mount
 ```
 
 ### Common failures
 
 | Symptom | Check |
 | --- | --- |
-| judge `/readyz` says `podman unavailable` | socket exists, judge created after it, mount is a socket |
+| judge `/readyz` says `podman unavailable` | socket exists, judge created after it, mount is a socket (`podman inspect` above; the image has no `ls`) |
 | judge `/readyz` says `permission denied` | SELinux or uid mapping; keep `user: "0:0"` and `label=disable` |
 | backend `/readyz` returns `503` | PostgreSQL health and the app-role password |
 | submissions return `503` | judge readiness and SeaweedFS credentials |
