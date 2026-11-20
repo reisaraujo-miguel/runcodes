@@ -119,7 +119,7 @@ services:
         condition: service_started
 
   alertmanager:
-    image: prom/alertmanager:v0.34.2
+    image: prom/alertmanager:v0.35.0
     restart: unless-stopped
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
@@ -168,7 +168,7 @@ services:
       - runcodes-network
 
   loki:
-    image: grafana/loki:3.7.9
+    image: grafana/loki:3.7.10
     restart: unless-stopped
     command: ["-config.file=/etc/loki/loki.yaml"]
     ports:
@@ -228,7 +228,7 @@ services:
       - runcodes-network
 
   alloy:
-    image: grafana/alloy:v1.21.3
+    image: grafana/alloy:v1.22.0
     restart: unless-stopped
     command:
       - "run"
@@ -255,7 +255,7 @@ services:
         condition: service_started
 
   grafana:
-    image: grafana/grafana:13.3.0
+    image: grafana/grafana:13.3.1
     restart: unless-stopped
     environment:
       TZ: "America/Sao_Paulo"
