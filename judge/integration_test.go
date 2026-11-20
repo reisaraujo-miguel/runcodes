@@ -203,9 +203,10 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 	// would refuse the run instead of guessing the limits.
 	if _, err := db.ExecContext(ctx, `
 		INSERT INTO commit_test_case_limits
-		    (commit_id, exercise_test_case_id, cpu_time_limit_seconds,
+		    (commit_id, exercise_test_case_id, case_number,
+		     cpu_time_limit_seconds,
 		     mem_usage_limit_bytes, stack_limit_bytes, file_size_limit_bytes)
-		VALUES ($1, $2, 5, $3, 0, 0)`, commitID, caseID, 256*1024*1024); err != nil {
+		VALUES ($1, $2, 1, 5, $3, 0, 0)`, commitID, caseID, 256*1024*1024); err != nil {
 		t.Fatalf("insert commit limits snapshot: %v", err)
 	}
 

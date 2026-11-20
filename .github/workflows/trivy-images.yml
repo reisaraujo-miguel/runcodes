@@ -36,6 +36,11 @@ jobs:
             context: ./frontend
           - service: database
             context: ./database
+            # The database image upgrades Alpine packages at build time; the
+            # per-run value keeps the build cache from serving a stale, still
+            # vulnerable layer.
+            build-args: |
+              APK_CACHE_BUST=${{ github.run_id }}
           - service: judge
             context: ./judge
     steps:
@@ -52,6 +57,7 @@ jobs:
           # Load into the local docker daemon so Trivy can scan it.
           load: true
           tags: runcodes-${{ matrix.service }}:ci
+          build-args: ${{ matrix.build-args }}
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 

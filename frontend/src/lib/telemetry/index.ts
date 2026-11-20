@@ -1,7 +1,6 @@
 import { FetchInstrumentation } from "@opentelemetry/browser-instrumentation/experimental/fetch";
 import { W3CTraceContextPropagator } from "@opentelemetry/core";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { registerInstrumentations } from "@opentelemetry/instrumentation";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
   BatchSpanProcessor,
@@ -61,9 +60,11 @@ export function initBrowserTelemetry(): void {
       ],
     });
 
+    const propagator = new W3CTraceContextPropagator();
+
     provider.register({
       contextManager: new StackContextManager(),
-      propagator: new W3CTraceContextPropagator(),
+      propagator,
     });
 
     const propagateTo = [
@@ -73,22 +74,21 @@ export function initBrowserTelemetry(): void {
       propagateTo.push(new RegExp(`^${escapeRegExp(config.apiOrigin)}`));
     }
 
-    registerInstrumentations({
-      tracerProvider: provider,
-      instrumentations: [
-        new FetchInstrumentation({
-          // Send traceparent only to our own API, not to every third-party URL.
-          propagateTraceHeaderCorsUrls: propagateTo,
-          // Never trace the OTLP export request itself.
-          ignoreUrls: [/\/v1\/traces(?:\?|$)/],
-          applyCustomAttributesOnSpan: (span) => {
-            // The page an API call came from is useful when one screen makes
-            // calls to several endpoints but only one of them is slow.
-            span.setAttribute("browser.url.path", window.location.pathname);
-          },
-        }),
-      ],
-    });
+    // The browser instrumentations have their own base class and emit to the
+    // SDK they are enabled with; they are not part of the collector-style
+    // `registerInstrumentations` registry. Enabling after `provider.register()`
+    // also gives them the global propagator as a fallback.
+    new FetchInstrumentation({
+      // Send traceparent only to our own API, not to every third-party URL.
+      propagateTraceHeaderCorsUrls: propagateTo,
+      // Never trace the OTLP export request itself.
+      ignoreUrls: [/\/v1\/traces(?:\?|$)/],
+      applyCustomAttributesOnSpan: (span) => {
+        // The page an API call came from is useful when one screen makes
+        // calls to several endpoints but only one of them is slow.
+        span.setAttribute("browser.url.path", window.location.pathname);
+      },
+    }).enable({ tracerProvider: provider, propagator });
   } catch (error) {
     // The console is the only fallback when telemetry setup itself fails; the
     // application must still boot. Never include the endpoint credentials in

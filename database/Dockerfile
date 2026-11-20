@@ -14,9 +14,13 @@ FROM postgres:18.6-alpine3.24
 
 ENV GOSU_VERSION=1.20
 
-# The tag still points at an Alpine 3.24.2 image whose curl/brotli packages
-# have published fixes. Apply them when building the database image.
-RUN apk upgrade --no-cache
+# The tag's package repository keeps moving while its digest (and the cached
+# layers built from it) stays the same, so a cached upgrade would keep an old
+# package revision -- and its CVEs -- indefinitely. CI passes a per-run value so
+# the upgrade runs again on every build; a local build leaves it empty and can
+# reuse the cache.
+ARG APK_CACHE_BUST=""
+RUN echo "apk cache bust: ${APK_CACHE_BUST}" && apk upgrade --no-cache
 
 COPY --from=gosu-builder /gosu/gosu /usr/local/bin/gosu
 
