@@ -1,7 +1,7 @@
 # The postgres image ships gosu 1.19 compiled with Go 1.24, which Trivy flags
 # for standard-library CVEs. Build gosu 1.20 from source with the current Go
 # toolchain instead of accepting those findings.
-FROM golang:1.27.3-alpine3.24 AS gosu-builder
+FROM golang:1.27.4-alpine3.24 AS gosu-builder
 
 RUN apk add --no-cache git && \
     git clone --depth 1 --branch 1.20 https://github.com/tianon/gosu.git /gosu
