@@ -200,13 +200,15 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 	}
 	// The judge grades against the frozen snapshot the backend writes when it
 	// queues a commit, so the fixture has to write one too. Without it the judge
-	// would refuse the run instead of guessing the limits.
+	// would refuse the run instead of guessing the limits. The case number is
+	// what generated files are named after, and this exercise has one case.
+	const caseNumber = 1
 	if _, err := db.ExecContext(ctx, `
 		INSERT INTO commit_test_case_limits
 		    (commit_id, exercise_test_case_id, case_number,
 		     cpu_time_limit_seconds,
 		     mem_usage_limit_bytes, stack_limit_bytes, file_size_limit_bytes)
-		VALUES ($1, $2, 1, 5, $3, 0, 0)`, commitID, caseID, 256*1024*1024); err != nil {
+		VALUES ($1, $2, $3, 5, $4, 0, 0)`, commitID, caseID, caseNumber, 256*1024*1024); err != nil {
 		t.Fatalf("insert commit limits snapshot: %v", err)
 	}
 
@@ -224,7 +226,7 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 		_, _ = db.ExecContext(bg, `DELETE FROM users WHERE id = $1`, userID)
 		for _, obj := range []struct{ bucket, key string }{
 			{s3cfg.CommitsBucket(), sourceKey},
-			{s3cfg.OutputsBucket(), fmt.Sprintf("%d/test_%d/result.txt", commitID, caseID)},
+			{s3cfg.OutputsBucket(), fmt.Sprintf("%d/test_v2_%d/result.txt", commitID, caseNumber)},
 		} {
 			_, _ = s3client.DeleteObject(bg, &s3.DeleteObjectInput{
 				Bucket: aws.String(obj.bucket), Key: aws.String(obj.key),
@@ -366,7 +368,7 @@ func TestJudgeRunsLanguageImageEndToEnd(t *testing.T) {
 	// by the test case that produced it.
 	if fixture.artifact {
 		client := newS3Client(ctx, t, cfg.S3)
-		key := fmt.Sprintf("%d/test_%d/result.txt", commitID, caseID)
+		key := fmt.Sprintf("%d/test_v2_%d/result.txt", commitID, caseNumber)
 		out, err := client.GetObject(ctx, &s3.GetObjectInput{
 			Bucket: aws.String(cfg.S3.OutputsBucket()),
 			Key:    aws.String(key),

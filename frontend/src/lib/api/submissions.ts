@@ -128,7 +128,8 @@ export interface SubmissionOutputSnapshot {
 
 /**
  * One file the submission generated, as listed by the backend. `path` identifies
- * it inside the submission's output namespace, for example `test_1/saida.txt`.
+ * it inside the submission's output namespace, for example
+ * `test_v2_1/saida.txt`.
  */
 export interface SubmissionOutputFile {
   path: string;

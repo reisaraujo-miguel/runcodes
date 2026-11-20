@@ -377,8 +377,8 @@ export function StreamError({ message }: { message: string }) {
 
 /**
  * Labels one generated file for display. The tab already identifies the case, so
- * only the path inside the case is shown: the judge's `test_<id>/` prefix would
- * repeat the tab's own title.
+ * only the path inside the case is shown: the judge's `test_v2_<number>/` (or
+ * legacy `test_<id>/`) prefix would repeat the tab's own title.
  */
 function generatedFileLabel(filePath: string): string {
   const parts = filePath.split("/");

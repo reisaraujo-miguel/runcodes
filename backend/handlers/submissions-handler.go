@@ -560,7 +560,7 @@ func appendToArchive(
 // OutputFileEntry is one file in the generated-files listing.
 type OutputFileEntry struct {
 	// Path identifies the file within the submission's output namespace, for
-	// example `test_1/saida.txt`.
+	// example `test_v2_1/saida.txt` (or a legacy `test_<id>/` path).
 	Path string `json:"path"`
 	Size int64  `json:"size"`
 }
