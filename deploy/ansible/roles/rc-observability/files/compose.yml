@@ -4,7 +4,7 @@
 
 services:
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.163.2
+    image: otel/opentelemetry-collector-contrib:0.165.0
     container_name: runcodes-obs-otel-collector
     restart: always
     command: ["--config=/etc/otelcol/config.yaml"]
@@ -31,7 +31,7 @@ services:
       - loki
 
   prometheus:
-    image: prom/prometheus:v3.15.1
+    image: prom/prometheus:v3.16.0
     container_name: runcodes-obs-prometheus
     restart: always
     command:
@@ -59,7 +59,7 @@ services:
       - alertmanager
 
   alertmanager:
-    image: prom/alertmanager:v0.34.1
+    image: prom/alertmanager:v0.35.0
     container_name: runcodes-obs-alertmanager
     restart: always
     command:
@@ -84,7 +84,7 @@ services:
   # Test receiver used by the end-to-end smoke test. It keeps the last 100
   # payloads in memory and has no authentication; it is private-only.
   alert-sink:
-    image: python:3.14-slim-trixie
+    image: python:3.15-slim-trixie
     container_name: runcodes-obs-alert-sink
     restart: always
     command: ["python", "-u", "/app/main.py"]
@@ -104,7 +104,7 @@ services:
       - observability
 
   loki:
-    image: grafana/loki:3.7.9
+    image: grafana/loki:3.7.10
     container_name: runcodes-obs-loki
     restart: always
     command: ["-config.file=/etc/loki/loki.yaml"]
@@ -140,7 +140,7 @@ services:
       - prometheus
 
   pyroscope:
-    image: grafana/pyroscope:2.4.1
+    image: grafana/pyroscope:2.4.3
     container_name: runcodes-obs-pyroscope
     restart: always
     command:
@@ -161,7 +161,7 @@ services:
       - observability
 
   grafana:
-    image: grafana/grafana:12.4.13
+    image: grafana/grafana:13.3.1
     container_name: runcodes-obs-grafana
     restart: always
     environment:

@@ -156,7 +156,7 @@ services:
   # Local mail catcher. For a public deployment set RUNCODES_SMTP_HOST and
   # RUNCODES_SMTP_PORT to a real relay; this service is then unused.
   smtp4dev:
-    image: rnwood/smtp4dev:v3.15
+    image: rnwood/smtp4dev:v3.16
     restart: unless-stopped
     ports:
       - "127.0.0.1:${SMTP4DEV_WEB_PORT:-8081}:80"
@@ -199,7 +199,7 @@ services:
       - /init.sh
 
   seaweed:
-    image: "chrislusf/seaweedfs:${SEAWEEDFS_VERSION:-4.48}"
+    image: "chrislusf/seaweedfs:${SEAWEEDFS_VERSION:-4.53}"
     restart: unless-stopped
     ports:
       - "127.0.0.1:${SEAWEED_S3_PORT:-8333}:8333"

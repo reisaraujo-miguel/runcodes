@@ -53,7 +53,7 @@ services:
       - data
 
   seaweed:
-    image: chrislusf/seaweedfs:4.48
+    image: chrislusf/seaweedfs:4.53
     container_name: runcodes-data-seaweed
     restart: always
     command: >-
@@ -92,7 +92,7 @@ services:
       - data
 
   redis-exporter:
-    image: oliver006/redis_exporter:v1.95.0
+    image: oliver006/redis_exporter:v1.97.0
     container_name: runcodes-data-redis-exporter
     restart: always
     environment:
