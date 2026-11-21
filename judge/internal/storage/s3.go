@@ -143,33 +143,23 @@ func (s *S3) FetchCompilationFile(ctx context.Context, exerciseID int64, path, d
 }
 
 // UploadGeneratedFile stores one file a submission produced under the commit's
-// prefix in the outputfiles bucket (`<commit_id>/<rel>`) and returns its size.
+// prefix in the outputfiles bucket (`<commit_id>/<rel>`).
 //
 // The key keeps the workspace layout the runner collected the file in
 // (`test_v2_<case number>/<relative>` or `outputfiles/<relative>`), so the
 // backend can present a file's origin from its path alone. rel is built by the
 // judge from a workspace walk, never from user input, but it is still cleaned
 // to a slash-separated relative path before it becomes a key.
+//
+// The caller opens the file and passes exactly the bytes it checked: the
+// workspace is written by untrusted code, so a path must never be reopened
+// here after the caller's check.
 func (s *S3) UploadGeneratedFile(
-	ctx context.Context, commitID int64, rel, src string,
-) (int64, error) {
+	ctx context.Context, commitID int64, rel string, body io.Reader, size int64,
+) error {
 	clean := path.Clean(filepath.ToSlash(rel))
 	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
-		return 0, fmt.Errorf("invalid generated file path %q", rel)
-	}
-
-	f, err := os.Open(src)
-	if err != nil {
-		return 0, fmt.Errorf("open %s: %w", src, err)
-	}
-	defer f.Close()
-
-	info, err := f.Stat()
-	if err != nil {
-		return 0, fmt.Errorf("stat %s: %w", src, err)
-	}
-	if !info.Mode().IsRegular() {
-		return 0, fmt.Errorf("%s is not a regular file", src)
+		return fmt.Errorf("invalid generated file path %q", rel)
 	}
 
 	// Generated content is arbitrary bytes, so it is stored opaquely; the
@@ -183,12 +173,12 @@ func (s *S3) UploadGeneratedFile(
 	if _, err := s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:        aws.String(s.cfg.OutputsBucket()),
 		Key:           aws.String(key),
-		Body:          f,
-		ContentLength: aws.Int64(info.Size()),
+		Body:          body,
+		ContentLength: aws.Int64(size),
 		ContentType:   aws.String(contentType),
 	}); err != nil {
-		return 0, fmt.Errorf("put s3://%s/%s: %w", s.cfg.OutputsBucket(), key, err)
+		return fmt.Errorf("put s3://%s/%s: %w", s.cfg.OutputsBucket(), key, err)
 	}
 
-	return info.Size(), nil
+	return nil
 }
