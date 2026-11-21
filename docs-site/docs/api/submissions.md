@@ -132,8 +132,9 @@ data: {"type":"snapshot","commit":{...},"results":[...],"artifacts":[...]}
 
 `artifacts` contains `{"kind":"output"}` when the submission generated at least
 one file, plus one entry per case whose upload the judge reported. A per-case
-entry carries `test_case_id`, `state` (`pending`, `ready`, `failed`) and, for a
-failure, `reason` and optionally `limit_bytes`. The files themselves are listed
+entry carries `test_case_id`, `number` (the case's frozen 1-based position in
+the exercise), `state` (`pending`, `ready`, `failed`) and, for a failure,
+`reason` and optionally `limit_bytes`. The files themselves are listed
 by `GET /submissions/{id}/outputfiles` or pushed over the output-events
 WebSocket.
 
@@ -197,8 +198,8 @@ Lists the files the submission generated. Owner only.
 
 ```json
 [
-  {"path": "test_1/result.txt", "size": 12},
-  {"path": "test_1/nested/saida.csv", "size": 2140}
+  {"path": "test_v2_1/result.txt", "size": 12},
+  {"path": "test_v2_1/nested/saida.csv", "size": 2140}
 ]
 ```
 
@@ -206,10 +207,13 @@ Lists the files the submission generated. Owner only.
 - The judge uploads each case's files as soon as that case finishes, so the list
   can grow while the run is still in progress.
 - `path` locates the file inside the submission's output namespace:
-  `test_<case number>/<relative>` for a file a case produced,
+  `test_v2_<case number>/<relative>` for a file a case produced,
   `outputfiles/<relative>` for one written straight into the runner's output
-  directory. The number is the case's 1-based position in the exercise, matching
-  the results panel and the downloaded archive.
+  directory. The number is the case's 1-based position in the exercise, frozen
+  when the submission was queued, so it keeps matching the results panel and the
+  downloaded archive even if a test case is deleted later. Files written by an
+  older judge use `test_<case id>/<relative>`; the API still serves and resolves
+  them.
 - Internal reports (`compilation.*`, per-case `.output`, `.error`,
   `.monitor_out`, `.monitor_err`) are excluded.
 - A case whose program output the author did not release (`Mostrar saída do
@@ -234,9 +238,9 @@ Each text frame is a JSON object:
 ```json
 {
   "type": "outputfiles",
-  "files": [{"path": "test_1/result.txt", "size": 12}],
+  "files": [{"path": "test_v2_1/result.txt", "size": 12}],
   "artifacts": [
-    {"kind": "output", "test_case_id": 91, "state": "failed",
+    {"kind": "output", "test_case_id": 91, "number": 2, "state": "failed",
      "reason": "commit_artifact_budget_exceeded", "limit_bytes": 268435456}
   ],
   "complete": false
@@ -244,6 +248,9 @@ Each text frame is a JSON object:
 ```
 
 - The first frame is the current state.
+- A per-case artifact carries `number`, the case's frozen 1-based position in
+  the exercise, so the client can match it to the `test_v2_<number>/` paths even
+  if the case was deleted after the run.
 - The server sends another frame whenever an `artifact` event changes the state.
 - The last frame has `complete: true`; the server then closes the socket.
 - When the run ends, any still-pending upload is reported as `failed` with
@@ -268,7 +275,7 @@ Streams one generated file. Owner only.
 
 ```bash
 curl -b cookies.txt -OJ \
-  http://localhost:8080/api/v1/submissions/42/outputfiles/test_1/result.txt
+  http://localhost:8080/api/v1/submissions/42/outputfiles/test_v2_1/result.txt
 ```
 
 ## `GET /submissions/{id}/output`

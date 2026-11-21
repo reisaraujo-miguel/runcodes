@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from "react";
 
-import { BookOpenIcon, CheckCircle2Icon } from "lucide-react";
+import { BookOpenIcon, CheckCircle2Icon, ClockIcon } from "lucide-react";
 import { useSearchParams } from "react-router";
 
 import { PageHeader } from "@/components/app/PageHeader";
@@ -11,14 +11,20 @@ import { Button } from "@/components/ui/button";
 import { TabBar } from "@/components/ui/tab-bar";
 import { useAsync } from "@/hooks/use-async";
 import { getMyExercises, type UserExercise } from "@/lib/api";
-import { completedExercises, pendingExercises } from "@/lib/exercise-progress";
+import {
+  completedExercises,
+  expiredExercises,
+  pendingExercises,
+} from "@/lib/exercise-progress";
 
 /** Which exercise list the page shows. */
-type ExerciseTab = "open" | "done";
+type ExerciseTab = "open" | "done" | "expired";
 
 /** Reads the selected tab from `?tab=`, falling back to the pending list. */
 function parseTab(value: string | null): ExerciseTab {
-  return value === "done" ? "done" : "open";
+  if (value === "done") return "done";
+  if (value === "expired") return "expired";
+  return "open";
 }
 
 interface ExerciseGroup {
@@ -85,11 +91,13 @@ export function ExercisesPage() {
   const data = useMemo(() => exercises.data ?? [], [exercises.data]);
   const pending = useMemo(() => pendingExercises(data), [data]);
   const completed = useMemo(() => completedExercises(data), [data]);
+  const expired = useMemo(() => expiredExercises(data), [data]);
   const pendingGroups = useMemo(() => groupByOffering(pending), [pending]);
   const completedGroups = useMemo(
     () => groupByOffering(completed),
     [completed],
   );
+  const expiredGroups = useMemo(() => groupByOffering(expired), [expired]);
 
   function selectTab(next: ExerciseTab) {
     const params = new URLSearchParams(searchParams);
@@ -100,13 +108,14 @@ export function ExercisesPage() {
   const tabItems = [
     { value: "open" as const, label: "Em aberto", badge: pending.length },
     { value: "done" as const, label: "Concluídos", badge: completed.length },
+    { value: "expired" as const, label: "Encerrados", badge: expired.length },
   ];
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Exercícios"
-        description="Seus exercícios nas turmas, separados entre o que falta resolver e o que você já acertou por completo."
+        description="Seus exercícios nas turmas, separados entre o que falta resolver, o que você já acertou por completo e o que encerrou sem conclusão."
       />
 
       {exercises.loading ? (
@@ -171,6 +180,37 @@ export function ExercisesPage() {
                   icon={CheckCircle2Icon}
                   title="Nenhum exercício concluído"
                   description="Quando você acertar todos os testes de um exercício, ele aparece aqui com a sua nota."
+                  action={
+                    pending.length > 0 ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          selectTab("open");
+                        }}
+                      >
+                        Ver em aberto
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              }
+            />
+          </div>
+
+          <div
+            role="tabpanel"
+            id="exercises-page-panel-expired"
+            aria-labelledby="exercises-page-tab-expired"
+            hidden={tab !== "expired"}
+          >
+            <ExerciseGroups
+              groups={expiredGroups}
+              empty={
+                <EmptyState
+                  icon={ClockIcon}
+                  title="Nenhum exercício encerrado"
+                  description="Quando o prazo de um exercício terminar antes de você acertar todos os testes, ele aparece aqui com o seu histórico."
                   action={
                     pending.length > 0 ? (
                       <Button

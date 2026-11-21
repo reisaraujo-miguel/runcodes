@@ -385,8 +385,15 @@ systemctl --user enable --now podman.socket
 systemctl --user restart runcodes-compute
 ```
 
-`podman exec runcodes-compute-judge ls -l /run/podman/podman.sock` must show a
-socket.
+The judge image is `scratch` (no shell), so check the socket from the host. The
+mount list must include `/run/podman/podman.sock`, and its source must be a
+socket:
+
+```bash
+podman inspect runcodes-compute-judge \
+  --format '{{range .Mounts}}{{.Destination}} <- {{.Source}}{{"\n"}}{{end}}'
+stat -c '%F' /run/user/1000/podman/podman.sock   # must print "socket"
+```
 
 ### Caddy does not get a certificate / 502 from the edge
 
@@ -416,7 +423,14 @@ redis-cli --no-auth-warning -a "$REDIS_PASSWORD" ping
 
 ### No telemetry reaches the observability host
 
-1. `podman exec runcodes-edge-backend printenv | grep OTEL_`.
+1. Read the container's environment. The backend image is `scratch` and has no
+   `printenv`, so inspect it from the host:
+
+   ```bash
+   podman inspect runcodes-edge-backend \
+     --format '{{range .Config.Env}}{{println .}}{{end}}' | grep OTEL_
+   ```
+
 2. `curl http://203.0.113.13:13133/health/status`.
 3. Can edge/compute reach `203.0.113.13:4318`? Check the provider firewall.
 4. Check collector logs and `otelcol_exporter_*` metrics.

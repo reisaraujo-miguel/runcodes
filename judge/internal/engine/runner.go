@@ -106,8 +106,9 @@ type runOutcome struct {
 	// missingCollections counts the cases whose image did not collect generated
 	// files. It is reported once per run: see errNoCollectionDir.
 	missingCollections int
-	// publisher uploads the generated files. It is closed by Process after the
-	// terminal event, so the client is not kept waiting for the last upload.
+	// publisher uploads the generated files. Process drains it before the
+	// terminal event, so the ready/failed events reach the client while it is
+	// still listening instead of after the run already has a status.
 	publisher *outputPublisher
 }
 

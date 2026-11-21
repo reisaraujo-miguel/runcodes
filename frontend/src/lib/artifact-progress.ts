@@ -8,39 +8,6 @@ import { formatBytes } from "./format";
  * never be a link.
  */
 
-/** Minimal shape of an artifact event needed to track upload progress. */
-export interface ArtifactProgressEvent {
-  test_case_id?: number;
-  state?: string;
-}
-
-/**
- * Applies an artifact event to the list of cases whose files are still being
- * uploaded. Events without a case (the run-level artifact) leave the list alone.
- */
-export function applyArtifactProgress(
-  pending: readonly number[],
-  event: ArtifactProgressEvent,
-): number[] {
-  const testCaseId = event.test_case_id;
-  if (testCaseId === undefined || !Number.isSafeInteger(testCaseId)) {
-    return [...pending];
-  }
-
-  switch (event.state) {
-    case "pending":
-      return pending.includes(testCaseId)
-        ? [...pending]
-        : [...pending, testCaseId];
-    case "ready":
-    case "failed":
-      return pending.filter((id) => id !== testCaseId);
-    default:
-      // An older judge sends the run-level event only.
-      return [...pending];
-  }
-}
-
 /** Upload state of one test case's generated files. */
 export interface ArtifactStatus {
   state: "pending" | "ready" | "failed";
@@ -119,6 +86,8 @@ export function artifactUnavailableMessage(
         : "Os arquivos gerados não estão disponíveis porque esta submissão atingiu o limite total de arquivos gerados.";
     case "file_too_large":
       return "Os arquivos gerados não estão disponíveis porque excedem o limite de tamanho deste caso.";
+    case "nothing_to_publish":
+      return "Os arquivos gerados não estão disponíveis porque esta submissão não gravou nenhum arquivo para download.";
     case "upload_failed":
     case "storage_unavailable":
       return "Os arquivos gerados não estão disponíveis porque falhou o envio para o armazenamento.";

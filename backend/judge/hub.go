@@ -29,6 +29,16 @@ const (
 // ErrStreamClosed is returned when subscribing to an already finished commit.
 var ErrStreamClosed = errors.New("event stream is already closed")
 
+// ErrTooManySubscribers is returned when one commit's hub already fans out to
+// maxHubSubscribers clients. Each subscriber costs a buffered channel and the
+// work of formatting every frame, so an unbounded fan-out would let a single
+// client pin memory and CPU.
+var ErrTooManySubscribers = errors.New("too many subscribers for this commit")
+
+// maxHubSubscribers caps the fan-out of one commit's stream. It is well above a
+// person's tab count and low enough to bound the cost of an abusive client.
+const maxHubSubscribers = 16
+
 // hubLifetimeMargin is added to the stale timeout to bound how long a hub keeps
 // its upstream judge stream open.
 const hubLifetimeMargin = 5 * time.Minute
@@ -94,16 +104,27 @@ func Subscribe(commitID int64) (*Subscription, error) {
 	hub := getOrCreateHub(commitID)
 
 	ch := make(chan []byte, subscriberBuffer)
-
-	hub.mu.Lock()
-	if hub.closed {
-		hub.mu.Unlock()
-		return nil, ErrStreamClosed
+	if err := hub.subscribe(ch); err != nil {
+		return nil, err
 	}
-	hub.subs[ch] = struct{}{}
-	hub.mu.Unlock()
 
 	return &Subscription{Events: ch, hub: hub, ch: ch}, nil
+}
+
+// subscribe registers one client channel on the hub, enforcing its fan-out cap.
+func (h *Hub) subscribe(ch chan []byte) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.closed {
+		return ErrStreamClosed
+	}
+	if len(h.subs) >= maxHubSubscribers {
+		return ErrTooManySubscribers
+	}
+
+	h.subs[ch] = struct{}{}
+	return nil
 }
 
 /*
@@ -264,12 +285,15 @@ func (h *Hub) handleEvent(ctx context.Context, ev *Event, raw []byte) error {
 		// persisted before broadcast and must not be lost: return the failure
 		// so the cursor is not advanced past an unpersisted event.
 		if err := PersistEvent(ctx, ev); err != nil {
-			// Phase timings and alerts are supplemental: a failure to store
-			// either must not stall the run or turn a graded submission into a
-			// server error. The statistics report exposes the missing timings as
-			// reduced coverage, and the alert is an operational notification that
-			// is logged here instead.
-			if ev.Type == "timings" || ev.Type == "alert" {
+			// Phase timings, alerts and artifact states are supplemental: a
+			// failure to store any of them must not stall the run or turn a
+			// graded submission into a server error. The statistics report
+			// exposes the missing timings as reduced coverage, the alert is an
+			// operational notification that is logged here instead, and a
+			// missing artifact row only means the files section cannot explain
+			// an upload it never recorded.
+			if ev.Type == "timings" || ev.Type == "alert" ||
+				ev.Type == "artifact" {
 				slog.ErrorContext(ctx, "failed to persist a supplemental event; continuing",
 					slog.Int64("commit_id", ev.CommitID),
 					slog.String("type", ev.Type),

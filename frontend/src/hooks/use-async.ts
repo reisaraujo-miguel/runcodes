@@ -47,16 +47,17 @@ export function useAsync<T>(
   const token = `${String(key)}#${String(nonce)}`;
 
   useEffect(() => {
-    const controller = new AbortController();
+    // The loader has no cancellation hook, so the flag only stops a result from
+    // a superseded request from overwriting the current one.
+    let cancelled = false;
 
     loadRef
       .current()
       .then((data) => {
-        if (!controller.signal.aborted)
-          setSettled({ token, data, error: null });
+        if (!cancelled) setSettled({ token, data, error: null });
       })
       .catch((error: unknown) => {
-        if (!controller.signal.aborted) {
+        if (!cancelled) {
           setSettled({
             token,
             data: null,
@@ -66,7 +67,7 @@ export function useAsync<T>(
       });
 
     return () => {
-      controller.abort();
+      cancelled = true;
     };
   }, [token, fallbackError]);
 

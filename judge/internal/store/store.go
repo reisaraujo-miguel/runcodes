@@ -206,7 +206,8 @@ func (s *Store) FetchTestCases(ctx context.Context, commitID, exerciseID int64) 
 	// language and frozen, so an exercise edited while the run was queued cannot
 	// change what this submission is graded against.
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT tc.id, tc.exercise_id, tc.input_type::text, COALESCE(tc.input, ''),
+		SELECT tc.id, tc.exercise_id, cl.case_number, tc.input_type::text,
+		       COALESCE(tc.input, ''),
 		       tc.expected_output_type::text, COALESCE(tc.expected_output, ''),
 		       tc.show_input, tc.show_expected_output, tc.show_user_output,
 		       cl.cpu_time_limit_seconds, cl.mem_usage_limit_bytes,
@@ -230,7 +231,7 @@ func (s *Store) FetchTestCases(ctx context.Context, commitID, exerciseID int64) 
 		var tc model.TestCase
 
 		if err := rows.Scan(
-			&tc.ID, &tc.ExerciseID, &tc.InputType, &tc.Input,
+			&tc.ID, &tc.ExerciseID, &tc.Number, &tc.InputType, &tc.Input,
 			&tc.ExpectedOutputType, &tc.ExpectedOutput,
 			&tc.ShowInput, &tc.ShowExpectedOutput, &tc.ShowUserOutput,
 			&tc.CPUTimeLimit, &tc.MemUsageLimit, &tc.StackLimit, &tc.FileSizeLimit,
@@ -246,10 +247,15 @@ func (s *Store) FetchTestCases(ctx context.Context, commitID, exerciseID int64) 
 	}
 
 	// Test-case ids are platform-wide; the student sees each exercise's cases
-	// from 1. Everything user-facing (the results strip and the generated-file
-	// paths) uses this position, while events keep the id for persistence.
+	// from 1. The number is read from the commit's snapshot, where the backend
+	// froze it when the commit was queued: everything user-facing (the results
+	// strip and the generated-file paths) uses it, while events keep the id for
+	// persistence. A snapshot row without a number (a commit queued before the
+	// numbering was frozen) falls back to its position in the query.
 	for i := range cases {
-		cases[i].Number = i + 1
+		if cases[i].Number <= 0 {
+			cases[i].Number = i + 1
+		}
 	}
 
 	if len(cases) == 0 {

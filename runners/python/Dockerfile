@@ -20,6 +20,14 @@ COPY --from=runner-base /usr/bin/runcodes /usr/bin/runcodes
 
 COPY --from=builder /install /usr/local
 
+# `runners/base/base-script.sh` runs `make all` / `make -s run` when a
+# submission ships a top-level Makefile, so the graded image must keep make
+# even though the build tools stay in the builder stage.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends make && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 # Submissions run as this user, never as root: the judge relies on the run being
 # unable to change the image it is graded in. A system user is used so the uid
 # comes from the range the distribution keeps free, and the home directory is

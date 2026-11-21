@@ -36,6 +36,10 @@ RUN bun -b run build
 # Caddy release with the current Go toolchain, the fixed x/net and the fixed
 # go-jose v4. Caddy still links go-jose v3 through its internal PKI/ACME server;
 # upstream has no fixed v3 release, so that finding is scoped in .trivyignore.yaml.
+#
+# x/crypto is pinned to a commit that carries the fix for the advisory Trivy
+# reports on the released versions; replace the pseudo-version with the first
+# release that includes it and drop this line.
 FROM caddy:2.11.9-builder-alpine AS caddy-builder
 
 RUN CGO_ENABLED=0 xcaddy build v2.11.9 \
@@ -46,7 +50,10 @@ RUN CGO_ENABLED=0 xcaddy build v2.11.9 \
 
 FROM alpine:3.24 AS dist
 
-RUN apk add --no-cache ca-certificates libcap zlib=1.4-r0
+# Upgrade rather than pin: an exact `zlib=<revision>` breaks the build as soon
+# as Alpine publishes a new revision and removes the old one from the branch.
+# `apk upgrade` still applies the fixed package Trivy asked for.
+RUN apk add --no-cache ca-certificates libcap && apk upgrade --no-cache zlib
 
 RUN addgroup -S caddy && adduser -S caddy -G caddy && \
     mkdir -p /data /config && chown caddy:caddy /data /config

@@ -383,14 +383,48 @@ func visibleOutputFiles(
 		return nil, err
 	}
 
-	// Generated paths name the case by its position in the exercise; the hidden
-	// and interrupted rules use the database id. Translate once for the listing.
-	caseIDs, err := services.CommitTestCaseIDs(ctx, commitID)
+	// Generated paths name the case by its frozen position in the exercise; the
+	// hidden and interrupted rules use the database id. Translate once for the
+	// listing, using the numbering frozen when the commit was queued.
+	index, err := services.LoadCommitCaseIndex(ctx, commitID)
 	if err != nil {
 		return nil, err
 	}
 
-	return services.VisibleOutputFilesForCases(files, unavailable, caseIDs), nil
+	return services.VisibleOutputFilesForCases(files, unavailable, index), nil
+}
+
+/*
+submissionDownloadFilename names the zip a submission's files download as. The
+exercise title is authored by a professor, so control characters and path
+separators are replaced and the length is capped; the submission number keeps
+the name unique and readable. The header value is still quoted by the caller.
+*/
+func submissionDownloadFilename(title string, number int64) string {
+	const maxTitleRunes = 80
+
+	name := strings.Map(func(r rune) rune {
+		switch {
+		case r < 0x20 || r == 0x7f:
+			// Control characters cannot appear in a header value.
+			return -1
+		case r == '/' || r == '\\' || r == '"':
+			// Path separators and quotes would change the header's meaning.
+			return '_'
+		default:
+			return r
+		}
+	}, title)
+
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = "submission"
+	}
+	if runes := []rune(name); len(runes) > maxTitleRunes {
+		name = strings.TrimSpace(string(runes[:maxTitleRunes]))
+	}
+
+	return name + "_" + strconv.FormatInt(number, 10) + ".zip"
 }
 
 /*
@@ -467,7 +501,7 @@ func GetSubmissionOutput(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition",
 		fmt.Sprintf("attachment; filename=%q",
-			title+"_"+strconv.FormatInt(number, 10)+".zip"),
+			submissionDownloadFilename(title, number)),
 	)
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.WriteHeader(http.StatusOK)
@@ -526,7 +560,7 @@ func appendToArchive(
 // OutputFileEntry is one file in the generated-files listing.
 type OutputFileEntry struct {
 	// Path identifies the file within the submission's output namespace, for
-	// example `test_1/saida.txt`.
+	// example `test_v2_1/saida.txt` (or a legacy `test_<id>/` path).
 	Path string `json:"path"`
 	Size int64  `json:"size"`
 }
@@ -594,12 +628,12 @@ func GetSubmissionOutputFile(w http.ResponseWriter, r *http.Request) {
 		writeServiceError(ctx, w, err)
 		return
 	}
-	caseIDs, err := services.CommitTestCaseIDs(ctx, commitID)
+	index, err := services.LoadCommitCaseIndex(ctx, commitID)
 	if err != nil {
 		writeServiceError(ctx, w, err)
 		return
 	}
-	if !services.OutputFileVisibleForCases(filePath, unavailable, caseIDs) {
+	if !services.OutputFileVisibleForCases(filePath, unavailable, index) {
 		WriteResponse(w, http.StatusNotFound,
 			models.Error{Message: "file not found"},
 		)
@@ -768,7 +802,8 @@ func StreamSubmissionEvents(w http.ResponseWriter, r *http.Request) {
 	// says at least one file exists, even when the judge never sent a per-case
 	// event for it.
 	if !owned {
-		snapshot.Artifacts = nil
+		// Keep the field an array: only its content depends on the viewer.
+		snapshot.Artifacts = []models.SubmissionArtifact{}
 	} else {
 		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		exists, err := storage.OutputFilesExist(checkCtx, commitID)
@@ -819,6 +854,12 @@ func StreamSubmissionEvents(w http.ResponseWriter, r *http.Request) {
 
 	subscription, err := judge.Subscribe(commitID)
 	if err != nil {
+		if !errors.Is(err, judge.ErrStreamClosed) {
+			slog.WarnContext(ctx, "could not subscribe to the judge event stream",
+				slog.Int64("commit_id", commitID),
+				slog.String("error", err.Error()),
+			)
+		}
 		return
 	}
 	defer subscription.Close()

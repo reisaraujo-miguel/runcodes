@@ -21,7 +21,7 @@ func TestListUserExercises(t *testing.T) {
 	lastSubmittedAt := time.Date(2026, 10, 20, 18, 0, 0, 0, time.UTC)
 
 	mock.ExpectQuery(`progress.best_score`).
-		WithArgs(int64(7)).
+		WithArgs(int64(7), MaxUserExercises).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "offering_id", "offering_name", "title", "description",
 			"deadline", "open_date", "is_open", "submission_count",
@@ -80,7 +80,7 @@ func TestListUserExercises(t *testing.T) {
 func TestListUserExercisesQueryFailure(t *testing.T) {
 	mock := newMockDB(t)
 	mock.ExpectQuery(`FROM exercises e`).
-		WithArgs(int64(7)).
+		WithArgs(int64(7), MaxUserExercises).
 		WillReturnError(sql.ErrConnDone)
 
 	_, err := ListUserExercises(context.Background(),

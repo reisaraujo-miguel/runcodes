@@ -514,9 +514,11 @@ func SnapshotCommitLimits(
 	platform := PlatformLimits()
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO commit_test_case_limits
-		    (commit_id, exercise_test_case_id, cpu_time_limit_seconds,
+		    (commit_id, exercise_test_case_id, case_number,
+		     cpu_time_limit_seconds,
 		     mem_usage_limit_bytes, stack_limit_bytes, file_size_limit_bytes)
 		SELECT c.id, tc.id,
+		       row_number() OVER (PARTITION BY c.id ORDER BY tc.id),
 		       COALESCE(tcl.cpu_time_limit_seconds, ell.cpu_time_limit_seconds, $1),
 		       COALESCE(tcl.mem_usage_limit_bytes, ell.mem_usage_limit_bytes, $2),
 		       COALESCE(tcl.stack_limit_bytes, ell.stack_limit_bytes, $3),

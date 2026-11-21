@@ -56,7 +56,8 @@ func TestSubmissionNumber(t *testing.T) {
 	mock := newMockDB(t)
 	mock.ExpectQuery(`SELECT count\(\*\)`).
 		WithArgs(int64(42)).
-		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(10)))
+		WillReturnRows(sqlmock.NewRows([]string{"count", "exists"}).
+			AddRow(int64(10), true))
 
 	number, err := SubmissionNumber(context.Background(), 42)
 	if err != nil {
@@ -64,6 +65,23 @@ func TestSubmissionNumber(t *testing.T) {
 	}
 	if number != 10 {
 		t.Fatalf("number = %d, want 10", number)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A commit deleted between the ownership check and this read must be reported
+// as missing, not as submission number zero.
+func TestSubmissionNumberForAMissingCommit(t *testing.T) {
+	mock := newMockDB(t)
+	mock.ExpectQuery(`SELECT count\(\*\)`).
+		WithArgs(int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"count", "exists"}).
+			AddRow(int64(0), false))
+
+	if _, err := SubmissionNumber(context.Background(), 42); !errors.Is(err, ErrCommitNotFound) {
+		t.Fatalf("err = %v, want ErrCommitNotFound", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

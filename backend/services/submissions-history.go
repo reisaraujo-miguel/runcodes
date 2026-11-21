@@ -83,22 +83,32 @@ The order is the same (created_at, id) order used by the history listing, so a
 displayed number stays stable as new submissions arrive.
 */
 func SubmissionNumber(ctx context.Context, commitID int64) (int64, error) {
-	var number int64
+	var (
+		number int64
+		exists bool
+	)
 	err := database.DB.QueryRowContext(ctx, `
-		SELECT count(*)
+		SELECT count(*),
+		       EXISTS (SELECT 1 FROM commits WHERE id = $1)
 		FROM commits c
 		JOIN commits target ON target.id = $1
 		WHERE c.user_id = target.user_id
 		  AND c.exercise_id = target.exercise_id
 		  AND (c.created_at, c.id) <= (target.created_at, target.id)`,
 		commitID,
-	).Scan(&number)
+	).Scan(&number, &exists)
 	if err != nil {
 		slog.ErrorContext(ctx, "error reading the submission number",
 			slog.Int64("commit_id", commitID),
 			slog.String("error", err.Error()),
 		)
 		return 0, ErrServer
+	}
+	if !exists {
+		// A commit deleted between the ownership check and this read is
+		// indistinguishable from a missing one, and must not be reported as
+		// position zero.
+		return 0, ErrCommitNotFound
 	}
 
 	return number, nil

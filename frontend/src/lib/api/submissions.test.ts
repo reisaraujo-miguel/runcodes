@@ -194,6 +194,19 @@ describe("subscribeSubmissionEvents", () => {
     source.emitRaw("snapshot", "not json");
     source.emit("snapshot", { type: "who_knows" });
     source.emit("snapshot", {});
+    // Known types with the wrong shape are dropped before a handler can
+    // dereference a missing or mistyped field.
+    source.emit("snapshot", { type: "snapshot", results: [] });
+    source.emit("snapshot", {
+      type: "snapshot",
+      commit: { status: "running" },
+    });
+    source.emit("snapshot", { type: "status", status: 3 });
+    source.emit("snapshot", { type: "compilation", compiled: "yes" });
+    source.emit("snapshot", { type: "case_result", test_case_id: "7" });
+    source.emit("snapshot", { type: "artifact", kind: 7 });
+    source.emit("snapshot", { type: "finished", status: "completed" });
+    source.emit("snapshot", { type: "error", message: 7 });
     source.emitConnectionError();
 
     // None of them reached a handler or closed the stream.

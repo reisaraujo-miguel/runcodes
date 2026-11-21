@@ -75,6 +75,10 @@ type CaseResult struct {
 type SubmissionArtifact struct {
 	Kind       string `json:"kind"`
 	TestCaseID *int64 `json:"test_case_id,omitempty"`
+	// Number is the case's frozen 1-based position in the exercise, the same
+	// number the generated-file paths use. It lets a reloading client name the
+	// files of a case whose position changed after it was queued.
+	Number     *int64 `json:"number,omitempty"`
 	State      string `json:"state,omitempty"`
 	Reason     string `json:"reason,omitempty"`
 	LimitBytes *int64 `json:"limit_bytes,omitempty"`

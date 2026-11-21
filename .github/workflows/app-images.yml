@@ -52,6 +52,11 @@ jobs:
               VITE_OTEL_TRACES_SAMPLER_ARG=1.0
           - service: database
             context: ./database
+            # The database image upgrades Alpine packages at build time; the
+            # per-run value keeps the build cache from serving a stale, still
+            # vulnerable layer.
+            build-args: |
+              APK_CACHE_BUST=${{ github.run_id }}
           - service: judge
             context: ./judge
     steps:

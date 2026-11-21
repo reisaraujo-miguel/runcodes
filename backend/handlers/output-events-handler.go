@@ -24,6 +24,17 @@ import (
 // must not pin the handler (and the judge subscription) forever.
 const outputSocketWriteTimeout = 10 * time.Second
 
+// outputListingTimeout bounds one object-store listing. It runs while the client
+// waits for a live frame, so a slow store must not stall the socket.
+const outputListingTimeout = 2 * time.Second
+
+// outputSocketKeepaliveInterval paces an empty text frame while the run has
+// nothing to report. Besides keeping an idle proxy from closing the socket, the
+// bounded write is the only liveness signal available: x/net/websocket does not
+// expose control frames, so the server cannot ping a client that has stopped
+// reading. A failed write ends the handler.
+const outputSocketKeepaliveInterval = 30 * time.Second
+
 /*
 OutputFilesSnapshot is what the output-files WebSocket sends: every generated
 file the owner may download, the per-case upload states, and whether the run has
@@ -65,7 +76,7 @@ func StreamSubmissionOutputEvents(w http.ResponseWriter, r *http.Request) {
 			defer conn.Close()
 
 			if terminal {
-				initial, err := outputFilesSnapshot(ctx, commitID, snapshot.Artifacts)
+				entries, err := listOutputFileEntries(ctx, commitID)
 				if err != nil {
 					slog.WarnContext(ctx, "could not build the final generated-file listing",
 						slog.Int64("commit_id", commitID),
@@ -73,6 +84,7 @@ func StreamSubmissionOutputEvents(w http.ResponseWriter, r *http.Request) {
 					)
 					return
 				}
+				initial := outputFilesFrame(entries, snapshot.Artifacts)
 				initial.Complete = true
 				_ = sendOutputSnapshot(conn, initial)
 				return
@@ -88,6 +100,11 @@ func StreamSubmissionOutputEvents(w http.ResponseWriter, r *http.Request) {
 				// would have to reopen.
 				if errors.Is(err, judge.ErrStreamClosed) {
 					sendFinalOutputSnapshot(ctx, conn, commitID)
+				} else {
+					slog.WarnContext(ctx, "could not subscribe to the generated-file stream",
+						slog.Int64("commit_id", commitID),
+						slog.String("error", err.Error()),
+					)
 				}
 				return
 			}
@@ -101,7 +118,7 @@ func StreamSubmissionOutputEvents(w http.ResponseWriter, r *http.Request) {
 				)
 				initialArtifacts = snapshot.Artifacts
 			}
-			initial, err := outputFilesSnapshot(ctx, commitID, initialArtifacts)
+			files, err := listOutputFileEntries(ctx, commitID)
 			if err != nil {
 				slog.WarnContext(ctx, "could not build the generated-file listing",
 					slog.Int64("commit_id", commitID),
@@ -109,7 +126,10 @@ func StreamSubmissionOutputEvents(w http.ResponseWriter, r *http.Request) {
 				)
 				return
 			}
-			if err := sendOutputSnapshot(conn, initial); err != nil {
+			// The listing only changes when an upload is stored, so it is reused
+			// for the pending/failed frames instead of being re-read on every
+			// event.
+			if err := sendOutputSnapshot(conn, outputFilesFrame(files, initialArtifacts)); err != nil {
 				return
 			}
 
@@ -126,12 +146,20 @@ func StreamSubmissionOutputEvents(w http.ResponseWriter, r *http.Request) {
 				}
 			}()
 
+			keepalive := time.NewTicker(outputSocketKeepaliveInterval)
+			defer keepalive.Stop()
+
 			for {
 				select {
 				case <-ctx.Done():
 					return
 				case <-readErr:
 					return
+				case <-keepalive.C:
+					// An unknown frame type is ignored by the client parser.
+					if err := sendOutputSnapshot(conn, OutputFilesSnapshot{Type: "keepalive"}); err != nil {
+						return
+					}
 				case frame, ok := <-subscription.Events:
 					if !ok {
 						sendFinalOutputSnapshot(ctx, conn, commitID)
@@ -149,15 +177,22 @@ func StreamSubmissionOutputEvents(w http.ResponseWriter, r *http.Request) {
 						)
 						continue
 					}
-					update, err := outputFilesSnapshot(ctx, commitID, artifacts)
-					if err != nil {
-						slog.WarnContext(ctx, "could not refresh generated-file listing",
-							slog.Int64("commit_id", commitID),
-							slog.String("error", err.Error()),
-						)
-						continue
+
+					// Only a `ready` event means new bytes reached storage. A
+					// pending or failed event changes the upload state alone, so
+					// the frame carries the cached listing and skips the
+					// object-store call.
+					if sseFrameState(frame) == "ready" {
+						files, err = listOutputFileEntries(ctx, commitID)
+						if err != nil {
+							slog.WarnContext(ctx, "could not refresh generated-file listing",
+								slog.Int64("commit_id", commitID),
+								slog.String("error", err.Error()),
+							)
+							continue
+						}
 					}
-					if err := sendOutputSnapshot(conn, update); err != nil {
+					if err := sendOutputSnapshot(conn, outputFilesFrame(files, artifacts)); err != nil {
 						return
 					}
 				}
@@ -199,16 +234,18 @@ func outputSocketOriginAllowed(wsConfig *websocket.Config, r *http.Request) erro
 }
 
 /*
-outputFilesSnapshot builds one frame from storage and the persisted upload
-states. The run-level entry is only added when files exist: a commit whose every
-case failed has statuses but nothing to download.
+listOutputFileEntries lists the generated files the owner may download. The
+storage call is bounded: it runs while the client waits for a live frame.
 */
-func outputFilesSnapshot(
-	ctx context.Context, commitID int64, artifacts []models.SubmissionArtifact,
-) (OutputFilesSnapshot, error) {
-	files, err := visibleOutputFiles(ctx, commitID)
+func listOutputFileEntries(
+	ctx context.Context, commitID int64,
+) ([]OutputFileEntry, error) {
+	listCtx, cancel := context.WithTimeout(ctx, outputListingTimeout)
+	defer cancel()
+
+	files, err := visibleOutputFiles(listCtx, commitID)
 	if err != nil {
-		return OutputFilesSnapshot{}, err
+		return nil, err
 	}
 
 	entries := make([]OutputFileEntry, 0, len(files))
@@ -216,15 +253,26 @@ func outputFilesSnapshot(
 		entries = append(entries, OutputFileEntry{Path: file.Path, Size: file.Size})
 	}
 
-	if len(entries) > 0 && !hasRunLevelArtifact(artifacts) {
+	return entries, nil
+}
+
+/*
+outputFilesFrame builds one frame from a file listing and the persisted upload
+states. The run-level entry is only added when files exist: a commit whose every
+case failed has statuses but nothing to download.
+*/
+func outputFilesFrame(
+	files []OutputFileEntry, artifacts []models.SubmissionArtifact,
+) OutputFilesSnapshot {
+	if len(files) > 0 && !hasRunLevelArtifact(artifacts) {
 		artifacts = append(artifacts, models.SubmissionArtifact{Kind: "output"})
 	}
 
 	return OutputFilesSnapshot{
 		Type:      "outputfiles",
-		Files:     entries,
+		Files:     files,
 		Artifacts: artifacts,
-	}, nil
+	}
 }
 
 func hasRunLevelArtifact(artifacts []models.SubmissionArtifact) bool {
@@ -251,7 +299,7 @@ func sendFinalOutputSnapshot(
 	// The judge stream ended, so a pending upload will never report again.
 	services.SettlePendingArtifacts("completed", artifacts)
 
-	final, err := outputFilesSnapshot(ctx, commitID, artifacts)
+	entries, err := listOutputFileEntries(ctx, commitID)
 	if err != nil {
 		slog.WarnContext(ctx, "could not build the final generated-file listing",
 			slog.Int64("commit_id", commitID),
@@ -259,6 +307,7 @@ func sendFinalOutputSnapshot(
 		)
 		return
 	}
+	final := outputFilesFrame(entries, artifacts)
 	final.Complete = true
 	_ = sendOutputSnapshot(conn, final)
 }
@@ -271,6 +320,28 @@ func sendOutputSnapshot(conn *websocket.Conn, snapshot OutputFilesSnapshot) erro
 
 	_ = conn.SetWriteDeadline(time.Now().Add(outputSocketWriteTimeout))
 	return websocket.Message.Send(conn, string(data))
+}
+
+// sseFrameState reads the artifact state from a formatted SSE frame. The judge
+// writes the payload on a single data line, so only that line is decoded (and
+// only the state field is kept).
+func sseFrameState(frame []byte) string {
+	const prefix = "data: "
+	for _, line := range bytes.Split(frame, []byte("\n")) {
+		if !bytes.HasPrefix(line, []byte(prefix)) {
+			continue
+		}
+
+		var payload struct {
+			State string `json:"state"`
+		}
+		if err := json.Unmarshal(line[len(prefix):], &payload); err != nil {
+			return ""
+		}
+		return payload.State
+	}
+
+	return ""
 }
 
 // sseFrameEvent reads the event name from a formatted SSE frame without parsing

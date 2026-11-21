@@ -80,7 +80,9 @@ rather than changing the bind address:
 
 The application's readiness is `GET /readyz`: the database is required, and the
 judge is reported as `ok`/`unavailable` without failing readiness. Liveness is
-`/healthz`, which is what the Compose health check uses.
+`/healthz`. The images are `scratch` and define no Docker `HEALTHCHECK`, so
+`compose ps` shows the container as running; continuous liveness comes from the
+blackbox exporter and the alert rules under `observability/`.
 
 ## Application telemetry variables
 

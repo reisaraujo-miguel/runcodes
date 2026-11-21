@@ -114,3 +114,16 @@ export function completedExercises(
 ): UserExercise[] {
   return exercises.filter(hasPassed);
 }
+
+/**
+ * The exercises whose deadline has passed without being passed. They are still
+ * worth showing: the student can open the results and the history of what was
+ * submitted, even though they can no longer submit.
+ */
+export function expiredExercises(
+  exercises: readonly UserExercise[],
+): UserExercise[] {
+  return exercises.filter(
+    (exercise) => !exercise.is_open && !hasPassed(exercise),
+  );
+}

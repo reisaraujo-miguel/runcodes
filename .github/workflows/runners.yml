@@ -14,6 +14,8 @@ permissions:
   contents: read
   # Required to push the images to GHCR.
   packages: write
+  # Required to upload the Trivy SARIF results to the Security tab.
+  security-events: write
 
 env:
   # Derived from the repository that runs the workflow. The upstream repository
@@ -78,6 +80,29 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=runners-base
           cache-to: type=gha,mode=max,scope=runners-base
+
+      # The runners execute untrusted code, so their bases (Debian for the
+      # harness, the language distributions for each toolchain) are part of the
+      # attack surface. Scan what this release published; `trivy.yaml` fails the
+      # job on a CRITICAL/HIGH finding, and the SARIF is uploaded either way.
+      - name: Scan the published base image with Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE_PREFIX }}-base:${{ steps.meta.outputs.version }}
+          trivy-config: trivy.yaml
+          trivyignores: .trivyignore.yaml
+          scanners: vuln,secret,misconfig
+          format: sarif
+          output: trivy-runner-base.sarif
+          cache-dir: /tmp/trivy-cache
+
+      - name: Upload the base scan to the Security tab
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066
+        if: always()
+        with:
+          sarif_file: trivy-runner-base.sarif
+          category: trivy-runner-base
 
   docker-build-others:
     name: Build & push ${{ matrix.image }}
@@ -164,3 +189,22 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=runners-${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=runners-${{ matrix.image }}
+
+      - name: Scan the published image with Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:${{ steps.meta.outputs.version }}
+          trivy-config: trivy.yaml
+          trivyignores: .trivyignore.yaml
+          scanners: vuln,secret,misconfig
+          format: sarif
+          output: trivy-runner-${{ matrix.image }}.sarif
+          cache-dir: /tmp/trivy-cache
+
+      - name: Upload the scan to the Security tab
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066
+        if: always()
+        with:
+          sarif_file: trivy-runner-${{ matrix.image }}.sarif
+          category: trivy-runner-${{ matrix.image }}
