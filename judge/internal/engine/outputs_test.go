@@ -29,18 +29,18 @@ type fakeOutputStore struct {
 }
 
 func (f *fakeOutputStore) UploadGeneratedFile(
-	_ context.Context, _ int64, rel, src string,
-) (int64, error) {
+	_ context.Context, _ int64, rel string, body io.Reader, _ int64,
+) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	if f.err != nil {
-		return 0, f.err
+		return f.err
 	}
 
-	data, err := os.ReadFile(src)
+	data, err := io.ReadAll(body)
 	if err != nil {
-		return 0, err
+		return err
 	}
 
 	if f.uploaded == nil {
@@ -48,7 +48,7 @@ func (f *fakeOutputStore) UploadGeneratedFile(
 	}
 	f.uploaded[rel] = string(data)
 
-	return int64(len(data)), nil
+	return nil
 }
 
 // newOutputEngine builds the engine state the publishing helpers need.
@@ -430,12 +430,12 @@ type stalledOutputStore struct {
 }
 
 func (b *stalledOutputStore) UploadGeneratedFile(
-	ctx context.Context, _ int64, _, _ string,
-) (int64, error) {
+	ctx context.Context, _ int64, _ string, _ io.Reader, _ int64,
+) error {
 	b.startOnce.Do(func() { close(b.started) })
 	<-ctx.Done()
 	b.cancelOnce.Do(func() { close(b.cancelled) })
-	return 0, ctx.Err()
+	return ctx.Err()
 }
 
 func TestPublishRootOutputs(t *testing.T) {
@@ -495,6 +495,192 @@ func TestPublishGeneratedFilesSkipsSymlinks(t *testing.T) {
 	}
 	if got := store.uploaded["test_v2_4/real.txt"]; got != "real" {
 		t.Fatalf("real.txt = %q, want real", got)
+	}
+}
+
+// A submission can keep a process alive after its case reports done (runner.go
+// assumes one may keep writing until the container is killed). Between the walk
+// and the upload, that process can replace a collected regular file with a
+// symlink. The upload must not read the link's target, even when it is a file
+// the judge itself can read.
+func TestPublishGeneratedFilesRejectsAFileSwappedForASymlink(t *testing.T) {
+	engine, store, ws := newOutputEngine(t)
+
+	secret := filepath.Join(t.TempDir(), "secret.txt")
+	if err := os.WriteFile(secret, []byte("secret"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	writeWorkspaceFile(t, ws.BaseDir, "outputfiles/case_4/a.txt", "real")
+	dir := filepath.Join(ws.BaseDir, "outputfiles", "case_4")
+	path := filepath.Join(dir, "a.txt")
+
+	req := publishRequest{
+		Dir:          dir,
+		Prefix:       "test_v2_4",
+		MaxFileBytes: 64,
+		Budget:       newArtifactBudget(64),
+		// The callback runs after the walk accepted the file and before it is
+		// opened: this is the window a live submission process races.
+		SkipFile: func(rel string) bool {
+			if rel != "a.txt" {
+				return false
+			}
+			if err := os.Remove(path); err != nil {
+				t.Fatalf("Remove: %v", err)
+			}
+			if err := os.Symlink(secret, path); err != nil {
+				t.Fatalf("Symlink: %v", err)
+			}
+			return false
+		},
+	}
+
+	result, err := engine.publishGeneratedFiles(context.Background(), 7, req)
+	if err != nil {
+		t.Fatalf("publishGeneratedFiles: %v", err)
+	}
+	if len(store.uploaded) != 0 {
+		t.Fatalf("published a symlink's target: %v", store.uploaded)
+	}
+	if result.uploaded != 0 || result.failed != 1 {
+		t.Fatalf("result = %+v, want 1 failed upload", result)
+	}
+}
+
+// A link that points at another file inside the collection tree is still a
+// link: the collected regular file it replaced must not be published under the
+// link's name, which would let a filtered-out file through.
+func TestPublishGeneratedFilesRejectsAnInTreeSymlinkSwap(t *testing.T) {
+	engine, store, ws := newOutputEngine(t)
+
+	writeWorkspaceFile(t, ws.BaseDir, "outputfiles/case_4/a.txt", "a")
+	writeWorkspaceFile(t, ws.BaseDir, "outputfiles/case_4/b.txt", "b")
+	dir := filepath.Join(ws.BaseDir, "outputfiles", "case_4")
+	path := filepath.Join(dir, "a.txt")
+
+	req := publishRequest{
+		Dir:          dir,
+		Prefix:       "test_v2_4",
+		MaxFileBytes: 64,
+		Budget:       newArtifactBudget(64),
+		SkipFile: func(rel string) bool {
+			if rel != "a.txt" {
+				return false
+			}
+			if err := os.Remove(path); err != nil {
+				t.Fatalf("Remove: %v", err)
+			}
+			if err := os.Symlink("b.txt", path); err != nil {
+				t.Fatalf("Symlink: %v", err)
+			}
+			return false
+		},
+	}
+
+	result, err := engine.publishGeneratedFiles(context.Background(), 7, req)
+	if err != nil {
+		t.Fatalf("publishGeneratedFiles: %v", err)
+	}
+	if _, ok := store.uploaded["test_v2_4/a.txt"]; ok {
+		t.Fatalf("published an in-tree symlink under the collected name: %v", store.uploaded)
+	}
+	if got := store.uploaded["test_v2_4/b.txt"]; got != "b" {
+		t.Fatalf("b.txt = %q, want b", got)
+	}
+	if result.uploaded != 1 || result.failed != 1 {
+		t.Fatalf("result = %+v, want 1 uploaded and 1 failed", result)
+	}
+}
+
+// The same swap one directory up: the walk accepted `sub/a.txt` while `sub` was
+// a real directory, and a live process replaces `sub` with a symlink to a
+// directory outside the collection tree before the file is opened. Resolution
+// beneath the pinned root must refuse it.
+func TestPublishGeneratedFilesRejectsADirectorySwappedForASymlink(t *testing.T) {
+	engine, store, ws := newOutputEngine(t)
+
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "a.txt"), []byte("secret"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	writeWorkspaceFile(t, ws.BaseDir, "outputfiles/case_4/sub/a.txt", "real")
+	dir := filepath.Join(ws.BaseDir, "outputfiles", "case_4")
+	sub := filepath.Join(dir, "sub")
+
+	req := publishRequest{
+		Dir:          dir,
+		Prefix:       "test_v2_4",
+		MaxFileBytes: 64,
+		Budget:       newArtifactBudget(64),
+		SkipFile: func(rel string) bool {
+			if rel != "sub/a.txt" {
+				return false
+			}
+			if err := os.RemoveAll(sub); err != nil {
+				t.Fatalf("RemoveAll: %v", err)
+			}
+			if err := os.Symlink(outside, sub); err != nil {
+				t.Fatalf("Symlink: %v", err)
+			}
+			return false
+		},
+	}
+
+	result, err := engine.publishGeneratedFiles(context.Background(), 7, req)
+	if err != nil {
+		t.Fatalf("publishGeneratedFiles: %v", err)
+	}
+	if len(store.uploaded) != 0 {
+		t.Fatalf("published a file through a swapped directory: %v", store.uploaded)
+	}
+	if result.uploaded != 0 || result.failed != 1 {
+		t.Fatalf("result = %+v, want 1 failed upload", result)
+	}
+}
+
+// The file the walk saw can grow before the upload opens it. The limit must be
+// applied to the opened file's size, not to the stale one the walk recorded.
+func TestPublishGeneratedFilesUsesTheOpenedFileSize(t *testing.T) {
+	engine, store, ws := newOutputEngine(t)
+
+	writeWorkspaceFile(t, ws.BaseDir, "outputfiles/case_4/a.txt", "1234")
+	dir := filepath.Join(ws.BaseDir, "outputfiles", "case_4")
+	path := filepath.Join(dir, "a.txt")
+
+	req := publishRequest{
+		Dir:          dir,
+		Prefix:       "test_v2_4",
+		MaxFileBytes: 4,
+		Budget:       newArtifactBudget(64),
+		SkipFile: func(rel string) bool {
+			if rel != "a.txt" {
+				return false
+			}
+			f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+			if err != nil {
+				t.Fatalf("OpenFile: %v", err)
+			}
+			if _, err := f.WriteString("5678"); err != nil {
+				t.Fatalf("WriteString: %v", err)
+			}
+			if err := f.Close(); err != nil {
+				t.Fatalf("Close: %v", err)
+			}
+			return false
+		},
+	}
+
+	result, err := engine.publishGeneratedFiles(context.Background(), 7, req)
+	if err != nil {
+		t.Fatalf("publishGeneratedFiles: %v", err)
+	}
+	if len(store.uploaded) != 0 {
+		t.Fatalf("published a file past the limit: %v", store.uploaded)
+	}
+	if result.tooLarge != 1 {
+		t.Fatalf("result = %+v, want 1 file past the limit", result)
 	}
 }
 
@@ -678,6 +864,47 @@ func TestPublishCaseOutputsAcceptsAnEmptyCollection(t *testing.T) {
 	}
 }
 
+// A missing case directory next to an existing outputfiles directory is still
+// the outdated-image signal, not a generic error.
+func TestPublishCaseOutputsReportsAMissingCaseDir(t *testing.T) {
+	engine, _, ws := newOutputEngine(t)
+
+	if err := os.MkdirAll(filepath.Join(ws.BaseDir, "outputfiles"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	testCase := model.TestCase{ID: 3, FileSizeLimit: 1024}
+	_, err := publishTest(t, engine, 7, testCase, model.CaseResult{Status: model.CaseCorrect}, ws)
+	if !errors.Is(err, errNoCollectionDir) {
+		t.Fatalf("err = %v, want errNoCollectionDir", err)
+	}
+}
+
+// The case directory is resolved beneath outputfiles; a link that points outside
+// the run's output tree must be refused rather than listed and published.
+func TestPublishCaseOutputsRefusesASymlinkedCaseDir(t *testing.T) {
+	engine, store, ws := newOutputEngine(t)
+
+	outside := t.TempDir()
+	writeWorkspaceFile(t, outside, "a.txt", "another run's file")
+	outputfiles := filepath.Join(ws.BaseDir, "outputfiles")
+	if err := os.MkdirAll(outputfiles, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.Symlink(outside, filepath.Join(outputfiles, "case_3")); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	testCase := model.TestCase{ID: 3, FileSizeLimit: 1024}
+	_, err := publishTest(t, engine, 7, testCase, model.CaseResult{Status: model.CaseCorrect}, ws)
+	if err == nil {
+		t.Fatal("a symlinked case directory was accepted")
+	}
+	if len(store.uploaded) != 0 {
+		t.Fatalf("published another run's files: %v", store.uploaded)
+	}
+}
+
 // TestPublishCaseOutputsSkipsAnInterruptedCase pins that a case killed by a limit
 // or a signal publishes nothing: its file was still being written when the process
 // died, so the collected bytes are a truncated file, not a result.
@@ -716,14 +943,14 @@ type blockingOutputStore struct {
 }
 
 func (b *blockingOutputStore) UploadGeneratedFile(
-	_ context.Context, _ int64, _, _ string,
-) (int64, error) {
+	_ context.Context, _ int64, _ string, _ io.Reader, _ int64,
+) error {
 	b.active.Add(1)
 	defer b.active.Add(-1)
 
 	<-b.release
 
-	return 0, nil
+	return nil
 }
 
 // waitFor polls until cond holds, failing the test after a short deadline.
@@ -973,6 +1200,131 @@ func TestQueueCaseOutputsStagesOutsideTheWorkspace(t *testing.T) {
 	}
 }
 
+// outputfiles lives in the writable workspace and the harness and submission
+// share a uid, so a live process can replace it with a symlink to another run's
+// outputfiles. The judge must refuse the pass instead of moving and publishing
+// that run's files.
+func TestQueueCaseOutputsRefusesASymlinkedOutputDir(t *testing.T) {
+	engine, store, ws := newOutputEngine(t)
+	engine.hub = events.New(time.Minute)
+
+	outside := t.TempDir()
+	writeWorkspaceFile(t, outside, "case_3/a.txt", "another run's file")
+
+	outputfiles := filepath.Join(ws.BaseDir, "outputfiles")
+	if err := os.Symlink(outside, outputfiles); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	sub := engine.hub.Subscribe(7, 0)
+	defer sub.Cancel()
+
+	publisher := newOutputPublisher(context.Background(), engine, 7)
+	err := engine.queueCaseOutputs(
+		publisher, 7,
+		model.TestCase{ID: 3, FileSizeLimit: 64, ShowUserOutput: true},
+		model.CaseResult{Status: model.CaseCorrect},
+		ws,
+	)
+	publisher.Close()
+
+	if err == nil {
+		t.Fatal("queueCaseOutputs accepted a symlinked outputfiles")
+	}
+	if len(store.uploaded) != 0 {
+		t.Fatalf("published another run's files: %v", store.uploaded)
+	}
+	if _, statErr := os.Stat(filepath.Join(outside, "case_3", "a.txt")); statErr != nil {
+		t.Fatalf("the target case directory was moved or removed: %v", statErr)
+	}
+	if frames := artifactEvents(sub); len(frames) != 0 {
+		t.Fatalf("artifact events = %v, want none", frames)
+	}
+}
+
+// Even when the request was built while outputfiles was still a real directory,
+// staging and cleanup must resolve it through a descriptor/root, so a symlink
+// substituted before the move cannot redirect either operation.
+func TestStageAndRemoveCaseOutputsRefuseASymlinkedOutputDir(t *testing.T) {
+	engine, _, ws := newOutputEngine(t)
+
+	writeWorkspaceFile(t, ws.BaseDir, "outputfiles/case_3/a.txt", "own")
+	outside := t.TempDir()
+	writeWorkspaceFile(t, outside, "case_3/a.txt", "another run's file")
+
+	// The request is built while outputfiles is still a real directory.
+	if _, ok, err := engine.casePublishRequest(
+		model.TestCase{ID: 3, FileSizeLimit: 64},
+		model.CaseResult{Status: model.CaseCorrect}, ws,
+	); err != nil || !ok {
+		t.Fatalf("casePublishRequest: ok=%v err=%v", ok, err)
+	}
+
+	// Swap it before the move, as a background process could.
+	if err := os.RemoveAll(filepath.Join(ws.BaseDir, "outputfiles")); err != nil {
+		t.Fatalf("RemoveAll: %v", err)
+	}
+	if err := os.Symlink(outside, filepath.Join(ws.BaseDir, "outputfiles")); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	staged := engine.pendingOutputDir(7, 3)
+	if err := stageCaseOutputs(ws, 3, staged); err == nil {
+		t.Fatal("stageCaseOutputs moved a directory through a symlinked outputfiles")
+	}
+	if err := removeCaseOutputs(ws, 3); err == nil {
+		t.Fatal("removeCaseOutputs deleted through a symlinked outputfiles")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "case_3", "a.txt")); err != nil {
+		t.Fatalf("the target case directory was moved or removed: %v", err)
+	}
+	if _, err := os.Stat(staged); !os.IsNotExist(err) {
+		t.Fatalf("a directory was staged: stat error = %v", err)
+	}
+}
+
+// A failed move used to leave the request pointing at the workspace, which the
+// submission could redirect afterwards. The upload must be dropped instead.
+func TestQueueCaseOutputsDropsWhenItCannotStage(t *testing.T) {
+	engine, store, ws := newOutputEngine(t)
+	engine.hub = events.New(time.Minute)
+
+	writeWorkspaceFile(t, ws.BaseDir, "outputfiles/case_3/a.txt", "own")
+
+	// A file where the run's pending directory belongs makes the move fail
+	// without involving a symlink.
+	if err := os.WriteFile(
+		filepath.Join(engine.cfg.ExecDir, "pending_7"),
+		[]byte("not a directory"), 0o644,
+	); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	sub := engine.hub.Subscribe(7, 0)
+	defer sub.Cancel()
+
+	publisher := newOutputPublisher(context.Background(), engine, 7)
+	if err := engine.queueCaseOutputs(
+		publisher, 7,
+		model.TestCase{ID: 3, FileSizeLimit: 64, ShowUserOutput: true},
+		model.CaseResult{Status: model.CaseCorrect},
+		ws,
+	); err != nil {
+		t.Fatalf("queueCaseOutputs: %v", err)
+	}
+	publisher.Close()
+
+	if len(store.uploaded) != 0 {
+		t.Fatalf("uploaded from a workspace path that could not be staged: %v", store.uploaded)
+	}
+	if _, err := os.Stat(filepath.Join(ws.BaseDir, "outputfiles", "case_3")); !os.IsNotExist(err) {
+		t.Fatalf("the unstageable case's files were kept, stat error: %v", err)
+	}
+	if frames := artifactEvents(sub); len(frames) != 0 {
+		t.Fatalf("artifact events = %v, want none", frames)
+	}
+}
+
 // TestOutputPublisherRefusesWhenFull pins that a stalled upload never blocks the
 // goroutine reading the container's milestones: once the workers and the queue are
 // busy, the next case is refused immediately.
@@ -1089,13 +1441,59 @@ func TestPublishGeneratedFilesWithoutStorage(t *testing.T) {
 	}
 }
 
-func TestCollectGeneratedFilesMissingDir(t *testing.T) {
-	files, err := collectGeneratedFiles(filepath.Join(t.TempDir(), "absent"), nil)
+func TestOpenCollectionDirMissingDir(t *testing.T) {
+	root, err := openCollectionDir(filepath.Join(t.TempDir(), "absent"))
+	if err != nil {
+		t.Fatalf("openCollectionDir: %v", err)
+	}
+	if root != nil {
+		root.Close()
+		t.Fatal("a missing collection directory must not yield a root")
+	}
+}
+
+// A collection directory that a submission replaced with a symlink must not be
+// opened: the pass would read (and publish) the link's target instead.
+func TestOpenCollectionDirRefusesASymlink(t *testing.T) {
+	base := t.TempDir()
+	target := filepath.Join(base, "target")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatalf("Mkdir: %v", err)
+	}
+	link := filepath.Join(base, "case_1")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	root, err := openCollectionDir(link)
+	if err == nil {
+		root.Close()
+		t.Fatal("openCollectionDir followed a symlinked collection directory")
+	}
+}
+
+// collectGeneratedFiles walks the root the caller opened, not the path it came
+// from, and returns only regular files.
+func TestCollectGeneratedFilesListsRegularFiles(t *testing.T) {
+	dir := t.TempDir()
+	writeWorkspaceFile(t, dir, "a.txt", "a")
+	writeWorkspaceFile(t, dir, "sub/b.txt", "b")
+	if err := os.Symlink(filepath.Join(dir, "a.txt"), filepath.Join(dir, "link.txt")); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	root, err := openCollectionDir(dir)
+	if err != nil {
+		t.Fatalf("openCollectionDir: %v", err)
+	}
+	defer root.Close()
+
+	files, err := collectGeneratedFiles(root, nil)
 	if err != nil {
 		t.Fatalf("collectGeneratedFiles: %v", err)
 	}
-	if len(files) != 0 {
-		t.Fatalf("files = %v, want none", files)
+	if len(files) != 2 || files[0].Path != "a.txt" || files[1].Path != "sub/b.txt" {
+		t.Fatalf("files = %v, want [a.txt sub/b.txt]", files)
 	}
 }
 

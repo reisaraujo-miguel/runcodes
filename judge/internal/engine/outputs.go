@@ -10,23 +10,29 @@ finishes, then deletes the local copy. The workspace is therefore bounded by one
 case instead of growing with the suite, and the backend serves the files from
 object storage without the judge being online.
 
-What the submission wrote is untrusted: only regular files are read (never a
-symlink, which would otherwise publish the contents of any file the judge can
-read). Each file is bounded by its case's file-size limit, and every file of the
-run shares MaxCommitArtifactBytes, so a suite cannot multiply the per-case limit
-into an unbounded amount of object storage.
+What the submission wrote is untrusted: only regular files are read, and each
+one is opened beneath a directory handle pinned to the collection directory, so
+a link planted between the walk and the upload cannot point the read outside it.
+Each file is bounded by its case's file-size limit, and every file of the run
+shares MaxCommitArtifactBytes, so a suite cannot multiply the per-case limit into
+an unbounded amount of object storage.
 */
 
 import (
 	"context"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/runcodes-icmc/judge/internal/events"
 	"github.com/runcodes-icmc/judge/internal/model"
@@ -36,9 +42,12 @@ import (
 // publish what a submission produced. It exists so the upload path can be
 // exercised without SeaweedFS.
 type generatedFileStore interface {
-	// UploadGeneratedFile stores src under the commit's output namespace at rel
-	// and returns how many bytes it stored.
-	UploadGeneratedFile(ctx context.Context, commitID int64, rel, src string) (int64, error)
+	// UploadGeneratedFile stores exactly size bytes from body under the
+	// commit's output namespace at rel. The caller owns body and closes it after
+	// the call returns; body is seekable so a retrying store can replay it.
+	UploadGeneratedFile(
+		ctx context.Context, commitID int64, rel string, body io.Reader, size int64,
+	) error
 }
 
 // errNoCollectionDir reports that a finished case left no collection directory.
@@ -49,9 +58,8 @@ var errNoCollectionDir = fmt.Errorf("the runner image did not collect generated 
 
 // generatedFile is one file a submission produced, as found in the workspace.
 type generatedFile struct {
-	// Path is slash-separated and relative to the directory it was found in.
+	// Path is slash-separated and relative to the collection directory.
 	Path string
-	Size int64
 }
 
 /*
@@ -148,51 +156,97 @@ func (e *Engine) pendingOutputDir(commitID, caseID int64) string {
 }
 
 /*
-collectGeneratedFiles lists the regular files a submission produced under dir,
-recursively, with their paths relative to dir.
+stageCaseOutputs moves a finished case's collection directory into the pending
+area without letting the workspace choose which directory is moved.
 
-Directories are skipped when skipDir accepts their name, which is how the root
-pass avoids the per-case directories. Symbolic links and other special files are
-not followed and not returned: the workspace is written by untrusted code, and
-following a link would read a file outside it.
+The source is named through a descriptor opened on `outputfiles` with
+O_NOFOLLOW, and renameat moves it from that descriptor into a descriptor on the
+pending directory. A process of the submission that replaces `outputfiles` with
+a symlink while the suite continues therefore cannot make the judge move — and
+later publish — another run's files. The caller drops the upload when this
+fails: the workspace path may have been redirected, so it must not be reopened.
 */
-func collectGeneratedFiles(
-	dir string, skipDir func(name string) bool,
-) ([]generatedFile, error) {
-	if _, err := os.Stat(dir); err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
+func stageCaseOutputs(ws *workspace, caseID int64, staged string) error {
+	outputs, err := os.OpenFile(
+		filepath.Join(ws.BaseDir, "outputfiles"),
+		os.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0,
+	)
+	if err != nil {
+		return fmt.Errorf("open outputfiles: %w", err)
+	}
+	defer outputs.Close()
+
+	pendingParent := filepath.Dir(staged)
+	if err := os.MkdirAll(pendingParent, 0o777); err != nil {
+		return fmt.Errorf("create pending directory: %w", err)
+	}
+	pending, err := os.OpenFile(pendingParent,
+		os.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return fmt.Errorf("open pending directory: %w", err)
+	}
+	defer pending.Close()
+
+	name := caseOutputDir(caseID)
+	if err := unix.Renameat(int(outputs.Fd()), name, int(pending.Fd()), name); err != nil {
+		return fmt.Errorf("move %s out of the workspace: %w", name, err)
 	}
 
+	return nil
+}
+
+/*
+removeCaseOutputs removes a case's collection directory while it is still in the
+workspace. The directory is resolved beneath a Root on `outputfiles`, so a
+submission that replaced `outputfiles` with a symlink cannot make the judge
+delete another run's files.
+*/
+func removeCaseOutputs(ws *workspace, caseID int64) error {
+	outputs, err := openCollectionDir(filepath.Join(ws.BaseDir, "outputfiles"))
+	if err != nil {
+		return err
+	}
+	if outputs == nil {
+		return nil
+	}
+	defer outputs.Close()
+
+	return outputs.RemoveAll(caseOutputDir(caseID))
+}
+
+/*
+collectGeneratedFiles lists the regular files under root, recursively, with
+paths relative to the root.
+
+The walk runs on the root's fs.FS, so every directory it reads is resolved
+beneath the handle the caller opened: moving or replacing the collection
+directory during the walk cannot redirect it outside that tree. Symbolic links
+and other special files are not returned. Sizes are deliberately not recorded:
+the walk's mode and size are only hints, and the publisher re-checks both on the
+file it actually opens.
+*/
+func collectGeneratedFiles(
+	root *os.Root, skipDir func(name string) bool,
+) ([]generatedFile, error) {
 	files := make([]generatedFile, 0, 8)
-	err := filepath.Walk(dir, func(p string, fi os.FileInfo, walkErr error) error {
+
+	err := fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
 
-		if fi.IsDir() {
-			if p != dir && skipDir != nil && skipDir(fi.Name()) {
-				return filepath.SkipDir
+		if d.IsDir() {
+			if p != "." && skipDir != nil && skipDir(d.Name()) {
+				return fs.SkipDir
 			}
 			return nil
 		}
 
-		if !fi.Mode().IsRegular() {
+		if !d.Type().IsRegular() {
 			return nil
 		}
 
-		rel, err := filepath.Rel(dir, p)
-		if err != nil {
-			return err
-		}
-
-		files = append(files, generatedFile{
-			Path: filepath.ToSlash(rel),
-			Size: fi.Size(),
-		})
-
+		files = append(files, generatedFile{Path: p})
 		return nil
 	})
 	if err != nil {
@@ -200,6 +254,93 @@ func collectGeneratedFiles(
 	}
 
 	return files, nil
+}
+
+/*
+openCollectionDir opens the directory a publish pass reads from, returning a nil
+root when the directory does not exist (there is nothing to publish).
+
+The collection directory is written by the untrusted submission, so by upload
+time it can be a link. Lstat refuses one, and the directory that was opened is
+compared with the one Lstat saw, so a swap between those two calls cannot hand
+the pass a different directory. The returned Root then pins the directory for
+the rest of the pass: renaming it afterwards does not change where Root reads
+from.
+*/
+func openCollectionDir(dir string) (*os.Root, error) {
+	before, err := os.Lstat(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if !before.IsDir() {
+		return nil, fmt.Errorf("%s is not a directory", dir)
+	}
+
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	opened, err := root.Stat(".")
+	if err != nil {
+		root.Close()
+		return nil, err
+	}
+	if !os.SameFile(before, opened) {
+		root.Close()
+		return nil, fmt.Errorf("%s changed while it was being opened", dir)
+	}
+
+	return root, nil
+}
+
+/*
+openGeneratedFile opens one collected file beneath root for reading.
+
+The path is resolved from root, so a link substituted for the collected file —
+or for a directory on the way to it — cannot make the judge read outside the
+collection tree. The opened file is then compared with the directory entry: a
+collected regular file swapped for a link, even one that stays inside the tree,
+is refused, as is anything that is not a regular file. O_NONBLOCK keeps a FIFO
+substituted the same way from blocking the open. The size comes from the opened
+file, not from the walk, so the per-file limit and the commit budget bound the
+bytes that are actually about to be uploaded.
+*/
+func openGeneratedFile(root *os.Root, rel string) (*os.File, os.FileInfo, error) {
+	f, err := root.OpenFile(rel,
+		os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	info, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, nil, err
+	}
+	if !info.Mode().IsRegular() {
+		f.Close()
+		return nil, nil, fmt.Errorf("%s is not a regular file", rel)
+	}
+
+	// Root follows a link that stays inside the tree even when O_NOFOLLOW is
+	// passed, so the descriptor alone cannot tell a link from the regular file
+	// it replaced. Compare it with the entry the path names now: the descriptor
+	// is already open, so a swap after this check cannot change what is read.
+	entry, err := root.Lstat(rel)
+	if err != nil {
+		f.Close()
+		return nil, nil, err
+	}
+	if !entry.Mode().IsRegular() || !os.SameFile(info, entry) {
+		f.Close()
+		return nil, nil, fmt.Errorf("%s is no longer the collected regular file", rel)
+	}
+
+	return f, info, nil
 }
 
 // publishRequest describes one directory of generated files to publish.
@@ -244,8 +385,12 @@ run's files also share the commit's budget (req.Budget): the per-case bound alon
 would let a suite of cases publish an unbounded total. The budget is only a
 ceiling, so a case with a large file cannot make the following cases' files
 unpublishable until the commit's total is actually exhausted. A file that cannot
-be uploaded is logged and skipped: the run's results do not depend on an
-artifact that could not be published.
+be opened or uploaded is logged and skipped: the run's results do not depend on
+an artifact that could not be published.
+
+Every size used here comes from the opened file, never from the walk: the
+submission can keep a process alive and change what a collected path refers to
+between the two.
 */
 func (e *Engine) publishGeneratedFiles(
 	ctx context.Context, commitID int64, req publishRequest,
@@ -256,58 +401,83 @@ func (e *Engine) publishGeneratedFiles(
 		return result, fmt.Errorf("no object storage configured for generated files")
 	}
 
-	files, err := collectGeneratedFiles(req.Dir, req.SkipDir)
+	root, err := openCollectionDir(req.Dir)
 	if err != nil {
 		return result, err
 	}
+	if root != nil {
+		defer root.Close()
 
-	for _, file := range files {
-		if req.SkipFile != nil && req.SkipFile(file.Path) {
-			continue
-		}
-		if req.MaxFileBytes > 0 && file.Size > req.MaxFileBytes {
-			e.logger.Warn("generated file is larger than its case allows; not published",
-				"commit_id", commitID,
-				"path", req.Prefix+"/"+file.Path,
-				"size_bytes", file.Size,
-				"limit_bytes", req.MaxFileBytes,
-			)
-			result.tooLarge++
-			continue
-		}
-		if !req.Budget.reserve(file.Size) {
-			result.budgetSkipped++
-			e.logger.Warn("generated files exceeded the commit's budget; not published",
-				"commit_id", commitID,
-				"path", req.Prefix+"/"+file.Path,
-				"size_bytes", file.Size,
-				"budget_bytes", req.Budget.limit,
-			)
-			continue
-		}
-
-		rel := file.Path
-		if req.Prefix != "" {
-			rel = req.Prefix + "/" + file.Path
-		}
-
-		size, err := e.outputs.UploadGeneratedFile(
-			ctx, commitID, rel,
-			filepath.Join(req.Dir, filepath.FromSlash(file.Path)),
-		)
+		files, err := collectGeneratedFiles(root, req.SkipDir)
 		if err != nil {
-			req.Budget.release(file.Size)
-			e.logger.Warn("could not upload a generated file",
-				"commit_id", commitID,
-				"path", rel,
-				"error", err,
-			)
-			result.failed++
-			continue
+			return result, err
 		}
 
-		_ = size
-		result.uploaded++
+		for _, file := range files {
+			if req.SkipFile != nil && req.SkipFile(file.Path) {
+				continue
+			}
+
+			src, info, err := openGeneratedFile(root, file.Path)
+			if err != nil {
+				e.logger.Warn("could not open a generated file",
+					"commit_id", commitID,
+					"path", req.Prefix+"/"+file.Path,
+					"error", err,
+				)
+				result.failed++
+				continue
+			}
+
+			if req.MaxFileBytes > 0 && info.Size() > req.MaxFileBytes {
+				src.Close()
+				e.logger.Warn("generated file is larger than its case allows; not published",
+					"commit_id", commitID,
+					"path", req.Prefix+"/"+file.Path,
+					"size_bytes", info.Size(),
+					"limit_bytes", req.MaxFileBytes,
+				)
+				result.tooLarge++
+				continue
+			}
+			if !req.Budget.reserve(info.Size()) {
+				src.Close()
+				result.budgetSkipped++
+				e.logger.Warn("generated files exceeded the commit's budget; not published",
+					"commit_id", commitID,
+					"path", req.Prefix+"/"+file.Path,
+					"size_bytes", info.Size(),
+					"budget_bytes", req.Budget.limit,
+				)
+				continue
+			}
+
+			rel := file.Path
+			if req.Prefix != "" {
+				rel = req.Prefix + "/" + file.Path
+			}
+
+			// The SectionReader bounds the upload to the size that was checked:
+			// a process still appending to the file cannot push stored bytes
+			// past the limit or the budget.
+			err = e.outputs.UploadGeneratedFile(
+				ctx, commitID, rel,
+				io.NewSectionReader(src, 0, info.Size()), info.Size(),
+			)
+			src.Close()
+			if err != nil {
+				req.Budget.release(info.Size())
+				e.logger.Warn("could not upload a generated file",
+					"commit_id", commitID,
+					"path", rel,
+					"error", err,
+				)
+				result.failed++
+				continue
+			}
+
+			result.uploaded++
+		}
 	}
 
 	// The files are in storage now, so the local copy only costs workspace. It is
@@ -340,16 +510,32 @@ func (e *Engine) casePublishRequest(
 	testCase model.TestCase, result model.CaseResult, ws *workspace,
 ) (publishRequest, bool, error) {
 	dir := filepath.Join(ws.BaseDir, "outputfiles", caseOutputDir(testCase.ID))
-	if _, err := os.Stat(dir); err != nil {
+
+	// Resolve the collection directory beneath outputfiles instead of trusting
+	// the path: outputfiles is writable by the submission, so by now it may be a
+	// symlink to another run's workspace.
+	outputs, err := openCollectionDir(filepath.Join(ws.BaseDir, "outputfiles"))
+	if err != nil {
+		return publishRequest{}, false, err
+	}
+	if outputs == nil {
+		return publishRequest{}, false, errNoCollectionDir
+	}
+	defer outputs.Close()
+
+	name := caseOutputDir(testCase.ID)
+	caseDir, err := outputs.OpenRoot(name)
+	if err != nil {
 		if os.IsNotExist(err) {
 			return publishRequest{}, false, errNoCollectionDir
 		}
 		return publishRequest{}, false, err
 	}
+	defer caseDir.Close()
 
 	// The harness creates the directory for every case, so an empty one means the
 	// program wrote nothing: there is no upload to announce or wait for.
-	entries, err := os.ReadDir(dir)
+	entries, err := fs.ReadDir(caseDir.FS(), ".")
 	if err != nil {
 		return publishRequest{}, false, err
 	}
@@ -358,7 +544,7 @@ func (e *Engine) casePublishRequest(
 	}
 
 	if result.Status == model.CaseKilledBySignal {
-		if err := os.RemoveAll(dir); err != nil {
+		if err := outputs.RemoveAll(name); err != nil {
 			e.logger.Warn("could not remove an interrupted case's generated files",
 				"commit_id", result.TestCaseID, "dir", dir, "error", err,
 			)
@@ -407,7 +593,7 @@ func (e *Engine) queueCaseOutputs(
 		// its files anyway. Not uploading them saves the transfer and keeps the
 		// client from announcing a download that will never exist.
 		dir := filepath.Join(ws.BaseDir, "outputfiles", caseOutputDir(testCase.ID))
-		if err := os.RemoveAll(dir); err != nil {
+		if err := removeCaseOutputs(ws, testCase.ID); err != nil {
 			e.logger.Warn("could not remove a hidden case's generated files",
 				"commit_id", commitID, "dir", dir, "error", err,
 			)
@@ -425,7 +611,7 @@ func (e *Engine) queueCaseOutputs(
 	// upload would only make the client wait for files that cannot be stored, so
 	// say now why they are unavailable and drop them.
 	if req.Budget.isExhausted() {
-		if err := os.RemoveAll(req.Dir); err != nil {
+		if err := removeCaseOutputs(ws, testCase.ID); err != nil {
 			e.logger.Warn("could not remove files past the commit's budget",
 				"commit_id", commitID, "dir", req.Dir, "error", err,
 			)
@@ -436,21 +622,24 @@ func (e *Engine) queueCaseOutputs(
 
 	// Move the files out of the run's workspace before queueing: a rename on the
 	// same filesystem is instant, and the queued bytes then stop competing with the
-	// program for the run's workspace quota. A failed rename is not fatal; the
-	// upload then reads from the workspace, exactly as before.
-	if staged := e.pendingOutputDir(commitID, testCase.ID); staged != req.Dir {
-		if err := os.MkdirAll(filepath.Dir(staged), 0o777); err != nil {
-			e.logger.Warn("could not create the pending upload directory",
-				"commit_id", commitID, "dir", filepath.Dir(staged), "error", err,
+	// program for the run's workspace quota. The move is named through file
+	// descriptors, so a symlink substituted for outputfiles cannot redirect it to
+	// another run's files. If it fails, the upload is dropped rather than falling
+	// back to a workspace path the submission may have redirected since the
+	// request was built.
+	staged := e.pendingOutputDir(commitID, testCase.ID)
+	if err := stageCaseOutputs(ws, testCase.ID, staged); err != nil {
+		e.logger.Warn("could not move a case's files out of the workspace",
+			"commit_id", commitID, "case_id", testCase.ID, "error", err,
+		)
+		if rmErr := removeCaseOutputs(ws, testCase.ID); rmErr != nil {
+			e.logger.Warn("could not remove the unmovable case's generated files",
+				"commit_id", commitID, "case_id", testCase.ID, "error", rmErr,
 			)
-		} else if err := os.Rename(req.Dir, staged); err != nil {
-			e.logger.Warn("could not move a case's files out of the workspace",
-				"commit_id", commitID, "case_id", testCase.ID, "error", err,
-			)
-		} else {
-			req.Dir = staged
 		}
+		return nil
 	}
+	req.Dir = staged
 
 	// Announce before queueing: the client shows an upload placeholder where the
 	// download link will appear. The publisher is drained before the terminal
