@@ -86,3 +86,53 @@ jobs:
         with:
           sarif_file: trivy-${{ matrix.service }}.sarif
           category: trivy-image-${{ matrix.service }}
+
+  # The runner images are published by the release workflow, not built here, so
+  # they are only scanned on the weekly schedule (new CVEs in their language
+  # bases appear without a release). The release itself scans what it publishes
+  # in runners.yml and fails on a finding.
+  scan-published-runners:
+    name: Scan published runner ${{ matrix.image }}
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Pull the published package with the workflow token.
+      packages: read
+      # Required to upload SARIF results to the Security tab.
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # The harness base every language image derives from, and the two that
+        # moved to a new distribution base most recently.
+        image: [base, python, zig]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Login to GHCR
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Scan the published image with Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          scan-type: image
+          image-ref: ghcr.io/${{ github.repository }}-runner-${{ matrix.image }}:latest
+          trivy-config: trivy.yaml
+          trivyignores: .trivyignore.yaml
+          scanners: vuln,secret,misconfig
+          format: sarif
+          output: trivy-runner-${{ matrix.image }}.sarif
+          cache-dir: /tmp/trivy-cache
+
+      - name: Upload results to the Security tab
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066
+        if: always()
+        with:
+          sarif_file: trivy-runner-${{ matrix.image }}.sarif
+          category: trivy-runner-${{ matrix.image }}
