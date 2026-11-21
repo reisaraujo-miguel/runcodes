@@ -53,7 +53,7 @@ services:
       - data
 
   seaweed:
-    image: chrislusf/seaweedfs:4.53
+    image: chrislusf/seaweedfs:4.54
     container_name: runcodes-data-seaweed
     restart: always
     command: >-
