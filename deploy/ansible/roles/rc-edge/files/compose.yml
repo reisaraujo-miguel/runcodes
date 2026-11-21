@@ -91,7 +91,7 @@ services:
   # Local mail catcher. It accepts every message, so it is for bootstrap and
   # testing only; point RUNCODES_SMTP_* at a real relay for production mail.
   smtp4dev:
-    image: rnwood/smtp4dev:v3.15
+    image: rnwood/smtp4dev:v3.16
     container_name: runcodes-edge-smtp4dev
     restart: always
     ports:
@@ -107,7 +107,7 @@ services:
       - edge
 
   alloy:
-    image: grafana/alloy:v1.21.1
+    image: grafana/alloy:v1.22.0
     container_name: runcodes-edge-alloy
     restart: always
     command:
