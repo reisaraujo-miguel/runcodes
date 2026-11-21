@@ -28,6 +28,13 @@ const outputSocketWriteTimeout = 10 * time.Second
 // waits for a live frame, so a slow store must not stall the socket.
 const outputListingTimeout = 2 * time.Second
 
+// outputSocketKeepaliveInterval paces an empty text frame while the run has
+// nothing to report. Besides keeping an idle proxy from closing the socket, the
+// bounded write is the only liveness signal available: x/net/websocket does not
+// expose control frames, so the server cannot ping a client that has stopped
+// reading. A failed write ends the handler.
+const outputSocketKeepaliveInterval = 30 * time.Second
+
 /*
 OutputFilesSnapshot is what the output-files WebSocket sends: every generated
 file the owner may download, the per-case upload states, and whether the run has
@@ -139,12 +146,20 @@ func StreamSubmissionOutputEvents(w http.ResponseWriter, r *http.Request) {
 				}
 			}()
 
+			keepalive := time.NewTicker(outputSocketKeepaliveInterval)
+			defer keepalive.Stop()
+
 			for {
 				select {
 				case <-ctx.Done():
 					return
 				case <-readErr:
 					return
+				case <-keepalive.C:
+					// An unknown frame type is ignored by the client parser.
+					if err := sendOutputSnapshot(conn, OutputFilesSnapshot{Type: "keepalive"}); err != nil {
+						return
+					}
 				case frame, ok := <-subscription.Events:
 					if !ok {
 						sendFinalOutputSnapshot(ctx, conn, commitID)
