@@ -298,6 +298,12 @@ jobs:
       - name: Install psql
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
       - name: Create the migration databases
         run: |
           psql -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE atlas_dev'
@@ -324,6 +330,17 @@ jobs:
         run: |
           ./database/atlas.sh migrate apply --env local \
             --url "postgres://runcodes:runcodes@localhost:5432/runcodes_migrated?sslmode=disable"
+
+      # These tests need the real schema: ties in created_at, the s3_key
+      # filter and the cascade that removes a deleted case from a commit's
+      # numbering cannot be expressed with sqlmock.
+      - name: Run the numbering integration tests
+        working-directory: backend
+        env:
+          RUNCODES_TEST_DB_DSN: "postgres://runcodes:runcodes@localhost:5432/runcodes_migrated?sslmode=disable"
+        run: |
+          go test -tags integration -count=1 \
+            -run 'TestNumberingIntegration|TestFrozenCaseNumberIntegration' ./services
 
       # Proves the seed and the role setup still work on a database built only
       # from the migrations, not only on one built from the schema file.
