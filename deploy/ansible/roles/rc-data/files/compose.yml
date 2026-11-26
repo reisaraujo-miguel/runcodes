@@ -73,7 +73,7 @@ services:
       - data
 
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:v0.20.1
+    image: prometheuscommunity/postgres-exporter:v0.21.1
     container_name: runcodes-data-postgres-exporter
     restart: always
     environment:
@@ -92,7 +92,7 @@ services:
       - data
 
   redis-exporter:
-    image: oliver006/redis_exporter:v1.97.0
+    image: oliver006/redis_exporter:v1.98.0
     container_name: runcodes-data-redis-exporter
     restart: always
     environment:
@@ -107,7 +107,7 @@ services:
       - data
 
   node-exporter:
-    image: prom/node-exporter:v1.12.1
+    image: prom/node-exporter:v1.13.1
     container_name: runcodes-data-node-exporter
     restart: always
     command:
