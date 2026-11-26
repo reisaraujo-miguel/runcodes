@@ -129,7 +129,7 @@ services:
       - edge
 
   node-exporter:
-    image: prom/node-exporter:v1.12.1
+    image: prom/node-exporter:v1.13.1
     container_name: runcodes-edge-node-exporter
     restart: always
     command:

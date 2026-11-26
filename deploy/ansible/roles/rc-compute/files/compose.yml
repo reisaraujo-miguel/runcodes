@@ -98,7 +98,7 @@ services:
       - compute
 
   node-exporter:
-    image: prom/node-exporter:v1.12.1
+    image: prom/node-exporter:v1.13.1
     container_name: runcodes-compute-node-exporter
     restart: always
     command:

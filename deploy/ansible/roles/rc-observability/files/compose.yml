@@ -140,7 +140,7 @@ services:
       - prometheus
 
   pyroscope:
-    image: grafana/pyroscope:2.4.3
+    image: grafana/pyroscope:2.4.4
     container_name: runcodes-obs-pyroscope
     restart: always
     command:
@@ -201,7 +201,7 @@ services:
       - pyroscope
 
   node-exporter:
-    image: prom/node-exporter:v1.12.1
+    image: prom/node-exporter:v1.13.1
     container_name: runcodes-obs-node-exporter
     restart: always
     command:

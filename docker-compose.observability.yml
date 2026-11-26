@@ -205,7 +205,7 @@ services:
   # Continuous profiling: Alloy scrapes the Go pprof endpoints and writes to
   # Pyroscope. The pprof listeners are internal-only (:6060, not published).
   pyroscope:
-    image: grafana/pyroscope:2.4.3
+    image: grafana/pyroscope:2.4.4
     restart: unless-stopped
     command:
       - "-config.file=/etc/pyroscope/config.yaml"
@@ -303,7 +303,7 @@ services:
         condition: service_started
 
   node-exporter:
-    image: prom/node-exporter:v1.12.1
+    image: prom/node-exporter:v1.13.1
     restart: unless-stopped
     command:
       - "--path.rootfs=/host"
@@ -324,7 +324,7 @@ services:
       - runcodes-network
 
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:v0.20.1
+    image: prometheuscommunity/postgres-exporter:v0.21.1
     restart: unless-stopped
     environment:
       TZ: "America/Sao_Paulo"
@@ -344,7 +344,7 @@ services:
         condition: service_started
 
   redis-exporter:
-    image: oliver006/redis_exporter:v1.97.0
+    image: oliver006/redis_exporter:v1.98.0
     restart: unless-stopped
     environment:
       TZ: "America/Sao_Paulo"
