@@ -98,7 +98,7 @@ jobs:
           cache-dir: /tmp/trivy-cache
 
       - name: Upload the base scan to the Security tab
-        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066
+        uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea
         if: always()
         with:
           sarif_file: trivy-runner-base.sarif
@@ -203,7 +203,7 @@ jobs:
           cache-dir: /tmp/trivy-cache
 
       - name: Upload the scan to the Security tab
-        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066
+        uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea
         if: always()
         with:
           sarif_file: trivy-runner-${{ matrix.image }}.sarif
