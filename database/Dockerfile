@@ -10,7 +10,7 @@ WORKDIR /gosu
 
 RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /gosu/gosu .
 
-FROM postgres:18.6-alpine3.24
+FROM postgres:18.7-alpine3.24
 
 ENV GOSU_VERSION=1.20
 
